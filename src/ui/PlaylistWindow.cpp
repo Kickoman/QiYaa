@@ -409,6 +409,7 @@ void PlaylistWindow::skinMouseRelease(QPoint pos, Qt::MouseButton button) {
             popupAt(menu, {72, skinSize().height() - 30});
             break;
         }
+        case kBtnMisc: break;  // Winamp's MISC (sort, file info) has nothing to offer for a stream queue yet
         case kBtnMini0 + 0: m_player->previous(); break;
         case kBtnMini0 + 1: m_player->play(); break;
         case kBtnMini0 + 2: m_player->pause(); break;

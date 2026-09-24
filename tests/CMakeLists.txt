@@ -23,9 +23,10 @@ if(NOT WIN32)
         "QT_QPA_PLATFORM=offscreen:configfile=${CMAKE_CURRENT_SOURCE_DIR}/data/screen-2560x1440.json")
 endif()
 
-# MPRIS: only where Qt D-Bus is available. It needs a session bus, so CTest
-# starts a private one; without dbus-run-session the test skips itself.
-if(TARGET Qt6::DBus)
+# MPRIS: only where it's built (Linux with Qt D-Bus; macOS Qt has D-Bus too,
+# but no MPRIS). It needs a session bus, so CTest starts a private one;
+# without dbus-run-session the test skips itself.
+if(QIYAA_HAVE_MPRIS)
     qt_add_executable(test_mpris test_mpris.cpp)
     target_link_libraries(test_mpris PRIVATE qiyaa_core Qt6::Test Qt6::DBus)
     find_program(DBUS_RUN_SESSION dbus-run-session)
