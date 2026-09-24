@@ -20,9 +20,6 @@ namespace {
 
 constexpr ma_uint32 kChannels = 2;
 constexpr ma_uint32 kRingSeconds = 2;
-// Chain into a queued stream only once this much of it is downloaded (or all of
-// it), so opening its decoder doesn't stall on the network.
-constexpr size_t kChainMinBytes = 64 * 1024;
 
 }  // namespace
 
@@ -61,10 +58,10 @@ public:
         std::lock_guard lock(m_mutex);
         m_cursor = 0;
     }
-    // Enough to open a decoder without waiting for the network.
-    bool ready(size_t minBytes) const {
+    // Completely downloaded (successfully or not): reading it never waits.
+    bool finished() const {
         std::lock_guard lock(m_mutex);
-        return m_finished || m_data.size() >= minBytes;
+        return m_finished;
     }
 
     // Blocking read at the cursor. Returns MA_AT_END at the end of a finished stream.
@@ -160,6 +157,9 @@ struct AudioEngine::Impl {
     StreamId chainingId = 0;                  // being opened right now
     bool dropChaining = false;
     StreamId chainedId = 0;                   // decoding, boundary not reached yet
+    // Every buffer the decoder thread may be reading, so stopping it can
+    // always wake it up (even for streams the UI has already dropped).
+    std::vector<std::shared_ptr<StreamBuffer>> decoderHeld;
 
     static void dataCallback(ma_device* dev, void* out, const void*, ma_uint32 frameCount) {
         auto* self = static_cast<Impl*>(dev->pUserData);
@@ -254,24 +254,48 @@ struct AudioEngine::Impl {
         int epoch = 0;
         ma_uint64 written = 0;         // frames written to the ring since its last reset
 
-        // Continue with the queued stream after the current one.
+        // Buffers this thread reads; call with queueMutex held.
+        auto publishHeld = [&] {
+            decoderHeld.clear();
+            if (cur) decoderHeld.push_back(cur->buf);
+            if (tail) decoderHeld.push_back(tail->buf);
+        };
+        {
+            std::lock_guard lock(queueMutex);
+            publishHeld();
+        }
+
+        // Continue with the queued stream after the current one. Only once it
+        // is completely downloaded: then opening and decoding it never wait for
+        // the network (an ID3 tag with a big cover alone can exceed any
+        // "enough to start" guess), and a queued stream that isn't ready by the
+        // end of the track is simply started by the player the usual way.
         auto tryChain = [&]() -> bool {
             std::shared_ptr<StreamBuffer> buf;
             StreamId id = 0;
             {
                 std::lock_guard lock(queueMutex);
-                if (!queued || !queued->ready(kChainMinBytes)) return false;
+                if (!queued || !queued->finished() || finishedReported) return false;
                 buf = std::move(queued);
                 id = std::exchange(queuedId, 0);
                 chainingId = id;
                 dropChaining = false;
+                decoderHeld.push_back(buf);
             }
             std::unique_ptr<Source> next = openSource(buf);
             std::lock_guard lock(queueMutex);
             chainingId = 0;
-            if (!next || dropChaining || stopDecoder) {
-                if (!next && !dropChaining && !stopDecoder) failedQueued = id;
+            if (!next || dropChaining || stopDecoder || finishedReported) {
+                if (!next && !dropChaining && !stopDecoder) {
+                    failedQueued = id;
+                } else if (next && finishedReported && !dropChaining && !stopDecoder) {
+                    // The track already ended for the UI: it starts this one itself.
+                    buf->rewind();
+                    queued = buf;
+                    queuedId = id;
+                }
                 dropChaining = false;
+                publishHeld();
                 return false;
             }
             chainedId = id;
@@ -282,6 +306,7 @@ struct AudioEngine::Impl {
             nextChannels = cur->channels;
             boundaryFrame.store(written, std::memory_order_release);
             decoderEpoch.store(epoch, std::memory_order_release);
+            publishHeld();
             return true;
         };
 
@@ -303,8 +328,11 @@ struct AudioEngine::Impl {
                     cur = std::move(tail);
                     --epoch;
                     decoderEpoch.store(epoch, std::memory_order_release);
-                } else {
+                    publishHeld();
+                } else if (tail) {
                     tail.reset();
+                    std::lock_guard lock(queueMutex);
+                    publishHeld();
                 }
                 // The seek itself may block until that part is downloaded.
                 ma_decoder_seek_to_pcm_frame(&cur->dec, ma_uint64(target));
@@ -320,7 +348,11 @@ struct AudioEngine::Impl {
                 continue;
             }
             // The UI has moved into the new track: the old decoder can go.
-            if (tail && uiEpoch.load(std::memory_order_acquire) >= epoch) tail.reset();
+            if (tail && uiEpoch.load(std::memory_order_acquire) >= epoch) {
+                tail.reset();
+                std::lock_guard lock(queueMutex);
+                publishHeld();
+            }
             if (decoderDone) {
                 // The queued stream may arrive late; chain it while there's still
                 // something in the ring (after that, the UI starts it itself).
@@ -360,15 +392,23 @@ struct AudioEngine::Impl {
     // Stops the decoder thread; afterwards nothing reads any stream.
     void stopDecoderThread(const QHash<StreamId, std::shared_ptr<StreamBuffer>>& streams) {
         stopDecoder = true;
+        std::vector<std::shared_ptr<StreamBuffer>> held;
+        {
+            std::lock_guard lock(queueMutex);
+            held = decoderHeld;
+        }
         for (const auto& s : streams) s->interrupt();
+        for (const auto& s : held) s->interrupt();
         if (decoderThread.joinable()) decoderThread.join();
         stopDecoder = false;
+        for (const auto& s : held) s->resume();
         for (const auto& s : streams) s->resume();
         std::lock_guard lock(queueMutex);
         queued.reset();
         queuedId = chainingId = chainedId = 0;
         dropChaining = false;
         haltAtBoundary = false;
+        decoderHeld.clear();
     }
 };
 
@@ -502,6 +542,7 @@ void AudioEngine::clearQueued() {
         if (buf) buf->interrupt();  // don't wait for its data
     } else if (d->chainedId == id) {
         d->haltAtBoundary = true;   // already decoding into the ring: stop playback at its start
+        if (buf) buf->interrupt();  // and never wait for more of its data
     }
 }
 
@@ -633,7 +674,10 @@ void AudioEngine::poll() {
         d->framesPlayed.load() >= d->boundaryFrame.load(std::memory_order_acquire)) {
         if (d->haltAtBoundary) {
             // Cancelled: the callback stopped at the boundary; this track is over.
-            d->finishedReported = true;
+            {
+                std::lock_guard lock(d->queueMutex);
+                d->finishedReported = true;
+            }
             Q_EMIT trackFinished();
             return;
         }
@@ -653,7 +697,13 @@ void AudioEngine::poll() {
     if (m_state == State::Buffering && d->decoderStarted && ma_pcm_rb_available_read(&d->ring) > 0)
         setState(State::Playing);
     if (m_state == State::Playing && d->decoderDone && ma_pcm_rb_available_read(&d->ring) == 0 &&
-        d->seekRequest.load() < 0 && !d->finishedReported.exchange(true)) {
+        d->seekRequest.load() < 0 && !d->finishedReported) {
+        {
+            // Under the lock: a chain in progress re-checks it before committing.
+            std::lock_guard lock(d->queueMutex);
+            if (d->decoderEpoch.load() > d->uiEpoch.load()) return;  // chained after all: advance next poll
+            d->finishedReported = true;
+        }
         Q_EMIT trackFinished();
     }
 }

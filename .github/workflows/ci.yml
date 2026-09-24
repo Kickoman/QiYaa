@@ -139,8 +139,9 @@ jobs:
           ./linuxdeploy --appdir AppDir --desktop-file AppDir/usr/share/applications/qiyaa.desktop \
             --icon-file resources/icons/qiyaa-256.png --icon-filename qiyaa --plugin qt --output appimage
           mkdir -p dist && mv QiYaa-*.AppImage dist/
-          # The AppImage must start on its own.
-          QT_QPA_PLATFORM=offscreen dist/QiYaa-*.AppImage --screenshot appimage.png --offline
+          # The AppImage must start on its own (not with the runner's Qt).
+          env -u LD_LIBRARY_PATH -u QT_PLUGIN_PATH -u QML2_IMPORT_PATH QT_QPA_PLATFORM=offscreen \
+            dist/QiYaa-*.AppImage --screenshot appimage.png --offline
 
       - name: Package (Windows folder + zip)
         if: runner.os == 'Windows'

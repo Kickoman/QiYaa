@@ -264,6 +264,40 @@ private Q_SLOTS:
         engine.stop();
     }
 
+    void partlyDownloadedQueuedStreamIsNotChained() {
+        // Chaining waits for the whole file; until then the track ends normally
+        // and the player starts the queued stream itself.
+        QSignalSpy finished(&engine, &AudioEngine::trackFinished);
+        QSignalSpy advanced(&engine, &AudioEngine::trackAdvanced);
+        startNearEnd(2.4);
+        const auto b = engine.queueStream();
+        engine.appendData(b, mp3.left(mp3.size() / 2));
+        pumpUntil([&] { return finished.count() > 0 || advanced.count() > 0; }, 3000);
+        QCOMPARE(finished.count(), 1);
+        QCOMPARE(advanced.count(), 0);
+        QCOMPARE(engine.playQueuedNow(), b);
+        engine.appendData(b, mp3.mid(mp3.size() / 2));
+        engine.finishData(b);
+        pumpUntil([&] { return engine.state() == AudioEngine::State::Playing; }, 3000);
+        QCOMPARE(engine.state(), AudioEngine::State::Playing);
+        engine.stop();
+    }
+
+    void clearingAChainedStreamThenRestartingDoesNotHang() {
+        for (int round = 0; round < 2; ++round) {
+            startNearEnd(2.3);
+            queueWhole(mp3);
+            QTest::qWait(150);  // chained
+            engine.clearQueued();
+            QElapsedTimer t;
+            t.start();
+            if (round == 0) engine.stop();
+            else engine.beginStream();
+            QVERIFY2(t.elapsed() < 1000, qPrintable(QString::number(t.elapsed())));
+        }
+        engine.stop();
+    }
+
     void stopWhileQueuedDataIsMissing() {
         // The decoder must never wait forever for a queued stream's data.
         startNearEnd(2.9);

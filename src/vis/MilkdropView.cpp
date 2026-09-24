@@ -35,7 +35,9 @@ QString MilkdropView::openGLProblem() {
         probe.setFormat(viewFormat());
         if (!probe.create()) return QStringLiteral("нет OpenGL");
         const QSurfaceFormat f = probe.format();
-        if (!probe.isOpenGLES() && f.majorVersion() * 10 + f.minorVersion() < 33)
+        // projectM is built for desktop OpenGL.
+        if (probe.isOpenGLES()) return QStringLiteral("есть только OpenGL ES, а нужен OpenGL 3.3");
+        if (f.majorVersion() * 10 + f.minorVersion() < 33)
             return QStringLiteral("нужен OpenGL 3.3, а доступен %1.%2").arg(f.majorVersion()).arg(f.minorVersion());
         return QString();
     }();
@@ -80,8 +82,10 @@ void MilkdropView::setLocked(bool locked) {
 }
 
 void MilkdropView::setTextureSearchPaths(const QStringList& paths) {
+    // Rebuilds projectM's textures (GL work): applied at the next frame, with our context current.
     m_texturePaths = paths;
-    applySettings();
+    m_texturePathsDirty = true;
+    update();
 }
 
 void MilkdropView::setRendering(bool on, int fps) {
@@ -97,14 +101,29 @@ void MilkdropView::setRendering(bool on, int fps) {
 }
 
 void MilkdropView::applySettings() {
+    // Plain values, no GL: safe whatever context is current.
     if (!m_pm) return;
     projectm_set_preset_duration(m_pm, m_duration);
     projectm_set_preset_locked(m_pm, m_locked);
+}
+
+void MilkdropView::applyTexturePaths() {
+    // Needs our context current (paintGL / initializeGL).
     std::vector<QByteArray> utf8;
     std::vector<const char*> ptrs;
     for (const QString& p : m_texturePaths) utf8.push_back(p.toUtf8());
     for (const QByteArray& p : utf8) ptrs.push_back(p.constData());
     projectm_set_texture_search_paths(m_pm, ptrs.data(), ptrs.size());
+    m_texturePathsDirty = false;
+}
+
+void MilkdropView::syncWindowSize() {
+    // Device pixels: a move to a screen with another scale factor changes them
+    // without a resize.
+    const QSize px = size() * devicePixelRatio();
+    if (px == m_pixelSize) return;
+    m_pixelSize = px;
+    projectm_set_window_size(m_pm, size_t(px.width()), size_t(px.height()));
 }
 
 void MilkdropView::initializeGL() {
@@ -112,7 +131,9 @@ void MilkdropView::initializeGL() {
     const QSurfaceFormat f = ctx ? ctx->format() : QSurfaceFormat();
     if (!ctx || !ctx->isValid() || QOpenGLContext::currentContext() != ctx) {
         m_failure = QStringLiteral("нет OpenGL");
-    } else if (f.majorVersion() * 10 + f.minorVersion() < 33 && !ctx->isOpenGLES()) {
+    } else if (ctx->isOpenGLES()) {
+        m_failure = QStringLiteral("есть только OpenGL ES, а нужен OpenGL 3.3");
+    } else if (f.majorVersion() * 10 + f.minorVersion() < 33) {
         m_failure = QStringLiteral("нужен OpenGL 3.3, а доступен %1.%2").arg(f.majorVersion()).arg(f.minorVersion());
     } else {
         m_pm = projectm_create();
@@ -123,8 +144,8 @@ void MilkdropView::initializeGL() {
         Q_EMIT failed(m_failure);
         return;
     }
-    const qreal dpr = devicePixelRatio();
-    projectm_set_window_size(m_pm, size_t(width() * dpr), size_t(height() * dpr));
+    m_pixelSize = {};
+    syncWindowSize();
     projectm_set_aspect_correction(m_pm, true);
     projectm_set_soft_cut_duration(m_pm, 3.0);
     projectm_set_fps(m_pm, 60);
@@ -146,14 +167,13 @@ void MilkdropView::initializeGL() {
         },
         this);
     applySettings();
+    applyTexturePaths();
     m_visCursor = m_engine->visCursor();
     Q_EMIT ready();
 }
 
 void MilkdropView::resizeGL(int, int) {
-    if (!m_pm) return;
-    const qreal dpr = devicePixelRatio();
-    projectm_set_window_size(m_pm, size_t(width() * dpr), size_t(height() * dpr));
+    if (m_pm) syncWindowSize();
 }
 
 void MilkdropView::paintGL() {
@@ -164,6 +184,8 @@ void MilkdropView::paintGL() {
         }
         return;
     }
+    syncWindowSize();
+    if (m_texturePathsDirty) applyTexturePaths();
     if (m_pending) {
         const auto [milk, smooth] = *std::exchange(m_pending, std::nullopt);
         projectm_load_preset_data(m_pm, milk.constData(), smooth);

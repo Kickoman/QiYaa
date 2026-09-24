@@ -125,11 +125,17 @@ if(QIYAA_WITH_MILKDROP)
         include(FetchContent)
         set(ENABLE_PLAYLIST OFF CACHE BOOL "" FORCE)  # QiYaa keeps its own preset list
         set(ENABLE_SDL_UI OFF CACHE BOOL "" FORCE)
+        set(ENABLE_DEBUG_POSTFIX OFF CACHE BOOL "" FORCE)  # it would also rename our Debug libraries
         FetchContent_Declare(projectm
             GIT_REPOSITORY https://github.com/projectM-visualizer/projectm.git
             GIT_TAG v4.1.7
             GIT_SHALLOW TRUE)
+        # projectM takes its library version from the top-level project (ours).
+        set(_qiyaa_version ${CMAKE_PROJECT_VERSION})
+        set(CMAKE_PROJECT_VERSION 4.1.7)
         FetchContent_MakeAvailable(projectm)
+        set(CMAKE_PROJECT_VERSION ${_qiyaa_version})
+        unset(BUILD_SHARED_LIBS CACHE)  # projectM's option; keep it from applying to anything else
         set(QIYAA_PROJECTM_FETCHED ON)
     endif()
     if(TARGET Qt6::OpenGL AND TARGET libprojectM::projectM)

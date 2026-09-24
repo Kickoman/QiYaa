@@ -64,6 +64,8 @@ protected:
 
 private:
     void applySettings();
+    void applyTexturePaths();
+    void syncWindowSize();
     void destroyProjectM();
 
     audio::AudioEngine* m_engine;
@@ -76,6 +78,8 @@ private:
     double m_duration = 30;
     bool m_locked = false;
     QStringList m_texturePaths;
+    bool m_texturePathsDirty = false;
+    QSize m_pixelSize;
     qint64 m_frames = 0;
 };
 
