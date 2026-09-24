@@ -107,7 +107,7 @@ int main(int argc, char* argv[]) {
     MainWindow window(&player, currentSkin.get());
     window.setVolume(settings.value(QStringLiteral("volume"), 75).toInt());
     window.setBalance(settings.value(QStringLiteral("balance"), 0).toInt());
-    window.setScale(settings.value(QStringLiteral("scale"), 1).toInt());
+    window.setScale(settings.value(QStringLiteral("scale"), 1.0).toDouble());
     if (settings.value(QStringLiteral("alwaysOnTop"), false).toBool())
         window.setWindowFlag(Qt::WindowStaysOnTopHint, true);
 
@@ -119,7 +119,7 @@ int main(int argc, char* argv[]) {
             window.setStatusText(QStringLiteral("Cannot load skin"));
         }
     });
-    QObject::connect(&window, &MainWindow::scaleRequested, &window, [&](int s) {
+    QObject::connect(&window, &MainWindow::scaleRequested, &window, [&](double s) {
         window.setScale(s);
         settings.setValue(QStringLiteral("scale"), s);
     });

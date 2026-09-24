@@ -57,11 +57,12 @@ void SkinnedWindow::setSkin(const Skin* skin) {
     update();
 }
 
-void SkinnedWindow::setScale(int scale) {
-    scale = std::clamp(scale, 1, 4);
-    if (scale == m_scale) return;
+void SkinnedWindow::setScale(double scale) {
+    scale = std::round(std::clamp(scale, 1.0, 4.0) * 20.0) / 20.0;
+    if (std::abs(scale - m_scale) < 1e-6) return;
     m_scale = scale;
-    setFixedSize(m_baseSize * m_scale);
+    m_buffer = QImage();
+    setFixedSize(QSize(qRound(m_baseSize.width() * m_scale), qRound(m_baseSize.height() * m_scale)));
     applyMask();
     ensureVisible();
     update();
@@ -78,7 +79,7 @@ void SkinnedWindow::ensureVisible() {
 }
 
 QPoint SkinnedWindow::toSkin(QPointF widgetPos) const {
-    return QPoint(int(widgetPos.x()) / m_scale, int(widgetPos.y()) / m_scale);
+    return QPoint(int(std::floor(widgetPos.x() / m_scale)), int(std::floor(widgetPos.y() / m_scale)));
 }
 
 void SkinnedWindow::applyMask() {
@@ -87,17 +88,36 @@ void SkinnedWindow::applyMask() {
         clearMask();
         return;
     }
-    QRegion r = regionFromPolygons(*it);
-    if (m_scale != 1) r = QTransform::fromScale(m_scale, m_scale).map(r);
-    setMask(r);
+    // Scale the polygons themselves (not the region) so fractional scales stay accurate.
+    const QTransform t = QTransform::fromScale(m_scale, m_scale);
+    QList<QPolygon> scaled;
+    for (const QPolygon& poly : *it) scaled << t.map(QPolygonF(poly)).toPolygon();
+    setMask(regionFromPolygons(scaled));
 }
 
 void SkinnedWindow::paintEvent(QPaintEvent*) {
     QPainter p(this);
-    // Integer scale + no smoothing = crisp pixels.
-    p.setRenderHint(QPainter::SmoothPixmapTransform, false);
-    p.scale(m_scale, m_scale);
-    paintSkin(p);
+    if (isIntegerScale(m_scale)) {
+        // Integer scale + no smoothing = crisp pixels.
+        p.setRenderHint(QPainter::SmoothPixmapTransform, false);
+        p.scale(m_scale, m_scale);
+        paintSkin(p);
+        return;
+    }
+    // Fractional scale: nearest-neighbour at 1.5x would make some skin pixels 1px
+    // and others 2px wide. Instead draw crisply at the next integer scale that
+    // covers the physical pixels, then scale that down smoothly ("sharp bilinear").
+    const int n = int(std::ceil(m_scale * devicePixelRatioF() - 1e-6));
+    const QSize bufSize = m_baseSize * n;
+    if (m_buffer.size() != bufSize) m_buffer = QImage(bufSize, QImage::Format_ARGB32_Premultiplied);
+    {
+        QPainter bp(&m_buffer);
+        bp.setRenderHint(QPainter::SmoothPixmapTransform, false);
+        bp.scale(n, n);
+        paintSkin(bp);
+    }
+    p.setRenderHint(QPainter::SmoothPixmapTransform, true);
+    p.drawImage(rect(), m_buffer);
 }
 
 void SkinnedWindow::mousePressEvent(QMouseEvent* e) {

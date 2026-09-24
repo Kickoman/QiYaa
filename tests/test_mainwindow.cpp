@@ -104,6 +104,25 @@ private Q_SLOTS:
         win->setScale(1);
     }
 
+    void fractionalScale() {
+        win->placeAt(QPoint(0, 0));
+        win->setScale(1.5);
+        QCOMPARE(win->scale(), 1.5);
+        QCOMPARE(win->size(), QSize(413, 174));
+        // Clicks map back to skin coordinates: Shuffle at skin (184, 96).
+        const bool before = player->shuffle();
+        const QPoint shuffle(qRound(184 * 1.5), qRound(96 * 1.5));
+        send(QEvent::MouseButtonPress, shuffle, Qt::LeftButton);
+        send(QEvent::MouseButtonRelease, shuffle, Qt::NoButton);
+        QCOMPARE(player->shuffle(), !before);
+        // Renders without artifacts at the edges (sharp-bilinear path).
+        const QImage img = win->grab().toImage();
+        QCOMPARE(img.size(), QSize(413, 174));
+        win->setScale(1.3333);  // rounded to 0.05 steps
+        QCOMPARE(win->scale(), 1.35);
+        win->setScale(1);
+    }
+
     void cleanupTestCase() { win.reset(); }
 };
 

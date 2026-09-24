@@ -383,10 +383,20 @@ QMenu* MainWindow::buildMenu() {
     skins->addSeparator();
     skins->addAction(tr("Load skin..."), this, [this] { activate(Element::Eject); });
 
+    QMenu* size = menu->addMenu(tr("Size"));
+    auto* sizes = new QActionGroup(size);
+    for (double s : {1.0, 1.25, 1.5, 1.75, 2.0, 2.5, 3.0}) {
+        QAction* a = size->addAction(QStringLiteral("%1%").arg(qRound(s * 100)));
+        a->setCheckable(true);
+        a->setChecked(std::abs(scale() - s) < 1e-6);
+        sizes->addAction(a);
+        connect(a, &QAction::triggered, this, [this, s] { Q_EMIT scaleRequested(s); });
+    }
+
     QAction* dbl = menu->addAction(tr("Double size"));
     dbl->setCheckable(true);
-    dbl->setChecked(scale() == 2);
-    connect(dbl, &QAction::toggled, this, [this](bool on) { Q_EMIT scaleRequested(on ? 2 : 1); });
+    dbl->setChecked(std::abs(scale() - 2.0) < 1e-6);
+    connect(dbl, &QAction::toggled, this, [this](bool on) { Q_EMIT scaleRequested(on ? 2.0 : 1.0); });
 
     QAction* top = menu->addAction(tr("Always on top"));
     top->setCheckable(true);

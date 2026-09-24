@@ -26,7 +26,7 @@ public:
 
 Q_SIGNALS:
     void skinRequested(const QString& path);  // ":/skins/x.wsz" or a file path
-    void scaleRequested(int scale);
+    void scaleRequested(double scale);
     void alwaysOnTopRequested(bool on);
 
 protected:

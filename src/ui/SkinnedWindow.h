@@ -3,6 +3,9 @@
 // inside the visible screen area.
 #pragma once
 
+#include <cmath>
+
+#include <QImage>
 #include <QList>
 #include <QPoint>
 #include <QSize>
@@ -21,9 +24,11 @@ public:
     void setSkin(const Skin* skin);
     const Skin& skin() const { return *m_skin; }
 
-    // Integer zoom (1 = original 275px wide, 2 = "double size").
-    void setScale(int scale);
-    int scale() const { return m_scale; }
+    // Zoom factor: 1 = original 275px wide, 2 = "double size", 1.5 = in between.
+    // Clamped to [1, 4] and rounded to 0.05.
+    void setScale(double scale);
+    double scale() const { return m_scale; }
+    static bool isIntegerScale(double s) { return std::abs(s - std::round(s)) < 1e-6; }
 
     // Places the window at `pos` (e.g. restored from settings), clamped to the
     // visible area of the screens that exist right now.
@@ -64,7 +69,8 @@ protected:
 private:
     const Skin* m_skin;
     QSize m_baseSize;
-    int m_scale = 1;
+    double m_scale = 1.0;
+    QImage m_buffer;  // intermediate image for fractional scales
     bool m_dragging = false;
     QPoint m_dragOffset;  // cursor - window top-left, in global coordinates
 };
