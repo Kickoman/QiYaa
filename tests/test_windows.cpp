@@ -13,6 +13,7 @@
 #include "MockHttpServer.h"
 #include "core/CoverCache.h"
 #include "ui/LoginDialog.h"
+#include "ui/MilkdropWindow.h"
 #include "ui/NowPlayingWindow.h"
 #include "ui/MainWindow.h"
 #include "ui/PlaylistWindow.h"
@@ -356,6 +357,25 @@ private Q_SLOTS:
         app->player()->shutDown();
         app->player()->playIndex(2);
         QCOMPARE(app->player()->currentIndex(), 0);
+    }
+
+    void milkdropWindowFromTheMenu() {
+        MilkdropWindow* md = app->milkdropWindow();
+#if defined(QIYAA_HAVE_MILKDROP)
+        QVERIFY(md);
+        QVERIFY(!md->isVisible());  // off by default
+        app->setMilkdropVisible(true);
+        QVERIFY(md->isVisible());
+        QCOMPARE(md->pos(), main->pos() + QPoint(main->width(), main->height()));  // right of the equalizer
+        QVERIFY(md->presets().size() >= 50);
+        if (!qEnvironmentVariableIsEmpty("QIYAA_TEST_SHOTS"))
+            app->snapshot().save(qEnvironmentVariable("QIYAA_TEST_SHOTS") + "/milkdrop-window.png");
+        app->setMilkdropVisible(false);
+        QVERIFY(!md->isVisible());
+#else
+        QVERIFY(!md);
+        app->setMilkdropVisible(true);  // no-op
+#endif
     }
 
     void doubleClickTitleShades() {

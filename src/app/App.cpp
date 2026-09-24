@@ -25,6 +25,7 @@
 #endif
 #include "ui/EqualizerWindow.h"
 #include "ui/GenWindow.h"
+#include "ui/MilkdropWindow.h"  // stays null without QIYAA_HAVE_MILKDROP
 #include "ui/NowPlayingWindow.h"
 #include "ui/LibraryMenu.h"
 #include "ui/LoginDialog.h"
@@ -97,6 +98,30 @@ App::App(const Options& options, QObject* parent)
     m_np->setSizeSteps(m_settings.value(QStringLiteral("nowPlaying/steps"), QSize(0, 0)).toSize());
     connect(m_np.get(), &NowPlayingWindow::closeRequested, this, [this] { setNowPlayingVisible(false); });
     connect(m_np.get(), &GenWindow::sizeStepsChanged, this, [this](QSize s) { m_settings.setValue(QStringLiteral("nowPlaying/steps"), s); });
+#if defined(QIYAA_HAVE_MILKDROP)
+    {
+        const QString userPresets = (m_tmpDir ? m_tmpDir->path() : paths::configDir()) + QStringLiteral("/milkdrop");
+        m_md = std::make_unique<MilkdropWindow>(&m_engine, QStringLiteral(":/milkdrop"), userPresets, m_skin.get());
+        installShortcuts(m_md.get());
+        m_md->setSecondary();
+        m_md->setSizeSteps(m_settings.value(QStringLiteral("milkdrop/steps"), QSize(0, 4)).toSize());
+        m_md->setShuffle(m_settings.value(QStringLiteral("milkdrop/shuffle"), true).toBool());
+        m_md->setLocked(m_settings.value(QStringLiteral("milkdrop/locked"), false).toBool());
+        m_md->setPresetSeconds(m_settings.value(QStringLiteral("milkdrop/seconds"), 30).toInt());
+        m_md->selectPreset(m_settings.value(QStringLiteral("milkdrop/preset")).toString());
+        connect(m_md.get(), &MilkdropWindow::closeRequested, this, [this] { setMilkdropVisible(false); });
+        connect(m_md.get(), &GenWindow::sizeStepsChanged, this, [this](QSize s) { m_settings.setValue(QStringLiteral("milkdrop/steps"), s); });
+        connect(m_md.get(), &MilkdropWindow::settingsChanged, this, [this] {
+            m_settings.setValue(QStringLiteral("milkdrop/shuffle"), m_md->shuffle());
+            m_settings.setValue(QStringLiteral("milkdrop/locked"), m_md->locked());
+            m_settings.setValue(QStringLiteral("milkdrop/seconds"), m_md->presetSeconds());
+            m_settings.setValue(QStringLiteral("milkdrop/preset"), m_md->currentPreset());
+        });
+        connect(m_md.get(), &MilkdropWindow::transportKey, this, &App::transportKey);
+        connect(&m_engine, &audio::AudioEngine::stateChanged, m_md.get(),
+                [this](audio::AudioEngine::State s) { m_md->setPlaying(s == audio::AudioEngine::State::Playing); });
+    }
+#endif
 
     // Main window.
     m_main->setVolume(m_settings.value(QStringLiteral("volume"), 75).toInt());
@@ -114,10 +139,12 @@ App::App(const Options& options, QObject* parent)
             m_eq->hide();
             m_pl->hide();
             m_np->hide();
+            if (m_md) m_md->hide();
         } else {
             if (m_settings.value(QStringLiteral("equalizer/visible"), true).toBool()) m_eq->show();
             if (m_settings.value(QStringLiteral("playlist/visible"), true).toBool()) m_pl->show();
             if (m_settings.value(QStringLiteral("nowPlaying/visible"), false).toBool()) m_np->show();
+            if (m_md && m_settings.value(QStringLiteral("milkdrop/visible"), false).toBool()) m_md->show();
         }
     });
 
@@ -194,7 +221,9 @@ App::App(const Options& options, QObject* parent)
 App::~App() = default;
 
 QList<SkinnedWindow*> App::windows() const {
-    return {m_main.get(), m_eq.get(), m_pl.get(), m_np.get()};
+    QList<SkinnedWindow*> out{m_main.get(), m_eq.get(), m_pl.get(), m_np.get()};
+    if (m_md) out << m_md.get();
+    return out;
 }
 
 void App::layoutWindows() {
@@ -205,8 +234,10 @@ void App::layoutWindows() {
     m_main->placeAt(mainPos);
     m_eq->placeAt(m_settings.value(QStringLiteral("equalizer/pos"), eqDefault).toPoint());
     m_pl->placeAt(m_settings.value(QStringLiteral("playlist/pos"), plDefault).toPoint());
-    // "Now playing" defaults to the right of the main window.
+    // "Now playing" defaults to the right of the main window, Milkdrop below it.
     m_np->placeAt(m_settings.value(QStringLiteral("nowPlaying/pos"), mainPos + QPoint(m_main->width(), 0)).toPoint());
+    if (m_md)
+        m_md->placeAt(m_settings.value(QStringLiteral("milkdrop/pos"), mainPos + QPoint(m_main->width(), m_main->height())).toPoint());
 }
 
 void App::start() {
@@ -214,6 +245,7 @@ void App::start() {
     if (m_settings.value(QStringLiteral("equalizer/visible"), true).toBool()) m_eq->show();
     if (m_settings.value(QStringLiteral("playlist/visible"), true).toBool()) m_pl->show();
     if (m_settings.value(QStringLiteral("nowPlaying/visible"), false).toBool()) m_np->show();
+    if (m_md && m_settings.value(QStringLiteral("milkdrop/visible"), false).toBool()) m_md->show();
     layoutWindows();
     m_main->setEqButton(m_eq->isVisible());
     m_main->setPlButton(m_pl->isVisible());
@@ -345,6 +377,13 @@ void App::setPlaylistVisible(bool on) {
     m_settings.setValue(QStringLiteral("playlist/visible"), on);
 }
 
+void App::setMilkdropVisible(bool on) {
+    if (!m_md) return;
+    m_md->setVisible(on);
+    if (on) m_md->ensureVisible();
+    m_settings.setValue(QStringLiteral("milkdrop/visible"), on);
+}
+
 void App::setNowPlayingVisible(bool on) {
     m_np->setVisible(on);
     if (on) m_np->ensureVisible();
@@ -375,6 +414,7 @@ void App::saveState() {
     m_settings.setValue(QStringLiteral("equalizer/pos"), m_eq->pos());
     m_settings.setValue(QStringLiteral("playlist/pos"), m_pl->pos());
     m_settings.setValue(QStringLiteral("nowPlaying/pos"), m_np->pos());
+    if (m_md) m_settings.setValue(QStringLiteral("milkdrop/pos"), m_md->pos());
 }
 
 // ------------------------------------------------------------------ menus & keys
@@ -387,17 +427,26 @@ void App::installShortcuts(QWidget* w) {
         w->addAction(a);
     };
     // Winamp's classic keys.
-    add(Qt::Key_Z, [this] { m_player.previous(); });
-    add(Qt::Key_X, [this] { m_player.play(); });
-    add(Qt::Key_C, [this] { m_player.pause(); });
-    add(Qt::Key_V, [this] { m_player.stop(); });
-    add(Qt::Key_B, [this] { m_player.next(); });
+    for (int key : {Qt::Key_Z, Qt::Key_X, Qt::Key_C, Qt::Key_V, Qt::Key_B, Qt::Key_Left, Qt::Key_Right})
+        add(QKeySequence(key), [this, key] { transportKey(key); });
     add(QKeySequence(Qt::ALT | Qt::Key_G), [this] { setEqualizerVisible(!m_eq->isVisible()); });
     add(QKeySequence(Qt::ALT | Qt::Key_E), [this] { setPlaylistVisible(!m_pl->isVisible()); });
     add(QKeySequence(Qt::CTRL | Qt::Key_D), [this] { setScale(std::abs(m_main->scale() - 2.0) < 1e-6 ? 1.0 : 2.0); });
     add(QKeySequence(Qt::CTRL | Qt::Key_W), [this] { m_main->setShaded(!m_main->isShaded()); });
-    add(Qt::Key_Left, [this] { m_player.seekTo(m_engine.positionSeconds() - 5); });
-    add(Qt::Key_Right, [this] { m_player.seekTo(m_engine.positionSeconds() + 5); });
+    add(QKeySequence(Qt::CTRL | Qt::SHIFT | Qt::Key_K), [this] { setMilkdropVisible(m_md && !m_md->isVisible()); });
+}
+
+void App::transportKey(int key) {
+    switch (key) {
+    case Qt::Key_Z: m_player.previous(); break;
+    case Qt::Key_X: m_player.play(); break;
+    case Qt::Key_C: m_player.pause(); break;
+    case Qt::Key_V: m_player.stop(); break;
+    case Qt::Key_B: m_player.next(); break;
+    case Qt::Key_Left: m_player.seekTo(m_engine.positionSeconds() - 5); break;
+    case Qt::Key_Right: m_player.seekTo(m_engine.positionSeconds() + 5); break;
+    default: break;
+    }
 }
 
 void App::fillWindowActions(QMenu* menu) {
@@ -412,6 +461,12 @@ void App::fillWindowActions(QMenu* menu) {
     QAction* np = menu->addAction(QStringLiteral("Сейчас играет"), this, [this](bool on) { setNowPlayingVisible(on); });
     np->setCheckable(true);
     np->setChecked(m_np->isVisible());
+    if (m_md) {
+        QAction* md = menu->addAction(QStringLiteral("Milkdrop"), this, [this](bool on) { setMilkdropVisible(on); });
+        md->setCheckable(true);
+        md->setChecked(m_md->isVisible());
+        md->setShortcut(QKeySequence(Qt::CTRL | Qt::SHIFT | Qt::Key_K));
+    }
 
     QMenu* vis = menu->addMenu(QStringLiteral("Визуализация"));
     auto* visGroup = new QActionGroup(vis);

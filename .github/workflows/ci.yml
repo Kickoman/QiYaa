@@ -9,6 +9,9 @@ concurrency:
   group: ci-${{ github.ref }}
   cancel-in-progress: true
 
+env:
+  VCPKG_COMMIT: 6ade29bbd5a4c7e99439ec52adbc63c073953a57  # pinned: projectm 4.1.7
+
 jobs:
   build:
     name: ${{ matrix.name }}
@@ -56,7 +59,8 @@ jobs:
           sudo apt-get update
           # g++-12: C++20 support; its libstdc++ is what Ubuntu 22.04 ships anyway.
           # libxcb-*: the xcb platform plugin's dependencies, bundled into the AppImage.
-          sudo apt-get install -y ninja-build g++-12 libgl1-mesa-dev dbus libglib2.0-bin \
+          # xvfb + mesa: the Milkdrop test renders with projectM on a virtual X server.
+          sudo apt-get install -y ninja-build g++-12 libgl1-mesa-dev libgl1-mesa-dri xvfb dbus libglib2.0-bin \
             libxkbcommon-x11-0 libxcb-cursor0 libxcb-icccm4 libxcb-image0 libxcb-keysyms1 \
             libxcb-render-util0 libxcb-xinerama0 libxcb-randr0 libxcb-shape0 libxcb-xkb1
           echo "CC=gcc-12" >> "$GITHUB_ENV"
@@ -65,12 +69,38 @@ jobs:
       - uses: ilammy/msvc-dev-cmd@v1
         if: runner.os == 'Windows'
 
+      # projectM (Milkdrop) on Windows needs GLEW; vcpkg builds both. Elsewhere
+      # CMake downloads and builds projectM itself.
+      - name: Cache vcpkg packages (Windows)
+        if: runner.os == 'Windows'
+        uses: actions/cache@v4
+        with:
+          path: ${{ runner.temp }}/vcpkg-cache
+          key: vcpkg-projectm-${{ env.VCPKG_COMMIT }}
+
+      - name: projectM via vcpkg (Windows)
+        if: runner.os == 'Windows'
+        shell: bash
+        env:
+          VCPKG_DEFAULT_BINARY_CACHE: ${{ runner.temp }}/vcpkg-cache
+        run: |
+          mkdir -p "$VCPKG_DEFAULT_BINARY_CACHE"
+          root=$(cygpath -m "$RUNNER_TEMP/vcpkg")
+          git init -q "$root"
+          git -C "$root" fetch -q --depth 1 https://github.com/microsoft/vcpkg.git "$VCPKG_COMMIT"
+          git -C "$root" checkout -q FETCH_HEAD
+          cmd //c "$(cygpath -w "$root/bootstrap-vcpkg.bat")" -disableMetrics
+          "$root/vcpkg.exe" install projectm:x64-windows-release
+          echo "CMAKE_EXTRA=-DCMAKE_TOOLCHAIN_FILE=$root/scripts/buildsystems/vcpkg.cmake -DVCPKG_TARGET_TRIPLET=x64-windows-release" >> "$GITHUB_ENV"
+
       - name: Configure
         shell: bash
         run: |
           GEN="-G Ninja"
           [ "$RUNNER_OS" = "macOS" ] && GEN=""
-          cmake -S . -B build $GEN -DCMAKE_BUILD_TYPE=Release
+          # The Qt 6.8 builds must have Milkdrop; the minimum-Qt build checks building without it.
+          if [ "${{ matrix.system_qt }}" = "true" ]; then MILKDROP="-DQIYAA_WITH_MILKDROP=OFF"; else MILKDROP="-DQIYAA_REQUIRE_MILKDROP=ON"; fi
+          cmake -S . -B build $GEN -DCMAKE_BUILD_TYPE=Release $MILKDROP $CMAKE_EXTRA
           echo "VERSION=$(cat build/version.txt)" >> "$GITHUB_ENV"
 
       - name: Build
@@ -118,6 +148,7 @@ jobs:
         run: |
           mkdir -p dist/QiYaa
           cp build/QiYaa.exe dist/QiYaa/
+          cp build/*.dll dist/QiYaa/  # projectM and GLEW, copied next to the exe by vcpkg
           windeployqt --release --no-translations --no-system-d3d-compiler --no-opengl-sw --no-compiler-runtime dist/QiYaa/QiYaa.exe
           # App-local MSVC runtime: runs without installing the VC++ redistributable.
           cp "$(cygpath -u "$VCToolsRedistDir")"/x64/Microsoft.VC14*.CRT/*.dll dist/QiYaa/

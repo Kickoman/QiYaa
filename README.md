@@ -12,6 +12,8 @@
 
 **«Сейчас играет»** (меню → «Сейчас играет»). Окно в стиле скина (`gen.bmp`): обложка, название, исполнители, альбом и год, длительность, отметка «Мне нравится». Клик по обложке открывает трек в браузере. Обложки кэшируются на диске. Размер меняется за правый нижний угол.
 
+**Milkdrop** (меню → Milkdrop, Ctrl+Shift+K). Та самая визуализация из Winamp — через [projectM](https://github.com/projectM-visualizer/projectm), в окне в стиле скина, которое пристыковывается к остальным. 150 встроенных пресетов из коллекции «Cream of the Crop»; свои `.milk` кладутся в `~/.config/QiYaa/milkdrop` (Windows: `%LOCALAPPDATA%\QiYaa\milkdrop`, пункт «Открыть папку своих пресетов» в меню окна). Пресет меняется сам каждые 30 с (настраивается), в случайном порядке или по списку. Клавиши в окне, как в Winamp: Пробел/N — следующий, Backspace/P — предыдущий, H — резкая смена, R — случайный порядок, L — не переключать, F или двойной клик — во весь экран, Esc — выйти из полноэкранного режима; Z/X/C/V/B работают и здесь. Правый клик — меню со списком пресетов. Нужен OpenGL 3.3 (любая видеокарта последних лет 10); без него окно так и скажет. Пока окно закрыто, OpenGL не трогается вообще; когда музыка не играет — 20 кадров в секунду вместо 60.
+
 **Скины.** Winamp 2.x (`.wsz`), 8 встроенных + свой файл. Форма окон по `region.txt`, цвета плейлиста из `pledit.txt`, визуализации из `viscolor.txt`. Кириллица в бегущей строке рисуется «родным» пиксельным шрифтом скина.
 
 **Размер.** 100–300 % (меню → Размер; Ctrl+D — двойной). Дробные размеры рисуются через целое увеличение с плавным уменьшением.
@@ -29,7 +31,7 @@
 
 **Медиаклавиши и системная панель.** На Linux QiYaa публикует себя по MPRIS (`org.mpris.MediaPlayer2.qiyaa`): работают медиаклавиши, панель плеера GNOME/KDE с обложкой, экран блокировки и `playerctl`. На Windows — System Media Transport Controls: медиаклавиши, панель громкости и экран блокировки. На macOS пока нет.
 
-**Горячие клавиши** (как в Winamp): Z/X/C/V/B — назад/играть/пауза/стоп/вперёд, ←/→ — перемотка на 5 с, Alt+G — эквалайзер, Alt+E — плейлист, Ctrl+D — двойной размер, Ctrl+W — свернуть главное окно в полоску.
+**Горячие клавиши** (как в Winamp): Z/X/C/V/B — назад/играть/пауза/стоп/вперёд, ←/→ — перемотка на 5 с, Alt+G — эквалайзер, Alt+E — плейлист, Ctrl+Shift+K — Milkdrop, Ctrl+D — двойной размер, Ctrl+W — свернуть главное окно в полоску.
 
 **Ресурсы.** Когда ничего не играет — ни таймеров, ни аудиоколбэков (CPU ≈ 0). Визуализация перерисовывает только свой прямоугольник ~30 раз в секунду и только когда окно видно.
 
@@ -52,7 +54,7 @@
 
 ## Сборка
 
-Нужны CMake ≥ 3.21, компилятор C++20 и Qt ≥ 6.4 (Core, Gui, Widgets, Network; на Linux ещё DBus — для MPRIS, без него собирается и просто не публикует плеер). Остальное (miniaudio, miniz) лежит в `third_party/`. На Windows SMTC собирается из C++/WinRT, который входит в Windows SDK; выключить можно `-DQIYAA_WITH_SMTC=OFF`.
+Нужны CMake ≥ 3.21, компилятор C++20 и Qt ≥ 6.4 (Core, Gui, Widgets, Network; на Linux ещё DBus — для MPRIS, без него собирается и просто не публикует плеер; для Milkdrop — Qt OpenGL и заголовки OpenGL, на Ubuntu это `libgl-dev`). projectM 4 берётся установленный (vcpkg, Homebrew, пакет дистрибутива), а если его нет — CMake скачивает и собирает его сам (нужен интернет при первой настройке; выключить: `-DQIYAA_FETCH_PROJECTM=OFF`, собрать без Milkdrop: `-DQIYAA_WITH_MILKDROP=OFF`). На Windows projectM нужен из vcpkg (ему требуется GLEW): `vcpkg install projectm:x64-windows` и `-DCMAKE_TOOLCHAIN_FILE=<vcpkg>/scripts/buildsystems/vcpkg.cmake`. Остальное (miniaudio, miniz) лежит в `third_party/`. На Windows SMTC собирается из C++/WinRT, который входит в Windows SDK; выключить можно `-DQIYAA_WITH_SMTC=OFF`.
 
 ### Ubuntu 24.04
 
@@ -103,7 +105,9 @@ src/ui       SkinnedWindow (окно без рамки, маска, стыков
              MainWindow, EqualizerWindow, PlaylistWindow, GenWindow + NowPlayingWindow,
              LibraryMenu, LoginDialog
 src/integrations  MediaControls (команды и состояние для ОС), Mpris (Linux), Smtc (Windows)
-src/vis      интерфейс Visualizer, FFT, спектр и осциллограф
+src/vis      интерфейс Visualizer, FFT, спектр и осциллограф; Milkdrop: MilkdropView
+             (projectM в QOpenGLWindow), MilkdropPresets; окно — src/ui/MilkdropWindow
+resources/milkdrop  встроенные пресеты Milkdrop (откуда и почему — README.md там же)
 src/yandex   ApiClient, Library (источники), OAuth (код устройства), подпись ссылки, токен
 src/audio    AudioEngine: загрузка → поток декодера → кольцевой буфер → EQ → VisTap → громкость → miniaudio
 src/core     Player: очередь, бесконечные источники, next/prev/shuffle/repeat, события трека

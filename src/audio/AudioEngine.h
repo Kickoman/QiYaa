@@ -83,6 +83,11 @@ public:
 
     // Latest `count` output frames (after EQ, before volume) for visualizations.
     void readVisSamples(float* left, float* right, uint32_t count) const;
+    // Output frames played since `*cursor` (interleaved stereo, at most
+    // `maxFrames`, the newest ones), for visualizations that want every sample
+    // once (Milkdrop). Start with visCursor(). Returns the number of frames.
+    uint32_t readNewVisSamples(uint32_t* cursor, float* stereo, uint32_t maxFrames) const;
+    uint32_t visCursor() const;
     int outputSampleRate() const;
     void setBalance(int balance);   // -100 (left) .. 100 (right)
 

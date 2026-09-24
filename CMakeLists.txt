@@ -73,6 +73,7 @@ add_library(qiyaa_core STATIC
     src/core/Player.cpp          src/core/Player.h
     src/core/CoverCache.cpp      src/core/CoverCache.h
     src/integrations/MediaControls.cpp src/integrations/MediaControls.h
+    src/vis/MilkdropPresets.cpp  src/vis/MilkdropPresets.h
 )
 target_include_directories(qiyaa_core PUBLIC src)
 target_link_libraries(qiyaa_core PUBLIC
@@ -109,6 +110,47 @@ if(WIN32 AND MSVC)
             message(STATUS "SMTC: disabled (C++/WinRT headers not found)")
         endif()
     endif()
+endif()
+
+# Milkdrop: projectM (LGPL-2.1, linked dynamically) + Qt OpenGL. Uses an installed
+# projectM 4 (Homebrew, vcpkg, distro) or downloads and builds it.
+option(QIYAA_WITH_MILKDROP "Milkdrop visualization window (projectM, needs OpenGL 3.3)" ON)
+option(QIYAA_FETCH_PROJECTM "Download and build projectM if it isn't installed" ON)
+option(QIYAA_REQUIRE_MILKDROP "Stop with an error instead of building without Milkdrop" OFF)
+set(QIYAA_HAVE_MILKDROP OFF)
+if(QIYAA_WITH_MILKDROP)
+    find_package(Qt6 6.4 QUIET COMPONENTS OpenGL)
+    find_package(projectM4 4.1 QUIET)
+    if(NOT TARGET libprojectM::projectM AND QIYAA_FETCH_PROJECTM AND TARGET Qt6::OpenGL)
+        include(FetchContent)
+        set(ENABLE_PLAYLIST OFF CACHE BOOL "" FORCE)  # QiYaa keeps its own preset list
+        set(ENABLE_SDL_UI OFF CACHE BOOL "" FORCE)
+        FetchContent_Declare(projectm
+            GIT_REPOSITORY https://github.com/projectM-visualizer/projectm.git
+            GIT_TAG v4.1.7
+            GIT_SHALLOW TRUE)
+        FetchContent_MakeAvailable(projectm)
+        set(QIYAA_PROJECTM_FETCHED ON)
+    endif()
+    if(TARGET Qt6::OpenGL AND TARGET libprojectM::projectM)
+        target_sources(qiyaa_core PRIVATE
+            src/vis/MilkdropView.cpp     src/vis/MilkdropView.h
+            src/ui/MilkdropWindow.cpp    src/ui/MilkdropWindow.h)
+        target_link_libraries(qiyaa_core PUBLIC Qt6::OpenGL libprojectM::projectM)
+        target_compile_definitions(qiyaa_core PUBLIC QIYAA_HAVE_MILKDROP)
+        file(GLOB QIYAA_MILK_PRESETS CONFIGURE_DEPENDS ${CMAKE_CURRENT_SOURCE_DIR}/resources/milkdrop/*.milk)
+        qt_add_resources(qiyaa_core "milkdrop" PREFIX "/milkdrop" BASE resources/milkdrop FILES ${QIYAA_MILK_PRESETS})
+        set(QIYAA_HAVE_MILKDROP ON)
+        list(LENGTH QIYAA_MILK_PRESETS _n)
+        message(STATUS "Milkdrop: enabled (${_n} built-in presets)")
+    elseif(NOT TARGET Qt6::OpenGL)
+        message(STATUS "Milkdrop: disabled (Qt6::OpenGL not found)")
+    else()
+        message(STATUS "Milkdrop: disabled (projectM 4 not found; QIYAA_FETCH_PROJECTM=ON downloads it)")
+    endif()
+endif()
+if(QIYAA_REQUIRE_MILKDROP AND NOT QIYAA_HAVE_MILKDROP)
+    message(FATAL_ERROR "Milkdrop was required but can't be built (see above)")
 endif()
 
 if(MSVC)
@@ -166,6 +208,11 @@ if(UNIX AND NOT APPLE)
     # FHS layout: used for the AppImage (cmake --install ... --prefix AppDir/usr) and distro packages.
     include(GNUInstallDirs)
     install(TARGETS qiyaa RUNTIME DESTINATION ${CMAKE_INSTALL_BINDIR})
+    if(QIYAA_PROJECTM_FETCHED)
+        # A downloaded projectM ships with the app (and is found next to it).
+        install(TARGETS projectM LIBRARY DESTINATION ${CMAKE_INSTALL_LIBDIR} NAMELINK_SKIP)
+        set_target_properties(qiyaa PROPERTIES INSTALL_RPATH "$ORIGIN/../${CMAKE_INSTALL_LIBDIR}")
+    endif()
     install(FILES packaging/linux/qiyaa.desktop DESTINATION ${CMAKE_INSTALL_DATADIR}/applications)
     foreach(size 16 24 32 48 64 128 256 512)
         install(FILES resources/icons/qiyaa-${size}.png

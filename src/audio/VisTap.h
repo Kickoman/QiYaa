@@ -4,6 +4,7 @@
 // little inexact — never unsafe, because the buffer never moves.
 #pragma once
 
+#include <algorithm>
 #include <array>
 #include <atomic>
 #include <cstdint>
@@ -35,6 +36,24 @@ public:
             right[i] = m_right[k];
         }
     }
+
+    // UI thread: the frames written since `*cursor` (the newest `maxFrames` of
+    // them if there are more; older ones are gone after kSize), interleaved
+    // stereo into `stereo`. Advances `*cursor`; returns the number of frames.
+    uint32_t readNew(uint32_t* cursor, float* stereo, uint32_t maxFrames) const {
+        const uint32_t end = m_pos.load(std::memory_order_acquire);
+        uint32_t n = std::min(end - *cursor, kSize);  // unsigned difference survives wrap-around
+        n = std::min(n, maxFrames);
+        const uint32_t start = end - n;
+        for (uint32_t i = 0; i < n; ++i) {
+            const uint32_t k = (start + i) & (kSize - 1);
+            stereo[i * 2] = m_left[k];
+            stereo[i * 2 + 1] = m_right[k];
+        }
+        *cursor = end;
+        return n;
+    }
+    uint32_t position() const { return m_pos.load(std::memory_order_acquire); }
 
     void clear() {
         m_left.fill(0);

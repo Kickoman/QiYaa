@@ -585,6 +585,14 @@ void AudioEngine::readVisSamples(float* left, float* right, uint32_t count) cons
     d->vis.read(left, right, std::min<uint32_t>(count, VisTap::kSize));
 }
 
+uint32_t AudioEngine::readNewVisSamples(uint32_t* cursor, float* stereo, uint32_t maxFrames) const {
+    return d->vis.readNew(cursor, stereo, maxFrames);
+}
+
+uint32_t AudioEngine::visCursor() const {
+    return d->vis.position();
+}
+
 int AudioEngine::outputSampleRate() const {
     return int(d->sampleRate);
 }

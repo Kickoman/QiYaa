@@ -1,0 +1,153 @@
+// Milkdrop: the preset collection (no OpenGL needed) and, where an OpenGL 3.3
+// context can be made (CTest runs this under Xvfb when it can), projectM
+// rendering inside the window.
+#include <QDir>
+#include <QFile>
+#include <QSignalSpy>
+#include <QTemporaryDir>
+#include <QTest>
+
+#include "audio/AudioEngine.h"
+#include "skin/Skin.h"
+#include "ui/MilkdropWindow.h"
+#include "vis/MilkdropPresets.h"
+#include "vis/MilkdropView.h"
+
+using namespace qiyaa;
+
+namespace {
+// A tiny valid Milkdrop preset: a waveform and some zoom, no shaders.
+QByteArray simplePreset(double zoom) {
+    return QByteArray("[preset00]\nfDecay=0.98\nzoom=") + QByteArray::number(zoom) +
+           "\nwave_r=1\nwave_g=0.5\nwave_b=0.2\nnWaveMode=2\nfWaveScale=1.5\n"
+           "per_frame_1=wave_r = 0.5 + 0.5*sin(time);\n";
+}
+void writeFile(const QString& path, const QByteArray& data) {
+    QFile f(path);
+    QVERIFY(f.open(QIODevice::WriteOnly));
+    f.write(data);
+}
+}  // namespace
+
+class TestMilkdrop : public QObject {
+    Q_OBJECT
+private:
+    QTemporaryDir builtIn, user;
+    Skin skin = Skin::builtinBase();
+    audio::AudioEngine engine;  // not initialised: silence
+
+private Q_SLOTS:
+    void initTestCase() {
+        writeFile(builtIn.filePath("b-second.milk"), simplePreset(1.02));
+        writeFile(builtIn.filePath("A-first.milk"), simplePreset(0.98));
+        writeFile(builtIn.filePath("c-third.milk"), simplePreset(1.05));
+        writeFile(builtIn.filePath("notes.txt"), "not a preset");
+        writeFile(user.filePath("mine.milk"), simplePreset(1.0));
+    }
+
+    void presetsAreListedInOrder() {
+        MilkdropPresets p;
+        p.load(builtIn.path(), user.path());
+        QCOMPARE(p.size(), 4);
+        QCOMPARE(p.at(0).name, QStringLiteral("A-first"));
+        QCOMPARE(p.at(2).name, QStringLiteral("c-third"));
+        QCOMPARE(p.at(3).name, QStringLiteral("mine"));  // the user's after the built-in ones
+        QVERIFY(!p.at(3).builtIn);
+        QCOMPARE(p.indexOf("c-third"), 2);
+        QVERIFY(p.data(1).startsWith("[preset00]"));
+        QCOMPARE(p.next(3), 0);
+        QCOMPARE(p.previous(0), 3);
+        for (int i = 0; i < 20; ++i) QVERIFY(p.random(1) != 1);
+        p.load(builtIn.path(), user.filePath("missing"));
+        QCOMPARE(p.size(), 3);
+    }
+
+    void builtInPresetsAreBundled() {
+        MilkdropPresets p;
+        p.load(QStringLiteral(":/milkdrop"), {});
+        QVERIFY2(p.size() >= 50, qPrintable(QString::number(p.size())));
+        for (int i = 0; i < p.size(); ++i) QVERIFY2(p.data(i).contains("[preset"), qPrintable(p.at(i).name));
+    }
+
+    void windowSwitchesPresets() {
+        MilkdropWindow w(&engine, builtIn.path(), user.path(), &skin);
+        QVERIFY(!w.view());  // nothing OpenGL before it's shown
+        QSignalSpy changed(&w, &MilkdropWindow::presetChanged);
+        w.setShuffle(false);
+        w.selectPreset(0);
+        QCOMPARE(w.currentPreset(), QStringLiteral("A-first"));
+        w.nextPreset();
+        QCOMPARE(w.currentPreset(), QStringLiteral("b-second"));
+        w.previousPreset();
+        QCOMPARE(w.currentPreset(), QStringLiteral("A-first"));
+        // projectM asking for the next one (time is up)...
+        w.onSwitchRequested(false);
+        QCOMPARE(w.currentPreset(), QStringLiteral("b-second"));
+        // ...is ignored while locked.
+        w.setLocked(true);
+        w.onSwitchRequested(false);
+        QCOMPARE(w.currentPreset(), QStringLiteral("b-second"));
+        w.setLocked(false);
+        // Shuffle: "previous" walks back through what was shown.
+        w.setShuffle(true);
+        const QString before = w.currentPreset();
+        w.nextPreset();
+        QVERIFY(w.currentPreset() != before);
+        w.previousPreset();
+        QCOMPARE(w.currentPreset(), before);
+        // A preset projectM can't load is skipped.
+        const QString broken = w.currentPreset();
+        w.onPresetFailed(QStringLiteral("syntax error"));
+        QVERIFY(w.currentPreset() != broken);
+        QVERIFY(changed.count() >= 6);
+    }
+
+    void rendersWithProjectM() {
+        MilkdropWindow w(&engine, builtIn.path(), user.path(), &skin);
+        w.setSizeSteps({2, 4});
+        w.show();
+        QVERIFY(QTest::qWaitForWindowExposed(&w));
+        MilkdropView* v = w.view();
+        if (!v && qEnvironmentVariableIsSet("QIYAA_EXPECT_GL")) QFAIL(qPrintable("no OpenGL: " + w.failure()));
+        if (!v) QSKIP(qPrintable("no OpenGL 3.3 here: " + w.failure()));
+        QVERIFY(QTest::qWaitFor([&] { return v->isReady() || !v->failure().isEmpty(); }, 5000));
+        if (!v->isReady() && qEnvironmentVariableIsSet("QIYAA_EXPECT_GL")) QFAIL(qPrintable(v->failure()));
+        if (!v->isReady()) QSKIP(qPrintable("no OpenGL 3.3 here: " + v->failure()));
+        QVERIFY(v->isRendering());
+        QVERIFY(QTest::qWaitFor([&] { return v->framesRendered() > 20; }, 10000));
+        const QImage img = v->grabFramebuffer();
+        QVERIFY(!img.isNull());
+        QCOMPARE(img.size(), v->size() * v->devicePixelRatio());
+        // Something was drawn: not a single flat colour.
+        QSet<QRgb> colours;
+        for (int y = 0; y < img.height(); y += 4)
+            for (int x = 0; x < img.width(); x += 4) colours.insert(img.pixel(x, y));
+        QVERIFY2(colours.size() > 8, qPrintable(QString::number(colours.size())));
+        if (!qEnvironmentVariableIsEmpty("QIYAA_TEST_SHOTS"))
+            img.save(qEnvironmentVariable("QIYAA_TEST_SHOTS") + "/milkdrop.png");
+
+        // Hidden: no more frames.
+        w.hide();
+        QVERIFY(!v->isRendering());
+    }
+
+    void fullScreenAndBack() {
+        MilkdropWindow w(&engine, builtIn.path(), user.path(), &skin);
+        w.show();
+        QVERIFY(QTest::qWaitForWindowExposed(&w));
+        if (!w.view()) QSKIP("no OpenGL 3.3 here");
+        QVERIFY(QTest::qWaitFor([&] { return w.view()->isReady() || !w.view()->failure().isEmpty(); }, 5000));
+        if (!w.view()->isReady()) QSKIP("no OpenGL 3.3 here");
+        w.setFullScreenMode(true);
+        QVERIFY(w.isFullScreenMode());
+        QVERIFY(!w.view()->isRendering());  // the fullscreen view renders instead
+        QTest::qWait(300);
+        w.setFullScreenMode(false);
+        QVERIFY(!w.isFullScreenMode());
+        QVERIFY(w.view()->isRendering());
+        QTest::qWait(100);  // the old view is deleted later
+    }
+};
+
+QTEST_MAIN(TestMilkdrop)
+#include "test_milkdrop.moc"

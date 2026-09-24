@@ -38,3 +38,18 @@ if(QIYAA_HAVE_MPRIS)
     endif()
     set_tests_properties(test_mpris PROPERTIES ENVIRONMENT "QT_QPA_PLATFORM=offscreen")
 endif()
+
+# Milkdrop: rendering needs an OpenGL 3.3 context. The offscreen platform has
+# none, so on Linux (with Qt's xcb plugin and Xvfb) the rendering tests also run
+# on a virtual X server with Mesa; elsewhere they skip themselves.
+if(QIYAA_HAVE_MILKDROP)
+    qiyaa_add_test(test_milkdrop)
+    find_program(XVFB_RUN xvfb-run)
+    if(XVFB_RUN AND TARGET Qt6::QXcbIntegrationPlugin)
+        add_test(NAME test_milkdrop_gl COMMAND ${XVFB_RUN} -a -s "-screen 0 1280x1024x24 +extension GLX"
+                 $<TARGET_FILE:test_milkdrop> rendersWithProjectM fullScreenAndBack)
+        # Fail instead of skipping: here OpenGL must work.
+        set_tests_properties(test_milkdrop_gl PROPERTIES
+            ENVIRONMENT "QT_QPA_PLATFORM=xcb;QIYAA_EXPECT_GL=1;LIBGL_ALWAYS_SOFTWARE=1")
+    endif()
+endif()

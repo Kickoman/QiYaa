@@ -24,6 +24,7 @@ class MediaControls;
 class EqualizerWindow;
 class NowPlayingWindow;
 class MainWindow;
+class MilkdropWindow;
 class PlaylistWindow;
 class SkinnedWindow;
 
@@ -49,6 +50,7 @@ public:
     EqualizerWindow* equalizerWindow() const { return m_eq.get(); }
     PlaylistWindow* playlistWindow() const { return m_pl.get(); }
     NowPlayingWindow* nowPlayingWindow() const { return m_np.get(); }
+    MilkdropWindow* milkdropWindow() const { return m_md.get(); }  // null if built without Milkdrop
     CoverCache* covers() const { return m_covers.get(); }
     Player* player() { return &m_player; }
     audio::AudioEngine* engine() { return &m_engine; }
@@ -62,6 +64,7 @@ public:
     void setEqualizerVisible(bool on);
     void setPlaylistVisible(bool on);
     void setNowPlayingVisible(bool on);
+    void setMilkdropVisible(bool on);
 
     void login();
     void logout();
@@ -81,6 +84,7 @@ private:
     void showMainMenu(QPoint globalPos);
     void showSourcesMenu(QPoint globalPos);
     void fillWindowActions(QMenu* menu);
+    void transportKey(int key);  // Winamp's Z X C V B and the arrows
     QList<SkinnedWindow*> windows() const;
 
     Options m_options;
@@ -105,6 +109,7 @@ private:
     std::unique_ptr<EqualizerWindow> m_eq;
     std::unique_ptr<PlaylistWindow> m_pl;
     std::unique_ptr<NowPlayingWindow> m_np;
+    std::unique_ptr<MilkdropWindow> m_md;
 };
 
 }  // namespace qiyaa

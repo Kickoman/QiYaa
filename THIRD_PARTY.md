@@ -6,9 +6,14 @@ QiYaa itself is MIT-licensed (see `LICENSE`). It includes or links the following
 
 | Component | License | How it is used |
 |---|---|---|
-| [Qt 6](https://www.qt.io/) — Core, Gui, Widgets, Network, DBus (Linux) | LGPLv3 | Linked **dynamically**. You may replace the Qt libraries shipped with a build by your own. Qt sources: https://download.qt.io/official_releases/qt/ |
+| [Qt 6](https://www.qt.io/) — Core, Gui, Widgets, Network, OpenGL, DBus (Linux) | LGPLv3 | Linked **dynamically**. You may replace the Qt libraries shipped with a build by your own. Qt sources: https://download.qt.io/official_releases/qt/ |
+| [projectM](https://github.com/projectM-visualizer/projectm) 4.1.7 — the Milkdrop engine | LGPL-2.1 | Linked **dynamically** (`libprojectM-4.so` / `projectM-4.dll` / `.dylib`, shipped next to the app); replaceable by your own build of the same version. Sources: https://github.com/projectM-visualizer/projectm/tree/v4.1.7 |
 
 Only LGPL-licensed Qt modules are used. GPL-only modules (Qt HTTP Server, Qt Network Authorization, etc.) are deliberately not used.
+
+projectM's library contains its vendored components: [projectm-eval](https://github.com/projectM-visualizer/projectm-eval) (MIT),
+[hlslparser](https://github.com/Thekla/hlslparser) (MIT), [SOIL2](https://github.com/SpartanJ/SOIL2) (MIT-0; with Apache-2.0 ETC1 and MIT PowerVR code)
+and [GLM](https://github.com/g-truc/glm) (MIT). On Windows it uses [GLEW](https://github.com/nigels-com/glew) (Modified BSD / MIT), shipped as `glew32.dll`.
 
 ## Bundled source code
 
@@ -33,6 +38,11 @@ Product idea, the set of Yandex Music features and the bundled skin selection co
 
 **yandex-music-client** — https://github.com/umnik1/yandex-music-client — the track-link signing scheme (`src/yandex/TrackUrl.cpp`)
 and the endpoint shapes used in `src/yandex/Library.cpp`.
+
+**Milkdrop presets** — `resources/milkdrop/`: 150 presets from the projectM team's
+["Cream of the Crop" collection](https://github.com/projectM-visualizer/presets-cream-of-the-crop) (curated by ISOSCELES; authors are named in
+the file names). Milkdrop presets were mostly released without a license; the collection treats them as public domain and removes presets on
+request, and so does QiYaa. Details in `resources/milkdrop/README.md`.
 
 **yandex-music-api** — https://github.com/MarshalX/yandex-music-api — the unofficial API documentation of that project was used as a reference
 for the shapes of the rotor session, wave feedback, landing and playlist-recommendation endpoints. No code was copied.
