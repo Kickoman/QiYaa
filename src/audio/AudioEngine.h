@@ -1,8 +1,14 @@
 // Audio engine: network bytes -> decoder thread -> PCM ring buffer -> miniaudio device.
 //
 //   appendData() ──> StreamBuffer ──(decoder thread, ma_decoder)──> ma_pcm_rb ──> device callback
-//                                                                             (volume/balance;
-//                                                                              later: EQ, VisTap)
+//                                                                             (EQ, VisTap,
+//                                                                              volume/balance)
+//
+// Gapless: a second stream can be queued while the current one plays. When the
+// current track's decoder reaches its end, the decoder thread continues with
+// the queued stream into the same ring buffer, and poll() reports
+// trackAdvanced() once playback crosses the boundary. A seek back into the old
+// track before that undoes the chain.
 //
 // The device callback never blocks or allocates. Everything the UI needs
 // (position, end of track) is read from atomics by poll(), which the UI calls
@@ -13,12 +19,15 @@
 #include <memory>
 
 #include <QByteArray>
+#include <QHash>
 #include <QObject>
 #include <QString>
 
 #include "audio/Equalizer.h"
 
 namespace qiyaa::audio {
+
+class StreamBuffer;
 
 class AudioEngine : public QObject {
     Q_OBJECT
@@ -33,12 +42,31 @@ public:
     bool init(QString* error = nullptr);
     QString backendName() const;
 
-    // Begin a new stream (drops the current one). Feed it with appendData(),
-    // then finishData() once the download completes (or failData() on error).
-    void beginStream();
-    void appendData(const QByteArray& bytes);
-    void finishData();
-    void failData();
+    using StreamId = quint64;  // 0 = none
+
+    // Begin a new stream (drops the current and the queued one). Feed it with
+    // appendData(), then finishData() once the download completes (or failData()).
+    StreamId beginStream();
+    // The stream to continue with when the current one ends (replaces a queued
+    // one). Only while something plays; returns 0 otherwise.
+    StreamId queueStream();
+    // Forget the queued stream. If playback is already committed to it (the
+    // last ~2 s of the current track), it stops at the boundary instead and
+    // trackFinished() follows as usual.
+    void clearQueued();
+    StreamId queuedStream() const;  // 0 if none (or it couldn't be decoded)
+    // Start the queued stream now, from its beginning; returns its id (0 if none).
+    StreamId playQueuedNow();
+
+    // Feeding a stream that was dropped meanwhile is a no-op.
+    void appendData(StreamId stream, const QByteArray& bytes);
+    void finishData(StreamId stream);
+    void failData(StreamId stream);
+    // The same for the current stream.
+    void appendData(const QByteArray& bytes) { appendData(m_current, bytes); }
+    void finishData() { finishData(m_current); }
+    void failData() { failData(m_current); }
+    StreamId currentStream() const { return m_current; }
 
     void pause();
     void resume();
@@ -64,12 +92,22 @@ public:
 Q_SIGNALS:
     void stateChanged(qiyaa::audio::AudioEngine::State state);
     void trackFinished();
+    // Playback moved on into the queued stream without a gap; it is current now.
+    void trackAdvanced();
     void errorOccurred(const QString& message);
 
 private:
     struct Impl;
     void setState(State s);
     void updateGains();
+    void startDecoder();  // on m_current, with a fresh ring
+    void dropStreams();
+
+    // Streams that can still be fed, by id (UI thread only).
+    QHash<StreamId, std::shared_ptr<StreamBuffer>> m_streams;
+    StreamId m_lastId = 0;
+    StreamId m_current = 0;
+    StreamId m_queued = 0;
 
     std::unique_ptr<Impl> d;
     State m_state = State::Stopped;

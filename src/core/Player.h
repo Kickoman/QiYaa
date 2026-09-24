@@ -65,6 +65,9 @@ public:
     double durationSeconds() const;
     audio::AudioEngine* engine() const { return m_engine; }
     yandex::Library* library() const { return m_library; }
+    // Index of the track already downloading in the background to follow the
+    // current one without a gap (-1 if none yet).
+    int preloadedIndex() const { return m_preload && m_preload->stream ? m_preload->index : -1; }
 
 Q_SIGNALS:
     void statusMessage(const QString& text);
@@ -76,8 +79,32 @@ Q_SIGNALS:
     void seeked(double seconds);
 
 private:
-    void startDownload(const QUrl& url, quint64 generation);
+    using StreamId = audio::AudioEngine::StreamId;
+    // The next track, resolved and downloading into a queued engine stream.
+    struct Preload {
+        int index = -1;
+        QString trackId;
+        quint64 gen = 0;           // invalidates its link request
+        StreamId stream = 0;       // 0 until the link is resolved
+        int bitrate = 0;
+        QPointer<QNetworkReply> reply;
+        bool downloadDone = false;
+        bool failed = false;
+    };
+
+    QNetworkReply* startDownload(const QUrl& url, StreamId stream);
+    void downloadFinished(StreamId stream, bool failed, const QString& error);
     void abortDownload();
+    // Reports the start of `track` (it is current and its audio is on the way).
+    void trackStarted(const yandex::Track& track, int bitrate);
+    // What plays after the current track: in order (-1 at the end of a finite
+    // queue, or of an endless one that is still loading), or at random.
+    int sequentialNext() const;
+    int pickNext() const;
+    void maybePreload();
+    void cancelPreload();
+    // After queue or mode changes: keep the preload if it's still what follows.
+    void refreshPreload();
     void maybeLoadMore();
     // Reports Skipped for the track that is playing (if its Started was sent).
     void closeOpenTrack();
@@ -108,6 +135,10 @@ private:
     bool m_repeat = false;
     quint64 m_generation = 0;  // invalidates callbacks of tracks we already skipped
     QPointer<QNetworkReply> m_download;
+    StreamId m_stream = 0;               // the current track's engine stream
+    bool m_currentDownloaded = false;    // the whole current track is in memory
+    std::optional<Preload> m_preload;
+    quint64 m_preloadGen = 0;
 };
 
 }  // namespace qiyaa

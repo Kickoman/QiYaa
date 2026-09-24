@@ -20,6 +20,11 @@ namespace {
 
 constexpr ma_uint32 kChannels = 2;
 constexpr ma_uint32 kRingSeconds = 2;
+// Chain into a queued stream only once this much of it is downloaded (or all of
+// it), so opening its decoder doesn't stall on the network.
+constexpr size_t kChainMinBytes = 64 * 1024;
+
+}  // namespace
 
 // Growing in-memory copy of the file being downloaded. The decoder thread reads
 // from it and waits when it gets ahead of the download.
@@ -40,20 +45,34 @@ public:
         }
         m_cv.notify_all();
     }
-    void abort() {
+    // Makes a blocked (or the next) read return MA_CANCELLED until resume().
+    void interrupt() {
         {
             std::lock_guard lock(m_mutex);
-            m_aborted = true;
+            m_interrupted = true;
         }
         m_cv.notify_all();
+    }
+    void resume() {
+        std::lock_guard lock(m_mutex);
+        m_interrupted = false;
+    }
+    void rewind() {
+        std::lock_guard lock(m_mutex);
+        m_cursor = 0;
+    }
+    // Enough to open a decoder without waiting for the network.
+    bool ready(size_t minBytes) const {
+        std::lock_guard lock(m_mutex);
+        return m_finished || m_data.size() >= minBytes;
     }
 
     // Blocking read at the cursor. Returns MA_AT_END at the end of a finished stream.
     ma_result read(void* out, size_t n, size_t* got) {
         std::unique_lock lock(m_mutex);
-        m_cv.wait(lock, [&] { return m_aborted || m_finished || m_data.size() > m_cursor; });
+        m_cv.wait(lock, [&] { return m_interrupted || m_finished || m_data.size() > m_cursor; });
         *got = 0;
-        if (m_aborted) return MA_CANCELLED;
+        if (m_interrupted) return MA_CANCELLED;
         const size_t avail = m_data.size() - std::min(m_cursor, m_data.size());
         const size_t take = std::min(n, avail);
         if (take == 0) return MA_AT_END;
@@ -77,20 +96,11 @@ public:
         }
         if (target < 0) return MA_BAD_SEEK;
         // Seeking forward past downloaded data: wait for it (only happens on user seek).
-        m_cv.wait(lock, [&] { return m_aborted || m_finished || ma_int64(m_data.size()) >= target; });
-        if (m_aborted) return MA_CANCELLED;
+        m_cv.wait(lock, [&] { return m_interrupted || m_finished || ma_int64(m_data.size()) >= target; });
+        if (m_interrupted) return MA_CANCELLED;
         if (target > ma_int64(m_data.size())) return MA_BAD_SEEK;
         m_cursor = size_t(target);
         return MA_SUCCESS;
-    }
-
-    size_t size() const {
-        std::lock_guard lock(m_mutex);
-        return m_data.size();
-    }
-    bool finished() const {
-        std::lock_guard lock(m_mutex);
-        return m_finished;
     }
 
 private:
@@ -100,10 +110,8 @@ private:
     size_t m_cursor = 0;
     bool m_finished = false;
     bool m_failed = false;
-    bool m_aborted = false;
+    bool m_interrupted = false;
 };
-
-}  // namespace
 
 struct AudioEngine::Impl {
     ma_context context{};
@@ -114,7 +122,6 @@ struct AudioEngine::Impl {
     ma_pcm_rb ring{};
     bool ringReady = false;
 
-    std::shared_ptr<StreamBuffer> stream;
     std::thread decoderThread;
     std::atomic<bool> stopDecoder{false};
 
@@ -122,17 +129,37 @@ struct AudioEngine::Impl {
     std::atomic<bool> outputEnabled{false};  // false -> callback outputs silence, doesn't touch ring
     std::atomic<float> gainL{1.0f};
     std::atomic<float> gainR{1.0f};
-    std::atomic<ma_uint64> framesPlayed{0};
+    std::atomic<ma_uint64> framesPlayed{0};   // read from the ring since the last reset
     EqualizerDsp eq;
     VisTap vis;
-    std::atomic<ma_uint64> frameOffset{0};  // position of framesPlayed==0 (after a seek)
+    std::atomic<ma_int64> frameOffset{0};     // track position of framesPlayed == 0
 
     // Decoder -> UI.
     std::atomic<bool> decoderStarted{false};
     std::atomic<bool> decoderDone{false};
     std::atomic<bool> decoderFailed{false};
     std::atomic<ma_int64> seekRequest{-1};
+    std::atomic<int> seekEpoch{0};            // the track (epoch) the UI meant
     std::atomic<bool> finishedReported{false};
+
+    // Gapless chaining. Each track in one run of the decoder thread is an
+    // "epoch". The decoder moves to epoch n+1 when it chains the queued stream;
+    // the UI follows once playback reaches boundaryFrame.
+    std::atomic<int> decoderEpoch{0};
+    std::atomic<int> uiEpoch{0};
+    std::atomic<ma_uint64> boundaryFrame{0};  // framesPlayed value where decoderEpoch starts
+    std::atomic<bool> haltAtBoundary{false};  // the chained stream was cancelled: stop there
+    std::atomic<int> nextRate{0};
+    std::atomic<int> nextChannels{0};
+    std::atomic<StreamId> failedQueued{0};    // queued stream the decoder couldn't open
+
+    // Handoff of the queued stream (guarded by queueMutex).
+    std::mutex queueMutex;
+    std::shared_ptr<StreamBuffer> queued;     // waiting for the current track to end
+    StreamId queuedId = 0;
+    StreamId chainingId = 0;                  // being opened right now
+    bool dropChaining = false;
+    StreamId chainedId = 0;                   // decoding, boundary not reached yet
 
     static void dataCallback(ma_device* dev, void* out, const void*, ma_uint32 frameCount) {
         auto* self = static_cast<Impl*>(dev->pUserData);
@@ -141,8 +168,16 @@ struct AudioEngine::Impl {
         // A pending seek owns the ring: the decoder may reset it at any moment
         // until it clears seekRequest, so don't touch it (see seek()).
         if (self->outputEnabled.load(std::memory_order_acquire) && self->seekRequest.load(std::memory_order_acquire) < 0) {
-            while (written < frameCount) {
-                ma_uint32 n = frameCount - written;
+            ma_uint32 limit = frameCount;
+            // A cancelled chained track: play up to the boundary, not into it.
+            if (self->haltAtBoundary.load(std::memory_order_acquire) &&
+                self->decoderEpoch.load(std::memory_order_acquire) > self->uiEpoch.load(std::memory_order_acquire)) {
+                const ma_uint64 played = self->framesPlayed.load(std::memory_order_relaxed);
+                const ma_uint64 boundary = self->boundaryFrame.load(std::memory_order_acquire);
+                limit = played >= boundary ? 0 : ma_uint32(std::min<ma_uint64>(frameCount, boundary - played));
+            }
+            while (written < limit) {
+                ma_uint32 n = limit - written;
                 void* src = nullptr;
                 if (ma_pcm_rb_acquire_read(&self->ring, &n, &src) != MA_SUCCESS || n == 0) break;
                 std::memcpy(dst + written * kChannels, src, n * kChannels * sizeof(float));
@@ -171,46 +206,128 @@ struct AudioEngine::Impl {
         return static_cast<StreamBuffer*>(dec->pUserData)->seek(off, origin);
     }
 
-    void decoderMain(std::shared_ptr<StreamBuffer> buf, std::atomic<int>* srcRate, std::atomic<int>* srcChannels) {
-        ma_decoder decoder{};
+    // A decoder over one stream. Heap-allocated: ma_decoder must not move.
+    struct Source {
+        std::shared_ptr<StreamBuffer> buf;
+        ma_decoder dec{};
+        int rate = 0;
+        int channels = 0;
+        bool initialised = false;
+        ~Source() {
+            if (initialised) ma_decoder_uninit(&dec);
+        }
+    };
+
+    std::unique_ptr<Source> openSource(std::shared_ptr<StreamBuffer> buf) {
+        auto s = std::make_unique<Source>();
+        s->buf = std::move(buf);
         ma_decoder_config cfg = ma_decoder_config_init(ma_format_f32, kChannels, sampleRate);
         cfg.encodingFormat = ma_encoding_format_mp3;
-        ma_result r = ma_decoder_init(&Impl::onRead, &Impl::onSeek, buf.get(), &cfg, &decoder);
+        ma_result r = ma_decoder_init(&Impl::onRead, &Impl::onSeek, s->buf.get(), &cfg, &s->dec);
         if (r != MA_SUCCESS && !stopDecoder) {
-            buf->seek(0, ma_seek_origin_start);
+            s->buf->seek(0, ma_seek_origin_start);
             cfg.encodingFormat = ma_encoding_format_unknown;
-            r = ma_decoder_init(&Impl::onRead, &Impl::onSeek, buf.get(), &cfg, &decoder);
+            r = ma_decoder_init(&Impl::onRead, &Impl::onSeek, s->buf.get(), &cfg, &s->dec);
         }
-        if (r != MA_SUCCESS) {
+        if (r != MA_SUCCESS) return nullptr;
+        s->initialised = true;
+        ma_format fmt;
+        ma_uint32 ch = 0, rate = 0;
+        if (ma_data_source_get_data_format(s->dec.pBackend, &fmt, &ch, &rate, nullptr, 0) == MA_SUCCESS) {
+            s->rate = int(rate);
+            s->channels = int(ch);
+        }
+        return s;
+    }
+
+    void decoderMain(std::shared_ptr<StreamBuffer> first, std::atomic<int>* srcRate, std::atomic<int>* srcChannels) {
+        std::unique_ptr<Source> cur = openSource(std::move(first));
+        if (!cur) {
             if (!stopDecoder) decoderFailed = true;
             return;
         }
-
-        ma_format fmt;
-        ma_uint32 ch = 0, rate = 0;
-        if (ma_data_source_get_data_format(decoder.pBackend, &fmt, &ch, &rate, nullptr, 0) == MA_SUCCESS) {
-            *srcRate = int(rate);
-            *srcChannels = int(ch);
-        }
+        *srcRate = cur->rate;
+        *srcChannels = cur->channels;
         decoderStarted = true;
+
+        std::unique_ptr<Source> tail;  // the previous track, until the UI moves past the boundary
+        int epoch = 0;
+        ma_uint64 written = 0;         // frames written to the ring since its last reset
+
+        // Continue with the queued stream after the current one.
+        auto tryChain = [&]() -> bool {
+            std::shared_ptr<StreamBuffer> buf;
+            StreamId id = 0;
+            {
+                std::lock_guard lock(queueMutex);
+                if (!queued || !queued->ready(kChainMinBytes)) return false;
+                buf = std::move(queued);
+                id = std::exchange(queuedId, 0);
+                chainingId = id;
+                dropChaining = false;
+            }
+            std::unique_ptr<Source> next = openSource(buf);
+            std::lock_guard lock(queueMutex);
+            chainingId = 0;
+            if (!next || dropChaining || stopDecoder) {
+                if (!next && !dropChaining && !stopDecoder) failedQueued = id;
+                dropChaining = false;
+                return false;
+            }
+            chainedId = id;
+            tail = std::move(cur);
+            cur = std::move(next);
+            ++epoch;
+            nextRate = cur->rate;
+            nextChannels = cur->channels;
+            boundaryFrame.store(written, std::memory_order_release);
+            decoderEpoch.store(epoch, std::memory_order_release);
+            return true;
+        };
 
         std::vector<float> chunk(1024 * kChannels);
         while (!stopDecoder) {
             if (ma_int64 target = seekRequest.load(std::memory_order_acquire); target >= 0) {
                 // While seekRequest >= 0 the callback doesn't read the ring, so it's ours.
+                if (tail && seekEpoch.load(std::memory_order_acquire) < epoch) {
+                    // The UI still plays the previous track: undo the chain and
+                    // queue that stream again (unless it was cancelled meanwhile).
+                    std::lock_guard lock(queueMutex);
+                    if (!haltAtBoundary) {
+                        cur->buf->rewind();
+                        queued = cur->buf;
+                        queuedId = chainedId;
+                    }
+                    chainedId = 0;
+                    haltAtBoundary = false;
+                    cur = std::move(tail);
+                    --epoch;
+                    decoderEpoch.store(epoch, std::memory_order_release);
+                } else {
+                    tail.reset();
+                }
                 // The seek itself may block until that part is downloaded.
-                ma_decoder_seek_to_pcm_frame(&decoder, ma_uint64(target));
+                ma_decoder_seek_to_pcm_frame(&cur->dec, ma_uint64(target));
                 if (stopDecoder) break;  // stream abandoned mid-seek: leave the ring alone
                 ma_pcm_rb_reset(&ring);
-                frameOffset = ma_uint64(target);
+                frameOffset = target;
                 framesPlayed = 0;
+                written = 0;
                 decoderDone = false;
                 // Hand the ring back only if no newer seek arrived meanwhile;
                 // otherwise loop and serve the newer one.
                 seekRequest.compare_exchange_strong(target, -1, std::memory_order_acq_rel);
                 continue;
             }
+            // The UI has moved into the new track: the old decoder can go.
+            if (tail && uiEpoch.load(std::memory_order_acquire) >= epoch) tail.reset();
             if (decoderDone) {
+                // The queued stream may arrive late; chain it while there's still
+                // something in the ring (after that, the UI starts it itself).
+                if (!tail && !finishedReported && tryChain()) {
+                    decoderDone = false;
+                    continue;
+                }
                 std::this_thread::sleep_for(std::chrono::milliseconds(20));
                 continue;
             }
@@ -221,7 +338,7 @@ struct AudioEngine::Impl {
                 continue;
             }
             ma_uint64 got = 0;
-            r = ma_decoder_read_pcm_frames(&decoder, chunk.data(), 1024, &got);
+            const ma_result r = ma_decoder_read_pcm_frames(&cur->dec, chunk.data(), 1024, &got);
             ma_uint32 remaining = ma_uint32(got);
             const float* p = chunk.data();
             while (remaining > 0) {
@@ -232,18 +349,26 @@ struct AudioEngine::Impl {
                 ma_pcm_rb_commit_write(&ring, n);
                 p += n * kChannels;
                 remaining -= n;
+                written += n;
             }
-            if (r == MA_AT_END || (r != MA_SUCCESS && got == 0)) decoderDone = true;
+            if (r == MA_AT_END || (r != MA_SUCCESS && got == 0)) {
+                if (tail || !tryChain()) decoderDone = true;
+            }
         }
-        ma_decoder_uninit(&decoder);
     }
 
-    void stopDecoderThread() {
+    // Stops the decoder thread; afterwards nothing reads any stream.
+    void stopDecoderThread(const QHash<StreamId, std::shared_ptr<StreamBuffer>>& streams) {
         stopDecoder = true;
-        if (stream) stream->abort();
+        for (const auto& s : streams) s->interrupt();
         if (decoderThread.joinable()) decoderThread.join();
         stopDecoder = false;
-        stream.reset();
+        for (const auto& s : streams) s->resume();
+        std::lock_guard lock(queueMutex);
+        queued.reset();
+        queuedId = chainingId = chainedId = 0;
+        dropChaining = false;
+        haltAtBoundary = false;
     }
 };
 
@@ -253,7 +378,7 @@ AudioEngine::AudioEngine(QObject* parent) : QObject(parent), d(std::make_unique<
 
 AudioEngine::~AudioEngine() {
     d->outputEnabled = false;
-    d->stopDecoderThread();
+    d->stopDecoderThread(m_streams);
     if (d->deviceReady) ma_device_uninit(&d->device);
     if (d->contextReady) ma_context_uninit(&d->context);
     if (d->ringReady) ma_pcm_rb_uninit(&d->ring);
@@ -308,17 +433,17 @@ QString AudioEngine::backendName() const {
     return QString::fromLatin1(ma_get_backend_name(d->device.pContext->backend));
 }
 
-void AudioEngine::beginStream() {
+void AudioEngine::dropStreams() {
     d->outputEnabled.store(false, std::memory_order_release);
-    d->stopDecoderThread();
-    if (!d->ringReady) {  // no output device: nothing can play
-        setState(State::Stopped);
-        Q_EMIT errorOccurred(QStringLiteral("no audio output device"));
-        return;
-    }
+    d->stopDecoderThread(m_streams);
+    m_streams.clear();
+    m_current = m_queued = 0;
+}
+
+void AudioEngine::startDecoder() {
     // Stopping the device guarantees the callback isn't inside the ring right now.
     if (d->deviceReady && ma_device_is_started(&d->device)) ma_device_stop(&d->device);
-    if (d->ringReady) ma_pcm_rb_reset(&d->ring);
+    ma_pcm_rb_reset(&d->ring);
     if (d->deviceReady) ma_device_start(&d->device);
 
     d->framesPlayed = 0;
@@ -328,25 +453,87 @@ void AudioEngine::beginStream() {
     d->decoderFailed = false;
     d->finishedReported = false;
     d->seekRequest = -1;
+    d->decoderEpoch = 0;
+    d->uiEpoch = 0;
+    d->failedQueued = 0;
     m_sourceRate = 0;
     m_sourceChannels = 0;
 
-    d->stream = std::make_shared<StreamBuffer>();
-    d->decoderThread = std::thread(&Impl::decoderMain, d.get(), d->stream, &m_sourceRate, &m_sourceChannels);
+    d->decoderThread = std::thread(&Impl::decoderMain, d.get(), m_streams.value(m_current), &m_sourceRate, &m_sourceChannels);
     d->outputEnabled.store(true, std::memory_order_release);
     setState(State::Buffering);
 }
 
-void AudioEngine::appendData(const QByteArray& bytes) {
-    if (d->stream) d->stream->append(bytes.constData(), size_t(bytes.size()));
+AudioEngine::StreamId AudioEngine::beginStream() {
+    dropStreams();
+    if (!d->ringReady) {  // no output device: nothing can play
+        setState(State::Stopped);
+        Q_EMIT errorOccurred(QStringLiteral("no audio output device"));
+        return 0;
+    }
+    m_current = ++m_lastId;
+    m_streams.insert(m_current, std::make_shared<StreamBuffer>());
+    startDecoder();
+    return m_current;
 }
 
-void AudioEngine::finishData() {
-    if (d->stream) d->stream->finish(false);
+AudioEngine::StreamId AudioEngine::queueStream() {
+    clearQueued();
+    if (!d->decoderThread.joinable()) return 0;
+    m_queued = ++m_lastId;
+    auto buf = std::make_shared<StreamBuffer>();
+    m_streams.insert(m_queued, buf);
+    std::lock_guard lock(d->queueMutex);
+    d->queued = std::move(buf);
+    d->queuedId = m_queued;
+    return m_queued;
 }
 
-void AudioEngine::failData() {
-    if (d->stream) d->stream->finish(true);
+void AudioEngine::clearQueued() {
+    const StreamId id = std::exchange(m_queued, 0);
+    if (!id) return;
+    std::shared_ptr<StreamBuffer> buf = m_streams.take(id);
+    std::lock_guard lock(d->queueMutex);
+    if (d->queuedId == id) {
+        d->queued.reset();
+        d->queuedId = 0;
+    } else if (d->chainingId == id) {
+        d->dropChaining = true;
+        if (buf) buf->interrupt();  // don't wait for its data
+    } else if (d->chainedId == id) {
+        d->haltAtBoundary = true;   // already decoding into the ring: stop playback at its start
+    }
+}
+
+AudioEngine::StreamId AudioEngine::queuedStream() const {
+    return m_queued && d->failedQueued.load() != m_queued ? m_queued : 0;
+}
+
+AudioEngine::StreamId AudioEngine::playQueuedNow() {
+    const StreamId id = queuedStream();
+    if (!id) return 0;
+    std::shared_ptr<StreamBuffer> buf = m_streams.value(id);
+    d->outputEnabled.store(false, std::memory_order_release);
+    d->stopDecoderThread(m_streams);
+    m_streams.clear();
+    buf->rewind();
+    m_streams.insert(id, buf);
+    m_current = id;
+    m_queued = 0;
+    startDecoder();
+    return id;
+}
+
+void AudioEngine::appendData(StreamId stream, const QByteArray& bytes) {
+    if (const auto buf = m_streams.value(stream)) buf->append(bytes.constData(), size_t(bytes.size()));
+}
+
+void AudioEngine::finishData(StreamId stream) {
+    if (const auto buf = m_streams.value(stream)) buf->finish(false);
+}
+
+void AudioEngine::failData(StreamId stream) {
+    if (const auto buf = m_streams.value(stream)) buf->finish(true);
 }
 
 void AudioEngine::pause() {
@@ -362,8 +549,7 @@ void AudioEngine::resume() {
 }
 
 void AudioEngine::stop() {
-    d->outputEnabled = false;
-    d->stopDecoderThread();
+    dropStreams();
     // Idle = no audio callbacks at all (CPU ~0 when nothing plays).
     if (d->deviceReady && ma_device_is_started(&d->device)) ma_device_stop(&d->device);
     d->framesPlayed = 0;
@@ -372,12 +558,14 @@ void AudioEngine::stop() {
 }
 
 bool AudioEngine::seek(double seconds) {
-    if (!d->stream || !d->decoderStarted || seconds < 0) return false;
+    if (!d->decoderThread.joinable() || !d->decoderStarted || seconds < 0) return false;
     // Stopping the device waits for any running callback to finish; from then
     // on the callback sees seekRequest >= 0 and leaves the ring to the decoder
     // thread, which clears the request once the ring holds the new position.
     const bool wasRunning = d->deviceReady && ma_device_is_started(&d->device);
     if (wasRunning) ma_device_stop(&d->device);
+    // In the current track as the UI sees it (the decoder may already be in the next one).
+    d->seekEpoch.store(d->uiEpoch.load(), std::memory_order_release);
     d->seekRequest.store(ma_int64(seconds * d->sampleRate), std::memory_order_release);
     if (wasRunning) ma_device_start(&d->device);
     return true;
@@ -385,7 +573,8 @@ bool AudioEngine::seek(double seconds) {
 
 double AudioEngine::positionSeconds() const {
     if (d->sampleRate == 0) return 0;
-    return double(d->frameOffset.load() + d->framesPlayed.load()) / d->sampleRate;
+    const ma_int64 frames = d->frameOffset.load() + ma_int64(d->framesPlayed.load());
+    return double(std::max<ma_int64>(0, frames)) / d->sampleRate;
 }
 
 void AudioEngine::setEqualizer(const EqSettings& settings) {
@@ -423,6 +612,34 @@ void AudioEngine::poll() {
     if (d->decoderFailed.exchange(false)) {
         stop();
         Q_EMIT errorOccurred(QStringLiteral("cannot decode audio stream"));
+        return;
+    }
+    // The queued stream turned out undecodable: forget it (the UI starts the next track itself).
+    if (const StreamId bad = d->failedQueued.exchange(0); bad && bad == m_queued) {
+        m_streams.remove(bad);
+        m_queued = 0;
+    }
+    // Playback crossed into the chained track?
+    const int chained = d->decoderEpoch.load(std::memory_order_acquire);
+    if (chained > d->uiEpoch.load() && d->seekRequest.load() < 0 && !d->finishedReported &&
+        d->framesPlayed.load() >= d->boundaryFrame.load(std::memory_order_acquire)) {
+        if (d->haltAtBoundary) {
+            // Cancelled: the callback stopped at the boundary; this track is over.
+            d->finishedReported = true;
+            Q_EMIT trackFinished();
+            return;
+        }
+        {
+            std::lock_guard lock(d->queueMutex);
+            d->chainedId = 0;
+        }
+        d->frameOffset = -ma_int64(d->boundaryFrame.load());
+        d->uiEpoch.store(chained, std::memory_order_release);
+        m_streams.remove(m_current);
+        m_current = std::exchange(m_queued, 0);
+        m_sourceRate = d->nextRate.load();
+        m_sourceChannels = d->nextChannels.load();
+        Q_EMIT trackAdvanced();
         return;
     }
     if (m_state == State::Buffering && d->decoderStarted && ma_pcm_rb_available_read(&d->ring) > 0)

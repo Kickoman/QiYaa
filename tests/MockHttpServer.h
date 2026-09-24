@@ -53,6 +53,10 @@ public:
 
     // Exact "METHOD /path" match.
     void on(const QByteArray& method, const QString& path, Handler h) { m_routes[method + ' ' + path.toUtf8()] = std::move(h); }
+    // Any path starting with `prefix` (when no exact route matches).
+    void onPrefix(const QByteArray& method, const QString& prefix, Handler h) {
+        m_prefixRoutes.append({method, prefix, std::move(h)});
+    }
     void json(const QByteArray& method, const QString& path, const QByteArray& body, int status = 200) {
         on(method, path, [body, status](const MockRequest&) { return MockResponse{status, body}; });
     }
@@ -94,7 +98,16 @@ private:
         m_requests << req;
 
         const auto it = m_routes.constFind(req.method + ' ' + req.path.toUtf8());
-        const MockResponse resp = it != m_routes.cend() ? (*it)(req) : MockResponse{404, "{\"error\":\"not found\"}"};
+        MockResponse resp{404, "{\"error\":\"not found\"}"};
+        if (it != m_routes.cend()) {
+            resp = (*it)(req);
+        } else {
+            for (const PrefixRoute& r : m_prefixRoutes)
+                if (r.method == req.method && req.path.startsWith(r.prefix)) {
+                    resp = r.handler(req);
+                    break;
+                }
+        }
         QByteArray out = "HTTP/1.1 " + QByteArray::number(resp.status) + " X\r\n";
         out += "Content-Type: application/json\r\nConnection: close\r\n";
         out += "Content-Length: " + QByteArray::number(resp.body.size()) + "\r\n\r\n" + resp.body;
@@ -106,7 +119,13 @@ private:
         });
     }
 
+    struct PrefixRoute {
+        QByteArray method;
+        QString prefix;
+        Handler handler;
+    };
     QTcpServer m_server;
     QHash<QByteArray, Handler> m_routes;
+    QList<PrefixRoute> m_prefixRoutes;
     QList<MockRequest> m_requests;
 };

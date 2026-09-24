@@ -148,6 +148,134 @@ private Q_SLOTS:
         engine.stop();
         QCOMPARE(engine.state(), AudioEngine::State::Stopped);
     }
+
+    // ---- gapless chaining of a queued stream
+
+    AudioEngine::StreamId startNearEnd(double at = 2.2) {
+        const auto a = engine.beginStream();
+        engine.appendData(a, mp3);
+        engine.finishData(a);
+        pumpUntil([&] { return engine.state() == AudioEngine::State::Playing; }, 3000);
+        engine.seek(at);
+        pumpUntil([&] { return engine.positionSeconds() >= at; }, 2000);
+        return a;
+    }
+    AudioEngine::StreamId queueWhole(const QByteArray& data) {
+        const auto b = engine.queueStream();
+        engine.appendData(b, data);
+        engine.finishData(b);
+        return b;
+    }
+
+    void queuedStreamFollowsWithoutGap() {
+        QSignalSpy finished(&engine, &AudioEngine::trackFinished);
+        QSignalSpy advanced(&engine, &AudioEngine::trackAdvanced);
+        startNearEnd();
+        QSignalSpy states(&engine, &AudioEngine::stateChanged);
+        const auto b = queueWhole(mp3);
+        QVERIFY(b != 0);
+        QCOMPARE(engine.queuedStream(), b);
+        pumpUntil([&] { return advanced.count() > 0 || finished.count() > 0; }, 3000);
+        QCOMPARE(advanced.count(), 1);
+        QCOMPARE(finished.count(), 0);
+        QVERIFY(states.isEmpty());  // no Stopped/Buffering in between
+        QCOMPARE(engine.currentStream(), b);
+        QCOMPARE(engine.queuedStream(), AudioEngine::StreamId(0));
+        QVERIFY2(engine.positionSeconds() < 0.3, qPrintable(QString::number(engine.positionSeconds())));
+        // The new track is seekable and ends normally.
+        QVERIFY(engine.seek(2.7));
+        pumpUntil([&] { return finished.count() > 0; }, 3000);
+        QCOMPARE(finished.count(), 1);
+        QCOMPARE(advanced.count(), 1);
+        engine.stop();
+    }
+
+    void seekingBackUndoesTheChain() {
+        QSignalSpy advanced(&engine, &AudioEngine::trackAdvanced);
+        startNearEnd(2.3);
+        const auto b = queueWhole(mp3);
+        QTest::qWait(150);  // the rest of track 1 is decoded and track 2 chained behind it
+        QVERIFY(engine.seek(0.5));  // back into track 1
+        pumpUntil([&] {
+            const double p = engine.positionSeconds();
+            return p >= 0.8 && p < 1.5;
+        }, 2000);
+        QCOMPARE(advanced.count(), 0);
+        const double pos = engine.positionSeconds();
+        QVERIFY2(pos >= 0.5 && pos < 1.5, qPrintable(QString::number(pos)));
+        QCOMPARE(engine.queuedStream(), b);  // queued again
+        // ...and it still follows later, from its beginning.
+        QVERIFY(engine.seek(2.5));
+        pumpUntil([&] { return advanced.count() > 0; }, 3000);
+        QCOMPARE(advanced.count(), 1);
+        QVERIFY(engine.positionSeconds() < 0.3);
+        engine.stop();
+    }
+
+    void clearingAChainedStreamStopsAtTheBoundary() {
+        QSignalSpy finished(&engine, &AudioEngine::trackFinished);
+        QSignalSpy advanced(&engine, &AudioEngine::trackAdvanced);
+        startNearEnd(2.3);
+        queueWhole(mp3);
+        QTest::qWait(150);  // chained
+        engine.clearQueued();
+        pumpUntil([&] { return finished.count() > 0 || advanced.count() > 0; }, 3000);
+        QCOMPARE(finished.count(), 1);
+        QCOMPARE(advanced.count(), 0);
+        engine.stop();
+    }
+
+    void playQueuedNowJumpsImmediately() {
+        startNearEnd(0.5);
+        const auto b = queueWhole(mp3);
+        QCOMPARE(engine.playQueuedNow(), b);
+        QCOMPARE(engine.currentStream(), b);
+        pumpUntil([&] { return engine.state() == AudioEngine::State::Playing; }, 3000);
+        QVERIFY(engine.positionSeconds() < 0.5);
+        QCOMPARE(engine.queuedStream(), AudioEngine::StreamId(0));
+        engine.stop();
+    }
+
+    void undecodableQueuedStreamIsSkipped() {
+        QSignalSpy finished(&engine, &AudioEngine::trackFinished);
+        QSignalSpy advanced(&engine, &AudioEngine::trackAdvanced);
+        startNearEnd(2.3);
+        queueWhole(QByteArray(100000, 'x'));
+        pumpUntil([&] { return finished.count() > 0 || advanced.count() > 0; }, 3000);
+        QCOMPARE(finished.count(), 1);  // the player then starts the next track itself
+        QCOMPARE(advanced.count(), 0);
+        QCOMPARE(engine.queuedStream(), AudioEngine::StreamId(0));
+        engine.stop();
+    }
+
+    void queuedStreamArrivingLateStillChains() {
+        QSignalSpy finished(&engine, &AudioEngine::trackFinished);
+        QSignalSpy advanced(&engine, &AudioEngine::trackAdvanced);
+        startNearEnd(2.0);
+        // Track 1 is fully decoded by now; the queued data comes in slowly.
+        const auto b = engine.queueStream();
+        engine.appendData(b, mp3.left(4000));  // not enough to start decoding it yet
+        QTest::qWait(200);
+        engine.appendData(b, mp3.mid(4000));
+        engine.finishData(b);
+        pumpUntil([&] { return finished.count() > 0 || advanced.count() > 0; }, 3000);
+        QCOMPARE(advanced.count(), 1);
+        QCOMPARE(finished.count(), 0);
+        engine.stop();
+    }
+
+    void stopWhileQueuedDataIsMissing() {
+        // The decoder must never wait forever for a queued stream's data.
+        startNearEnd(2.9);
+        const auto b = engine.queueStream();
+        engine.appendData(b, mp3.left(70000 < mp3.size() ? 70000 : mp3.size() / 2));
+        QTest::qWait(300);
+        QElapsedTimer t;
+        t.start();
+        engine.stop();
+        QVERIFY(t.elapsed() < 1000);
+        QCOMPARE(engine.state(), AudioEngine::State::Stopped);
+    }
 };
 
 QTEST_GUILESS_MAIN(TestAudio)

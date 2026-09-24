@@ -1,5 +1,6 @@
 // Yandex Music layer against a local mock server: request shapes and parsing
 // for every source the menu offers, likes, waves, search and device login.
+#include <QFile>
 #include <QJsonArray>
 #include <QJsonDocument>
 #include <QJsonObject>
@@ -44,6 +45,20 @@ struct Result {
         };
     }
     bool wait() { return QTest::qWaitFor([this] { return done; }, 5000); }
+};
+
+// Serves the "https" track links (host 127.0.0.1) from the plain-HTTP mock server.
+class LocalNam : public QNetworkAccessManager {
+protected:
+    QNetworkReply* createRequest(Operation op, const QNetworkRequest& request, QIODevice* data) override {
+        QNetworkRequest r(request);
+        QUrl u = r.url();
+        if (u.scheme() == QLatin1String("https") && u.host() == QLatin1String("127.0.0.1")) {
+            u.setScheme(QStringLiteral("http"));
+            r.setUrl(u);
+        }
+        return QNetworkAccessManager::createRequest(op, r, data);
+    }
 };
 
 }  // namespace
@@ -413,6 +428,92 @@ private Q_SLOTS:
         QCOMPARE(log, (QStringList{"0:1", "2:1", "0:2"}));
         player.setQueue({}, "", false);  // replacing the queue closes track 2
         QCOMPARE(log.last(), QStringLiteral("2:2"));
+    }
+
+private:
+    // Real playback of short mp3s served by the mock server, for the preload tests.
+    struct AudioRig {
+        LocalNam nam;
+        ApiClient api{&nam};
+        Library lib{&api};
+        audio::AudioEngine engine;
+        Player player{&lib, &engine};
+    };
+    bool setUpAudio(AudioRig& rig, const QList<int>& ids) {
+        QFile f(QStringLiteral(QIYAA_TEST_DATA "/sine440_3s.mp3"));
+        if (!f.open(QIODevice::ReadOnly) || !rig.engine.init()) return false;
+        rig.engine.setVolume(0);
+        rig.api.setBaseUrl(server.baseUrl());
+        const QByteArray mp3 = f.readAll();
+        for (int id : ids) {
+            server.result("GET", QStringLiteral("/tracks/%1/download-info").arg(id),
+                          "[{\"codec\":\"mp3\",\"bitrateInKbps\":320,\"downloadInfoUrl\":\"" + server.baseUrl().toUtf8() +
+                              "/dlinfo" + QByteArray::number(id) + "\"}]");
+            server.json("GET", QStringLiteral("/dlinfo%1").arg(id),
+                        "{\"host\":\"" + QUrl(server.baseUrl()).authority().toUtf8() + "\",\"path\":\"/t" +
+                            QByteArray::number(id) + "\",\"ts\":\"1\",\"s\":\"s\"}");
+        }
+        server.onPrefix("GET", "/get-mp3/", [mp3](const MockRequest&) { return MockResponse{200, mp3}; });
+        server.result("POST", "/play-audio", "\"ok\"");
+        return true;
+    }
+    int requestsTo(const QString& path) const {
+        int n = 0;
+        for (const MockRequest& r : server.requests()) n += r.path == path;
+        return n;
+    }
+    static QList<Track> numbered(const QList<int>& ids) {
+        QList<Track> out;
+        for (int id : ids) out << ApiClient::parseTrack(QJsonDocument::fromJson(trackJson(id, "t")).object());
+        return out;
+    }
+
+private Q_SLOTS:
+    void playerPreloadsAndAdvancesSeamlessly() {
+        AudioRig rig;
+        if (!setUpAudio(rig, {11, 12, 13})) QSKIP("no audio output");
+        QStringList log;
+        rig.player.setQueue(numbered({11, 12, 13}), "A", false, {}, [&](Player::TrackEvent e, const Track& t, double) {
+            log << QStringLiteral("%1:%2").arg(int(e)).arg(t.id);
+        });
+        QSignalSpy advanced(&rig.engine, &audio::AudioEngine::trackAdvanced);
+        QSignalSpy finished(&rig.engine, &audio::AudioEngine::trackFinished);
+        rig.player.playIndex(0);
+        // Once track 11 is downloaded, track 12 is fetched in the background.
+        QVERIFY(QTest::qWaitFor([&] { return rig.player.preloadedIndex() == 1; }, 5000));
+        QVERIFY(QTest::qWaitFor([&] { return rig.engine.state() == audio::AudioEngine::State::Playing; }, 3000));
+        QTest::qWait(300);  // let the preload download complete
+        QVERIFY(rig.player.seekTo(2.4));
+        QVERIFY(advanced.wait(4000));
+        QCOMPARE(finished.count(), 0);  // no stop between the tracks
+        QCOMPARE(rig.player.currentIndex(), 1);
+        QCOMPARE(log, (QStringList{"0:11", "1:11", "0:12"}));  // Started, Finished, Started
+        QCOMPARE(requestsTo("/tracks/12/download-info"), 1);    // no second link request
+        QVERIFY(rig.engine.positionSeconds() < 0.5);
+
+        // "Next" takes the preloaded track too.
+        QVERIFY(QTest::qWaitFor([&] { return rig.player.preloadedIndex() == 2; }, 5000));
+        rig.player.next();
+        QCOMPARE(rig.player.currentIndex(), 2);
+        QCOMPARE(log.mid(3), (QStringList{"2:12", "0:13"}));    // Skipped 12, Started 13 right away
+        QCOMPARE(requestsTo("/tracks/13/download-info"), 1);
+        rig.player.stop();
+    }
+
+    void playerRepreloadsWhenTheQueueChanges() {
+        AudioRig rig;
+        if (!setUpAudio(rig, {21, 22, 23})) QSKIP("no audio output");
+        rig.player.setQueue(numbered({21, 22, 23}), "A", false);
+        rig.player.playIndex(0);
+        QVERIFY(QTest::qWaitFor([&] { return rig.player.preloadedIndex() == 1; }, 5000));
+        rig.player.removeTracks({1});  // the preloaded track is gone: 23 follows now
+        QVERIFY(QTest::qWaitFor([&] { return rig.player.preloadedIndex() == 1 && requestsTo("/tracks/23/download-info") == 1; }, 5000));
+        QTest::qWait(300);
+        QSignalSpy advanced(&rig.engine, &audio::AudioEngine::trackAdvanced);
+        QVERIFY(rig.player.seekTo(2.4));
+        QVERIFY(advanced.wait(4000));
+        QCOMPARE(rig.player.currentTrack()->id, QStringLiteral("23"));
+        rig.player.stop();
     }
 
     void playerAsksEndlessSourceForMore() {
