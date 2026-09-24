@@ -1,0 +1,64 @@
+// A loaded Winamp 2.x skin (.wsz = zip of BMP sprite sheets + a few text files).
+#pragma once
+
+#include <QByteArray>
+#include <QColor>
+#include <QHash>
+#include <QImage>
+#include <QList>
+#include <QPainter>
+#include <QString>
+
+#include "skin/Region.h"
+
+namespace qiyaa {
+
+class Skin {
+public:
+    enum class Sheet {
+        Main,
+        CButtons,
+        TitleBar,
+        Numbers,   // nums_ex.bmp if present, otherwise numbers.bmp
+        PlayPaus,
+        MonoSter,
+        PosBar,
+        ShufRep,
+        Volume,
+        Balance,   // falls back to volume.bmp like Winamp does
+        Text,
+    };
+
+    // Loads a .wsz from memory. Missing sheets are taken from `fallback` (normally
+    // the built-in base skin). Returns false and fills `error` if the archive is unusable.
+    bool loadFromWsz(const QByteArray& zip, const Skin* fallback = nullptr, QString* error = nullptr);
+    bool loadFromFile(const QString& path, const Skin* fallback = nullptr, QString* error = nullptr);
+
+    // Built-in default skin from Qt resources.
+    static Skin builtinBase();
+
+    bool isValid() const { return !m_sheets.value(Sheet::Main).isNull(); }
+
+    const QImage& sheet(Sheet s) const;
+    bool numbersAreExtended() const { return m_numbersEx; }
+
+    // Draws `src` from sheet `s` at `dst` (in skin pixels; painter handles scaling).
+    void draw(QPainter& p, Sheet s, const QRect& src, const QPoint& dst) const;
+
+    // Draws text with the TEXT.BMP font. Returns the width in pixels.
+    int drawText(QPainter& p, const QPoint& at, const QString& text, int maxWidth = -1) const;
+    static int textWidth(const QString& text);
+
+    const RegionData& region() const { return m_region; }
+    const QList<QColor>& visColors() const { return m_visColors; }  // 24 entries
+
+private:
+    QHash<Sheet, QImage> m_sheets;
+    RegionData m_region;
+    QList<QColor> m_visColors;
+    bool m_numbersEx = false;
+};
+
+size_t qHash(Skin::Sheet s, size_t seed = 0) noexcept;
+
+}  // namespace qiyaa

@@ -1,0 +1,15 @@
+function(qiyaa_add_test name)
+    qt_add_executable(${name} ${name}.cpp)
+    target_link_libraries(${name} PRIVATE qiyaa_core Qt6::Test)
+    add_test(NAME ${name} COMMAND ${name})
+    # Tests need no display.
+    set_tests_properties(${name} PROPERTIES ENVIRONMENT "QT_QPA_PLATFORM=offscreen")
+endfunction()
+
+qiyaa_add_test(test_snap)
+qiyaa_add_test(test_region)
+qiyaa_add_test(test_yandex)
+qiyaa_add_test(test_skin)
+qiyaa_add_test(test_audio)
+target_compile_definitions(test_audio PRIVATE QIYAA_TEST_DATA="${CMAKE_CURRENT_SOURCE_DIR}/data")
+qiyaa_add_test(test_mainwindow)

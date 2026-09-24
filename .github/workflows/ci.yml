@@ -1,0 +1,111 @@
+name: CI
+
+on:
+  push:
+  pull_request:
+  workflow_dispatch:
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  build:
+    name: ${{ matrix.name }}
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          # Distro Qt (6.4 on Ubuntu 24.04): proves we build with the minimum version.
+          - name: Linux (system Qt 6.4)
+            os: ubuntu-24.04
+            system_qt: true
+          - name: Linux (Qt 6.8)
+            os: ubuntu-24.04
+            qt_arch: linux_gcc_64
+          - name: Windows (Qt 6.8, MSVC)
+            os: windows-2022
+            qt_arch: win64_msvc2022_64
+          - name: macOS (Qt 6.8, arm64)
+            os: macos-14
+            qt_arch: clang_64
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install system Qt
+        if: matrix.system_qt
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y qt6-base-dev libgl1-mesa-dev ninja-build
+
+      - name: Install Qt 6.8
+        if: ${{ !matrix.system_qt }}
+        uses: jurplel/install-qt-action@v4
+        with:
+          version: '6.8.3'
+          arch: ${{ matrix.qt_arch }}
+          cache: true
+
+      - name: Linux build deps
+        if: runner.os == 'Linux' && !matrix.system_qt
+        run: sudo apt-get update && sudo apt-get install -y ninja-build libgl1-mesa-dev libxkbcommon-x11-0 libxcb-cursor0
+
+      - uses: ilammy/msvc-dev-cmd@v1
+        if: runner.os == 'Windows'
+
+      - name: Configure
+        shell: bash
+        run: |
+          GEN="-G Ninja"
+          [ "$RUNNER_OS" = "macOS" ] && GEN=""
+          cmake -S . -B build $GEN -DCMAKE_BUILD_TYPE=Release
+
+      - name: Build
+        run: cmake --build build --config Release --parallel
+
+      - name: Test
+        run: ctest --test-dir build -C Release --output-on-failure
+        env:
+          QT_QPA_PLATFORM: offscreen
+
+      - name: Screenshot (offscreen)
+        shell: bash
+        env:
+          QT_QPA_PLATFORM: offscreen
+        run: |
+          case "$RUNNER_OS" in
+            Windows) BIN=build/QiYaa.exe ;;
+            macOS)   BIN=build/QiYaa.app/Contents/MacOS/QiYaa ;;
+            *)       BIN=build/QiYaa ;;
+          esac
+          "$BIN" --screenshot screenshot.png --offline
+
+      - name: Package (Windows)
+        if: runner.os == 'Windows'
+        shell: bash
+        run: |
+          mkdir -p dist/QiYaa
+          cp build/QiYaa.exe dist/QiYaa/
+          windeployqt --release --no-translations --no-system-d3d-compiler --no-opengl-sw dist/QiYaa/QiYaa.exe
+          cp LICENSE THIRD_PARTY.md dist/QiYaa/
+
+      - name: Package (macOS)
+        if: runner.os == 'macOS'
+        run: |
+          macdeployqt build/QiYaa.app
+          mkdir -p dist && cp -R build/QiYaa.app dist/
+
+      - name: Package (Linux)
+        if: runner.os == 'Linux' && !matrix.system_qt
+        run: mkdir -p dist && cp build/QiYaa LICENSE THIRD_PARTY.md dist/
+
+      - uses: actions/upload-artifact@v4
+        if: ${{ !matrix.system_qt }}
+        with:
+          name: QiYaa-${{ runner.os }}
+          path: |
+            dist/
+            screenshot.png
+          if-no-files-found: warn
