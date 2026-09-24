@@ -3,16 +3,10 @@
 #include <QApplication>
 #include <QCommandLineParser>
 #include <QFile>
-#include <QNetworkAccessManager>
-#include <QSettings>
 #include <QTimer>
 
-#include "app/Paths.h"
-#include "audio/AudioEngine.h"
-#include "core/Player.h"
-#include "skin/Skin.h"
+#include "app/App.h"
 #include "ui/MainWindow.h"
-#include "yandex/ApiClient.h"
 
 using namespace qiyaa;
 
@@ -51,6 +45,27 @@ void streamLocalFile(audio::AudioEngine* engine, const QString& path) {
     timer->start(20);
 }
 
+// A few fake tracks, for screenshots and UI testing without an account.
+QList<yandex::Track> demoTracks() {
+    const std::pair<const char*, int> raw[] = {
+        {"Кино - Группа крови", 285},      {"Земфира - Искала", 237},         {"Сплин - Выхода нет", 227},
+        {"Björk - Jóga", 305},             {"Daft Punk - Digital Love", 301}, {"Мумий Тролль - Владивосток 2000", 164},
+        {"Radiohead - Karma Police", 264}, {"Кино - Кукушка", 395},           {"Nirvana - Come As You Are", 219},
+    };
+    QList<yandex::Track> out;
+    int id = 1;
+    for (const auto& [name, secs] : raw) {
+        yandex::Track t;
+        const QString s = QString::fromUtf8(name);
+        t.id = QString::number(id++);
+        t.artists << s.section(QStringLiteral(" - "), 0, 0);
+        t.title = s.section(QStringLiteral(" - "), 1);
+        t.durationMs = secs * 1000;
+        out << t;
+    }
+    return out;
+}
+
 }  // namespace
 
 int main(int argc, char* argv[]) {
@@ -58,97 +73,49 @@ int main(int argc, char* argv[]) {
     QApplication app(argc, argv);
     QApplication::setApplicationName(QStringLiteral("QiYaa"));
     QApplication::setApplicationVersion(QStringLiteral(QIYAA_VERSION));
-    QApplication::setQuitOnLastWindowClosed(true);
+    QApplication::setQuitOnLastWindowClosed(false);  // closing the EQ/playlist must not quit
 
     QCommandLineParser cli;
     cli.setApplicationDescription(QStringLiteral("Winamp-style Yandex Music player"));
     cli.addHelpOption();
     cli.addVersionOption();
-    QCommandLineOption screenshotOpt(QStringLiteral("screenshot"), QStringLiteral("Render the main window to <png> and exit."),
+    QCommandLineOption screenshotOpt(QStringLiteral("screenshot"), QStringLiteral("Render the windows to <png> and exit."),
                                      QStringLiteral("png"));
     QCommandLineOption skinOpt(QStringLiteral("skin"), QStringLiteral("Use skin <wsz> for this run."), QStringLiteral("wsz"));
     QCommandLineOption fileOpt(QStringLiteral("play-file"), QStringLiteral("Play a local audio file instead of Yandex Music."),
                                QStringLiteral("path"));
     QCommandLineOption offlineOpt(QStringLiteral("offline"), QStringLiteral("Don't connect to Yandex Music."));
-    QCommandLineOption textOpt(QStringLiteral("text"), QStringLiteral("Show <text> in the marquee (for screenshots)."),
-                               QStringLiteral("text"));
-    cli.addOptions({screenshotOpt, skinOpt, fileOpt, offlineOpt, textOpt});
+    QCommandLineOption textOpt(QStringLiteral("text"), QStringLiteral("Show <text> in the marquee."), QStringLiteral("text"));
+    QCommandLineOption demoOpt(QStringLiteral("demo"), QStringLiteral("Fill the playlist with sample entries (UI testing)."));
+    QCommandLineOption scaleOpt(QStringLiteral("scale"), QStringLiteral("Window size for this run, e.g. 1.5."), QStringLiteral("factor"));
+    cli.addOptions({screenshotOpt, skinOpt, fileOpt, offlineOpt, textOpt, demoOpt, scaleOpt});
     cli.process(app);
 
-    QSettings settings(paths::configDir() + QStringLiteral("/settings.ini"), QSettings::IniFormat);
+    const bool screenshot = cli.isSet(screenshotOpt);
+    App::Options opts;
+    opts.skinOverride = cli.value(skinOpt);
+    opts.offline = screenshot || cli.isSet(offlineOpt) || cli.isSet(fileOpt);
+    // With --play-file, a screenshot is taken after a second of playback (shows the visualizer).
+    opts.audio = !screenshot || cli.isSet(fileOpt);
+    opts.readOnlySettings = screenshot;  // screenshots never touch the user's settings
+    App qiyaa(opts);
 
-    // Skins: the base skin fills in any sheets a custom skin lacks.
-    const Skin baseSkin = Skin::builtinBase();
-    auto currentSkin = std::make_unique<Skin>();
-    auto loadSkin = [&](const QString& path) -> bool {
-        if (path.isEmpty()) return false;
-        auto s = std::make_unique<Skin>();
-        QString err;
-        if (!s->loadFromFile(path, &baseSkin, &err)) {
-            qWarning("Cannot load skin %s: %s", qPrintable(path), qPrintable(err));
-            return false;
-        }
-        currentSkin = std::move(s);
-        return true;
-    };
-    const QString skinPath = cli.isSet(skinOpt) ? cli.value(skinOpt) : settings.value(QStringLiteral("skin")).toString();
-    if (!loadSkin(skinPath)) *currentSkin = baseSkin;
+    qiyaa.start();
+    if (cli.isSet(scaleOpt)) qiyaa.setScale(cli.value(scaleOpt).toDouble(), /*persist=*/false);
+    if (cli.isSet(demoOpt)) qiyaa.player()->setQueue(demoTracks(), QStringLiteral("Demo"), false);
+    if (cli.isSet(textOpt)) qiyaa.mainWindow()->setStatusText(cli.value(textOpt));
 
-    QNetworkAccessManager nam;
-    yandex::ApiClient api(&nam);
-    audio::AudioEngine engine;
-    if (!cli.isSet(screenshotOpt)) {
-        QString audioError;
-        if (!engine.init(&audioError)) qWarning("Audio: %s", qPrintable(audioError));
-        else qInfo("Audio backend: %s", qPrintable(engine.backendName()));
-    }
-    Player player(&api, &engine);
-
-    MainWindow window(&player, currentSkin.get());
-    window.setVolume(settings.value(QStringLiteral("volume"), 75).toInt());
-    window.setBalance(settings.value(QStringLiteral("balance"), 0).toInt());
-    window.setScale(settings.value(QStringLiteral("scale"), 1.0).toDouble());
-    if (settings.value(QStringLiteral("alwaysOnTop"), false).toBool())
-        window.setWindowFlag(Qt::WindowStaysOnTopHint, true);
-
-    QObject::connect(&window, &MainWindow::skinRequested, &window, [&](const QString& path) {
-        if (loadSkin(path)) {
-            window.setSkin(currentSkin.get());
-            if (!cli.isSet(screenshotOpt)) settings.setValue(QStringLiteral("skin"), path);
-        } else {
-            window.setStatusText(QStringLiteral("Cannot load skin"));
-        }
-    });
-    QObject::connect(&window, &MainWindow::scaleRequested, &window, [&](double s) {
-        window.setScale(s);
-        settings.setValue(QStringLiteral("scale"), s);
-    });
-    QObject::connect(&window, &MainWindow::alwaysOnTopRequested, &window, [&](bool on) {
-        window.setWindowFlag(Qt::WindowStaysOnTopHint, on);
-        window.show();
-        settings.setValue(QStringLiteral("alwaysOnTop"), on);
-    });
-    QObject::connect(&window, &SkinnedWindow::moveFinished, &window, [&](QPoint pos) {
-        settings.setValue(QStringLiteral("mainWindow/pos"), pos);
-    });
-    QObject::connect(&app, &QApplication::aboutToQuit, &window, [&] {
-        settings.setValue(QStringLiteral("volume"), window.volume());
-        settings.setValue(QStringLiteral("balance"), window.balance());
-        if (SkinnedWindow::canPositionWindows()) settings.setValue(QStringLiteral("mainWindow/pos"), window.pos());
-        player.stop();
-    });
-
-    if (cli.isSet(screenshotOpt)) {
-        if (cli.isSet(textOpt)) window.setStatusText(cli.value(textOpt));
-        window.grab().save(cli.value(screenshotOpt));
-        return 0;
+    if (screenshot && !cli.isSet(fileOpt)) {
+        QApplication::processEvents();
+        return qiyaa.snapshot().save(cli.value(screenshotOpt)) ? 0 : 1;
     }
 
-    window.show();
-    window.placeAt(settings.value(QStringLiteral("mainWindow/pos"), QPoint(100, 100)).toPoint());
-
-    if (cli.isSet(fileOpt)) streamLocalFile(&engine, cli.value(fileOpt));
-    else if (!cli.isSet(offlineOpt)) player.start();
-
+    if (cli.isSet(fileOpt)) streamLocalFile(qiyaa.engine(), cli.value(fileOpt));
+    if (screenshot) {
+        QTimer::singleShot(1500, &app, [&] {
+            const bool ok = qiyaa.snapshot().save(cli.value(screenshotOpt));
+            QApplication::exit(ok ? 0 : 1);
+        });
+    }
     return app.exec();
 }

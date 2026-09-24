@@ -16,6 +16,8 @@
 #include <QObject>
 #include <QString>
 
+#include "audio/Equalizer.h"
+
 namespace qiyaa::audio {
 
 class AudioEngine : public QObject {
@@ -49,6 +51,11 @@ public:
     int sourceChannels() const { return m_sourceChannels.load(); }
 
     void setVolume(int percent);    // 0..100
+    void setEqualizer(const EqSettings& settings);
+
+    // Latest `count` output frames (after EQ, before volume) for visualizations.
+    void readVisSamples(float* left, float* right, uint32_t count) const;
+    int outputSampleRate() const;
     void setBalance(int balance);   // -100 (left) .. 100 (right)
 
     // Publishes state changes and end of track; call from a UI timer.

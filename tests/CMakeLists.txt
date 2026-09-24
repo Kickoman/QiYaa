@@ -13,3 +13,12 @@ qiyaa_add_test(test_skin)
 qiyaa_add_test(test_audio)
 target_compile_definitions(test_audio PRIVATE QIYAA_TEST_DATA="${CMAKE_CURRENT_SOURCE_DIR}/data")
 qiyaa_add_test(test_mainwindow)
+qiyaa_add_test(test_library)
+qiyaa_add_test(test_dsp)
+qiyaa_add_test(test_windows)
+# A realistic 2560x1440 virtual screen (the offscreen default is 800x600).
+# Not on Windows: Qt splits platform arguments on ':', which breaks "C:/...".
+if(NOT WIN32)
+    set_tests_properties(test_windows PROPERTIES ENVIRONMENT
+        "QT_QPA_PLATFORM=offscreen:configfile=${CMAKE_CURRENT_SOURCE_DIR}/data/screen-2560x1440.json")
+endif()

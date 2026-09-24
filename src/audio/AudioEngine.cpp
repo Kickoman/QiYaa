@@ -11,6 +11,9 @@
 
 #include <miniaudio.h>
 
+#include "audio/Equalizer.h"
+#include "audio/VisTap.h"
+
 namespace qiyaa::audio {
 
 namespace {
@@ -120,6 +123,8 @@ struct AudioEngine::Impl {
     std::atomic<float> gainL{1.0f};
     std::atomic<float> gainR{1.0f};
     std::atomic<ma_uint64> framesPlayed{0};
+    EqualizerDsp eq;
+    VisTap vis;
     std::atomic<ma_uint64> frameOffset{0};  // position of framesPlayed==0 (after a seek)
 
     // Decoder -> UI.
@@ -133,21 +138,25 @@ struct AudioEngine::Impl {
         auto* self = static_cast<Impl*>(dev->pUserData);
         auto* dst = static_cast<float*>(out);
         ma_uint32 written = 0;
-        if (self->outputEnabled.load(std::memory_order_acquire)) {
-            const float gl = self->gainL.load(std::memory_order_relaxed);
-            const float gr = self->gainR.load(std::memory_order_relaxed);
+        // A pending seek owns the ring: the decoder may reset it at any moment
+        // until it clears seekRequest, so don't touch it (see seek()).
+        if (self->outputEnabled.load(std::memory_order_acquire) && self->seekRequest.load(std::memory_order_acquire) < 0) {
             while (written < frameCount) {
                 ma_uint32 n = frameCount - written;
                 void* src = nullptr;
                 if (ma_pcm_rb_acquire_read(&self->ring, &n, &src) != MA_SUCCESS || n == 0) break;
-                const float* s = static_cast<const float*>(src);
-                float* d = dst + written * kChannels;
-                for (ma_uint32 i = 0; i < n; ++i) {
-                    d[i * 2] = s[i * 2] * gl;
-                    d[i * 2 + 1] = s[i * 2 + 1] * gr;
-                }
+                std::memcpy(dst + written * kChannels, src, n * kChannels * sizeof(float));
                 ma_pcm_rb_commit_read(&self->ring, n);
                 written += n;
+            }
+            // DSP chain: EQ -> visualization tap -> volume/balance.
+            self->eq.process(dst, written);
+            self->vis.write(dst, written);
+            const float gl = self->gainL.load(std::memory_order_relaxed);
+            const float gr = self->gainR.load(std::memory_order_relaxed);
+            for (ma_uint32 i = 0; i < written; ++i) {
+                dst[i * 2] = std::clamp(dst[i * 2] * gl, -1.0f, 1.0f);
+                dst[i * 2 + 1] = std::clamp(dst[i * 2 + 1] * gr, -1.0f, 1.0f);
             }
             self->framesPlayed.fetch_add(written, std::memory_order_relaxed);
         }
@@ -187,14 +196,19 @@ struct AudioEngine::Impl {
 
         std::vector<float> chunk(1024 * kChannels);
         while (!stopDecoder) {
-            if (const ma_int64 target = seekRequest.exchange(-1); target >= 0) {
-                // Caller disabled output; ring is ours to reset.
+            if (ma_int64 target = seekRequest.load(std::memory_order_acquire); target >= 0) {
+                // While seekRequest >= 0 the callback doesn't read the ring, so it's ours.
+                // The seek itself may block until that part is downloaded.
                 ma_decoder_seek_to_pcm_frame(&decoder, ma_uint64(target));
+                if (stopDecoder) break;  // stream abandoned mid-seek: leave the ring alone
                 ma_pcm_rb_reset(&ring);
                 frameOffset = ma_uint64(target);
                 framesPlayed = 0;
                 decoderDone = false;
-                outputEnabled.store(true, std::memory_order_release);
+                // Hand the ring back only if no newer seek arrived meanwhile;
+                // otherwise loop and serve the newer one.
+                seekRequest.compare_exchange_strong(target, -1, std::memory_order_acq_rel);
+                continue;
             }
             if (decoderDone) {
                 std::this_thread::sleep_for(std::chrono::milliseconds(20));
@@ -280,6 +294,7 @@ bool AudioEngine::init(QString* error) {
     }
     d->deviceReady = true;
     d->sampleRate = d->device.sampleRate;
+    d->eq.setSampleRate(d->sampleRate);
     if (ma_pcm_rb_init(ma_format_f32, kChannels, d->sampleRate * kRingSeconds, nullptr, nullptr, &d->ring) != MA_SUCCESS) {
         if (error) *error = QStringLiteral("cannot allocate ring buffer");
         return false;
@@ -296,6 +311,11 @@ QString AudioEngine::backendName() const {
 void AudioEngine::beginStream() {
     d->outputEnabled.store(false, std::memory_order_release);
     d->stopDecoderThread();
+    if (!d->ringReady) {  // no output device: nothing can play
+        setState(State::Stopped);
+        Q_EMIT errorOccurred(QStringLiteral("no audio output device"));
+        return;
+    }
     // Stopping the device guarantees the callback isn't inside the ring right now.
     if (d->deviceReady && ma_device_is_started(&d->device)) ma_device_stop(&d->device);
     if (d->ringReady) ma_pcm_rb_reset(&d->ring);
@@ -353,12 +373,12 @@ void AudioEngine::stop() {
 
 bool AudioEngine::seek(double seconds) {
     if (!d->stream || !d->decoderStarted || seconds < 0) return false;
-    // Stop the device so the callback is guaranteed not to be reading the ring,
-    // hand the seek to the decoder thread, and let it re-enable output.
+    // Stopping the device waits for any running callback to finish; from then
+    // on the callback sees seekRequest >= 0 and leaves the ring to the decoder
+    // thread, which clears the request once the ring holds the new position.
     const bool wasRunning = d->deviceReady && ma_device_is_started(&d->device);
     if (wasRunning) ma_device_stop(&d->device);
-    d->outputEnabled = false;
-    d->seekRequest = ma_int64(seconds * d->sampleRate);
+    d->seekRequest.store(ma_int64(seconds * d->sampleRate), std::memory_order_release);
     if (wasRunning) ma_device_start(&d->device);
     return true;
 }
@@ -366,6 +386,18 @@ bool AudioEngine::seek(double seconds) {
 double AudioEngine::positionSeconds() const {
     if (d->sampleRate == 0) return 0;
     return double(d->frameOffset.load() + d->framesPlayed.load()) / d->sampleRate;
+}
+
+void AudioEngine::setEqualizer(const EqSettings& settings) {
+    d->eq.publish(settings);
+}
+
+void AudioEngine::readVisSamples(float* left, float* right, uint32_t count) const {
+    d->vis.read(left, right, std::min<uint32_t>(count, VisTap::kSize));
+}
+
+int AudioEngine::outputSampleRate() const {
+    return int(d->sampleRate);
 }
 
 void AudioEngine::setVolume(int percent) {

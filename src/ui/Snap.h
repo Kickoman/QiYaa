@@ -27,6 +27,14 @@ QRect pickScreen(const QRect& rect, const QList<QRect>& screens);
 // top-left is kept visible). This is what guarantees windows never get lost off-screen.
 QPoint clampInside(const QRect& rect, const QRect& screen);
 
+// True if two windows share an edge (distance 0) and overlap along it —
+// Winamp's definition of "docked".
+bool touching(const QRect& a, const QRect& b);
+
+// Indices of all rects connected to rects[start] through a chain of touching
+// rects (not including `start` itself).
+QList<int> connectedGroup(int start, const QList<QRect>& rects);
+
 // Full pipeline used while dragging: snap to other windows, then to the screen
 // edges, then clamp inside the screen the window is on.
 QPoint resolveDragPosition(const QRect& proposed, const QList<QRect>& others,

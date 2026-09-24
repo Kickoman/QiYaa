@@ -38,15 +38,25 @@ TokenSource findToken() {
     if (const QString env = normalizeToken(qgetenv("QIYAA_TOKEN")); !env.isEmpty())
         return {env, QStringLiteral("environment variable QIYAA_TOKEN")};
 
-    QStringList files{paths::configDir() + QStringLiteral("/token")};
-    for (const QString& dir : paths::yaampDataDirs()) files << dir + QStringLiteral("/token.json");
+    // Our own file wins, even when empty (= the user logged out).
+    const QString own = paths::configDir() + QStringLiteral("/token");
+    if (QFile f(own); f.open(QIODevice::ReadOnly)) {
+        const QString t = normalizeToken(f.read(64 * 1024));
+        return t.isEmpty() ? TokenSource{} : TokenSource{t, own};
+    }
 
-    for (const QString& path : files) {
+    for (const QString& dir : paths::yaampDataDirs()) {
+        const QString path = dir + QStringLiteral("/token.json");
         QFile f(path);
         if (!f.open(QIODevice::ReadOnly)) continue;
         if (const QString t = normalizeToken(f.read(64 * 1024)); !t.isEmpty()) return {t, path};
     }
     return {};
+}
+
+void forgetToken() {
+    QFile f(paths::configDir() + QStringLiteral("/token"));
+    if (f.open(QIODevice::WriteOnly | QIODevice::Truncate)) f.setPermissions(QFileDevice::ReadOwner | QFileDevice::WriteOwner);
 }
 
 bool saveToken(const QString& token) {

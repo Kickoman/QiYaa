@@ -19,6 +19,7 @@ private:
     Skin skin;
     QNetworkAccessManager nam;
     std::unique_ptr<yandex::ApiClient> api;
+    std::unique_ptr<yandex::Library> library;
     std::unique_ptr<audio::AudioEngine> engine;
     std::unique_ptr<Player> player;
     std::unique_ptr<MainWindow> win;
@@ -36,8 +37,9 @@ private Q_SLOTS:
         skin = Skin::builtinBase();
         QVERIFY(skin.isValid());
         api = std::make_unique<yandex::ApiClient>(&nam);
+        library = std::make_unique<yandex::Library>(api.get());
         engine = std::make_unique<audio::AudioEngine>();
-        player = std::make_unique<Player>(api.get(), engine.get());
+        player = std::make_unique<Player>(library.get(), engine.get());
         win = std::make_unique<MainWindow>(player.get(), &skin);
         win->show();
         QVERIFY(QTest::qWaitForWindowExposed(win.get()));

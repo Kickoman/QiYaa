@@ -21,4 +21,8 @@ TokenSource findToken();
 // Saves the token to <configDir>/token (owner-only permissions).
 bool saveToken(const QString& token);
 
+// Logout: leaves an empty token file, which also stops findToken() from
+// re-importing the old Yaamp token.
+void forgetToken();
+
 }  // namespace qiyaa::yandex

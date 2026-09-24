@@ -237,6 +237,8 @@ bool Skin::loadFromWsz(const QByteArray& zip, const Skin* fallback, QString* err
     load(Sheet::PosBar, {"posbar.bmp"});
     load(Sheet::ShufRep, {"shufrep.bmp"});
     load(Sheet::Text, {"text.bmp"});
+    load(Sheet::EqMain, {"eqmain.bmp"});
+    load(Sheet::PlEdit, {"pledit.bmp"});
     const bool hasVolume = load(Sheet::Volume, {"volume.bmp"});
     if (!load(Sheet::Balance, {"balance.bmp"}) && hasVolume)
         m_sheets.insert(Sheet::Balance, m_sheets.value(Sheet::Volume));
@@ -250,6 +252,10 @@ bool Skin::loadFromWsz(const QByteArray& zip, const Skin* fallback, QString* err
     }
 
     m_region = parseRegionTxt(files.value(QStringLiteral("region.txt")));
+    if (files.contains(QStringLiteral("pledit.txt")))
+        m_plStyle = parsePlaylistStyle(files.value(QStringLiteral("pledit.txt")));
+    else if (fallback)
+        m_plStyle = fallback->m_plStyle;
     m_visColors = parseVisColors(files.value(QStringLiteral("viscolor.txt")));
     if (m_visColors.size() < 24 && fallback) m_visColors = fallback->m_visColors;
 
@@ -258,6 +264,29 @@ bool Skin::loadFromWsz(const QByteArray& zip, const Skin* fallback, QString* err
         return false;
     }
     return true;
+}
+
+Skin::PlaylistStyle Skin::parsePlaylistStyle(const QByteArray& text) {
+    PlaylistStyle st;
+    static const QRegularExpression line(QStringLiteral("^\\s*([A-Za-z]+)\\s*=\\s*(.*?)\\s*$"));
+    for (const QByteArray& raw : text.split('\n')) {
+        const auto m = line.match(QString::fromLatin1(raw).remove(u'\r'));
+        if (!m.hasMatch()) continue;
+        const QString key = m.captured(1).toLower();
+        QString value = m.captured(2);
+        if (key == QLatin1String("font")) {
+            if (!value.isEmpty()) st.font = value;
+            continue;
+        }
+        if (!value.startsWith(u'#')) value.prepend(u'#');
+        const QColor c = QColor::fromString(value.left(7));
+        if (!c.isValid()) continue;
+        if (key == QLatin1String("normal")) st.normal = c;
+        else if (key == QLatin1String("current")) st.current = c;
+        else if (key == QLatin1String("normalbg")) st.normalBg = c;
+        else if (key == QLatin1String("selectedbg")) st.selectedBg = c;
+    }
+    return st;
 }
 
 bool Skin::loadFromFile(const QString& path, const Skin* fallback, QString* error) {

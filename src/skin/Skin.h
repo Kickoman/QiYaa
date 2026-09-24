@@ -27,6 +27,17 @@ public:
         Volume,
         Balance,   // falls back to volume.bmp like Winamp does
         Text,
+        EqMain,
+        PlEdit,
+    };
+
+    // Colours and font from PLEDIT.TXT.
+    struct PlaylistStyle {
+        QColor normal{0x00, 0xFF, 0x00};
+        QColor current{0xFF, 0xFF, 0xFF};
+        QColor normalBg{0x00, 0x00, 0x00};
+        QColor selectedBg{0x00, 0x00, 0xC6};
+        QString font = QStringLiteral("Arial");
     };
 
     // Loads a .wsz from memory. Missing sheets are taken from `fallback` (normally
@@ -51,11 +62,15 @@ public:
 
     const RegionData& region() const { return m_region; }
     const QList<QColor>& visColors() const { return m_visColors; }  // 24 entries
+    const PlaylistStyle& playlistStyle() const { return m_plStyle; }
+
+    static PlaylistStyle parsePlaylistStyle(const QByteArray& text);
 
 private:
     QHash<Sheet, QImage> m_sheets;
     RegionData m_region;
     QList<QColor> m_visColors;
+    PlaylistStyle m_plStyle;
     bool m_numbersEx = false;
 };
 

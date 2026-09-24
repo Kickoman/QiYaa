@@ -20,13 +20,19 @@ Only LGPL-licensed Qt modules are used. GPL-only modules (Qt HTTP Server, Qt Net
 ## Code and data derived from other projects
 
 **webamp** — https://github.com/captbaritone/webamp — MIT License, Copyright (c) 2015 Jordan Eldredge.
-Sprite coordinates and main-window layout (`src/skin/SkinSprites.h`), the TEXT.BMP font map (`src/skin/Skin.cpp`),
-`region.txt` parsing rules (`src/skin/Region.cpp`) and window snapping (`src/ui/Snap.cpp`) are ported from webamp.
+Sprite coordinates and window layouts for the main, equalizer and playlist windows (`src/skin/SkinSprites.h`),
+the TEXT.BMP font map (`src/skin/Skin.cpp`), `region.txt` and `pledit.txt` parsing rules, window snapping
+(`src/ui/Snap.cpp`), the EQ graph spline (`src/ui/EqualizerWindow.cpp`, itself adapted from
+[morganherlocker/cubic-spline](https://github.com/morganherlocker/cubic-spline), MIT), the analyzer's bar/peak
+behaviour (`src/vis/Visualizers.cpp`) and Winamp's built-in EQ presets (`src/audio/EqPresets.h`) are ported from webamp.
 
 **Yaamp** — https://github.com/Kickoman/yaamp (fork of https://github.com/umnik1/yaamp) — MIT License, Copyright (c) 2025 Maksim Chingin.
 Product idea, the set of Yandex Music features and the bundled skin selection come from Yaamp.
 
-**yandex-music-client** — https://github.com/umnik1/yandex-music-client — the track-link signing scheme (`src/yandex/TrackUrl.cpp`).
+**yandex-music-client** — https://github.com/umnik1/yandex-music-client — the track-link signing scheme (`src/yandex/TrackUrl.cpp`)
+and the endpoint shapes used in `src/yandex/Library.cpp`.
+
+The equalizer uses the peaking-filter formulas from Robert Bristow-Johnson's *Audio EQ Cookbook* (public knowledge, no code copied).
 
 <details><summary>MIT License text (webamp, Yaamp, miniz)</summary>
 

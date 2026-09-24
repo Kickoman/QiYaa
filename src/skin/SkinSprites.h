@@ -85,6 +85,69 @@ inline constexpr QRect kBalanceThumbSelected{0, 422, 14, 11};
 inline constexpr int kCharW = 5;
 inline constexpr int kCharH = 6;
 
+// ------------------------------------------------------------------ EQMAIN.BMP
+namespace eq {
+inline constexpr QSize kSize{275, 116};
+inline constexpr QRect kBackground{0, 0, 275, 116};
+inline constexpr QRect kTitleBar{0, 149, 275, 14};
+inline constexpr QRect kTitleBarSelected{0, 134, 275, 14};
+// Slider backgrounds: 28 frames (value low -> high), 14 per row, 15 px apart, rows 65 px apart.
+inline constexpr QPoint kSliderFrames{13, 164};
+inline constexpr QSize kSliderSize{14, 63};
+inline constexpr QRect kThumb{0, 164, 11, 11};
+inline constexpr QRect kThumbSelected{0, 176, 11, 11};
+inline constexpr QRect kCloseButton{0, 116, 9, 9};
+inline constexpr QRect kCloseButtonDown{0, 125, 9, 9};
+inline constexpr ToggleSprite kOn{{10, 119, 26, 12}, {128, 119, 26, 12}, {69, 119, 26, 12}, {187, 119, 26, 12}};
+inline constexpr ToggleSprite kAuto{{36, 119, 32, 12}, {154, 119, 32, 12}, {95, 119, 32, 12}, {213, 119, 32, 12}};
+inline constexpr QRect kGraphBackground{0, 294, 113, 19};
+inline constexpr QRect kGraphLineColors{115, 294, 1, 19};
+inline constexpr QRect kPreampLine{0, 314, 113, 1};
+inline constexpr QRect kPresetsButton{224, 164, 44, 12};
+inline constexpr QRect kPresetsButtonSelected{224, 176, 44, 12};
+
+// Layout.
+inline constexpr QPoint kClose{264, 3};
+inline constexpr QPoint kOnPos{14, 18};
+inline constexpr QPoint kAutoPos{40, 18};
+inline constexpr QPoint kPresetsPos{217, 18};
+inline constexpr QPoint kGraphPos{86, 17};
+inline constexpr QPoint kPreampPos{21, 38};
+inline constexpr int kBandsX = 78;     // first band
+inline constexpr int kBandStep = 18;
+inline constexpr int kSlidersY = 38;
+inline constexpr int kSliderTravel = 62 - 11;  // thumb travel in px
+}  // namespace eq
+
+// ------------------------------------------------------------------ PLEDIT.BMP
+namespace pl {
+inline constexpr QRect kTopTile{127, 21, 25, 20};
+inline constexpr QRect kTopLeft{0, 21, 25, 20};
+inline constexpr QRect kTitle{26, 21, 100, 20};
+inline constexpr QRect kTopRight{153, 21, 25, 20};
+inline constexpr QRect kTopTileSelected{127, 0, 25, 20};
+inline constexpr QRect kTopLeftSelected{0, 0, 25, 20};
+inline constexpr QRect kTitleSelected{26, 0, 100, 20};
+inline constexpr QRect kTopRightSelected{153, 0, 25, 20};
+inline constexpr QRect kLeftTile{0, 42, 12, 29};
+inline constexpr QRect kRightTile{31, 42, 20, 29};
+inline constexpr QRect kBottomTile{179, 0, 25, 38};
+inline constexpr QRect kBottomLeft{0, 72, 125, 38};
+inline constexpr QRect kBottomRight{126, 72, 150, 38};
+inline constexpr QRect kScrollHandle{52, 53, 8, 18};
+inline constexpr QRect kScrollHandleSelected{61, 53, 8, 18};
+inline constexpr QRect kCloseSelected{52, 42, 9, 9};
+
+inline constexpr QSize kMinSize{275, 116};
+inline constexpr int kStepW = 25;
+inline constexpr int kStepH = 29;
+inline constexpr int kTopH = 20;
+inline constexpr int kBottomH = 38;
+inline constexpr int kLeftW = 12;
+inline constexpr int kRightW = 20;
+inline constexpr int kRowH = 13;
+}  // namespace pl
+
 // ------------------------------------------------------------------ main window layout
 namespace main {
 inline constexpr QSize kSize{275, 116};

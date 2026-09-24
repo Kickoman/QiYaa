@@ -122,6 +122,32 @@ QPoint clampInside(const QRect& rect, const QRect& screen) {
     return {x, y};
 }
 
+bool touching(const QRect& a, const QRect& b) {
+    const bool yOverlap = top(a) < bottom(b) && top(b) < bottom(a);
+    const bool xOverlap = left(a) < right(b) && left(b) < right(a);
+    if (yOverlap && (right(a) == left(b) || right(b) == left(a))) return true;
+    if (xOverlap && (bottom(a) == top(b) || bottom(b) == top(a))) return true;
+    return false;
+}
+
+QList<int> connectedGroup(int start, const QList<QRect>& rects) {
+    QList<int> group;
+    QList<int> queue{start};
+    QList<bool> seen(rects.size(), false);
+    if (start < 0 || start >= rects.size()) return group;
+    seen[start] = true;
+    while (!queue.isEmpty()) {
+        const int cur = queue.takeFirst();
+        for (int i = 0; i < rects.size(); ++i) {
+            if (seen[i] || !touching(rects[cur], rects[i])) continue;
+            seen[i] = true;
+            group << i;
+            queue << i;
+        }
+    }
+    return group;
+}
+
 QPoint resolveDragPosition(const QRect& proposed, const QList<QRect>& others,
                            const QList<QRect>& screens, int distance) {
     QRect r = proposed;

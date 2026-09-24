@@ -7,6 +7,7 @@
 #include <QTest>
 
 #include "audio/AudioEngine.h"
+#include "core/Player.h"
 
 using qiyaa::audio::AudioEngine;
 
@@ -89,6 +90,52 @@ private Q_SLOTS:
         pumpUntil([&] { return errors.count() > 0; }, 3000);
         QCOMPARE(errors.count(), 1);
         QCOMPARE(engine.state(), AudioEngine::State::Stopped);
+    }
+
+    void rapidSeeksWhileDownloading() {
+        // ~39 s stream (the 3 s file repeated; MP3 frames concatenate), fed slowly,
+        // with seeks both inside and ahead of what's downloaded.
+        QByteArray longMp3;
+        for (int i = 0; i < 13; ++i) longMp3 += mp3;
+        engine.beginStream();
+        qsizetype fed = 0;
+        auto feed = [&](qsizetype n) {
+            engine.appendData(longMp3.mid(fed, n));
+            fed += n;
+        };
+        feed(64 * 1024);
+        pumpUntil([&] { return engine.state() == AudioEngine::State::Playing; }, 3000);
+        QCOMPARE(engine.state(), AudioEngine::State::Playing);
+        const double targets[] = {1.0, 30.0, 2.0, 35.0, 0.5, 20.0, 3.0, 10.0};
+        for (int round = 0; round < 3; ++round)
+            for (double t : targets) {
+                QVERIFY(engine.seek(t));
+                QTest::qWait(5);
+                if (fed < longMp3.size()) feed(16 * 1024);
+                engine.poll();
+            }
+        feed(longMp3.size() - fed);
+        engine.finishData();
+        QVERIFY(engine.seek(12.0));
+        pumpUntil([&] { return engine.positionSeconds() > 12.2; }, 3000);
+        const double pos = engine.positionSeconds();
+        QVERIFY2(pos >= 12.0 && pos < 14.0, qPrintable(QString::number(pos)));
+        engine.stop();
+    }
+
+    void playerPollsTheEngine() {
+        // No one calls engine.poll() here: the Player's own timer must notice the
+        // end of the track (this used to depend on the main window's timer).
+        qiyaa::yandex::ApiClient api(nullptr);
+        qiyaa::yandex::Library lib(&api);
+        qiyaa::Player player(&lib, &engine);
+        QSignalSpy finished(&engine, &AudioEngine::trackFinished);
+        engine.beginStream();
+        engine.appendData(mp3);
+        engine.finishData();
+        QVERIFY(QTest::qWaitFor([&] { return engine.state() == AudioEngine::State::Playing; }, 3000));
+        QVERIFY(engine.seek(2.7));
+        QVERIFY(finished.wait(4000));
     }
 
     void restartWhileStreaming() {

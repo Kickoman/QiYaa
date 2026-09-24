@@ -43,6 +43,7 @@ endif()
 # ---------------------------------------------------------------- core library
 # Everything except main() lives here so that tests can link against it.
 add_library(qiyaa_core STATIC
+    src/app/App.cpp              src/app/App.h
     src/app/Paths.cpp            src/app/Paths.h
     src/skin/Skin.cpp            src/skin/Skin.h
     src/skin/SkinSprites.h
@@ -50,10 +51,19 @@ add_library(qiyaa_core STATIC
     src/ui/Snap.cpp              src/ui/Snap.h
     src/ui/SkinnedWindow.cpp     src/ui/SkinnedWindow.h
     src/ui/MainWindow.cpp        src/ui/MainWindow.h
+    src/ui/EqualizerWindow.cpp   src/ui/EqualizerWindow.h
+    src/ui/PlaylistWindow.cpp    src/ui/PlaylistWindow.h
+    src/ui/LibraryMenu.cpp       src/ui/LibraryMenu.h
+    src/ui/LoginDialog.cpp       src/ui/LoginDialog.h
+    src/vis/Visualizer.h         src/vis/Visualizers.cpp
     src/yandex/TrackUrl.cpp      src/yandex/TrackUrl.h
     src/yandex/ApiClient.cpp     src/yandex/ApiClient.h
+    src/yandex/Library.cpp       src/yandex/Library.h
+    src/yandex/OAuth.cpp         src/yandex/OAuth.h
     src/yandex/Token.cpp         src/yandex/Token.h
     src/audio/AudioEngine.cpp    src/audio/AudioEngine.h
+    src/audio/Equalizer.cpp      src/audio/Equalizer.h
+    src/audio/VisTap.h           src/audio/EqPresets.h
     src/core/Player.cpp          src/core/Player.h
 )
 target_include_directories(qiyaa_core PUBLIC src)

@@ -1,11 +1,11 @@
 #include "ui/MainWindow.h"
 
-#include <QActionGroup>
+#include <algorithm>
+#include <cmath>
+
 #include <QApplication>
+#include <QCloseEvent>
 #include <QContextMenuEvent>
-#include <QDir>
-#include <QFileDialog>
-#include <QMenu>
 #include <QPainter>
 #include <QWheelEvent>
 
@@ -23,6 +23,9 @@ namespace L = sprites::main;
 namespace {
 
 constexpr int kMarqueeStepMs = 220;
+constexpr int kVisFrameMs = 33;     // ~30 fps while the visualization is animating
+constexpr int kFullRepaintMs = 100; // time display, position bar
+constexpr int kVisSamples = 1024;
 constexpr int kStatusShowMs = 3000;
 const QString kMarqueeSeparator = QStringLiteral("  ***  ");
 
@@ -38,11 +41,17 @@ bool contains(const QRect& r, QPoint p) {
 }  // namespace
 
 MainWindow::MainWindow(Player* player, const Skin* skin, QWidget* parent)
-    : SkinnedWindow(skin, L::kSize, parent), m_player(player) {
+    : SkinnedWindow(skin, L::kSize, parent), m_player(player), m_analyzer(kVisSamples) {
     setWindowTitle(QStringLiteral("QiYaa"));
     setMouseTracking(false);
+    setDragsDockedWindows(true);
     m_blink.start();
     m_marqueeStep.start();
+    m_lastFullRepaint.start();
+    m_visL.resize(kVisSamples);
+    m_visR.resize(kVisSamples);
+    m_visMono.resize(kVisSamples);
+    setVisMode(VisMode::Spectrum);
 
     connect(&m_timer, &QTimer::timeout, this, &MainWindow::tick);
     connect(m_player->engine(), &AudioEngine::stateChanged, this, [this] {
@@ -56,6 +65,38 @@ MainWindow::MainWindow(Player* player, const Skin* skin, QWidget* parent)
     });
     connect(m_player, &Player::statusMessage, this, &MainWindow::setStatusText);
     refreshTimer();
+}
+
+MainWindow::~MainWindow() = default;
+
+void MainWindow::setEqButton(bool on) {
+    m_eqOn = on;
+    update();
+}
+
+void MainWindow::setPlButton(bool on) {
+    m_plOn = on;
+    update();
+}
+
+void MainWindow::setVisMode(VisMode mode) {
+    m_visMode = mode;
+    switch (mode) {
+    case VisMode::Spectrum: m_vis = vis::makeSpectrum(); break;
+    case VisMode::Oscilloscope: m_vis = vis::makeOscilloscope(); break;
+    case VisMode::Off: m_vis.reset(); break;
+    }
+    refreshTimer();
+    update();
+}
+
+void MainWindow::setShowsRemainingTime(bool on) {
+    m_remaining = on;
+    update();
+}
+
+QPoint MainWindow::globalAt(QPoint skinPos) const {
+    return mapToGlobal(QPoint(qRound(skinPos.x() * scale()), qRound(skinPos.y() * scale())));
 }
 
 void MainWindow::setVolume(int v) {
@@ -85,24 +126,66 @@ void MainWindow::refreshTimer() {
     // Only tick when something on screen actually changes: playback, a blinking
     // pause, a pending status text, or a marquee that has to scroll.
     const auto st = m_player->engine()->state();
+    const bool playing = st == AudioEngine::State::Playing || st == AudioEngine::State::Buffering;
+    m_visActive = playing && m_vis && isVisible() && !isMinimized();
     int interval = 0;
-    if (st == AudioEngine::State::Playing || st == AudioEngine::State::Buffering) interval = 100;
+    if (m_visActive) interval = kVisFrameMs;
+    else if (playing) interval = kFullRepaintMs;
     else if (st == AudioEngine::State::Paused) interval = 250;
     else if (!m_status.isEmpty() || Skin::textWidth(marqueeText()) > L::kMarquee.width()) interval = kMarqueeStepMs;
 
+    if (!m_visActive && m_vis) m_vis->reset();
     if (interval == 0 || isMinimized()) m_timer.stop();
     else if (!m_timer.isActive() || m_timer.interval() != interval) m_timer.start(interval);
 }
 
+void MainWindow::updateVis() {
+    auto* engine = m_player->engine();
+    engine->readVisSamples(m_visL.data(), m_visR.data(), kVisSamples);
+    for (int i = 0; i < kVisSamples; ++i) m_visMono[i] = 0.5f * (m_visL[i] + m_visR[i]);
+    const auto& spectrum = m_analyzer.analyze(m_visMono);
+    vis::VisFrame frame;
+    frame.left = m_visL;
+    frame.right = m_visR;
+    frame.spectrum = spectrum;
+    frame.sampleRate = std::max(1, engine->outputSampleRate());
+    frame.fftSize = kVisSamples;
+    m_vis->update(frame);
+}
+
 void MainWindow::tick() {
-    m_player->engine()->poll();
-    if (!m_status.isEmpty() && m_statusAge.elapsed() > kStatusShowMs) m_status.clear();
+    bool full = m_lastFullRepaint.elapsed() >= (m_visActive ? kFullRepaintMs : 0);
+    if (!m_status.isEmpty() && m_statusAge.elapsed() > kStatusShowMs) {
+        m_status.clear();
+        full = true;
+    }
     if (m_status.isEmpty() && m_marqueeStep.elapsed() >= kMarqueeStepMs && m_pressed != Element::Marquee) {
         m_marqueeStep.restart();
         ++m_marqueeOffset;
+        full = true;
     }
+    if (m_visActive) updateVis();
     refreshTimer();
-    update();
+    if (full) {
+        m_lastFullRepaint.restart();
+        update();
+    } else {
+        updateSkinRect(L::kVisualizer);
+    }
+}
+
+void MainWindow::changeEvent(QEvent* e) {
+    SkinnedWindow::changeEvent(e);
+    if (e->type() == QEvent::WindowStateChange) {
+        refreshTimer();
+        Q_EMIT minimizedChanged(isMinimized());
+    }
+}
+
+void MainWindow::closeEvent(QCloseEvent* e) {
+    // Alt+F4 / window manager close on the main window quits, like Winamp.
+    e->accept();
+    Q_EMIT closeRequested();
 }
 
 // ------------------------------------------------------------------ painting
@@ -138,7 +221,15 @@ void MainWindow::drawTime(QPainter& p) const {
     if (st == AudioEngine::State::Stopped) return;
     if (st == AudioEngine::State::Paused && (m_blink.elapsed() / 1000) % 2 == 1) return;
 
-    const int secs = int(m_player->engine()->positionSeconds());
+    const double pos = m_player->engine()->positionSeconds();
+    const double dur = m_player->durationSeconds();
+    const bool remaining = m_remaining && dur > 0;
+    const int secs = remaining ? std::max(0, int(std::ceil(dur - pos))) : int(pos);
+    if (remaining) {
+        // Minus sign: its own digit-sized cell in nums_ex.bmp, a 5x1 dash in numbers.bmp.
+        if (skin().numbersAreExtended()) skin().draw(p, Sheet::Numbers, S::kMinusSignEx, L::kTime + QPoint(-1, 0));
+        else skin().draw(p, Sheet::Numbers, S::kMinusSign, L::kTime + QPoint(-1, 6));
+    }
     const int mm = std::min(secs / 60, 99);
     const int ss = secs % 60;
     const int digits[4] = {mm / 10, mm % 10, ss / 10, ss % 10};
@@ -166,10 +257,19 @@ void MainWindow::paintSkin(QPainter& p) {
                                                              : S::kPlayingIndicator;
     sk.draw(p, Sheet::PlayPaus, indicator, L::kPlayPause);
     if (!stopped && st != AudioEngine::State::Paused) {
-        const bool working = st == AudioEngine::State::Buffering;
-        sk.draw(p, Sheet::PlayPaus, QRect(working ? 39 : 36, 0, 3, 9), L::kPlayPause - QPoint(2, 0));
+        // Little LED: green while playing, red while waiting for data.
+        const bool buffering = st == AudioEngine::State::Buffering;
+        sk.draw(p, Sheet::PlayPaus, QRect(buffering ? 36 : 39, 0, 3, 9), L::kPlayPause - QPoint(2, 0));
     }
     drawTime(p);
+
+    // Visualization (drawn over the background, only while playing).
+    if (m_vis && (st == AudioEngine::State::Playing || st == AudioEngine::State::Buffering)) {
+        p.save();
+        p.setClipRect(L::kVisualizer);
+        m_vis->render(p, L::kVisualizer, sk);
+        p.restore();
+    }
 
     // Marquee.
     {
@@ -275,6 +375,8 @@ MainWindow::Element MainWindow::hitTest(QPoint p) const {
         {L::kBalance, Element::Balance},
         {L::kPosition, Element::Position},
         {L::kMarquee.adjusted(0, -3, 0, 3), Element::Marquee},
+        {L::kVisualizer, Element::Visualizer},
+        {{L::kTime, QSize(63, 13)}, Element::Time},
     };
     for (const Area& a : areas)
         if (contains(a.rect, p)) return a.e;
@@ -335,31 +437,28 @@ void MainWindow::updateSliderFromMouse(Element e, QPoint p) {
 
 void MainWindow::activate(Element e) {
     switch (e) {
-    case Element::Options: buildMenu()->popup(mapToGlobal(QPoint(L::kOptions.x(), L::kOptions.y() + 9) * scale())); break;
+    case Element::Options: Q_EMIT menuRequested(globalAt(L::kOptions + QPoint(0, 9))); break;
     case Element::Minimize: showMinimized(); break;
-    case Element::Shade: setStatusText(QStringLiteral("Shade mode: coming in stage 2")); break;
-    case Element::Close: close(); break;
+    case Element::Shade: setStatusText(QStringLiteral("Свёрнутый режим: этап 2")); break;
+    case Element::Close: Q_EMIT closeRequested(); break;
     case Element::Previous: m_player->previous(); break;
     case Element::Play: m_player->play(); break;
     case Element::Pause: m_player->pause(); break;
     case Element::Stop: m_player->stop(); break;
     case Element::Next: m_player->next(); break;
-    case Element::Eject: {
-        const QString f = QFileDialog::getOpenFileName(this, tr("Load skin"), QDir::homePath(),
-                                                       tr("Winamp skins (*.wsz *.zip)"));
-        if (!f.isEmpty()) Q_EMIT skinRequested(f);
-        break;
-    }
+    case Element::Eject: Q_EMIT sourcesMenuRequested(globalAt(L::kEject + QPoint(0, 16))); break;
     case Element::Shuffle: m_player->setShuffle(!m_player->shuffle()); break;
     case Element::Repeat: m_player->setRepeat(!m_player->repeat()); break;
-    case Element::EqToggle: m_eqOn = !m_eqOn; setStatusText(QStringLiteral("Equalizer: stage 1")); break;
-    case Element::PlToggle: m_plOn = !m_plOn; setStatusText(QStringLiteral("Playlist: stage 1")); break;
+    case Element::EqToggle: Q_EMIT eqToggleRequested(); break;
+    case Element::PlToggle: Q_EMIT plToggleRequested(); break;
+    case Element::Visualizer: setVisMode(VisMode((int(m_visMode) + 1) % 3)); break;
+    case Element::Time: setShowsRemainingTime(!m_remaining); break;
     default: break;
     }
 }
 
 void MainWindow::wheelEvent(QWheelEvent* e) {
-    const int steps = e->angleDelta().y() / 120;
+    const int steps = wheelSteps(e);
     if (steps != 0) {
         setVolume(m_volume + steps * 4);
         setStatusText(QStringLiteral("VOLUME: %1%").arg(m_volume));
@@ -367,45 +466,7 @@ void MainWindow::wheelEvent(QWheelEvent* e) {
 }
 
 void MainWindow::contextMenuEvent(QContextMenuEvent* e) {
-    buildMenu()->popup(e->globalPos());
-}
-
-QMenu* MainWindow::buildMenu() {
-    auto* menu = new QMenu(this);
-    menu->setAttribute(Qt::WA_DeleteOnClose);
-
-    QMenu* skins = menu->addMenu(tr("Skins"));
-    const QStringList builtin = QDir(QStringLiteral(":/skins")).entryList({QStringLiteral("*.wsz")}, QDir::Files, QDir::Name);
-    for (const QString& name : builtin) {
-        const QString path = QStringLiteral(":/skins/") + name;
-        skins->addAction(QString(name).chopped(4), this, [this, path] { Q_EMIT skinRequested(path); });
-    }
-    skins->addSeparator();
-    skins->addAction(tr("Load skin..."), this, [this] { activate(Element::Eject); });
-
-    QMenu* size = menu->addMenu(tr("Size"));
-    auto* sizes = new QActionGroup(size);
-    for (double s : {1.0, 1.25, 1.5, 1.75, 2.0, 2.5, 3.0}) {
-        QAction* a = size->addAction(QStringLiteral("%1%").arg(qRound(s * 100)));
-        a->setCheckable(true);
-        a->setChecked(std::abs(scale() - s) < 1e-6);
-        sizes->addAction(a);
-        connect(a, &QAction::triggered, this, [this, s] { Q_EMIT scaleRequested(s); });
-    }
-
-    QAction* dbl = menu->addAction(tr("Double size"));
-    dbl->setCheckable(true);
-    dbl->setChecked(std::abs(scale() - 2.0) < 1e-6);
-    connect(dbl, &QAction::toggled, this, [this](bool on) { Q_EMIT scaleRequested(on ? 2.0 : 1.0); });
-
-    QAction* top = menu->addAction(tr("Always on top"));
-    top->setCheckable(true);
-    top->setChecked(windowFlags().testFlag(Qt::WindowStaysOnTopHint));
-    connect(top, &QAction::toggled, this, [this](bool on) { Q_EMIT alwaysOnTopRequested(on); });
-
-    menu->addSeparator();
-    menu->addAction(tr("Exit"), qApp, &QApplication::quit);
-    return menu;
+    Q_EMIT menuRequested(e->globalPos());
 }
 
 }  // namespace qiyaa
