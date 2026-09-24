@@ -21,8 +21,9 @@ jobs:
           - name: Linux (system Qt 6.4)
             os: ubuntu-24.04
             system_qt: true
-          - name: Linux (Qt 6.8)
-            os: ubuntu-24.04
+          # Built on the oldest supported base so the AppImage runs on Ubuntu 22.04+ (glibc 2.35).
+          - name: Linux (Qt 6.8, AppImage)
+            os: ubuntu-22.04
             qt_arch: linux_gcc_64
           - name: Windows (Qt 6.8, MSVC)
             os: windows-2022
@@ -51,7 +52,15 @@ jobs:
 
       - name: Linux build deps
         if: runner.os == 'Linux' && !matrix.system_qt
-        run: sudo apt-get update && sudo apt-get install -y ninja-build libgl1-mesa-dev libxkbcommon-x11-0 libxcb-cursor0 dbus libglib2.0-bin
+        run: |
+          sudo apt-get update
+          # g++-12: C++20 support; its libstdc++ is what Ubuntu 22.04 ships anyway.
+          # libxcb-*: the xcb platform plugin's dependencies, bundled into the AppImage.
+          sudo apt-get install -y ninja-build g++-12 libgl1-mesa-dev dbus libglib2.0-bin \
+            libxkbcommon-x11-0 libxcb-cursor0 libxcb-icccm4 libxcb-image0 libxcb-keysyms1 \
+            libxcb-render-util0 libxcb-xinerama0 libxcb-randr0 libxcb-shape0 libxcb-xkb1
+          echo "CC=gcc-12" >> "$GITHUB_ENV"
+          echo "CXX=g++-12" >> "$GITHUB_ENV"
 
       - uses: ilammy/msvc-dev-cmd@v1
         if: runner.os == 'Windows'
@@ -62,6 +71,7 @@ jobs:
           GEN="-G Ninja"
           [ "$RUNNER_OS" = "macOS" ] && GEN=""
           cmake -S . -B build $GEN -DCMAKE_BUILD_TYPE=Release
+          echo "VERSION=$(cat build/version.txt)" >> "$GITHUB_ENV"
 
       - name: Build
         run: cmake --build build --config Release --parallel
@@ -83,24 +93,53 @@ jobs:
           esac
           "$BIN" --screenshot screenshot.png --offline
 
-      - name: Package (Windows)
+      - name: Package (Linux AppImage)
+        if: runner.os == 'Linux' && !matrix.system_qt
+        env:
+          APPIMAGE_EXTRACT_AND_RUN: 1   # no FUSE needed on the runner
+          EXTRA_PLATFORM_PLUGINS: libqoffscreen.so  # for --screenshot (and the check below)
+        run: |
+          DESTDIR="$PWD/AppDir" cmake --install build --prefix /usr
+          base=https://github.com/linuxdeploy
+          curl -sSLf -o linuxdeploy "$base/linuxdeploy/releases/download/continuous/linuxdeploy-x86_64.AppImage"
+          curl -sSLf -o linuxdeploy-plugin-qt "$base/linuxdeploy-plugin-qt/releases/download/continuous/linuxdeploy-plugin-qt-x86_64.AppImage"
+          chmod +x linuxdeploy linuxdeploy-plugin-qt
+          mv linuxdeploy-plugin-qt linuxdeploy-plugin-qt-x86_64.AppImage
+          export QMAKE="$QT_ROOT_DIR/bin/qmake" LD_LIBRARY_PATH="$QT_ROOT_DIR/lib" LINUXDEPLOY_OUTPUT_VERSION="$VERSION"
+          ./linuxdeploy --appdir AppDir --desktop-file AppDir/usr/share/applications/qiyaa.desktop \
+            --icon-file resources/icons/qiyaa-256.png --icon-filename qiyaa --plugin qt --output appimage
+          mkdir -p dist && mv QiYaa-*.AppImage dist/
+          # The AppImage must start on its own.
+          QT_QPA_PLATFORM=offscreen dist/QiYaa-*.AppImage --screenshot appimage.png --offline
+
+      - name: Package (Windows folder + zip)
         if: runner.os == 'Windows'
         shell: bash
         run: |
           mkdir -p dist/QiYaa
           cp build/QiYaa.exe dist/QiYaa/
-          windeployqt --release --no-translations --no-system-d3d-compiler --no-opengl-sw dist/QiYaa/QiYaa.exe
+          windeployqt --release --no-translations --no-system-d3d-compiler --no-opengl-sw --no-compiler-runtime dist/QiYaa/QiYaa.exe
+          # App-local MSVC runtime: runs without installing the VC++ redistributable.
+          cp "$(cygpath -u "$VCToolsRedistDir")"/x64/Microsoft.VC14*.CRT/*.dll dist/QiYaa/
           cp LICENSE THIRD_PARTY.md dist/QiYaa/
+          (cd dist && 7z a -bd "QiYaa-$VERSION-windows-x64.zip" QiYaa > /dev/null)
 
-      - name: Package (macOS)
+      - name: Package (Windows installer)
+        if: runner.os == 'Windows'
+        shell: pwsh
+        run: |
+          # Inno Setup >= 6.3 (x64compatible); installs it if the runner image lacks it.
+          choco upgrade innosetup -y --no-progress | Out-Null
+          $iscc = "${env:ProgramFiles(x86)}\Inno Setup 6\ISCC.exe"
+          & $iscc /Q "/DAppVersion=$env:VERSION" "/DSourceDir=$PWD\dist\QiYaa" "/DOutputDir=$PWD\dist" packaging\windows\qiyaa.iss
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          Remove-Item -Recurse dist\QiYaa
+
+      - name: Package (macOS dmg)
         if: runner.os == 'macOS'
         run: |
-          macdeployqt build/QiYaa.app
-          mkdir -p dist && cp -R build/QiYaa.app dist/
-
-      - name: Package (Linux)
-        if: runner.os == 'Linux' && !matrix.system_qt
-        run: mkdir -p dist && cp build/QiYaa LICENSE THIRD_PARTY.md dist/
+          macdeployqt build/QiYaa.app -dmg
+          mkdir -p dist && mv build/QiYaa.dmg "dist/QiYaa-$VERSION-macos-arm64.dmg"
 
       - uses: actions/upload-artifact@v4
         if: ${{ !matrix.system_qt }}
@@ -109,4 +148,24 @@ jobs:
           path: |
             dist/
             screenshot.png
-          if-no-files-found: warn
+          if-no-files-found: error
+
+  # Pushing a tag like v0.2.0 publishes the packages as a GitHub release.
+  release:
+    if: startsWith(github.ref, 'refs/tags/v')
+    needs: build
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          path: artifacts
+      - uses: softprops/action-gh-release@v2
+        with:
+          generate_release_notes: true
+          files: |
+            artifacts/*/dist/*.AppImage
+            artifacts/*/dist/*.zip
+            artifacts/*/dist/*-setup.exe
+            artifacts/*/dist/*.dmg

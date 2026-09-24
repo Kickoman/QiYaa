@@ -33,6 +33,14 @@
 
 **Ресурсы.** Когда ничего не играет — ни таймеров, ни аудиоколбэков (CPU ≈ 0). Визуализация перерисовывает только свой прямоугольник ~30 раз в секунду и только когда окно видно.
 
+## Установка
+
+Готовые сборки лежат в [Releases](https://github.com/Kickoman/QiYaa/releases) (появляются, когда в репозиторий пушится тег вида `v0.2.0`) и в артефактах каждого прогона GitHub Actions.
+
+- **Linux** — `QiYaa-<версия>-x86_64.AppImage`: `chmod +x QiYaa-*.AppImage && ./QiYaa-*.AppImage`. Работает на Ubuntu 22.04+ и других дистрибутивах того же возраста и новее. Чтобы плеер появился в меню приложений, можно воспользоваться Gear Lever или AppImageLauncher.
+- **Windows** — `QiYaa-<версия>-windows-x64-setup.exe` (ставится для текущего пользователя, без прав администратора) или переносной `…-windows-x64.zip`. Сборка не подписана, поэтому SmartScreen может предупредить: «Подробнее» → «Выполнить в любом случае».
+- **macOS** (Apple Silicon) — `QiYaa-<версия>-macos-arm64.dmg`. Сборка не подписана: при первом запуске правый клик по приложению → «Открыть» (или `xattr -dr com.apple.quarantine /Applications/QiYaa.app`).
+
 ## Вход в Яндекс Музыку
 
 При первом запуске (или через меню → «Войти…») открывается окно входа:
@@ -68,7 +76,7 @@ cmake --build build
 C:\Qt\6.8.3\msvc2022_64\bin\windeployqt build\QiYaa.exe
 ```
 
-Готовые сборки под Linux, Windows и macOS появляются в артефактах GitHub Actions.
+Установщики собирает CI (`.github/workflows/ci.yml`): AppImage через linuxdeploy, установщик Windows через Inno Setup (`packaging/windows/qiyaa.iss`), dmg через `macdeployqt -dmg`. Иконка рисуется скриптом `tools/make_icons.py`.
 
 ## Параметры командной строки
 

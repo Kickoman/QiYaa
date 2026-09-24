@@ -1,0 +1,13 @@
+[Desktop Entry]
+Type=Application
+Name=QiYaa
+GenericName=Music Player
+GenericName[ru]=Музыкальный плеер
+Comment=Winamp-style player for Yandex Music
+Comment[ru]=Плеер Яндекс Музыки в стиле Winamp
+Exec=QiYaa
+Icon=qiyaa
+Terminal=false
+Categories=AudioVideo;Audio;Player;
+Keywords=music;player;yandex;winamp;
+StartupWMClass=QiYaa

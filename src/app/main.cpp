@@ -3,6 +3,7 @@
 #include <QApplication>
 #include <QCommandLineParser>
 #include <QFile>
+#include <QIcon>
 #include <QTimer>
 
 #include "app/App.h"
@@ -72,6 +73,12 @@ int main(int argc, char* argv[]) {
     choosePlatform();
     QApplication app(argc, argv);
     QApplication::setApplicationName(QStringLiteral("QiYaa"));
+    QGuiApplication::setDesktopFileName(QStringLiteral("qiyaa"));  // matches qiyaa.desktop (taskbar icon, MPRIS)
+    {
+        QIcon icon;
+        for (int size : {16, 24, 32, 48, 64, 128, 256}) icon.addFile(QStringLiteral(":/icons/qiyaa-%1.png").arg(size));
+        QApplication::setWindowIcon(icon);
+    }
     QApplication::setApplicationVersion(QStringLiteral(QIYAA_VERSION));
     QApplication::setQuitOnLastWindowClosed(false);  // closing the EQ/playlist must not quit
 

@@ -1,7 +1,7 @@
 cmake_minimum_required(VERSION 3.21)
 
 project(QiYaa
-    VERSION 0.0.1
+    VERSION 0.2.0
     DESCRIPTION "Winamp-style Yandex Music player (C++/Qt)"
     LANGUAGES C CXX)
 
@@ -10,6 +10,9 @@ set(CMAKE_CXX_STANDARD_REQUIRED ON)
 set(CMAKE_CXX_EXTENSIONS OFF)
 
 option(QIYAA_BUILD_TESTS "Build unit tests" ON)
+
+# For packaging scripts (CI names the installers after it).
+file(WRITE ${CMAKE_BINARY_DIR}/version.txt "${PROJECT_VERSION}")
 
 find_package(Qt6 6.4 REQUIRED COMPONENTS Core Gui Widgets Network)
 qt_standard_project_setup()
@@ -127,17 +130,50 @@ qt_add_resources(qiyaa_core "skins"
         resources/skins/XMMS-Turquoise.wsz
         resources/skins/ZaxonRemake1-0.wsz)
 
+qt_add_resources(qiyaa_core "icons"
+    PREFIX "/icons"
+    BASE resources/icons
+    FILES
+        resources/icons/qiyaa-16.png
+        resources/icons/qiyaa-24.png
+        resources/icons/qiyaa-32.png
+        resources/icons/qiyaa-48.png
+        resources/icons/qiyaa-64.png
+        resources/icons/qiyaa-128.png
+        resources/icons/qiyaa-256.png)
+
 # ---------------------------------------------------------------- application
-qt_add_executable(qiyaa WIN32 MACOSX_BUNDLE src/app/main.cpp)
+set(QIYAA_APP_SOURCES src/app/main.cpp)
+if(WIN32)
+    # Icon and version info for Explorer.
+    configure_file(packaging/windows/qiyaa.rc.in ${CMAKE_CURRENT_BINARY_DIR}/qiyaa.rc @ONLY)
+    list(APPEND QIYAA_APP_SOURCES ${CMAKE_CURRENT_BINARY_DIR}/qiyaa.rc)
+elseif(APPLE)
+    set_source_files_properties(resources/icons/qiyaa.icns PROPERTIES MACOSX_PACKAGE_LOCATION Resources)
+    list(APPEND QIYAA_APP_SOURCES resources/icons/qiyaa.icns)
+endif()
+qt_add_executable(qiyaa WIN32 MACOSX_BUNDLE ${QIYAA_APP_SOURCES})
 target_link_libraries(qiyaa PRIVATE qiyaa_core)
 target_compile_definitions(qiyaa PRIVATE QIYAA_VERSION="${PROJECT_VERSION}")
 set_target_properties(qiyaa PROPERTIES
     OUTPUT_NAME QiYaa
     MACOSX_BUNDLE_GUI_IDENTIFIER io.github.kickoman.qiyaa
     MACOSX_BUNDLE_BUNDLE_VERSION ${PROJECT_VERSION}
-    MACOSX_BUNDLE_SHORT_VERSION_STRING ${PROJECT_VERSION})
+    MACOSX_BUNDLE_SHORT_VERSION_STRING ${PROJECT_VERSION}
+    MACOSX_BUNDLE_ICON_FILE qiyaa.icns)
 
-install(TARGETS qiyaa BUNDLE DESTINATION . RUNTIME DESTINATION bin)
+if(UNIX AND NOT APPLE)
+    # FHS layout: used for the AppImage (cmake --install ... --prefix AppDir/usr) and distro packages.
+    include(GNUInstallDirs)
+    install(TARGETS qiyaa RUNTIME DESTINATION ${CMAKE_INSTALL_BINDIR})
+    install(FILES packaging/linux/qiyaa.desktop DESTINATION ${CMAKE_INSTALL_DATADIR}/applications)
+    foreach(size 16 24 32 48 64 128 256 512)
+        install(FILES resources/icons/qiyaa-${size}.png
+                DESTINATION ${CMAKE_INSTALL_DATADIR}/icons/hicolor/${size}x${size}/apps RENAME qiyaa.png)
+    endforeach()
+else()
+    install(TARGETS qiyaa BUNDLE DESTINATION . RUNTIME DESTINATION bin)
+endif()
 
 # ---------------------------------------------------------------- tests
 if(QIYAA_BUILD_TESTS)
