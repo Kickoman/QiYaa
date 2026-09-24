@@ -1,6 +1,9 @@
 #include "ui/LoginDialog.h"
 
+#include <algorithm>
+
 #include <QDesktopServices>
+#include <QFontMetrics>
 #include <QFrame>
 #include <QGuiApplication>
 #include <QClipboard>
@@ -14,10 +17,15 @@
 
 namespace qiyaa {
 
-LoginDialog::LoginDialog(QNetworkAccessManager* nam, QWidget* parent)
+namespace {
+constexpr int kDialogWidth = 460;
+}
+
+LoginDialog::LoginDialog(QNetworkAccessManager* nam, QWidget* parent, const QString& oauthBase)
     : QDialog(parent), m_device(new yandex::DeviceLogin(nam, this)) {
     setWindowTitle(QStringLiteral("Вход в Яндекс Музыку"));
-    setMinimumWidth(440);
+    setMinimumWidth(kDialogWidth);
+    if (!oauthBase.isEmpty()) m_device->setBaseUrl(oauthBase);
 
     auto* layout = new QVBoxLayout(this);
 
@@ -35,6 +43,7 @@ LoginDialog::LoginDialog(QNetworkAccessManager* nam, QWidget* parent)
     m_code->setFont(big);
     m_code->setAlignment(Qt::AlignCenter);
     m_code->setTextInteractionFlags(Qt::TextSelectableByMouse);
+    m_code->setMinimumHeight(QFontMetrics(big).height() + 8);
     layout->addWidget(m_code);
 
     m_openDevice = new QPushButton(QStringLiteral("Открыть ya.ru/device"));
@@ -82,16 +91,30 @@ LoginDialog::LoginDialog(QNetworkAccessManager* nam, QWidget* parent)
         m_verifyUrl = url;
         m_openDevice->setText(QStringLiteral("Открыть %1").arg(url.host() + url.path()));
         m_openDevice->setEnabled(true);
-        m_deviceStatus->setText(QStringLiteral("Жду подтверждения..."));
+        m_deviceStatus->setText(QStringLiteral("Жду подтверждения... (код скопирован в буфер обмена)"));
         QGuiApplication::clipboard()->setText(code);
+        fitToContents();
     });
     connect(m_device, &yandex::DeviceLogin::succeeded, this, &LoginDialog::finishWith);
     connect(m_device, &yandex::DeviceLogin::failed, this, [this](const QString& err) {
         m_code->setText(QStringLiteral("—"));
         m_openDevice->setEnabled(false);
         m_deviceStatus->setText(QStringLiteral("Вход по коду не удался: %1. Воспользуйтесь способом 2.").arg(err));
+        fitToContents();
     });
+
+    resize(kDialogWidth, 0);
+    fitToContents();
     m_device->start();
+}
+
+void LoginDialog::fitToContents() {
+    QLayout* l = layout();
+    l->activate();
+    const int w = std::max(width(), minimumWidth());
+    const int h = l->totalHeightForWidth(w);
+    setMinimumHeight(h);
+    if (height() < h) resize(w, h);
 }
 
 void LoginDialog::tryPasted() {
@@ -99,6 +122,7 @@ void LoginDialog::tryPasted() {
     if (token.isEmpty()) {
         m_pasteError->setText(QStringLiteral("Не вижу здесь токена. Нужен адрес с «#access_token=…» или сам токен."));
         m_pasteError->show();
+        fitToContents();
         return;
     }
     finishWith(token);

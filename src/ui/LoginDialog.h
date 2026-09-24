@@ -18,12 +18,16 @@ class DeviceLogin;
 class LoginDialog : public QDialog {
     Q_OBJECT
 public:
-    explicit LoginDialog(QNetworkAccessManager* nam, QWidget* parent = nullptr);
+    // `oauthBase` overrides https://oauth.yandex.ru (tests).
+    explicit LoginDialog(QNetworkAccessManager* nam, QWidget* parent = nullptr, const QString& oauthBase = {});
 
     QString token() const { return m_token; }
 
 private:
     void finishWith(const QString& token);
+    // Word-wrapped labels need their height computed for the actual width;
+    // Qt's default size hint doesn't, which squeezes them. Call after text changes.
+    void fitToContents();
     void tryPasted();
 
     yandex::DeviceLogin* m_device;

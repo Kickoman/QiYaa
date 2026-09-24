@@ -1,11 +1,15 @@
 // The full window set on the offscreen platform: docking, scale, playlist, EQ.
+#include <QApplication>
+#include <QLabel>
 #include <QMouseEvent>
+#include <QNetworkAccessManager>
 #include <QScreen>
 #include <QSignalSpy>
 #include <QTest>
 
 #include "app/App.h"
 #include "ui/EqualizerWindow.h"
+#include "ui/LoginDialog.h"
 #include "ui/MainWindow.h"
 #include "ui/PlaylistWindow.h"
 
@@ -234,6 +238,39 @@ private Q_SLOTS:
         const bool remaining = main->showsRemainingTime();
         click(main, {39 + 20, 26 + 5});
         QCOMPARE(main->showsRemainingTime(), !remaining);
+    }
+
+    void loginDialogFitsItsText() {
+        QNetworkAccessManager nam;
+        // Unreachable OAuth server: the device flow fails fast with a long message.
+        LoginDialog dlg(&nam, nullptr, QStringLiteral("http://127.0.0.1:1"));
+        dlg.show();
+        QVERIFY(QTest::qWaitForWindowExposed(&dlg));
+        auto allTextFits = [&dlg] {
+            for (QLabel* l : dlg.findChildren<QLabel*>()) {
+                if (!l->isVisible() || l->text().isEmpty()) continue;
+                const int need = l->wordWrap() ? l->heightForWidth(l->width()) : l->sizeHint().height();
+                if (l->height() < need) {
+                    qWarning("label %s: %d < %d", qPrintable(l->text().left(30)), l->height(), need);
+                    return false;
+                }
+            }
+            return true;
+        };
+        // What the window manager did on GNOME: squeeze it to a small height.
+        dlg.resize(dlg.width(), 150);
+        QApplication::processEvents();
+        QVERIFY(allTextFits());
+        QVERIFY(QTest::qWaitFor([&] {
+            for (QLabel* l : dlg.findChildren<QLabel*>())
+                if (l->text().contains(QStringLiteral("не удался"))) return true;
+            return false;
+        }, 5000));
+        QApplication::processEvents();
+        QVERIFY(allTextFits());
+        dlg.resize(dlg.width(), 150);
+        QApplication::processEvents();
+        QVERIFY(allTextFits());
     }
 
     void snapshotContainsAllWindows() {
