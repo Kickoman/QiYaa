@@ -35,6 +35,14 @@ bool touching(const QRect& a, const QRect& b);
 // rects (not including `start` itself).
 QList<int> connectedGroup(int start, const QList<QRect>& rects);
 
+// Which windows follow when rects[self] changes height by `dy` (its top stays):
+// growing pushes down everything attached below it or in its way; shrinking
+// pulls up only windows that no other window still holds up and that won't
+// land on a window that stays. Returns indices into `rects`.
+// `solid[i] == false` (hidden windows): may follow, but never holds up or
+// blocks another window. Empty = all solid.
+QList<int> stackBelow(int self, const QList<QRect>& rects, int dy, const QList<bool>& solid = {});
+
 // Full pipeline used while dragging: snap to other windows, then to the screen
 // edges, then clamp inside the screen the window is on.
 QPoint resolveDragPosition(const QRect& proposed, const QList<QRect>& others,

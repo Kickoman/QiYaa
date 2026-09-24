@@ -103,6 +103,38 @@ private Q_SLOTS:
         QCOMPARE(eqfToDb(64), 12.0);
     }
 
+    void eqfRoundTrip() {
+        EqPreset p;
+        p.name = QStringLiteral("My EQ");
+        for (int i = 0; i < kEqBands; ++i) p.settings.bandsDb[i] = -12.0 + i * 2.6;
+        p.settings.preampDb = 3.0;
+        const QByteArray file = writeEqf({p, builtinEqPresets().first()});
+        QCOMPARE(file.size(), 31 + 2 * 268);  // header + 2 presets (name 257 + 11 values)
+        QVERIFY(file.startsWith("Winamp EQ library file v1.1\x1a!--"));
+        QList<EqPreset> back;
+        QVERIFY(parseEqf(file, &back));
+        QCOMPARE(back.size(), 2);
+        QCOMPARE(back[0].name, QStringLiteral("My EQ"));
+        for (int i = 0; i < kEqBands; ++i)
+            // 64 levels over 24 dB: half a step (0.19 dB) + rounding to 0.1 dB.
+            QVERIFY2(std::abs(back[0].settings.bandsDb[i] - p.settings.bandsDb[i]) <= 0.25, qPrintable(QString::number(i)));
+        QVERIFY(std::abs(back[0].settings.preampDb - 3.0) <= 0.25);
+        QCOMPARE(back[1].name, QStringLiteral("Classical"));
+    }
+
+    void eqfKnownBytes() {
+        // Max +12 dB is stored as 0, min -12 dB as 63 (webamp's max/min sample files).
+        QByteArray file("Winamp EQ library file v1.1\x1a!--");
+        QByteArray name("max");
+        name.append(QByteArray(257 - name.size(), '\0'));
+        file += name + QByteArray(10, char(0)) + QByteArray(1, char(63));
+        QList<EqPreset> p;
+        QVERIFY(parseEqf(file, &p));
+        QCOMPARE(p[0].settings.bandsDb[0], 12.0);
+        QCOMPARE(p[0].settings.preampDb, -12.0);
+        QVERIFY(!parseEqf("not an eqf", &p));
+    }
+
     void graphSplinePassesThroughBands() {
         EqSettings s;
         s.bandsDb[3] = 12;
@@ -147,6 +179,29 @@ private Q_SLOTS:
                 for (int x = 0; x < 76; ++x) lit += img.pixel(x, y) != qRgb(0, 0, 0);
             QVERIFY2(lit > 10, qPrintable(v->name()));
         }
+    }
+
+    void eqfCentreAndOutOfRangeBytes() {
+        QByteArray f("Winamp EQ library file v1.1\x1a!--", 31);
+        QByteArray name("Flat");
+        name.append(QByteArray(257 - name.size(), '\0'));
+        f += name;
+        f += QByteArray(10, char(31));  // Winamp's own midline.EQF: 64 - 31 = 33
+        f += char(255);                 // garbage: must not reach the DSP as -85 dB
+        QList<audio::EqPreset> ps;
+        QVERIFY(audio::parseEqf(f, &ps));
+        for (int b = 0; b < audio::kEqBands; ++b) QCOMPARE(ps[0].settings.bandsDb[b], 0.0);
+        QCOMPARE(ps[0].settings.preampDb, -12.0);
+        // And flat is written as 31 again.
+        QCOMPARE(audio::writeEqf(ps).mid(31 + 257, 10), QByteArray(10, char(31)));
+    }
+
+    void eqfKeepsNonLatinNames() {
+        audio::EqPreset p;
+        p.name = QStringLiteral("Мой пресет");
+        QList<audio::EqPreset> ps;
+        QVERIFY(audio::parseEqf(audio::writeEqf({p}), &ps));
+        QCOMPARE(ps[0].name, p.name);
     }
 };
 

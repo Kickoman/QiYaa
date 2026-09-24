@@ -2,6 +2,7 @@
 #pragma once
 
 #include <functional>
+#include <optional>
 
 #include <QList>
 #include <QObject>
@@ -21,6 +22,9 @@ class Player : public QObject {
 public:
     // Asked to append more tracks when the queue is about to run out (endless waves).
     using MoreFn = std::function<void(std::function<void(const QList<yandex::Track>&)> done)>;
+    // What happened to a track of the queue (used for wave feedback).
+    enum class TrackEvent { Started, Finished, Skipped };
+    using EventFn = std::function<void(TrackEvent event, const yandex::Track& track, double playedSeconds)>;
 
     Player(yandex::Library* library, audio::AudioEngine* engine, QObject* parent = nullptr);
 
@@ -30,7 +34,8 @@ public:
     bool isLatestSourceRequest(quint64 ticket) const { return ticket == m_sourceRequest; }
 
     // Replaces the queue. `autoplay` starts the first track right away.
-    void setQueue(const QList<yandex::Track>& tracks, const QString& title, bool autoplay, MoreFn more = {});
+    void setQueue(const QList<yandex::Track>& tracks, const QString& title, bool autoplay, MoreFn more = {},
+                  EventFn events = {});
     void appendTracks(const QList<yandex::Track>& tracks);
     void removeTracks(QList<int> indices);
     void clearQueue();
@@ -41,9 +46,14 @@ public:
     void next();
     void previous();
     void playIndex(int index);
-    void seekFraction(double fraction);  // 0..1
-    void setShuffle(bool on) { m_shuffle = on; }
-    void setRepeat(bool on) { m_repeat = on; }
+    // For quitting: stops and ignores anything that would start playback again
+    // (sources still loading, media keys).
+    void shutDown();
+    // Absolute seek in seconds (clamped to the track); false if it can't seek (yet).
+    bool seekTo(double seconds);
+    bool seekFraction(double fraction);  // 0..1; false if the track can't seek (yet)
+    void setShuffle(bool on);
+    void setRepeat(bool on);
     bool shuffle() const { return m_shuffle; }
     bool repeat() const { return m_repeat; }
 
@@ -62,17 +72,31 @@ Q_SIGNALS:
     void queueReplaced();     // a new source replaced the whole queue
     void currentTrackChanged();
     void positionTick();      // ~10 Hz while something is loaded (for time displays)
+    void modesChanged();      // shuffle or repeat
+    void seeked(double seconds);
 
 private:
     void startDownload(const QUrl& url, quint64 generation);
     void abortDownload();
     void maybeLoadMore();
+    // Reports Skipped for the track that is playing (if its Started was sent).
+    void closeOpenTrack();
+    // Seconds of the open track actually heard (seeks don't count).
+    double playedSeconds();
 
     yandex::Library* m_library;
     audio::AudioEngine* m_engine;
     QList<yandex::Track> m_playlist;
     QString m_title;
     MoreFn m_more;
+    EventFn m_events;
+    // The track whose Started was reported and that hasn't finished/skipped yet.
+    std::optional<yandex::Track> m_openTrack;
+    EventFn m_openTrackEvents;
+    double m_played = 0;
+    double m_lastPosition = 0;
+    bool m_downloadFailed = false;
+    bool m_shutDown = false;
     bool m_loadingMore = false;
     bool m_waitingForMore = false;  // reached the end of an endless queue; play when more arrives
     quint64 m_sourceRequest = 0;

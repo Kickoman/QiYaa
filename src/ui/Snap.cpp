@@ -148,6 +148,55 @@ QList<int> connectedGroup(int start, const QList<QRect>& rects) {
     return group;
 }
 
+QList<int> stackBelow(int self, const QList<QRect>& rects, int dy, const QList<bool>& solid) {
+    if (self < 0 || self >= rects.size() || dy == 0) return {};
+    const auto isSolid = [&](int i) { return solid.isEmpty() || solid.value(i, true); };
+    const QRect old = rects[self];
+    const QRect grown = old.adjusted(0, 0, 0, dy);
+    const auto hangsFrom = [](const QRect& upper, const QRect& lower) {
+        return bottom(upper) == top(lower) && left(upper) < right(lower) && left(lower) < right(upper);
+    };
+    const int n = int(rects.size());
+    QList<bool> blocked(n, false);
+    for (;;) {
+        QList<bool> moving(n, false);
+        for (bool changed = true; changed;) {
+            changed = false;
+            for (int i = 0; i < n; ++i) {
+                if (i == self || moving[i] || blocked[i] || top(rects[i]) < bottom(old)) continue;
+                bool follows = hangsFrom(old, rects[i]);
+                for (int j = 0; j < n && !follows; ++j) follows = moving[j] && hangsFrom(rects[j], rects[i]);
+                if (dy > 0) {
+                    // Growing: anything we'd grow into gets pushed too.
+                    follows = follows || grown.intersects(rects[i]);
+                    for (int j = 0; j < n && !follows; ++j) follows = moving[j] && rects[j].translated(0, dy).intersects(rects[i]);
+                } else if (follows) {
+                    // Shrinking: another window that stays still holds it up.
+                    for (int j = 0; j < n; ++j)
+                        if (j != self && j != i && !moving[j] && isSolid(j) && hangsFrom(rects[j], rects[i])) follows = false;
+                }
+                if (follows) moving[i] = changed = true;
+            }
+        }
+        // Shrinking must not pull a window onto one that stays.
+        bool conflict = false;
+        if (dy < 0) {
+            for (int i = 0; i < n; ++i) {
+                if (!moving[i]) continue;
+                const QRect moved = rects[i].translated(0, dy);
+                for (int j = 0; j < n; ++j)
+                    if (j != self && j != i && !moving[j] && isSolid(j) && moved.intersects(rects[j])) blocked[i] = conflict = true;
+            }
+        }
+        if (!conflict) {
+            QList<int> out;
+            for (int i = 0; i < n; ++i)
+                if (moving[i]) out << i;
+            return out;
+        }
+    }
+}
+
 QPoint resolveDragPosition(const QRect& proposed, const QList<QRect>& others,
                            const QList<QRect>& screens, int distance) {
     QRect r = proposed;

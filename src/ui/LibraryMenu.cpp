@@ -1,6 +1,9 @@
 #include "ui/LibraryMenu.h"
 
+#include <memory>
+
 #include <QDesktopServices>
+#include <QHash>
 #include <QInputDialog>
 #include <QMap>
 #include <QMenu>
@@ -64,6 +67,12 @@ void lazySubmenu(QMenu* sub, std::function<void(Library::Callback<QList<T>>)> lo
     });
 }
 
+// Seeds of the wave that was started last (the wheel suggests waves around it).
+QStringList& currentWaveSeeds() {
+    static QStringList seeds{QStringLiteral("user:onyourwave")};
+    return seeds;
+}
+
 QString stationTypeTitle(const QString& type) {
     static const QMap<QString, QString> names{
         {QStringLiteral("genre"), QStringLiteral("Жанры")},       {QStringLiteral("mood"), QStringLiteral("Настроение")},
@@ -83,22 +92,42 @@ void playWave(Player* player, const QStringList& seeds, const QString& title) {
     status(player, title + QStringLiteral(": загрузка..."));
     QPointer<Player> p(player);
     const quint64 ticket = player->newSourceRequest();
-    lib->startWave(seeds, [p, lib, title, ticket](const WaveBatch& batch, const QString& err) {
+    lib->startWave(seeds, [p, lib, title, ticket, seeds](const WaveBatch& batch, const QString& err) {
         if (!p || !p->isLatestSourceRequest(ticket)) return;
         if (!err.isEmpty()) return status(p, QStringLiteral("Ошибка волны: ") + err);
-        const QString session = batch.sessionId;
+        // Shared by the "more" and feedback callbacks for the life of this queue.
+        struct WaveState {
+            QString session;
+            QString station;
+            QHash<QString, QString> batchOfTrack;
+        };
+        auto state = std::make_shared<WaveState>();
+        state->session = batch.sessionId;
+        state->station = seeds.value(0);
+        for (const Track& t : batch.tracks) state->batchOfTrack.insert(t.id, batch.batchId);
+        currentWaveSeeds() = seeds;
+
         // Endless: ask the session for the next batch, seeded with what we've queued.
-        Player::MoreFn more = [p, lib, session](std::function<void(const QList<Track>&)> done) {
+        Player::MoreFn more = [p, lib, state](std::function<void(const QList<Track>&)> done) {
             if (!p) return;
             QStringList queue;
             const auto& list = p->playlist();
             for (qsizetype i = std::max<qsizetype>(0, list.size() - 5); i < list.size(); ++i) queue << list[i].id;
-            lib->moreWave(session, queue, [done](const WaveBatch& b, const QString& err) {
+            lib->moreWave(state->session, queue, [done, state](const WaveBatch& b, const QString& err) {
                 if (!err.isEmpty()) qWarning("wave: %s", qPrintable(err));
+                for (const Track& t : b.tracks) state->batchOfTrack.insert(t.id, b.batchId);
                 done(b.tracks);
             });
         };
-        p->setQueue(batch.tracks, title, true, more);
+        // Feedback makes the wave adapt: what was played through, what was skipped.
+        Player::EventFn events = [lib, state](Player::TrackEvent ev, const Track& t, double played) {
+            const yandex::WaveEvent we = ev == Player::TrackEvent::Started    ? yandex::WaveEvent::TrackStarted
+                                         : ev == Player::TrackEvent::Finished ? yandex::WaveEvent::TrackFinished
+                                                                              : yandex::WaveEvent::Skip;
+            lib->waveFeedback(state->session, state->station, state->batchOfTrack.value(t.id), we, &t, played);
+        };
+        lib->waveFeedback(state->session, state->station, batch.batchId, yandex::WaveEvent::RadioStarted);
+        p->setQueue(batch.tracks, title, true, more, events);
     });
 }
 
@@ -148,13 +177,37 @@ void addLibraryActions(QMenu* menu, Player* player, QWidget* dialogParent, std::
     menu->addAction(QStringLiteral("Моя волна"), menu, [player] { sources::playMyWave(player); });
     menu->addAction(QStringLiteral("Мне нравится"), menu, [player] { sources::playLikes(player, true); });
 
+    QMenu* wheel = menu->addMenu(QStringLiteral("Колесо волн"));
+    lazySubmenu<yandex::Wave>(
+        wheel, [lib](auto cb) { lib->wheelWaves(currentWaveSeeds(), cb); },
+        [player](QMenu* m, const QList<yandex::Wave>& waves) {
+            for (const yandex::Wave& w : waves) {
+                QAction* a = m->addAction(w.name, m, [player, w] { sources::playWave(player, w.seeds, w.name); });
+                a->setToolTip(w.description);
+            }
+            m->setToolTipsVisible(true);
+        });
+
+    QMenu* forYou = menu->addMenu(QStringLiteral("Для вас"));
+    lazySubmenu<PlaylistRef>(
+        forYou, [lib](auto cb) { lib->personalPlaylists(cb); },
+        [player, lib](QMenu* m, const QList<PlaylistRef>& items) {
+            for (const PlaylistRef& pl : items)
+                m->addAction(pl.title, m, [player, lib, pl] { lib->playlistTracks(pl, queueLoader(player, pl.title)); });
+        });
+
     QMenu* playlists = menu->addMenu(QStringLiteral("Плейлисты"));
     lazySubmenu<PlaylistRef>(
         playlists, [lib](auto cb) { lib->userPlaylists(cb); },
         [player, lib](QMenu* m, const QList<PlaylistRef>& items) {
-            for (const PlaylistRef& pl : items)
-                m->addAction(QStringLiteral("%1 (%2)").arg(pl.title).arg(pl.trackCount), m,
-                             [player, lib, pl] { lib->playlistTracks(pl, queueLoader(player, pl.title)); });
+            for (const PlaylistRef& pl : items) {
+                QMenu* one = m->addMenu(QStringLiteral("%1 (%2)").arg(pl.title).arg(pl.trackCount));
+                one->addAction(QStringLiteral("Слушать"), one,
+                               [player, lib, pl] { lib->playlistTracks(pl, queueLoader(player, pl.title)); });
+                one->addAction(QStringLiteral("Похожие треки"), one, [player, lib, pl] {
+                    lib->playlistRecommendations(pl, queueLoader(player, pl.title + QStringLiteral(": похожие")));
+                });
+            }
         });
 
     QMenu* artists = menu->addMenu(QStringLiteral("Исполнители"));

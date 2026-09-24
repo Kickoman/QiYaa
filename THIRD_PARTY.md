@@ -6,7 +6,7 @@ QiYaa itself is MIT-licensed (see `LICENSE`). It includes or links the following
 
 | Component | License | How it is used |
 |---|---|---|
-| [Qt 6](https://www.qt.io/) — Core, Gui, Widgets, Network | LGPLv3 | Linked **dynamically**. You may replace the Qt libraries shipped with a build by your own. Qt sources: https://download.qt.io/official_releases/qt/ |
+| [Qt 6](https://www.qt.io/) — Core, Gui, Widgets, Network, DBus (Linux) | LGPLv3 | Linked **dynamically**. You may replace the Qt libraries shipped with a build by your own. Qt sources: https://download.qt.io/official_releases/qt/ |
 
 Only LGPL-licensed Qt modules are used. GPL-only modules (Qt HTTP Server, Qt Network Authorization, etc.) are deliberately not used.
 
@@ -24,13 +24,18 @@ Sprite coordinates and window layouts for the main, equalizer and playlist windo
 the TEXT.BMP font map (`src/skin/Skin.cpp`), `region.txt` and `pledit.txt` parsing rules, window snapping
 (`src/ui/Snap.cpp`), the EQ graph spline (`src/ui/EqualizerWindow.cpp`, itself adapted from
 [morganherlocker/cubic-spline](https://github.com/morganherlocker/cubic-spline), MIT), the analyzer's bar/peak
-behaviour (`src/vis/Visualizers.cpp`) and Winamp's built-in EQ presets (`src/audio/EqPresets.h`) are ported from webamp.
+behaviour (`src/vis/Visualizers.cpp`), Winamp's built-in EQ presets (`src/audio/EqPresets.h`), the windowshade sprites
+of `titlebar.bmp`/`eq_ex.bmp`/`pledit.bmp`, the `gen.bmp` frame and bitmap-font layout (`src/ui/GenWindow.cpp`, `src/skin/Skin.cpp`)
+and the `.eqf` file layout (`src/audio/EqPresets.cpp`, after webamp's `winamp-eqf` package) are ported from webamp.
 
 **Yaamp** — https://github.com/Kickoman/yaamp (fork of https://github.com/umnik1/yaamp) — MIT License, Copyright (c) 2025 Maksim Chingin.
 Product idea, the set of Yandex Music features and the bundled skin selection come from Yaamp.
 
 **yandex-music-client** — https://github.com/umnik1/yandex-music-client — the track-link signing scheme (`src/yandex/TrackUrl.cpp`)
 and the endpoint shapes used in `src/yandex/Library.cpp`.
+
+**yandex-music-api** — https://github.com/MarshalX/yandex-music-api — the unofficial API documentation of that project was used as a reference
+for the shapes of the rotor session, wave feedback, landing and playlist-recommendation endpoints. No code was copied.
 
 The equalizer uses the peaking-filter formulas from Robert Bristow-Johnson's *Audio EQ Cookbook* (public knowledge, no code copied).
 

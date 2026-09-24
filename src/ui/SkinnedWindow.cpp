@@ -100,6 +100,46 @@ void SkinnedWindow::ensureVisible() {
     placeAt(pos());
 }
 
+void SkinnedWindow::applyShade(bool shaded, QSize newSkinSize) {
+    m_shaded = shaded;
+    resizeKeepingStack(newSkinSize);
+    applyMask();  // the region section changes with the mode even if the size doesn't
+    Q_EMIT shadeChanged(shaded);  // last: listeners save positions, which are final now
+}
+
+void SkinnedWindow::resizeKeepingStack(QSize newSkinSize) {
+    // Hidden windows too, so they are still docked when shown again.
+    QList<SkinnedWindow*> all;
+    QList<QRect> rects;
+    QList<bool> visible;
+    int self = -1;
+    for (SkinnedWindow* w : registry()) {
+        if (w == this) self = int(all.size());
+        all << w;
+        rects << w->frameGeometry();
+        visible << w->isVisible();
+    }
+    const int oldHeight = height();
+    setSkinSize(newSkinSize);
+    const int dy = height() - oldHeight;
+    if (dy == 0 || !canPositionWindows()) return;
+    QList<SkinnedWindow*> group{this};
+    for (int i : snap::stackBelow(self, rects, dy, visible)) {
+        all[i]->move(all[i]->pos() + QPoint(0, dy));
+        group << all[i];
+    }
+    // Growing near the bottom of the screen: lift the whole stack back onto it.
+    if (dy < 0 || !isVisible()) return;
+    for (SkinnedWindow* w : dockedWindows())
+        if (!group.contains(w)) group << w;
+    QRect bounds;
+    for (SkinnedWindow* w : group)
+        if (w->isVisible()) bounds |= w->frameGeometry();
+    const QPoint shift = snap::clampInside(bounds, snap::pickScreen(bounds, screenRects())) - bounds.topLeft();
+    if (!shift.isNull())
+        for (SkinnedWindow* w : group) w->move(w->pos() + shift);
+}
+
 QList<SkinnedWindow*> SkinnedWindow::dockedWindows() const {
     QList<SkinnedWindow*> visible;
     QList<QRect> rects;

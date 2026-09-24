@@ -29,6 +29,13 @@ QString Track::displayTitle() const {
     return artists.isEmpty() ? title : artists.join(QStringLiteral(", ")) + QStringLiteral(" - ") + title;
 }
 
+QUrl Track::coverUrl(int size) const {
+    if (coverUri.isEmpty()) return {};
+    QString uri = coverUri;
+    uri.replace(QStringLiteral("%%"), QStringLiteral("%1x%1").arg(size));
+    return QUrl(uri.startsWith(QLatin1String("http")) ? uri : QStringLiteral("https://") + uri);
+}
+
 QUrl Track::webUrl() const {
     if (albumId.isEmpty()) return QUrl(QStringLiteral("https://music.yandex.ru/track/%1").arg(id));
     return QUrl(QStringLiteral("https://music.yandex.ru/album/%1/track/%2").arg(albumId, id));
@@ -56,13 +63,25 @@ void ApiClient::postForm(const QString& path, const Form& form, JsonCallback cb)
     }
     QNetworkRequest req = makeRequest(QUrl(m_base + path), m_token);
     req.setHeader(QNetworkRequest::ContentTypeHeader, QStringLiteral("application/x-www-form-urlencoded"));
-    handleJson(m_nam->post(req, body), std::move(cb));
+    QNetworkReply* reply = m_nam->post(req, body);
+    handleJson(reply, std::move(cb));
+    trackPost(reply);
 }
 
 void ApiClient::postJson(const QString& path, const QJsonObject& body, JsonCallback cb) {
     QNetworkRequest req = makeRequest(QUrl(m_base + path), m_token);
     req.setHeader(QNetworkRequest::ContentTypeHeader, QStringLiteral("application/json"));
-    handleJson(m_nam->post(req, QJsonDocument(body).toJson(QJsonDocument::Compact)), std::move(cb));
+    QNetworkReply* reply = m_nam->post(req, QJsonDocument(body).toJson(QJsonDocument::Compact));
+    handleJson(reply, std::move(cb));
+    trackPost(reply);
+}
+
+void ApiClient::trackPost(QNetworkReply* reply) {
+    ++m_pendingPosts;
+    // Connected after handleJson's slot, so this runs after the callback.
+    connect(reply, &QNetworkReply::finished, this, [this] {
+        if (--m_pendingPosts == 0) Q_EMIT postsSettled();
+    });
 }
 
 void ApiClient::handleJson(QNetworkReply* reply, JsonCallback cb) {
@@ -80,11 +99,12 @@ void ApiClient::handleJson(QNetworkReply* reply, JsonCallback cb) {
             cb({}, QStringLiteral("HTTP %1: %2").arg(status).arg(msg));
             return;
         }
-        if (!doc.isObject() || !obj.contains(QStringLiteral("result"))) {
+        if (!doc.isObject()) {
             cb({}, QStringLiteral("unexpected response"));
             return;
         }
-        cb(obj.value(QStringLiteral("result")), {});
+        // Most endpoints wrap the payload in {"result": ...}; some newer ones don't.
+        cb(obj.contains(QStringLiteral("result")) ? obj.value(QStringLiteral("result")) : QJsonValue(obj), {});
     });
 }
 
@@ -112,7 +132,16 @@ Track ApiClient::parseTrack(const QJsonValue& v) {
     for (const QJsonValue& a : o.value(QStringLiteral("artists")).toArray())
         t.artists << a.toObject().value(QStringLiteral("name")).toString();
     const QJsonArray albums = o.value(QStringLiteral("albums")).toArray();
-    if (!albums.isEmpty()) t.albumId = idString(albums.first().toObject().value(QStringLiteral("id")));
+    if (!albums.isEmpty()) {
+        const QJsonObject album = albums.first().toObject();
+        t.albumId = idString(album.value(QStringLiteral("id")));
+        t.albumTitle = album.value(QStringLiteral("title")).toString();
+        t.year = album.value(QStringLiteral("year")).toInt();
+        t.genre = album.value(QStringLiteral("genre")).toString();
+        t.coverUri = album.value(QStringLiteral("coverUri")).toString();
+    }
+    if (t.coverUri.isEmpty()) t.coverUri = o.value(QStringLiteral("coverUri")).toString();
+    if (t.coverUri.isEmpty()) t.coverUri = o.value(QStringLiteral("ogImage")).toString();
     t.durationMs = qint64(o.value(QStringLiteral("durationMs")).toDouble());
     t.available = o.value(QStringLiteral("available")).toBool(true);
     return t;

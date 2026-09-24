@@ -15,7 +15,17 @@
 
 #include "app/Paths.h"
 #include "audio/Equalizer.h"
+#include "core/CoverCache.h"
+#include "integrations/MediaControls.h"
+#ifdef QIYAA_HAVE_MPRIS
+#include "integrations/Mpris.h"
+#endif
+#ifdef QIYAA_HAVE_SMTC
+#include "integrations/Smtc.h"
+#endif
 #include "ui/EqualizerWindow.h"
+#include "ui/GenWindow.h"
+#include "ui/NowPlayingWindow.h"
 #include "ui/LibraryMenu.h"
 #include "ui/LoginDialog.h"
 #include "ui/MainWindow.h"
@@ -78,9 +88,15 @@ App::App(const Options& options, QObject* parent)
     m_main = std::make_unique<MainWindow>(&m_player, m_skin.get());
     m_eq = std::make_unique<EqualizerWindow>(m_skin.get());
     m_pl = std::make_unique<PlaylistWindow>(&m_player, m_skin.get());
-    for (QWidget* w : std::initializer_list<QWidget*>{m_main.get(), m_eq.get(), m_pl.get()}) installShortcuts(w);
+    m_covers = std::make_unique<CoverCache>(&m_nam, m_tmpDir ? m_tmpDir->filePath(QStringLiteral("covers")) : QString());
+    m_np = std::make_unique<NowPlayingWindow>(&m_player, m_covers.get(), m_skin.get());
+    for (QWidget* w : std::initializer_list<QWidget*>{m_main.get(), m_eq.get(), m_pl.get(), m_np.get()}) installShortcuts(w);
     m_eq->setSecondary();
     m_pl->setSecondary();
+    m_np->setSecondary();
+    m_np->setSizeSteps(m_settings.value(QStringLiteral("nowPlaying/steps"), QSize(0, 0)).toSize());
+    connect(m_np.get(), &NowPlayingWindow::closeRequested, this, [this] { setNowPlayingVisible(false); });
+    connect(m_np.get(), &GenWindow::sizeStepsChanged, this, [this](QSize s) { m_settings.setValue(QStringLiteral("nowPlaying/steps"), s); });
 
     // Main window.
     m_main->setVolume(m_settings.value(QStringLiteral("volume"), 75).toInt());
@@ -91,15 +107,17 @@ App::App(const Options& options, QObject* parent)
     connect(m_main.get(), &MainWindow::plToggleRequested, this, [this] { setPlaylistVisible(!m_pl->isVisible()); });
     connect(m_main.get(), &MainWindow::menuRequested, this, &App::showMainMenu);
     connect(m_main.get(), &MainWindow::sourcesMenuRequested, this, &App::showSourcesMenu);
-    connect(m_main.get(), &MainWindow::closeRequested, qApp, &QApplication::quit);
+    connect(m_main.get(), &MainWindow::closeRequested, this, &App::quit);
     // Minimising the main window takes the equalizer and playlist with it.
     connect(m_main.get(), &MainWindow::minimizedChanged, this, [this](bool minimized) {
         if (minimized) {
             m_eq->hide();
             m_pl->hide();
+            m_np->hide();
         } else {
             if (m_settings.value(QStringLiteral("equalizer/visible"), true).toBool()) m_eq->show();
             if (m_settings.value(QStringLiteral("playlist/visible"), true).toBool()) m_pl->show();
+            if (m_settings.value(QStringLiteral("nowPlaying/visible"), false).toBool()) m_np->show();
         }
     });
 
@@ -113,6 +131,12 @@ App::App(const Options& options, QObject* parent)
         writeEq(m_settings, s);
     });
     connect(m_eq.get(), &EqualizerWindow::statusText, m_main.get(), &MainWindow::setStatusText);
+    // The EQ's shade mode shows/controls the main window's volume and balance.
+    m_eq->setMixer(m_main->volume(), m_main->balance());
+    connect(m_main.get(), &MainWindow::volumeChanged, this, [this](int v) { m_eq->setMixer(v, m_main->balance()); });
+    connect(m_main.get(), &MainWindow::balanceChanged, this, [this](int b) { m_eq->setMixer(m_main->volume(), b); });
+    connect(m_eq.get(), &EqualizerWindow::volumeRequested, m_main.get(), &MainWindow::setVolume);
+    connect(m_eq.get(), &EqualizerWindow::balanceRequested, m_main.get(), &MainWindow::setBalance);
     connect(m_eq.get(), &EqualizerWindow::closeRequested, this, [this] { setEqualizerVisible(false); });
 
     // Playlist.
@@ -125,9 +149,41 @@ App::App(const Options& options, QObject* parent)
     for (SkinnedWindow* w : windows())
         connect(w, &SkinnedWindow::moveFinished, this, &App::saveState);
 
+    // Shade states: applied before the windows are placed, so saved positions match.
+    const std::pair<SkinnedWindow*, QString> shades[] = {{m_main.get(), QStringLiteral("mainWindow/shaded")},
+                                                         {m_eq.get(), QStringLiteral("equalizer/shaded")},
+                                                         {m_pl.get(), QStringLiteral("playlist/shaded")}};
+    for (const auto& [w, key] : shades) {
+        w->setShaded(m_settings.value(key, false).toBool());
+        connect(w, &SkinnedWindow::shadeChanged, this, [this, key](bool on) {
+            m_settings.setValue(key, on);
+            saveState();
+        });
+    }
+
     const double scale = m_settings.value(QStringLiteral("scale"), 1.0).toDouble();
     for (SkinnedWindow* w : windows()) w->setScale(scale);
     if (m_settings.value(QStringLiteral("alwaysOnTop"), false).toBool()) setAlwaysOnTop(true);
+
+    if (m_options.mediaIntegration) {
+        MediaControls::Hooks hooks;
+        hooks.volume = [this] { return m_main->volume(); };
+        hooks.setVolume = [this](int v) { m_main->setVolume(v); };
+        hooks.raise = [this] {
+            if (m_main->isMinimized()) m_main->showNormal();
+            for (SkinnedWindow* w : windows())
+                if (w->isVisible()) w->raise();
+            m_main->activateWindow();
+        };
+        hooks.quit = [this] { quit(); };
+        m_mediaControls = std::make_unique<MediaControls>(&m_player, m_covers.get(), hooks);
+        connect(m_main.get(), &MainWindow::volumeChanged, m_mediaControls.get(), &MediaControls::volumeChanged);
+#if defined(QIYAA_HAVE_MPRIS)
+        m_osMedia = std::make_unique<Mpris>(m_mediaControls.get());
+#elif defined(QIYAA_HAVE_SMTC)
+        m_osMedia = std::make_unique<Smtc>(m_mediaControls.get(), m_main.get());
+#endif
+    }
 
     connect(qApp, &QApplication::aboutToQuit, this, [this] {
         saveState();
@@ -138,7 +194,7 @@ App::App(const Options& options, QObject* parent)
 App::~App() = default;
 
 QList<SkinnedWindow*> App::windows() const {
-    return {m_main.get(), m_eq.get(), m_pl.get()};
+    return {m_main.get(), m_eq.get(), m_pl.get(), m_np.get()};
 }
 
 void App::layoutWindows() {
@@ -149,12 +205,15 @@ void App::layoutWindows() {
     m_main->placeAt(mainPos);
     m_eq->placeAt(m_settings.value(QStringLiteral("equalizer/pos"), eqDefault).toPoint());
     m_pl->placeAt(m_settings.value(QStringLiteral("playlist/pos"), plDefault).toPoint());
+    // "Now playing" defaults to the right of the main window.
+    m_np->placeAt(m_settings.value(QStringLiteral("nowPlaying/pos"), mainPos + QPoint(m_main->width(), 0)).toPoint());
 }
 
 void App::start() {
     m_main->show();
     if (m_settings.value(QStringLiteral("equalizer/visible"), true).toBool()) m_eq->show();
     if (m_settings.value(QStringLiteral("playlist/visible"), true).toBool()) m_pl->show();
+    if (m_settings.value(QStringLiteral("nowPlaying/visible"), false).toBool()) m_np->show();
     layoutWindows();
     m_main->setEqButton(m_eq->isVisible());
     m_main->setPlButton(m_pl->isVisible());
@@ -286,6 +345,25 @@ void App::setPlaylistVisible(bool on) {
     m_settings.setValue(QStringLiteral("playlist/visible"), on);
 }
 
+void App::setNowPlayingVisible(bool on) {
+    m_np->setVisible(on);
+    if (on) m_np->ensureVisible();
+    m_settings.setValue(QStringLiteral("nowPlaying/visible"), on);
+}
+
+void App::quit() {
+    if (m_quitting) return;
+    m_quitting = true;
+    saveState();
+    m_player.shutDown();  // sends the wave "skip" for the track in progress
+    for (SkinnedWindow* w : windows()) w->hide();
+    // Queued, so a quit() from inside a nested loop (a menu) lands in the main one.
+    const auto finish = [] { QMetaObject::invokeMethod(qApp, &QApplication::quit, Qt::QueuedConnection); };
+    if (m_api.pendingPosts() == 0) return finish();
+    connect(&m_api, &yandex::ApiClient::postsSettled, this, finish);
+    QTimer::singleShot(1500, this, finish);
+}
+
 void App::saveState() {
     m_settings.setValue(QStringLiteral("volume"), m_main->volume());
     m_settings.setValue(QStringLiteral("balance"), m_main->balance());
@@ -296,6 +374,7 @@ void App::saveState() {
     m_settings.setValue(QStringLiteral("mainWindow/pos"), m_main->pos());
     m_settings.setValue(QStringLiteral("equalizer/pos"), m_eq->pos());
     m_settings.setValue(QStringLiteral("playlist/pos"), m_pl->pos());
+    m_settings.setValue(QStringLiteral("nowPlaying/pos"), m_np->pos());
 }
 
 // ------------------------------------------------------------------ menus & keys
@@ -316,8 +395,9 @@ void App::installShortcuts(QWidget* w) {
     add(QKeySequence(Qt::ALT | Qt::Key_G), [this] { setEqualizerVisible(!m_eq->isVisible()); });
     add(QKeySequence(Qt::ALT | Qt::Key_E), [this] { setPlaylistVisible(!m_pl->isVisible()); });
     add(QKeySequence(Qt::CTRL | Qt::Key_D), [this] { setScale(std::abs(m_main->scale() - 2.0) < 1e-6 ? 1.0 : 2.0); });
-    add(Qt::Key_Left, [this] { m_engine.seek(std::max(0.0, m_engine.positionSeconds() - 5)); });
-    add(Qt::Key_Right, [this] { m_engine.seek(m_engine.positionSeconds() + 5); });
+    add(QKeySequence(Qt::CTRL | Qt::Key_W), [this] { m_main->setShaded(!m_main->isShaded()); });
+    add(Qt::Key_Left, [this] { m_player.seekTo(m_engine.positionSeconds() - 5); });
+    add(Qt::Key_Right, [this] { m_player.seekTo(m_engine.positionSeconds() + 5); });
 }
 
 void App::fillWindowActions(QMenu* menu) {
@@ -329,6 +409,9 @@ void App::fillWindowActions(QMenu* menu) {
     pl->setCheckable(true);
     pl->setChecked(m_pl->isVisible());
     pl->setShortcut(QKeySequence(Qt::ALT | Qt::Key_E));
+    QAction* np = menu->addAction(QStringLiteral("Сейчас играет"), this, [this](bool on) { setNowPlayingVisible(on); });
+    np->setCheckable(true);
+    np->setChecked(m_np->isVisible());
 
     QMenu* vis = menu->addMenu(QStringLiteral("Визуализация"));
     auto* visGroup = new QActionGroup(vis);
@@ -389,7 +472,7 @@ void App::showMainMenu(QPoint globalPos) {
     menu->addSeparator();
     if (m_library.isLoggedIn())
         menu->addAction(QStringLiteral("Выйти из аккаунта (%1)").arg(m_library.account().displayName), this, &App::logout);
-    menu->addAction(QStringLiteral("Закрыть QiYaa"), qApp, &QApplication::quit);
+    menu->addAction(QStringLiteral("Закрыть QiYaa"), this, &App::quit);
     menu->popup(globalPos);
 }
 

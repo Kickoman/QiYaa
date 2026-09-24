@@ -239,6 +239,9 @@ bool Skin::loadFromWsz(const QByteArray& zip, const Skin* fallback, QString* err
     load(Sheet::Text, {"text.bmp"});
     load(Sheet::EqMain, {"eqmain.bmp"});
     load(Sheet::PlEdit, {"pledit.bmp"});
+    load(Sheet::EqEx, {"eq_ex.bmp"});
+    load(Sheet::Gen, {"gen.bmp"});
+    measureGenLetters();
     const bool hasVolume = load(Sheet::Volume, {"volume.bmp"});
     if (!load(Sheet::Balance, {"balance.bmp"}) && hasVolume)
         m_sheets.insert(Sheet::Balance, m_sheets.value(Sheet::Volume));
@@ -264,6 +267,53 @@ bool Skin::loadFromWsz(const QByteArray& zip, const Skin* fallback, QString* err
         return false;
     }
     return true;
+}
+
+void Skin::measureGenLetters() {
+    // Letters sit side by side, separated by one column of the background
+    // colour (taken from x=0). Port of webamp's genGenTextSprites().
+    auto measure = [](const QImage& img, int y) {
+        QList<std::pair<int, int>> out;
+        if (img.isNull() || y >= img.height()) return out;
+        const QRgb bg = img.pixel(0, y);
+        int x = 1;
+        for (int i = 0; i < 26; ++i) {
+            int next = x;
+            while (next < img.width() && img.pixel(next, y) != bg) ++next;
+            out.append({x, next - x});
+            x = next + 1;
+        }
+        return out;
+    };
+    const QImage& gen = sheet(Sheet::Gen);
+    m_genLettersSelected = measure(gen, sprites::gen::kLettersYSelected);
+    m_genLetters = measure(gen, sprites::gen::kLettersY);
+}
+
+int Skin::genTextWidth(const QString& text) const {
+    int w = 0;
+    for (QChar c : text) {
+        const int i = c.toUpper().unicode() - u'A';
+        if (c == u' ') w += 5;
+        else if (i >= 0 && i < m_genLetters.size()) w += m_genLetters[i].second;
+    }
+    return w;
+}
+
+int Skin::drawGenText(QPainter& p, const QPoint& at, const QString& text, bool selected) const {
+    const auto& letters = selected ? m_genLettersSelected : m_genLetters;
+    const int y = selected ? sprites::gen::kLettersYSelected : sprites::gen::kLettersY;
+    int x = at.x();
+    for (QChar c : text) {
+        const int i = c.toUpper().unicode() - u'A';
+        if (c == u' ') {
+            x += 5;
+        } else if (i >= 0 && i < letters.size()) {
+            draw(p, Sheet::Gen, QRect(letters[i].first, y, letters[i].second, sprites::gen::kLetterH), QPoint(x, at.y()));
+            x += letters[i].second;
+        }
+    }
+    return x - at.x();
 }
 
 Skin::PlaylistStyle Skin::parsePlaylistStyle(const QByteArray& text) {

@@ -98,6 +98,7 @@ int main(int argc, char* argv[]) {
     // With --play-file, a screenshot is taken after a second of playback (shows the visualizer).
     opts.audio = !screenshot || cli.isSet(fileOpt);
     opts.readOnlySettings = screenshot;  // screenshots never touch the user's settings
+    opts.mediaIntegration = !screenshot;
     App qiyaa(opts);
 
     qiyaa.start();

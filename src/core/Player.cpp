@@ -20,6 +20,10 @@ constexpr int kLoadMoreWhenLeft = 2;  // endless sources: fetch more when this m
 Player::Player(yandex::Library* library, AudioEngine* engine, QObject* parent)
     : QObject(parent), m_library(library), m_engine(engine) {
     connect(m_engine, &AudioEngine::trackFinished, this, [this] {
+        // A broken download also drains to the end; that's not "listened to the end".
+        if (m_openTrack && m_openTrackEvents)
+            m_openTrackEvents(m_downloadFailed ? TrackEvent::Skipped : TrackEvent::Finished, *m_openTrack, playedSeconds());
+        m_openTrack.reset();
         if (m_repeat && m_playlist.size() == 1) return playIndex(m_index);
         next();
     });
@@ -31,6 +35,7 @@ Player::Player(yandex::Library* library, AudioEngine* engine, QObject* parent)
     m_pollTimer.setInterval(100);
     connect(&m_pollTimer, &QTimer::timeout, this, [this] {
         m_engine->poll();
+        playedSeconds();  // accumulate while it plays
         Q_EMIT positionTick();
     });
     connect(m_engine, &AudioEngine::stateChanged, this, [this](AudioEngine::State s) {
@@ -39,8 +44,9 @@ Player::Player(yandex::Library* library, AudioEngine* engine, QObject* parent)
     });
 }
 
-void Player::setQueue(const QList<Track>& tracks, const QString& title, bool autoplay, MoreFn more) {
+void Player::setQueue(const QList<Track>& tracks, const QString& title, bool autoplay, MoreFn more, EventFn events) {
     stop();
+    m_events = std::move(events);
     m_playlist.clear();
     for (const Track& t : tracks)
         if (t.available) m_playlist << t;
@@ -115,7 +121,34 @@ void Player::pause() {
     else m_engine->pause();
 }
 
+void Player::closeOpenTrack() {
+    if (m_openTrack && m_openTrackEvents) m_openTrackEvents(TrackEvent::Skipped, *m_openTrack, playedSeconds());
+    m_openTrack.reset();
+}
+
+double Player::playedSeconds() {
+    const double pos = m_engine->positionSeconds();
+    const double step = pos - m_lastPosition;
+    // Normal progress between two polls is ~0.1 s; bigger jumps are seeks.
+    if (m_engine->state() == AudioEngine::State::Playing && step > 0 && step < 1.0) m_played += step;
+    m_lastPosition = pos;
+    return m_played;
+}
+
+void Player::setShuffle(bool on) {
+    if (on == m_shuffle) return;
+    m_shuffle = on;
+    Q_EMIT modesChanged();
+}
+
+void Player::setRepeat(bool on) {
+    if (on == m_repeat) return;
+    m_repeat = on;
+    Q_EMIT modesChanged();
+}
+
 void Player::stop() {
+    closeOpenTrack();
     m_waitingForMore = false;
     ++m_generation;
     abortDownload();
@@ -153,9 +186,18 @@ void Player::previous() {
     playIndex(m_index > 0 ? m_index - 1 : (m_repeat ? int(m_playlist.size()) - 1 : 0));
 }
 
-void Player::seekFraction(double fraction) {
+bool Player::seekFraction(double fraction) {
     const double dur = durationSeconds();
-    if (dur > 0) m_engine->seek(std::clamp(fraction, 0.0, 1.0) * dur);
+    return dur > 0 && seekTo(std::clamp(fraction, 0.0, 1.0) * dur);
+}
+
+bool Player::seekTo(double seconds) {
+    const double dur = durationSeconds();
+    const double target = dur > 0 ? std::clamp(seconds, 0.0, dur) : std::max(0.0, seconds);
+    if (!m_engine->seek(target)) return false;
+    m_lastPosition = target;
+    Q_EMIT seeked(target);
+    return true;
 }
 
 void Player::maybeLoadMore() {
@@ -173,9 +215,16 @@ void Player::maybeLoadMore() {
     });
 }
 
+void Player::shutDown() {
+    newSourceRequest();  // loads in flight are stale now
+    stop();
+    m_shutDown = true;
+}
+
 void Player::playIndex(int index) {
-    if (index < 0 || index >= m_playlist.size()) return;
+    if (m_shutDown || index < 0 || index >= m_playlist.size()) return;
     m_waitingForMore = false;
+    closeOpenTrack();
     const quint64 gen = ++m_generation;
     abortDownload();
     m_index = index;
@@ -194,6 +243,12 @@ void Player::playIndex(int index) {
         }
         m_bitrate = url.bitrateKbps;
         m_library->api()->reportPlayStarted(m_library->account(), track, QUuid::createUuid().toString(QUuid::WithoutBraces));
+        m_openTrack = track;
+        m_openTrackEvents = m_events;
+        m_played = 0;
+        m_lastPosition = 0;
+        m_downloadFailed = false;
+        if (m_events) m_events(TrackEvent::Started, track, 0);
         startDownload(url.url, gen);
         Q_EMIT currentTrackChanged();
     });
@@ -213,6 +268,7 @@ void Player::startDownload(const QUrl& url, quint64 generation) {
         if (generation != m_generation) return;
         if (reply->error() != QNetworkReply::NoError) {
             Q_EMIT statusMessage(QStringLiteral("Download failed: ") + reply->errorString());
+            m_downloadFailed = true;
             m_engine->failData();
             return;
         }

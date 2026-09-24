@@ -4,6 +4,11 @@
 #include <cmath>
 
 #include <QCloseEvent>
+#include <QDir>
+#include <QFile>
+#include <QFileDialog>
+#include <QInputDialog>
+#include <QLineEdit>
 #include <QMenu>
 #include <QPainter>
 #include <QWheelEvent>
@@ -24,6 +29,9 @@ namespace E = sprites::eq;
 namespace {
 
 constexpr int kElNone = 0, kElClose = 1, kElOn = 2, kElAuto = 3, kElPresets = 4, kElPreamp = 5, kElBand0 = 6;
+constexpr int kElShade = 20, kElShadeVolume = 21, kElShadeBalance = 22;
+constexpr QPoint kShadeButton{254, 3};
+namespace X = sprites::eqex;
 
 bool contains(const QRect& r, QPoint p) {
     return p.x() >= r.x() && p.y() >= r.y() && p.x() < r.x() + r.width() && p.y() < r.y() + r.height();
@@ -144,11 +152,39 @@ void EqualizerWindow::drawGraph(QPainter& p) const {
     }
 }
 
+void EqualizerWindow::setShaded(bool shaded) {
+    if (shaded == isShaded()) return;
+    applyShade(shaded, shaded ? QSize(275, 14) : E::kSize);
+    update();
+}
+
+void EqualizerWindow::setMixer(int volume, int balance) {
+    m_volume = volume;
+    m_balance = balance;
+    if (isShaded()) update();
+}
+
+void EqualizerWindow::paintShaded(QPainter& p) {
+    const Skin& sk = skin();
+    sk.draw(p, Sheet::EqEx, isActiveWindow() ? X::kShadeBackgroundSelected : X::kShadeBackground, {0, 0});
+    // Thumb sprite changes with the value: left / centre / right third.
+    const int vThird = std::clamp(m_volume * 3 / 101, 0, 2);
+    const int vx = X::kVolume.x() + int(std::lround(m_volume / 100.0 * (X::kVolume.width() - 3)));
+    sk.draw(p, Sheet::EqEx, X::kVolumeThumb[vThird], {vx, X::kVolume.y()});
+    const int bThird = std::clamp((m_balance + 100) * 3 / 201, 0, 2);
+    const int bx = X::kBalance.x() + int(std::lround((m_balance + 100) / 200.0 * (X::kBalance.width() - 3)));
+    sk.draw(p, Sheet::EqEx, X::kBalanceThumb[bThird], {bx, X::kBalance.y()});
+    if (m_pressed == kElShade && m_pressedInside) sk.draw(p, Sheet::EqEx, X::kShadeButtonShadedDown, kShadeButton);
+    if (m_pressed == kElClose && m_pressedInside) sk.draw(p, Sheet::EqEx, X::kCloseButtonDown, E::kClose);
+}
+
 void EqualizerWindow::paintSkin(QPainter& p) {
+    if (isShaded()) return paintShaded(p);
     const Skin& sk = skin();
     sk.draw(p, Sheet::EqMain, E::kBackground, {0, 0});
     sk.draw(p, Sheet::EqMain, isActiveWindow() ? E::kTitleBarSelected : E::kTitleBar, {0, 0});
     if (m_pressed == kElClose && m_pressedInside) sk.draw(p, Sheet::EqMain, E::kCloseButtonDown, E::kClose);
+    if (m_pressed == kElShade && m_pressedInside) sk.draw(p, Sheet::EqEx, X::kShadeButtonDown, kShadeButton);
 
     auto toggle = [&](int el, const sprites::ToggleSprite& spr, bool on, QPoint at) {
         const bool down = m_pressed == el && m_pressedInside;
@@ -169,6 +205,12 @@ void EqualizerWindow::paintSkin(QPainter& p) {
 
 int EqualizerWindow::hitTest(QPoint p) const {
     if (contains({E::kClose, QSize(9, 9)}, p)) return kElClose;
+    if (contains({kShadeButton, QSize(9, 9)}, p)) return kElShade;
+    if (isShaded()) {
+        if (contains(X::kVolume, p)) return kElShadeVolume;
+        if (contains(X::kBalance, p)) return kElShadeBalance;
+        return kElNone;
+    }
     if (contains({E::kOnPos, QSize(26, 12)}, p)) return kElOn;
     if (contains({E::kAutoPos, QSize(32, 12)}, p)) return kElAuto;
     if (contains({E::kPresetsPos, QSize(44, 12)}, p)) return kElPresets;
@@ -198,6 +240,13 @@ void EqualizerWindow::changed(int el) {
 }
 
 void EqualizerWindow::setFromMouse(int el, QPoint p) {
+    if (el == kElShadeVolume || el == kElShadeBalance) {
+        const QRect r = el == kElShadeVolume ? X::kVolume : X::kBalance;
+        const double frac = std::clamp((p.x() - r.x() - 1.5) / (r.width() - 3), 0.0, 1.0);
+        if (el == kElShadeVolume) Q_EMIT volumeRequested(int(std::lround(frac * 100)));
+        else Q_EMIT balanceRequested(int(std::lround(frac * 200 - 100)));
+        return;
+    }
     double* v = valueFor(el);
     if (!v) return;
     const QRect r = sliderRect(el);
@@ -223,7 +272,7 @@ bool EqualizerWindow::skinMousePress(QPoint pos, Qt::MouseButton button) {
 
 void EqualizerWindow::skinMouseMove(QPoint pos) {
     if (m_pressed == kElNone) return;
-    if (valueFor(m_pressed)) setFromMouse(m_pressed, pos);
+    if (valueFor(m_pressed) || m_pressed == kElShadeVolume || m_pressed == kElShadeBalance) setFromMouse(m_pressed, pos);
     else m_pressedInside = hitTest(pos) == m_pressed;
     update();
 }
@@ -237,6 +286,7 @@ void EqualizerWindow::skinMouseRelease(QPoint pos, Qt::MouseButton button) {
     if (!inside) return;
     switch (el) {
     case kElClose: Q_EMIT closeRequested(); break;
+    case kElShade: setShaded(!isShaded()); break;
     case kElOn:
         m_settings.enabled = !m_settings.enabled;
         Q_EMIT settingsChanged(m_settings);
@@ -249,6 +299,10 @@ void EqualizerWindow::skinMouseRelease(QPoint pos, Qt::MouseButton button) {
 }
 
 bool EqualizerWindow::skinMouseDoubleClick(QPoint pos, Qt::MouseButton button) {
+    if (button == Qt::LeftButton && pos.y() < 14 && hitTest(pos) == kElNone) {  // title bar
+        setShaded(!isShaded());
+        return true;
+    }
     // Double click on a slider resets it to 0 dB.
     const int el = hitTest(pos);
     double* v = valueFor(el);
@@ -267,6 +321,49 @@ void EqualizerWindow::wheelEvent(QWheelEvent* e) {
     changed(el);
 }
 
+void EqualizerWindow::applyPreset(const audio::EqPreset& preset) {
+    const bool enabled = m_settings.enabled;
+    m_settings = preset.settings;
+    m_settings.enabled = enabled;
+    Q_EMIT settingsChanged(m_settings);
+    Q_EMIT statusText(QStringLiteral("EQ: ") + preset.name.toUpper());
+    update();
+}
+
+void EqualizerWindow::loadEqf() {
+    const QString path = QFileDialog::getOpenFileName(this, QStringLiteral("Пресет эквалайзера"), QDir::homePath(),
+                                                      QStringLiteral("Пресеты Winamp (*.eqf *.EQF *.q1)"));
+    if (path.isEmpty()) return;
+    QFile f(path);
+    QList<audio::EqPreset> presets;
+    if (!f.open(QIODevice::ReadOnly) || !audio::parseEqf(f.readAll(), &presets)) {
+        Q_EMIT statusText(QStringLiteral("EQ: не удалось прочитать файл"));
+        return;
+    }
+    if (presets.size() == 1) return applyPreset(presets.first());
+    // Libraries (.q1) hold many presets: let the user pick one.
+    QStringList names;
+    for (const auto& p : presets) names << p.name;
+    bool ok = false;
+    const QString name = QInputDialog::getItem(this, QStringLiteral("Пресет"), QStringLiteral("Выберите пресет:"), names, 0, false, &ok);
+    if (ok) applyPreset(presets.value(names.indexOf(name)));
+}
+
+void EqualizerWindow::saveEqf() {
+    bool ok = false;
+    const QString name = QInputDialog::getText(this, QStringLiteral("Сохранить пресет"), QStringLiteral("Название:"),
+                                               QLineEdit::Normal, QStringLiteral("QiYaa"), &ok);
+    if (!ok || name.isEmpty()) return;
+    const QString path = QFileDialog::getSaveFileName(this, QStringLiteral("Сохранить пресет"), QDir::homePath() + u'/' + name + QStringLiteral(".eqf"),
+                                                      QStringLiteral("Пресет Winamp (*.eqf)"));
+    if (path.isEmpty()) return;
+    QFile f(path);
+    if (f.open(QIODevice::WriteOnly) && f.write(audio::writeEqf({{name, m_settings}})) > 0)
+        Q_EMIT statusText(QStringLiteral("EQ: сохранено"));
+    else
+        Q_EMIT statusText(QStringLiteral("EQ: не удалось сохранить"));
+}
+
 void EqualizerWindow::showPresets() {
     auto* menu = new QMenu(this);
     menu->setAttribute(Qt::WA_DeleteOnClose);
@@ -277,17 +374,11 @@ void EqualizerWindow::showPresets() {
         Q_EMIT settingsChanged(m_settings);
         update();
     });
+    menu->addAction(QStringLiteral("Загрузить .eqf..."), this, &EqualizerWindow::loadEqf);
+    menu->addAction(QStringLiteral("Сохранить в .eqf..."), this, &EqualizerWindow::saveEqf);
     menu->addSeparator();
-    for (const audio::EqPreset& preset : audio::builtinEqPresets()) {
-        menu->addAction(preset.name, this, [this, preset] {
-            const bool enabled = m_settings.enabled;
-            m_settings = preset.settings;
-            m_settings.enabled = enabled;
-            Q_EMIT settingsChanged(m_settings);
-            Q_EMIT statusText(QStringLiteral("EQ: ") + preset.name.toUpper());
-            update();
-        });
-    }
+    for (const audio::EqPreset& preset : audio::builtinEqPresets())
+        menu->addAction(preset.name, this, [this, preset] { applyPreset(preset); });
     const QPoint at(E::kPresetsPos.x(), E::kPresetsPos.y() + 12);
     menu->popup(mapToGlobal(QPoint(qRound(at.x() * scale()), qRound(at.y() * scale()))));
 }

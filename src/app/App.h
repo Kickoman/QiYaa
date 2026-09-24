@@ -19,7 +19,10 @@ class QMenu;
 
 namespace qiyaa {
 
+class CoverCache;
+class MediaControls;
 class EqualizerWindow;
+class NowPlayingWindow;
 class MainWindow;
 class PlaylistWindow;
 class SkinnedWindow;
@@ -33,6 +36,7 @@ public:
         bool offline = false;   // --offline: don't talk to Yandex
         bool audio = true;      // false for screenshots/tests
         bool readOnlySettings = false;  // use a throwaway settings file
+        bool mediaIntegration = true;   // MPRIS / SMTC (off in tests and screenshots)
     };
 
     explicit App(const Options& options, QObject* parent = nullptr);
@@ -44,6 +48,8 @@ public:
     MainWindow* mainWindow() const { return m_main.get(); }
     EqualizerWindow* equalizerWindow() const { return m_eq.get(); }
     PlaylistWindow* playlistWindow() const { return m_pl.get(); }
+    NowPlayingWindow* nowPlayingWindow() const { return m_np.get(); }
+    CoverCache* covers() const { return m_covers.get(); }
     Player* player() { return &m_player; }
     audio::AudioEngine* engine() { return &m_engine; }
     yandex::ApiClient* api() { return &m_api; }
@@ -55,6 +61,7 @@ public:
     void setAlwaysOnTop(bool on);
     void setEqualizerVisible(bool on);
     void setPlaylistVisible(bool on);
+    void setNowPlayingVisible(bool on);
 
     void login();
     void logout();
@@ -62,6 +69,9 @@ public:
     void applyToken(const QString& token, bool save);
 
     void saveState();
+    // Stops playback (so the wave hears about the track in progress), gives
+    // the last reports a moment to leave, then quits.
+    void quit();
     // Renders all visible windows, positioned as on screen, into one image.
     QImage snapshot() const;
 
@@ -78,18 +88,23 @@ private:
     QSettings m_settings;
     Skin m_baseSkin;
     std::unique_ptr<Skin> m_skin;
-    bool m_transientScale = false;  // --scale: don't save positions made at this scale
+    bool m_transientScale = false;
+    bool m_quitting = false;  // --scale: don't save positions made at this scale
 
     QNetworkAccessManager m_nam;
     yandex::ApiClient m_api;
     yandex::Library m_library;
     audio::AudioEngine m_engine;
     Player m_player;
+    std::unique_ptr<CoverCache> m_covers;
+    std::unique_ptr<MediaControls> m_mediaControls;
+    std::unique_ptr<QObject> m_osMedia;  // Mpris or Smtc
 
     // Declared last: destroyed first.
     std::unique_ptr<MainWindow> m_main;
     std::unique_ptr<EqualizerWindow> m_eq;
     std::unique_ptr<PlaylistWindow> m_pl;
+    std::unique_ptr<NowPlayingWindow> m_np;
 };
 
 }  // namespace qiyaa

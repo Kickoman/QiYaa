@@ -23,6 +23,15 @@ inline constexpr QRect kShadeButtonDown{9, 18, 9, 9};
 inline constexpr QRect kCloseButton{18, 0, 9, 9};
 inline constexpr QRect kCloseButtonDown{18, 9, 9, 9};
 inline constexpr QRect kClutterBar{304, 0, 8, 43};
+// Shade ("windowshade") mode of the main window.
+inline constexpr QRect kShadeBackground{27, 42, 275, 14};
+inline constexpr QRect kShadeBackgroundSelected{27, 29, 275, 14};
+inline constexpr QRect kShadeButtonShaded{0, 27, 9, 9};  // shade button while shaded
+inline constexpr QRect kShadeButtonShadedDown{9, 27, 9, 9};
+inline constexpr QRect kShadePositionBackground{0, 36, 17, 7};
+inline constexpr QRect kShadePositionThumb{20, 36, 3, 7};
+inline constexpr QRect kShadePositionThumbLeft{17, 36, 3, 7};
+inline constexpr QRect kShadePositionThumbRight{23, 36, 3, 7};
 
 // ------------------------------------------------------------------ CBUTTONS.BMP
 struct ButtonSprite {
@@ -119,6 +128,19 @@ inline constexpr int kSlidersY = 38;
 inline constexpr int kSliderTravel = 62 - 11;  // thumb travel in px
 }  // namespace eq
 
+// ------------------------------------------------------------------ EQ_EX.BMP (equalizer shade)
+namespace eqex {
+inline constexpr QRect kShadeBackgroundSelected{0, 0, 275, 14};
+inline constexpr QRect kShadeBackground{0, 15, 275, 14};
+inline constexpr QRect kVolumeThumb[3] = {{1, 30, 3, 7}, {4, 30, 3, 7}, {7, 30, 3, 7}};   // left/centre/right
+inline constexpr QRect kBalanceThumb[3] = {{11, 30, 3, 7}, {14, 30, 3, 7}, {17, 30, 3, 7}};
+inline constexpr QRect kShadeButtonDown{1, 38, 9, 9};        // normal mode, pressed ("maximize" in webamp)
+inline constexpr QRect kShadeButtonShadedDown{1, 47, 9, 9};  // shade mode, pressed ("minimize")
+inline constexpr QRect kCloseButtonDown{11, 47, 9, 9};
+inline constexpr QRect kVolume{61, 4, 97, 7};
+inline constexpr QRect kBalance{164, 4, 43, 7};
+}  // namespace eqex
+
 // ------------------------------------------------------------------ PLEDIT.BMP
 namespace pl {
 inline constexpr QRect kTopTile{127, 21, 25, 20};
@@ -137,6 +159,12 @@ inline constexpr QRect kBottomRight{126, 72, 150, 38};
 inline constexpr QRect kScrollHandle{52, 53, 8, 18};
 inline constexpr QRect kScrollHandleSelected{61, 53, 8, 18};
 inline constexpr QRect kCloseSelected{52, 42, 9, 9};
+inline constexpr QRect kCollapseSelected{62, 42, 9, 9};
+inline constexpr QRect kExpandSelected{150, 42, 9, 9};
+inline constexpr QRect kShadeTile{72, 57, 25, 14};
+inline constexpr QRect kShadeLeft{72, 42, 25, 14};
+inline constexpr QRect kShadeRight{99, 57, 50, 14};
+inline constexpr QRect kShadeRightSelected{99, 42, 50, 14};
 
 inline constexpr QSize kMinSize{275, 116};
 inline constexpr int kStepW = 25;
@@ -147,6 +175,33 @@ inline constexpr int kLeftW = 12;
 inline constexpr int kRightW = 20;
 inline constexpr int kRowH = 13;
 }  // namespace pl
+
+// ------------------------------------------------------------------ GEN.BMP (generic windows)
+namespace gen {
+inline constexpr QRect kTopLeftSelected{0, 0, 25, 20};
+inline constexpr QRect kTopLeftEndSelected{26, 0, 25, 20};
+inline constexpr QRect kTopCenterFillSelected{52, 0, 25, 20};
+inline constexpr QRect kTopRightEndSelected{78, 0, 25, 20};
+inline constexpr QRect kTopLeftRightFillSelected{104, 0, 25, 20};
+inline constexpr QRect kTopRightSelected{130, 0, 25, 20};
+inline constexpr QRect kTopLeft{0, 21, 25, 20};
+inline constexpr QRect kTopLeftEnd{26, 21, 25, 20};
+inline constexpr QRect kTopCenterFill{52, 21, 25, 20};
+inline constexpr QRect kTopRightEnd{78, 21, 25, 20};
+inline constexpr QRect kTopLeftRightFill{104, 21, 25, 20};
+inline constexpr QRect kTopRight{130, 21, 25, 20};
+inline constexpr QRect kBottomLeft{0, 42, 125, 14};
+inline constexpr QRect kBottomRight{0, 57, 125, 14};
+inline constexpr QRect kBottomFill{127, 72, 25, 14};
+inline constexpr QRect kMiddleLeft{127, 42, 11, 29};
+inline constexpr QRect kMiddleLeftBottom{158, 42, 11, 24};
+inline constexpr QRect kMiddleRight{139, 42, 8, 29};
+inline constexpr QRect kMiddleRightBottom{170, 42, 8, 24};
+inline constexpr QRect kCloseSelected{148, 42, 9, 9};
+inline constexpr int kLettersYSelected = 88;
+inline constexpr int kLettersY = 96;
+inline constexpr int kLetterH = 7;
+}  // namespace gen
 
 // ------------------------------------------------------------------ main window layout
 namespace main {

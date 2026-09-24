@@ -1,6 +1,7 @@
 // The Winamp equalizer window (275x116): ON/AUTO, presets, preamp + 10 bands.
 #pragma once
 
+#include "audio/EqPresets.h"
 #include "audio/Equalizer.h"
 #include "ui/SkinnedWindow.h"
 
@@ -14,6 +15,9 @@ public:
     const audio::EqSettings& settings() const { return m_settings; }
     void setSettings(const audio::EqSettings& s);
     bool autoOn() const { return m_auto; }
+    void setShaded(bool shaded) override;
+    // Volume/balance shown in shade mode (they belong to the main window).
+    void setMixer(int volume, int balance);
     void setAutoOn(bool on) { m_auto = on; update(); }
 
     // Spline through the band values, as drawn in the little graph (for tests).
@@ -23,6 +27,8 @@ Q_SIGNALS:
     void settingsChanged(const audio::EqSettings& settings);
     void statusText(const QString& text);  // e.g. "EQ: 60HZ +3.0 DB" for the main marquee
     void closeRequested();
+    void volumeRequested(int volume);
+    void balanceRequested(int balance);
 
 protected:
     void closeEvent(QCloseEvent* e) override;
@@ -32,7 +38,7 @@ protected:
     void skinMouseMove(QPoint pos) override;
     void skinMouseRelease(QPoint pos, Qt::MouseButton button) override;
     bool skinMouseDoubleClick(QPoint pos, Qt::MouseButton button) override;
-    QString regionSection() const override { return QStringLiteral("equalizer"); }
+    QString regionSection() const override { return isShaded() ? QStringLiteral("equalizerws") : QStringLiteral("equalizer"); }
     void wheelEvent(QWheelEvent* e) override;
 
 private:
@@ -44,11 +50,17 @@ private:
     void drawSlider(QPainter& p, QPoint at, double db, bool active) const;
     void drawGraph(QPainter& p) const;
     void showPresets();
+    void applyPreset(const audio::EqPreset& preset);
+    void loadEqf();
+    void saveEqf();
+    void paintShaded(QPainter& p);
 
     audio::EqSettings m_settings;
     bool m_auto = false;
     int m_pressed = 0;  // kElNone
     bool m_pressedInside = false;
+    int m_volume = 75;
+    int m_balance = 0;
 };
 
 }  // namespace qiyaa

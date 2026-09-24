@@ -89,7 +89,8 @@ void PlaylistWindow::setSizeSteps(QSize steps) {
     steps = steps.expandedTo(QSize(0, 0)).boundedTo(QSize(40, 40));
     if (steps == m_steps) return;
     m_steps = steps;
-    setSkinSize(QSize(P::kMinSize.width() + steps.width() * P::kStepW, P::kMinSize.height() + steps.height() * P::kStepH));
+    const QSize full = fullSkinSize();
+    setSkinSize(isShaded() ? QSize(full.width(), 14) : full);
     setScrollOffset(m_scroll);
     Q_EMIT sizeStepsChanged(steps);
 }
@@ -166,6 +167,7 @@ void PlaylistWindow::drawTiles(QPainter& p) const {
 
     sk.draw(p, Sheet::PlEdit, m_drag == Drag::Scroll ? P::kScrollHandleSelected : P::kScrollHandle, scrollHandleRect().topLeft());
     if (m_drag == Drag::Close) sk.draw(p, Sheet::PlEdit, P::kCloseSelected, {w - 11, 3});
+    if (m_drag == Drag::Shade) sk.draw(p, Sheet::PlEdit, P::kCollapseSelected, {w - 21, 3});
 }
 
 void PlaylistWindow::drawRows(QPainter& p) const {
@@ -231,7 +233,43 @@ void PlaylistWindow::drawBottomInfo(QPainter& p) const {
     }
 }
 
+QSize PlaylistWindow::fullSkinSize() const {
+    return {P::kMinSize.width() + m_steps.width() * P::kStepW, P::kMinSize.height() + m_steps.height() * P::kStepH};
+}
+
+void PlaylistWindow::setShaded(bool shaded) {
+    if (shaded == isShaded()) return;
+    const QSize full = fullSkinSize();
+    applyShade(shaded, shaded ? QSize(full.width(), 14) : full);
+    setScrollOffset(m_scroll);  // the shaded view has one row, so the offset may be out of range now
+    update();
+}
+
+void PlaylistWindow::paintShaded(QPainter& p) {
+    const Skin& sk = skin();
+    const int w = skinSize().width();
+    for (int x = 25; x < w - 50; x += 25) sk.draw(p, Sheet::PlEdit, P::kShadeTile, {x, 0});
+    sk.draw(p, Sheet::PlEdit, P::kShadeLeft, {0, 0});
+    sk.draw(p, Sheet::PlEdit, isActiveWindow() ? P::kShadeRightSelected : P::kShadeRight, {w - 50, 0});
+
+    // Current track and its length, like Winamp's collapsed playlist.
+    if (const auto* t = m_player->currentTrack()) {
+        const QString time = formatTime(t->durationMs / 1000);
+        const int timeW = Skin::textWidth(time);
+        const int timeX = w - 30 - timeW;
+        sk.drawText(p, {timeX, 4}, time);
+        p.save();
+        p.setClipRect(QRect(5, 4, timeX - 5 - 5, 6));
+        sk.drawText(p, {5, 4}, QStringLiteral("%1. %2").arg(m_player->currentIndex() + 1).arg(t->displayTitle()), timeX - 10);
+        p.restore();
+    }
+    if (m_drag == Drag::Close) sk.draw(p, Sheet::PlEdit, P::kCloseSelected, {w - 11, 3});
+    if (m_drag == Drag::Shade) sk.draw(p, Sheet::PlEdit, P::kCollapseSelected, {w - 21, 3});
+    if (m_drag == Drag::Shade) sk.draw(p, Sheet::PlEdit, P::kExpandSelected, {w - 21, 3});
+}
+
 void PlaylistWindow::paintSkin(QPainter& p) {
+    if (isShaded()) return paintShaded(p);
     drawRows(p);
     drawTiles(p);
     drawBottomInfo(p);
@@ -282,6 +320,12 @@ bool PlaylistWindow::skinMousePress(QPoint pos, Qt::MouseButton button) {
         update();
         return true;
     }
+    if (contains(QRect(w - 21, 3, 9, 9), pos)) {
+        m_drag = Drag::Shade;
+        update();
+        return true;
+    }
+    if (isShaded()) return false;  // the rest of the strip drags the window
     if (contains(QRect(w - 20, h - 20, 20, 20), pos)) {
         m_drag = Drag::Resize;
         m_dragStartSteps = m_steps;
@@ -337,6 +381,7 @@ void PlaylistWindow::skinMouseRelease(QPoint pos, Qt::MouseButton button) {
     m_drag = Drag::None;
     const int w = skinSize().width();
     if (drag == Drag::Close && contains(QRect(w - 11, 3, 9, 9), pos)) Q_EMIT closeRequested();
+    if (drag == Drag::Shade && contains(QRect(w - 21, 3, 9, 9), pos)) setShaded(!isShaded());
     if (drag == Drag::Button && miniButtonAt(pos) == m_pressedButton) {
         switch (m_pressedButton) {
         case kBtnAdd: Q_EMIT sourcesMenuRequested(mapToGlobal(QPoint(qRound(14 * scale()), qRound((skinSize().height() - 30) * scale())))); break;
@@ -377,6 +422,10 @@ void PlaylistWindow::skinMouseRelease(QPoint pos, Qt::MouseButton button) {
 }
 
 bool PlaylistWindow::skinMouseDoubleClick(QPoint pos, Qt::MouseButton button) {
+    if (button == Qt::LeftButton && (isShaded() || pos.y() < P::kTopH) && pos.x() < skinSize().width() - 21) {
+        setShaded(!isShaded());  // double click on the title bar
+        return true;
+    }
     const int row = rowAt(pos);
     if (button != Qt::LeftButton || row < 0) return false;
     m_player->playIndex(row);

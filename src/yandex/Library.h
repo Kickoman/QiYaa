@@ -38,6 +38,15 @@ struct WaveBatch {
     QList<Track> tracks;
 };
 
+// An entry of the "wheel" of waves (wave presets with seeds).
+struct Wave {
+    QString name;
+    QString description;
+    QStringList seeds;
+};
+
+enum class WaveEvent { RadioStarted, TrackStarted, TrackFinished, Skip };
+
 struct SearchResult {
     QString bestType;  // "artist", "album", "track", "playlist" or empty
     QString bestId;
@@ -74,6 +83,19 @@ public:
     void moreWave(const QString& sessionId, const QStringList& queue, Callback<WaveBatch> cb);
     void search(const QString& text, Callback<SearchResult> cb);
 
+    // "Для вас": Плейлист дня, Дежавю, Премьера, Тайник...
+    void personalPlaylists(Callback<QList<PlaylistRef>> cb);
+    void playlistRecommendations(const PlaylistRef& playlist, Callback<QList<Track>> cb);
+    // Waves suggested around `seeds` (e.g. the wave that is playing).
+    void wheelWaves(const QStringList& seeds, Callback<QList<Wave>> cb);
+
+    // Tells the wave what the user did so "Моя волна" learns. Tries the rotor
+    // session endpoint first and falls back to the station endpoint for that
+    // session if the server rejects it. Fire-and-forget.
+    void waveFeedback(const QString& sessionId, const QString& stationId, const QString& batchId, WaveEvent event,
+                      const Track* track = nullptr, double playedSeconds = 0);
+    static QString waveEventName(WaveEvent e);
+
     bool isLiked(const QString& trackId) const { return m_likedIds.contains(trackId); }
     void setLiked(const QString& trackId, bool liked, Callback<bool> cb);
     void dislike(const QString& trackId, Callback<bool> cb);
@@ -87,11 +109,14 @@ Q_SIGNALS:
 
 private:
     void tracksChunk(QStringList remaining, QList<Track> acc, Callback<QList<Track>> cb);
+    // Items that embed track objects, or only ids (then fetched).
+    void tracksFromItems(const QJsonArray& items, Callback<QList<Track>> cb);
     QString userPath(const QString& rest) const;
 
     ApiClient* m_api;
     Account m_account;
     QSet<QString> m_likedIds;
+    QSet<QString> m_stationFeedbackSessions;  // sessions whose session-feedback endpoint failed
 };
 
 }  // namespace qiyaa::yandex

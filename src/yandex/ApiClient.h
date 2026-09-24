@@ -32,9 +32,14 @@ struct Track {
     QStringList artists;
     qint64 durationMs = 0;
     bool available = true;
+    QString albumTitle;
+    int year = 0;
+    QString genre;
+    QString coverUri;  // "avatars.yandex.net/get-music-content/.../%%" (%% = size)
 
     QString displayTitle() const;  // "Artist1, Artist2 - Title"
     QUrl webUrl() const;           // music.yandex.ru page
+    QUrl coverUrl(int size = 400) const;  // empty if the track has no cover
 };
 
 struct ResolvedUrl {
@@ -73,15 +78,24 @@ public:
     void resolveTrackUrl(const QString& trackId, Callback<ResolvedUrl> cb);
     void reportPlayStarted(const Account& account, const Track& track, const QString& playId);
 
+    // POSTs (play reports, wave feedback) still on their way; see postsSettled().
+    int pendingPosts() const { return m_pendingPosts; }
+
     static Track parseTrack(const QJsonValue& v);
     static QString idString(const QJsonValue& v);  // ids come as numbers or strings
 
+Q_SIGNALS:
+    // pendingPosts() dropped to 0 (after the callbacks, which may send more).
+    void postsSettled();
+
 private:
     void handleJson(QNetworkReply* reply, JsonCallback cb);
+    void trackPost(QNetworkReply* reply);
 
     QNetworkAccessManager* m_nam;
     QString m_token;
     QString m_base;
+    int m_pendingPosts = 0;
 };
 
 }  // namespace qiyaa::yandex

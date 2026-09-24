@@ -55,6 +55,8 @@ add_library(qiyaa_core STATIC
     src/ui/PlaylistWindow.cpp    src/ui/PlaylistWindow.h
     src/ui/LibraryMenu.cpp       src/ui/LibraryMenu.h
     src/ui/LoginDialog.cpp       src/ui/LoginDialog.h
+    src/ui/GenWindow.cpp         src/ui/GenWindow.h
+    src/ui/NowPlayingWindow.cpp  src/ui/NowPlayingWindow.h
     src/vis/Visualizer.h         src/vis/Visualizers.cpp
     src/yandex/TrackUrl.cpp      src/yandex/TrackUrl.h
     src/yandex/ApiClient.cpp     src/yandex/ApiClient.h
@@ -63,14 +65,47 @@ add_library(qiyaa_core STATIC
     src/yandex/Token.cpp         src/yandex/Token.h
     src/audio/AudioEngine.cpp    src/audio/AudioEngine.h
     src/audio/Equalizer.cpp      src/audio/Equalizer.h
-    src/audio/VisTap.h           src/audio/EqPresets.h
+    src/audio/VisTap.h
+    src/audio/EqPresets.cpp      src/audio/EqPresets.h
     src/core/Player.cpp          src/core/Player.h
+    src/core/CoverCache.cpp      src/core/CoverCache.h
+    src/integrations/MediaControls.cpp src/integrations/MediaControls.h
 )
 target_include_directories(qiyaa_core PUBLIC src)
 target_link_libraries(qiyaa_core PUBLIC
     Qt6::Core Qt6::Gui Qt6::Widgets Qt6::Network
     qiyaa_miniz qiyaa_miniaudio)
 target_compile_definitions(qiyaa_core PUBLIC QT_NO_KEYWORDS)
+
+# System media integration: MPRIS on Linux/BSD (needs Qt D-Bus), SMTC on Windows.
+if(UNIX AND NOT APPLE)
+    find_package(Qt6 6.4 QUIET COMPONENTS DBus)
+    if(Qt6DBus_FOUND)
+        target_sources(qiyaa_core PRIVATE src/integrations/Mpris.cpp src/integrations/Mpris.h)
+        target_link_libraries(qiyaa_core PUBLIC Qt6::DBus)
+        target_compile_definitions(qiyaa_core PUBLIC QIYAA_HAVE_MPRIS)
+        message(STATUS "MPRIS: enabled")
+    else()
+        message(STATUS "MPRIS: disabled (Qt6::DBus not found)")
+    endif()
+endif()
+if(WIN32 AND MSVC)
+    option(QIYAA_WITH_SMTC "Windows media controls (needs C++/WinRT from the Windows SDK)" ON)
+    if(QIYAA_WITH_SMTC)
+        include(CheckIncludeFileCXX)
+        set(CMAKE_REQUIRED_FLAGS "/std:c++20 /EHsc")
+        check_include_file_cxx("winrt/Windows.Media.h" QIYAA_HAVE_CPPWINRT)
+        unset(CMAKE_REQUIRED_FLAGS)
+        if(QIYAA_HAVE_CPPWINRT)
+            target_sources(qiyaa_core PRIVATE src/integrations/Smtc.cpp src/integrations/Smtc.h)
+            target_link_libraries(qiyaa_core PUBLIC windowsapp)
+            target_compile_definitions(qiyaa_core PUBLIC QIYAA_HAVE_SMTC)
+            message(STATUS "SMTC: enabled")
+        else()
+            message(STATUS "SMTC: disabled (C++/WinRT headers not found)")
+        endif()
+    endif()
+endif()
 
 if(MSVC)
     target_compile_options(qiyaa_core PRIVATE /W4 /utf-8)

@@ -100,17 +100,29 @@ QPoint MainWindow::globalAt(QPoint skinPos) const {
 }
 
 void MainWindow::setVolume(int v) {
-    m_volume = std::clamp(v, 0, 100);
+    v = std::clamp(v, 0, 100);
+    const bool changed = v != m_volume;
+    m_volume = v;
     m_player->engine()->setVolume(m_volume);
+    update();
+    if (changed) Q_EMIT volumeChanged(m_volume);
+}
+
+void MainWindow::setShaded(bool shaded) {
+    if (shaded == isShaded()) return;
+    applyShade(shaded, shaded ? QSize(275, 14) : L::kSize);
+    refreshTimer();
     update();
 }
 
 void MainWindow::setBalance(int b) {
     b = std::clamp(b, -100, 100);
     if (std::abs(b) < 8) b = 0;  // Winamp snaps to centre
+    const bool changed = b != m_balance;
     m_balance = b;
     m_player->engine()->setBalance(m_balance);
     update();
+    if (changed) Q_EMIT balanceChanged(m_balance);
 }
 
 void MainWindow::setStatusText(const QString& text) {
@@ -127,7 +139,7 @@ void MainWindow::refreshTimer() {
     // pause, a pending status text, or a marquee that has to scroll.
     const auto st = m_player->engine()->state();
     const bool playing = st == AudioEngine::State::Playing || st == AudioEngine::State::Buffering;
-    m_visActive = playing && m_vis && isVisible() && !isMinimized();
+    m_visActive = playing && m_vis && isVisible() && !isMinimized() && !isShaded();
     int interval = 0;
     if (m_visActive) interval = kVisFrameMs;
     else if (playing) interval = kFullRepaintMs;
@@ -238,7 +250,42 @@ void MainWindow::drawTime(QPainter& p) const {
         skin().draw(p, Sheet::Numbers, S::digit(digits[i]), L::kTime + QPoint(offsets[i], 0));
 }
 
+QString MainWindow::miniTimeText() const {
+    const auto st = m_player->engine()->state();
+    if (st == AudioEngine::State::Stopped) return {};
+    if (st == AudioEngine::State::Paused && (m_blink.elapsed() / 1000) % 2 == 1) return {};
+    const double pos = m_player->engine()->positionSeconds();
+    const double dur = m_player->durationSeconds();
+    const bool remaining = m_remaining && dur > 0;
+    const int secs = remaining ? std::max(0, int(std::ceil(dur - pos))) : int(pos);
+    return QStringLiteral("%1%2:%3").arg(remaining ? QStringLiteral("-") : QString()).arg(std::min(secs / 60, 99)).arg(secs % 60, 2, 10, QLatin1Char('0'));
+}
+
+void MainWindow::paintShaded(QPainter& p) {
+    const Skin& sk = skin();
+    sk.draw(p, Sheet::TitleBar, isActiveWindow() ? S::kShadeBackgroundSelected : S::kShadeBackground, {0, 0});
+    drawButton(p, Element::Options, L::kOptions, S::kOptionsButton, S::kOptionsButtonDown);
+    drawButton(p, Element::Minimize, L::kMinimize, S::kMinimizeButton, S::kMinimizeButtonDown);
+    const bool shadeDown = m_pressed == Element::Shade && m_pressedInside;
+    sk.draw(p, Sheet::TitleBar, shadeDown ? S::kShadeButtonShadedDown : S::kShadeButtonShaded, L::kShade);
+    drawButton(p, Element::Close, L::kClose, S::kCloseButton, S::kCloseButtonDown);
+
+    // Mini time (right-aligned in 5 characters, like Winamp).
+    const QString t = miniTimeText().rightJustified(5, u' ');
+    sk.drawText(p, {127, 4}, t, 25);
+
+    // Mini position bar.
+    const double dur = m_player->durationSeconds();
+    if (m_player->engine()->state() != AudioEngine::State::Stopped && dur > 0) {
+        const double frac = m_seekPreview >= 0 ? m_seekPreview : std::clamp(m_player->engine()->positionSeconds() / dur, 0.0, 1.0);
+        const int x = int(std::lround(frac * (17 - 3)));
+        const QRect thumb = x == 0 ? S::kShadePositionThumbLeft : x >= 14 ? S::kShadePositionThumbRight : S::kShadePositionThumb;
+        sk.draw(p, Sheet::TitleBar, thumb, QPoint(226 + x, 4));
+    }
+}
+
 void MainWindow::paintSkin(QPainter& p) {
+    if (isShaded()) return paintShaded(p);
     const Skin& sk = skin();
     const auto st = m_player->engine()->state();
     const bool stopped = st == AudioEngine::State::Stopped;
@@ -351,7 +398,26 @@ void MainWindow::paintSkin(QPainter& p) {
 
 // ------------------------------------------------------------------ input
 
+MainWindow::Element MainWindow::hitTestShaded(QPoint p) const {
+    struct Area {
+        QRect rect;
+        Element e;
+    };
+    static const Area areas[] = {
+        {{L::kOptions, QSize(9, 9)}, Element::Options}, {{L::kMinimize, QSize(9, 9)}, Element::Minimize},
+        {{L::kShade, QSize(9, 9)}, Element::Shade},     {{L::kClose, QSize(9, 9)}, Element::Close},
+        {{169, 2, 7, 10}, Element::Previous},           {{176, 2, 10, 10}, Element::Play},
+        {{186, 2, 9, 10}, Element::Pause},              {{195, 2, 9, 10}, Element::Stop},
+        {{204, 2, 10, 10}, Element::Next},              {{215, 2, 10, 10}, Element::Eject},
+        {{226, 4, 17, 7}, Element::Position},           {{127, 4, 25, 6}, Element::Time},
+    };
+    for (const Area& a : areas)
+        if (contains(a.rect, p)) return a.e;
+    return Element::None;
+}
+
 MainWindow::Element MainWindow::hitTest(QPoint p) const {
+    if (isShaded()) return hitTestShaded(p);
     struct Area {
         QRect rect;
         Element e;
@@ -430,7 +496,9 @@ void MainWindow::updateSliderFromMouse(Element e, QPoint p) {
     switch (e) {
     case Element::Volume: setVolume(int(std::lround(fraction(L::kVolume, S::kVolumeThumb.width()) * 100))); break;
     case Element::Balance: setBalance(int(std::lround(fraction(L::kBalance, S::kBalanceThumb.width()) * 200 - 100))); break;
-    case Element::Position: m_seekPreview = fraction(L::kPosition, S::kPositionThumb.width()); break;
+    case Element::Position:
+        m_seekPreview = isShaded() ? fraction(QRect(226, 4, 17, 7), 3) : fraction(L::kPosition, S::kPositionThumb.width());
+        break;
     default: break;
     }
 }
@@ -439,7 +507,7 @@ void MainWindow::activate(Element e) {
     switch (e) {
     case Element::Options: Q_EMIT menuRequested(globalAt(L::kOptions + QPoint(0, 9))); break;
     case Element::Minimize: showMinimized(); break;
-    case Element::Shade: setStatusText(QStringLiteral("Свёрнутый режим: этап 2")); break;
+    case Element::Shade: setShaded(!isShaded()); break;
     case Element::Close: Q_EMIT closeRequested(); break;
     case Element::Previous: m_player->previous(); break;
     case Element::Play: m_player->play(); break;
@@ -463,6 +531,13 @@ void MainWindow::wheelEvent(QWheelEvent* e) {
         setVolume(m_volume + steps * 4);
         setStatusText(QStringLiteral("VOLUME: %1%").arg(m_volume));
     }
+}
+
+bool MainWindow::skinMouseDoubleClick(QPoint pos, Qt::MouseButton button) {
+    // Double click on the title bar toggles shade mode, like Winamp.
+    if (button != Qt::LeftButton || pos.y() >= 14 || hitTest(pos) != Element::None) return false;
+    setShaded(!isShaded());
+    return true;
 }
 
 void MainWindow::contextMenuEvent(QContextMenuEvent* e) {

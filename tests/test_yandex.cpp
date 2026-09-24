@@ -56,6 +56,15 @@ private Q_SLOTS:
         QCOMPARE(t.albumId, QStringLiteral("777"));
         QCOMPARE(t.displayTitle(), QStringLiteral("A, B - Song (Live)"));
         QCOMPARE(t.durationMs, 201000);
+        QVERIFY(t.coverUrl().isEmpty());
+    }
+    void parsesAlbumDetailsAndCover() {
+        const auto doc = QJsonDocument::fromJson("{\"id\":1,\"title\":\"T\",\"albums\":[{\"id\":2,\"title\":\"Звезда\","
+                                                 "\"year\":1989,\"genre\":\"rusrock\",\"coverUri\":\"avatars.yandex.net/get-music-content/1/a/%%\"}]}");
+        const Track t = ApiClient::parseTrack(doc.object());
+        QCOMPARE(t.albumTitle, QStringLiteral("Звезда"));
+        QCOMPARE(t.year, 1989);
+        QCOMPARE(t.coverUrl(200).toString(), QStringLiteral("https://avatars.yandex.net/get-music-content/1/a/200x200"));
     }
 };
 

@@ -38,6 +38,8 @@ public:
 
     void setStatusText(const QString& text);  // shown in the marquee for a few seconds
 
+    void setShaded(bool shaded) override;
+
 Q_SIGNALS:
     void eqToggleRequested();
     void plToggleRequested();
@@ -45,6 +47,8 @@ Q_SIGNALS:
     void sourcesMenuRequested(QPoint globalPos);  // eject button
     void closeRequested();
     void minimizedChanged(bool minimized);
+    void volumeChanged(int volume);
+    void balanceChanged(int balance);
 
 protected:
     void closeEvent(QCloseEvent* e) override;
@@ -53,7 +57,8 @@ protected:
     bool skinMousePress(QPoint pos, Qt::MouseButton button) override;
     void skinMouseMove(QPoint pos) override;
     void skinMouseRelease(QPoint pos, Qt::MouseButton button) override;
-    QString regionSection() const override { return QStringLiteral("normal"); }
+    QString regionSection() const override { return isShaded() ? QStringLiteral("windowshade") : QStringLiteral("normal"); }
+    bool skinMouseDoubleClick(QPoint pos, Qt::MouseButton button) override;
     void contextMenuEvent(QContextMenuEvent* e) override;
     void wheelEvent(QWheelEvent* e) override;
     void changeEvent(QEvent* e) override;
@@ -77,6 +82,9 @@ private:
 
     void drawButton(QPainter& p, Element e, const QPoint& at, const QRect& normal, const QRect& pressed) const;
     void drawTime(QPainter& p) const;
+    void paintShaded(QPainter& p);
+    Element hitTestShaded(QPoint p) const;
+    QString miniTimeText() const;
 
     Player* m_player;
     QTimer m_timer;

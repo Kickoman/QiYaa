@@ -29,6 +29,8 @@ public:
         Text,
         EqMain,
         PlEdit,
+        EqEx,
+        Gen,
     };
 
     // Colours and font from PLEDIT.TXT.
@@ -56,6 +58,11 @@ public:
     // Draws `src` from sheet `s` at `dst` (in skin pixels; painter handles scaling).
     void draw(QPainter& p, Sheet s, const QRect& src, const QPoint& dst) const;
 
+    // Title text of generic windows, from the A-Z letters in GEN.BMP
+    // (variable width). Other characters are skipped. Returns the width.
+    int drawGenText(QPainter& p, const QPoint& at, const QString& text, bool selected) const;
+    int genTextWidth(const QString& text) const;
+
     // Draws text with the TEXT.BMP font. Returns the width in pixels.
     int drawText(QPainter& p, const QPoint& at, const QString& text, int maxWidth = -1) const;
     static int textWidth(const QString& text);
@@ -71,6 +78,10 @@ private:
     RegionData m_region;
     QList<QColor> m_visColors;
     PlaylistStyle m_plStyle;
+    // x offset and width of each gen.bmp letter A-Z (same for both rows in practice).
+    QList<std::pair<int, int>> m_genLetters;
+    QList<std::pair<int, int>> m_genLettersSelected;
+    void measureGenLetters();
     bool m_numbersEx = false;
 };
 

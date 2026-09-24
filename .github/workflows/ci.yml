@@ -38,7 +38,8 @@ jobs:
         if: matrix.system_qt
         run: |
           sudo apt-get update
-          sudo apt-get install -y qt6-base-dev libgl1-mesa-dev ninja-build
+          # dbus + gdbus: the MPRIS test talks to the app over a private session bus.
+          sudo apt-get install -y qt6-base-dev libgl1-mesa-dev ninja-build dbus libglib2.0-bin
 
       - name: Install Qt 6.8
         if: ${{ !matrix.system_qt }}
@@ -50,7 +51,7 @@ jobs:
 
       - name: Linux build deps
         if: runner.os == 'Linux' && !matrix.system_qt
-        run: sudo apt-get update && sudo apt-get install -y ninja-build libgl1-mesa-dev libxkbcommon-x11-0 libxcb-cursor0
+        run: sudo apt-get update && sudo apt-get install -y ninja-build libgl1-mesa-dev libxkbcommon-x11-0 libxcb-cursor0 dbus libglib2.0-bin
 
       - uses: ilammy/msvc-dev-cmd@v1
         if: runner.os == 'Windows'

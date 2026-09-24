@@ -18,6 +18,7 @@ public:
     // Size in resize steps beyond the minimum 275x116 (Winamp's playlist "segments").
     QSize sizeSteps() const { return m_steps; }
     void setSizeSteps(QSize steps);
+    void setShaded(bool shaded) override;
 
     int visibleRows() const;
     int scrollOffset() const { return m_scroll; }
@@ -46,7 +47,9 @@ protected:
     void contextMenuEvent(QContextMenuEvent* e) override;
 
 private:
-    enum class Drag { None, Scroll, Resize, Close, Button };
+    enum class Drag { None, Scroll, Resize, Close, Shade, Button };
+    QSize fullSkinSize() const;
+    void paintShaded(QPainter& p);
     QRect listRect() const;
     QRect scrollHandleRect() const;
     int maxScroll() const;

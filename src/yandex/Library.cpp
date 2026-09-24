@@ -1,7 +1,9 @@
 #include "yandex/Library.h"
 
 #include <algorithm>
+#include <cmath>
 
+#include <QDateTime>
 #include <QJsonArray>
 #include <QJsonObject>
 #include <QPointer>
@@ -117,21 +119,127 @@ void Library::userPlaylists(Callback<QList<PlaylistRef>> cb) {
     });
 }
 
+void Library::tracksFromItems(const QJsonArray& items, Callback<QList<Track>> cb) {
+    // Items usually embed full track objects; fall back to fetching by id.
+    const QList<Track> embedded = parseTrackArray(items);
+    const bool complete = std::all_of(embedded.cbegin(), embedded.cend(), [](const Track& t) { return !t.title.isEmpty(); });
+    if (complete) return cb(embedded, {});
+    QStringList ids;
+    for (const QJsonValue& v : items) ids << (v.isObject() ? str(v.toObject(), "id") : ApiClient::idString(v));
+    tracksByIds(ids, cb);
+}
+
 void Library::playlistTracks(const PlaylistRef& playlist, Callback<QList<Track>> cb) {
     QPointer<Library> self(this);
     const QString path = QStringLiteral("/users/%1/playlists/%2").arg(playlist.ownerUid, playlist.kind);
     m_api->getJson(path, {}, [self, cb](const QJsonValue& r, const QString& err) {
         if (!self) return;
         if (!err.isEmpty()) return cb({}, err);
-        const QJsonArray items = r.toObject().value(QStringLiteral("tracks")).toArray();
-        // Items usually embed full track objects; fall back to fetching by id.
-        QList<Track> embedded = parseTrackArray(items);
-        const bool complete = std::all_of(embedded.cbegin(), embedded.cend(), [](const Track& t) { return !t.title.isEmpty(); });
-        if (complete) return cb(embedded, {});
-        QStringList ids;
-        for (const QJsonValue& v : items) ids << str(v.toObject(), "id");
-        self->tracksByIds(ids, cb);
+        self->tracksFromItems(r.toObject().value(QStringLiteral("tracks")).toArray(), cb);
     });
+}
+
+void Library::playlistRecommendations(const PlaylistRef& playlist, Callback<QList<Track>> cb) {
+    QPointer<Library> self(this);
+    const QString path = QStringLiteral("/users/%1/playlists/%2/recommendations").arg(playlist.ownerUid, playlist.kind);
+    m_api->getJson(path, {}, [self, cb](const QJsonValue& r, const QString& err) {
+        if (!self) return;
+        if (!err.isEmpty()) return cb({}, err);
+        self->tracksFromItems(r.toObject().value(QStringLiteral("tracks")).toArray(), cb);
+    });
+}
+
+void Library::personalPlaylists(Callback<QList<PlaylistRef>> cb) {
+    QUrlQuery q;
+    q.addQueryItem(QStringLiteral("blocks"), QStringLiteral("personalplaylists"));
+    m_api->getJson(QStringLiteral("/landing3"), q, [cb](const QJsonValue& r, const QString& err) {
+        if (!err.isEmpty()) return cb({}, err);
+        QList<PlaylistRef> out;
+        for (const QJsonValue& block : r.toObject().value(QStringLiteral("blocks")).toArray()) {
+            for (const QJsonValue& e : block.toObject().value(QStringLiteral("entities")).toArray()) {
+                // entity.data is a "generated playlist" whose .data is the playlist itself.
+                QJsonObject pl = e.toObject().value(QStringLiteral("data")).toObject();
+                if (pl.value(QStringLiteral("data")).isObject()) pl = pl.value(QStringLiteral("data")).toObject();
+                PlaylistRef p;
+                p.ownerUid = str(pl, "uid");
+                if (p.ownerUid.isEmpty()) p.ownerUid = str(pl.value(QStringLiteral("owner")).toObject(), "uid");
+                p.kind = str(pl, "kind");
+                p.title = pl.value(QStringLiteral("title")).toString();
+                p.trackCount = pl.value(QStringLiteral("trackCount")).toInt();
+                if (!p.ownerUid.isEmpty() && !p.kind.isEmpty()) out << p;
+            }
+        }
+        cb(out, {});
+    });
+}
+
+void Library::wheelWaves(const QStringList& seeds, Callback<QList<Wave>> cb) {
+    const QJsonObject body{
+        {QStringLiteral("context"), QJsonObject{{QStringLiteral("type"), QStringLiteral("WAVE")},
+                                                {QStringLiteral("data"), QJsonObject{{QStringLiteral("seeds"), QJsonArray::fromStringList(seeds)}}}}},
+        {QStringLiteral("feedbacks"), QJsonArray{}}};
+    m_api->postJson(QStringLiteral("/wheel/new"), body, [cb](const QJsonValue& r, const QString& err) {
+        if (!err.isEmpty()) return cb({}, err);
+        QList<Wave> out;
+        for (const QJsonValue& v : r.toObject().value(QStringLiteral("items")).toArray()) {
+            const QJsonObject item = v.toObject();
+            const QJsonObject wave = item.value(QStringLiteral("data")).toObject().value(QStringLiteral("wave")).toObject();
+            if (item.value(QStringLiteral("type")).toString() != QLatin1String("WAVE") || wave.isEmpty()) continue;
+            Wave w;
+            w.name = wave.value(QStringLiteral("name")).toString();
+            w.description = wave.value(QStringLiteral("description")).toString();
+            for (const QJsonValue& s : wave.value(QStringLiteral("seeds")).toArray()) w.seeds << s.toString();
+            if (!w.name.isEmpty() && !w.seeds.isEmpty()) out << w;
+        }
+        cb(out, {});
+    });
+}
+
+QString Library::waveEventName(WaveEvent e) {
+    switch (e) {
+    case WaveEvent::RadioStarted: return QStringLiteral("radioStarted");
+    case WaveEvent::TrackStarted: return QStringLiteral("trackStarted");
+    case WaveEvent::TrackFinished: return QStringLiteral("trackFinished");
+    case WaveEvent::Skip: return QStringLiteral("skip");
+    }
+    return {};
+}
+
+void Library::waveFeedback(const QString& sessionId, const QString& stationId, const QString& batchId, WaveEvent event,
+                           const Track* track, double playedSeconds) {
+    QJsonObject ev{{QStringLiteral("type"), waveEventName(event)},
+                   {QStringLiteral("timestamp"), QDateTime::currentDateTimeUtc().toString(Qt::ISODateWithMs)}};
+    if (event == WaveEvent::RadioStarted) ev.insert(QStringLiteral("from"), QStringLiteral("web-main-rup-radio-main"));
+    if (track) ev.insert(QStringLiteral("trackId"), track->albumId.isEmpty() ? track->id : track->id + u':' + track->albumId);
+    if (event == WaveEvent::TrackFinished || event == WaveEvent::Skip)
+        ev.insert(QStringLiteral("totalPlayedSeconds"), std::round(playedSeconds * 10) / 10);
+
+    QPointer<Library> self(this);
+    auto viaStation = [self, stationId, batchId, ev] {
+        if (!self || stationId.isEmpty()) return;
+        QString path = QStringLiteral("/rotor/station/%1/feedback").arg(stationId);
+        if (!batchId.isEmpty()) path += QStringLiteral("?batch-id=") + QString::fromLatin1(QUrl::toPercentEncoding(batchId));
+        self->m_api->postJson(path, ev, [type = ev.value(QStringLiteral("type")).toString()](const QJsonValue&, const QString& err) {
+            if (!err.isEmpty()) qWarning("wave feedback (station) %s failed: %s", qPrintable(type), qPrintable(err));
+        });
+    };
+    if (sessionId.isEmpty() || m_stationFeedbackSessions.contains(sessionId)) return viaStation();
+
+    QJsonObject body{{QStringLiteral("event"), ev}};
+    if (!batchId.isEmpty()) body.insert(QStringLiteral("batchId"), batchId);
+    m_api->postJson(QStringLiteral("/rotor/session/%1/feedback").arg(sessionId), body,
+                    [self, sessionId, viaStation](const QJsonValue&, const QString& err) {
+                        if (!self || err.isEmpty()) return;
+                        // Only a refusal (4xx) means "wrong endpoint"; a timeout or a
+                        // 5xx may have been delivered, and re-sending would count twice.
+                        if (!err.startsWith(QLatin1String("HTTP 4"))) {
+                            qWarning("wave feedback failed: %s", qPrintable(err));
+                            return;
+                        }
+                        qInfo("wave feedback: session endpoint failed (%s), using the station endpoint", qPrintable(err));
+                        self->m_stationFeedbackSessions.insert(sessionId);
+                        viaStation();
+                    });
 }
 
 void Library::likedArtists(Callback<QList<NamedRef>> cb) {

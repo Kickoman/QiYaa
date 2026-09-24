@@ -50,6 +50,10 @@ public:
     // Visible windows that are docked (directly or through others) to this one.
     QList<SkinnedWindow*> dockedWindows() const;
 
+    // Winamp's "window shade": the window collapses to a 14 px strip.
+    bool isShaded() const { return m_shaded; }
+    virtual void setShaded(bool shaded) { Q_UNUSED(shaded); }
+
     // true when the platform lets us position windows (X11, Windows, macOS, XWayland).
     static bool canPositionWindows();
 
@@ -58,6 +62,7 @@ public:
 
 Q_SIGNALS:
     void moveFinished();
+    void shadeChanged(bool shaded);
 
 protected:
     // Paint in skin coordinates; the painter is already scaled.
@@ -74,6 +79,13 @@ protected:
     // Section of region.txt to use as the window mask ("normal", "equalizer", ...);
     // empty = rectangular window.
     virtual QString regionSection() const { return {}; }
+
+    // Changes the skin size and moves the windows docked below this one up or
+    // down by the height difference, so the stack stays together (shade mode).
+    void resizeKeepingStack(QSize skinSize);
+    // Switches shade mode: resizes (keeping docked windows attached), updates
+    // the mask, then emits shadeChanged.
+    void applyShade(bool shaded, QSize skinSize);
 
     QPoint toSkin(QPointF widgetPos) const;
     // Whole wheel "notches" in this event, accumulating the small deltas that
@@ -97,6 +109,7 @@ private:
     QSize m_skinSize;
     double m_scale = 1.0;
     bool m_dragsDocked = false;
+    bool m_shaded = false;
     QImage m_buffer;  // intermediate image for fractional scales
     int m_wheelAccum = 0;
 
