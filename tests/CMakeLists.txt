@@ -47,7 +47,7 @@ if(QIYAA_HAVE_MILKDROP)
     find_program(XVFB_RUN xvfb-run)
     if(XVFB_RUN AND TARGET Qt6::QXcbIntegrationPlugin)
         add_test(NAME test_milkdrop_gl COMMAND ${XVFB_RUN} -a -s "-screen 0 1280x1024x24 +extension GLX"
-                 $<TARGET_FILE:test_milkdrop> rendersWithProjectM fullScreenAndBack)
+                 $<TARGET_FILE:test_milkdrop> rendersWithProjectM blackPictureIsNoticed fullScreenAndBack)
         # Fail instead of skipping: here OpenGL must work.
         set_tests_properties(test_milkdrop_gl PROPERTIES
             ENVIRONMENT "QT_QPA_PLATFORM=xcb;QIYAA_EXPECT_GL=1;LIBGL_ALWAYS_SOFTWARE=1")

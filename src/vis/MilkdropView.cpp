@@ -1,11 +1,13 @@
 #include "vis/MilkdropView.h"
 
 #include <algorithm>
+#include <array>
 #include <utility>
 
 #include <QKeyEvent>
 #include <QMouseEvent>
 #include <QOpenGLContext>
+#include <QOpenGLExtraFunctions>
 #include <QOpenGLFunctions>
 
 #include <projectM-4/projectM.h>
@@ -16,6 +18,8 @@ namespace qiyaa {
 
 namespace {
 constexpr uint32_t kMaxFramesPerFeed = 4096;
+constexpr int kProbeW = 32, kProbeH = 18;
+constexpr int kBlackLevel = 12;  // brightest channel below this (of 255) everywhere = black
 
 QSurfaceFormat viewFormat() {
     // projectM 4 needs OpenGL 3.3 core. macOS only gives core profiles when asked.
@@ -24,6 +28,7 @@ QSurfaceFormat viewFormat() {
     f.setProfile(QSurfaceFormat::CoreProfile);
     f.setDepthBufferSize(0);
     f.setStencilBufferSize(0);
+    f.setAlphaBufferSize(0);  // an opaque window: projectM's output alpha means nothing
     f.setSwapInterval(1);
     return f;
 }
@@ -59,6 +64,12 @@ void MilkdropView::destroyProjectM() {
     if (!m_pm) return;
     // projectM owns GL objects: free them with our context current.
     if (context()) makeCurrent();
+    if (m_probeFbo && QOpenGLContext::currentContext()) {
+        QOpenGLExtraFunctions* f = QOpenGLContext::currentContext()->extraFunctions();
+        f->glDeleteFramebuffers(1, &m_probeFbo);
+        f->glDeleteTextures(1, &m_probeTex);
+        m_probeFbo = m_probeTex = 0;
+    }
     projectm_destroy(m_pm);
     m_pm = nullptr;
     if (context()) doneCurrent();
@@ -69,6 +80,19 @@ void MilkdropView::loadPreset(const QByteArray& milk, bool smooth) {
     // callbacks come from there): do it at the start of the next frame.
     m_pending = std::make_pair(milk, smooth);
     update();
+}
+
+void MilkdropView::setBlackWatch(bool on) {
+    if (on == m_blackWatch) return;
+    m_blackWatch = on;
+    m_blackChecks = 0;
+    m_sinceLoad.start();  // judge only what plays from now on
+}
+
+void MilkdropView::setBlackWatchTiming(int graceMs, int intervalMs, int checks) {
+    m_blackGraceMs = graceMs;
+    m_blackIntervalMs = intervalMs;
+    m_blackChecksNeeded = checks;
 }
 
 void MilkdropView::setPresetDuration(double seconds) {
@@ -169,6 +193,14 @@ void MilkdropView::initializeGL() {
     applySettings();
     applyTexturePaths();
     m_visCursor = m_engine->visCursor();
+    {
+        QOpenGLFunctions* gl = ctx->functions();
+        auto str = [gl](GLenum e) { return QString::fromLatin1(reinterpret_cast<const char*>(gl->glGetString(e))); };
+        m_glInfo = str(GL_VERSION) + QStringLiteral(" | ") + str(GL_RENDERER);
+        qInfo("Milkdrop: OpenGL %s", qPrintable(m_glInfo));
+    }
+    m_sinceLoad.start();
+    m_sinceCheck.start();
     Q_EMIT ready();
 }
 
@@ -189,12 +221,76 @@ void MilkdropView::paintGL() {
     if (m_pending) {
         const auto [milk, smooth] = *std::exchange(m_pending, std::nullopt);
         projectm_load_preset_data(m_pm, milk.constData(), smooth);
+        m_sinceLoad.start();
+        m_blackChecks = 0;
+        m_sawPicture = false;
     }
     // Only the samples that played since the last frame.
     const uint32_t n = m_engine->readNewVisSamples(&m_visCursor, m_pcm.data(), kMaxFramesPerFeed);
     if (n > 0) projectm_pcm_add_float(m_pm, m_pcm.data(), n, PROJECTM_STEREO);
     projectm_opengl_render_frame(m_pm);
+    makeOpaque();
     ++m_frames;
+    watchForBlack();
+}
+
+void MilkdropView::makeOpaque() {
+    // projectM leaves whatever alpha a preset produced in the window, often 0.
+    // If the system gave the window an alpha channel anyway (an ARGB visual on
+    // X11/XWayland, a translucent surface elsewhere), those pixels would be
+    // composited as see-through, i.e. black over our frame. Set alpha to 1.
+    QOpenGLFunctions* gl = context()->functions();
+    gl->glBindFramebuffer(GL_FRAMEBUFFER, defaultFramebufferObject());
+    gl->glDisable(GL_SCISSOR_TEST);
+    gl->glColorMask(GL_FALSE, GL_FALSE, GL_FALSE, GL_TRUE);
+    gl->glClearColor(0, 0, 0, 1);
+    gl->glClear(GL_COLOR_BUFFER_BIT);
+    gl->glColorMask(GL_TRUE, GL_TRUE, GL_TRUE, GL_TRUE);
+}
+
+void MilkdropView::watchForBlack() {
+    if (!m_blackWatch || m_sinceLoad.elapsed() < m_blackGraceMs || m_sinceCheck.elapsed() < m_blackIntervalMs) return;
+    m_sinceCheck.start();
+    if (!pictureIsBlack()) {
+        m_blackChecks = 0;
+        if (!std::exchange(m_sawPicture, true))
+            QMetaObject::invokeMethod(this, [this] { Q_EMIT drawsPicture(); }, Qt::QueuedConnection);
+        return;
+    }
+    if (++m_blackChecks < m_blackChecksNeeded) return;
+    m_blackChecks = 0;
+    m_sinceLoad.start();  // one report per stretch
+    QMetaObject::invokeMethod(this, [this] { Q_EMIT staysBlack(); }, Qt::QueuedConnection);
+}
+
+bool MilkdropView::pictureIsBlack() {
+    // Scale the frame just drawn (framebuffer 0, before the swap) into a tiny
+    // target on the GPU and read that back: one small readback per second.
+    QOpenGLExtraFunctions* f = context()->extraFunctions();
+    if (!m_probeFbo) {
+        f->glGenTextures(1, &m_probeTex);
+        f->glBindTexture(GL_TEXTURE_2D, m_probeTex);
+        f->glTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA8, kProbeW, kProbeH, 0, GL_RGBA, GL_UNSIGNED_BYTE, nullptr);
+        f->glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR);
+        f->glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
+        f->glBindTexture(GL_TEXTURE_2D, 0);
+        f->glGenFramebuffers(1, &m_probeFbo);
+        f->glBindFramebuffer(GL_FRAMEBUFFER, m_probeFbo);
+        f->glFramebufferTexture2D(GL_FRAMEBUFFER, GL_COLOR_ATTACHMENT0, GL_TEXTURE_2D, m_probeTex, 0);
+    }
+    const GLuint screen = defaultFramebufferObject();
+    f->glBindFramebuffer(GL_READ_FRAMEBUFFER, screen);
+    f->glBindFramebuffer(GL_DRAW_FRAMEBUFFER, m_probeFbo);
+    f->glBlitFramebuffer(0, 0, m_pixelSize.width(), m_pixelSize.height(), 0, 0, kProbeW, kProbeH, GL_COLOR_BUFFER_BIT,
+                         GL_LINEAR);
+    f->glBindFramebuffer(GL_READ_FRAMEBUFFER, m_probeFbo);
+    std::array<quint8, kProbeW * kProbeH * 4> px{};
+    f->glPixelStorei(GL_PACK_ALIGNMENT, 4);
+    f->glReadPixels(0, 0, kProbeW, kProbeH, GL_RGBA, GL_UNSIGNED_BYTE, px.data());
+    f->glBindFramebuffer(GL_FRAMEBUFFER, screen);
+    for (size_t i = 0; i < px.size(); i += 4)
+        if (std::max({px[i], px[i + 1], px[i + 2]}) >= kBlackLevel) return false;
+    return true;
 }
 
 void MilkdropView::mouseDoubleClickEvent(QMouseEvent* e) {

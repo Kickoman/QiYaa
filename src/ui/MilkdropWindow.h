@@ -5,6 +5,8 @@
 #include <memory>
 
 #include <QList>
+#include <QSet>
+#include <QStringList>
 
 #include "ui/GenWindow.h"
 #include "vis/MilkdropPresets.h"
@@ -27,7 +29,9 @@ public:
     const MilkdropPresets& presets() const { return m_presets; }
     int currentIndex() const { return m_current; }
     QString currentPreset() const;
-    void selectPreset(int index, bool smooth = true);
+    // `byUser`: picked by hand (shown in the main window's marquee) rather
+    // than by the automatic switching.
+    void selectPreset(int index, bool smooth = true, bool byUser = true);
     void selectPreset(const QString& name);
     void nextPreset();
     void previousPreset();
@@ -53,10 +57,17 @@ public:
     // What the view reports (public for tests).
     void onSwitchRequested(bool hardCut);
     void onPresetFailed(const QString& message);
+    void onStaysBlack();
+
+    // Presets that showed only black here (the GPU/driver can't run them):
+    // skipped when switching, remembered in the settings.
+    QStringList blackPresets() const;
+    void setBlackPresets(const QStringList& names);
+    bool isBlack(int index) const;
     QString userPresetDir() const { return m_userDir; }
 
 Q_SIGNALS:
-    void presetChanged(const QString& name);
+    void presetChanged(const QString& name, bool byUser);
     void settingsChanged();
     // Winamp's transport keys pressed while the visualization has the focus.
     void transportKey(int key);
@@ -76,6 +87,9 @@ private:
     void handleKey(int key, Qt::KeyboardModifiers mods);
     void showMenu(const QPoint& globalPos);
     int fps() const;
+    // The next preset to switch to on its own (in order or at random), skipping
+    // the ones known to show black here.
+    int followingPreset() const;
 
     audio::AudioEngine* m_engine;
     QString m_builtInDir;
@@ -93,6 +107,8 @@ private:
     bool m_locked = false;
     int m_seconds = 30;
     bool m_playing = false;
+    QSet<QString> m_black;
+    int m_blackInARow = 0;  // many in a row: the problem isn't the presets
 };
 
 }  // namespace qiyaa

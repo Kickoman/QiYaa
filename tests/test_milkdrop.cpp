@@ -102,6 +102,50 @@ private Q_SLOTS:
         QVERIFY(changed.count() >= 6);
     }
 
+    void blackPresetsAreSkippedAndRemembered() {
+        MilkdropWindow w(&engine, builtIn.path(), user.path(), &skin);
+        w.setShuffle(false);
+        w.selectPreset(0);
+        w.onStaysBlack();  // A-first shows nothing on this "GPU"
+        QCOMPARE(w.blackPresets(), QStringList{"A-first"});
+        QCOMPARE(w.currentPreset(), QStringLiteral("b-second"));
+        // Never chosen automatically again, in order...
+        for (int i = 0; i < 8; ++i) {
+            w.onSwitchRequested(false);
+            QVERIFY(w.currentPreset() != QStringLiteral("A-first"));
+        }
+        w.selectPreset(1);
+        w.previousPreset();  // wraps past A-first
+        QCOMPARE(w.currentPreset(), QStringLiteral("mine"));
+        // ...or at random.
+        w.setShuffle(true);
+        for (int i = 0; i < 30; ++i) {
+            w.nextPreset();
+            QVERIFY(w.currentPreset() != QStringLiteral("A-first"));
+        }
+        // By hand it can still be picked.
+        w.selectPreset(0);
+        QCOMPARE(w.currentPreset(), QStringLiteral("A-first"));
+
+        // Restored from the settings.
+        MilkdropWindow w2(&engine, builtIn.path(), user.path(), &skin);
+        w2.setBlackPresets({"c-third"});
+        QVERIFY(w2.isBlack(2));
+        QVERIFY(!w2.isBlack(0));
+    }
+
+    void manyBlackInARowStopsBlamingPresets() {
+        QTemporaryDir many;
+        for (int i = 0; i < 12; ++i) writeFile(many.filePath(QStringLiteral("p%1.milk").arg(i, 2, 10, QChar('0'))), simplePreset(1.0));
+        MilkdropWindow w(&engine, many.path(), {}, &skin);
+        w.setShuffle(false);
+        w.selectPreset(0);
+        for (int i = 0; i < 12; ++i) w.onStaysBlack();
+        // One black preset after another means the problem isn't the presets
+        // (no sound reaching it, a driver issue): don't hide them all.
+        QCOMPARE(w.blackPresets().size(), 5);
+    }
+
     void rendersWithProjectM() {
         MilkdropWindow w(&engine, builtIn.path(), user.path(), &skin);
         w.setSizeSteps({2, 4});
@@ -129,6 +173,33 @@ private Q_SLOTS:
         // Hidden: no more frames.
         w.hide();
         QVERIFY(!v->isRendering());
+    }
+
+    void blackPictureIsNoticed() {
+        // The detector on real OpenGL: a preset that draws nothing is reported,
+        // one that draws a big white border isn't.
+        QTemporaryDir dir;
+        writeFile(dir.filePath("black.milk"),
+                  "[preset00]\nfDecay=0\nfWaveAlpha=0\nnWaveMode=0\nfVideoEchoAlpha=0\nob_size=0\nob_a=0\nib_size=0\nib_a=0\nmv_a=0\nzoom=1\n");
+        writeFile(dir.filePath("white.milk"), "[preset00]\nfDecay=0.9\nob_size=0.5\nob_r=1\nob_g=1\nob_b=1\nob_a=1\n");
+        MilkdropWindow w(&engine, dir.path(), {}, &skin);
+        w.show();
+        QVERIFY(QTest::qWaitForWindowExposed(&w));
+        MilkdropView* v = w.view();
+        if (!v && qEnvironmentVariableIsSet("QIYAA_EXPECT_GL")) QFAIL(qPrintable("no OpenGL: " + w.failure()));
+        if (!v) QSKIP("no OpenGL 3.3 here");
+        QVERIFY(QTest::qWaitFor([&] { return v->isReady() || !v->failure().isEmpty(); }, 5000));
+        if (!v->isReady()) QSKIP("no OpenGL 3.3 here");
+        v->setBlackWatchTiming(300, 150, 3);
+        QSignalSpy black(v, &MilkdropView::staysBlack);
+        QSignalSpy picture(v, &MilkdropView::drawsPicture);
+        w.setLocked(true);
+        w.selectPreset(w.presets().indexOf("white"), false);
+        v->setBlackWatch(true);
+        QVERIFY(picture.wait(5000));
+        QCOMPARE(black.count(), 0);
+        w.selectPreset(w.presets().indexOf("black"), false);
+        QVERIFY(black.wait(5000));
     }
 
     void fullScreenAndBack() {

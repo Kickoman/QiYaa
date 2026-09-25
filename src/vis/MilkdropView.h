@@ -44,12 +44,22 @@ public:
     bool isReady() const { return m_pm != nullptr; }
     QString failure() const { return m_failure; }
     qint64 framesRendered() const { return m_frames; }
+    QString glInfo() const { return m_glInfo; }  // version | renderer, for reports
+
+    // Watch for a preset that stays black (some GPUs/drivers can't run some
+    // presets): while on, the picture is sampled once per `intervalMs` from
+    // `graceMs` after a preset load, and `checks` black samples in a row emit
+    // staysBlack(). Only meaningful while music plays.
+    void setBlackWatch(bool on);
+    void setBlackWatchTiming(int graceMs, int intervalMs, int checks);
 
 Q_SIGNALS:
     void ready();
     void failed(const QString& reason);
     void switchRequested(bool hardCut);    // the preset's time is up (or a hard cut on a beat)
     void presetFailed(const QString& message);
+    void staysBlack();
+    void drawsPicture();  // the first sample after a load that isn't black
     void doubleClicked();
     void contextMenuRequested(const QPoint& globalPos);
     void keyPressed(int key, Qt::KeyboardModifiers modifiers);
@@ -67,6 +77,9 @@ private:
     void applyTexturePaths();
     void syncWindowSize();
     void destroyProjectM();
+    void makeOpaque();
+    void watchForBlack();
+    bool pictureIsBlack();
 
     audio::AudioEngine* m_engine;
     ::projectm* m_pm = nullptr;
@@ -81,6 +94,18 @@ private:
     bool m_texturePathsDirty = false;
     QSize m_pixelSize;
     qint64 m_frames = 0;
+    QString m_glInfo;
+
+    bool m_blackWatch = false;
+    int m_blackGraceMs = 5000;     // new presets fade in (and the blend takes 3 s)
+    int m_blackIntervalMs = 1000;
+    int m_blackChecksNeeded = 4;
+    int m_blackChecks = 0;
+    bool m_sawPicture = false;
+    QElapsedTimer m_sinceLoad;
+    QElapsedTimer m_sinceCheck;
+    unsigned m_probeFbo = 0;       // tiny render target the picture is scaled into
+    unsigned m_probeTex = 0;
 };
 
 }  // namespace qiyaa

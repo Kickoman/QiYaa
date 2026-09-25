@@ -108,6 +108,7 @@ App::App(const Options& options, QObject* parent)
         m_md->setShuffle(m_settings.value(QStringLiteral("milkdrop/shuffle"), true).toBool());
         m_md->setLocked(m_settings.value(QStringLiteral("milkdrop/locked"), false).toBool());
         m_md->setPresetSeconds(m_settings.value(QStringLiteral("milkdrop/seconds"), 30).toInt());
+        m_md->setBlackPresets(m_settings.value(QStringLiteral("milkdrop/black")).toStringList());
         m_md->selectPreset(m_settings.value(QStringLiteral("milkdrop/preset")).toString());
         connect(m_md.get(), &MilkdropWindow::closeRequested, this, [this] { setMilkdropVisible(false); });
         connect(m_md.get(), &GenWindow::sizeStepsChanged, this, [this](QSize s) { m_settings.setValue(QStringLiteral("milkdrop/steps"), s); });
@@ -116,6 +117,11 @@ App::App(const Options& options, QObject* parent)
             m_settings.setValue(QStringLiteral("milkdrop/locked"), m_md->locked());
             m_settings.setValue(QStringLiteral("milkdrop/seconds"), m_md->presetSeconds());
             m_settings.setValue(QStringLiteral("milkdrop/preset"), m_md->currentPreset());
+            m_settings.setValue(QStringLiteral("milkdrop/black"), m_md->blackPresets());
+        });
+        // Picked by hand: say which one it is (like Milkdrop's own title display).
+        connect(m_md.get(), &MilkdropWindow::presetChanged, this, [this](const QString& name, bool byUser) {
+            if (byUser) m_main->setStatusText(QStringLiteral("Milkdrop: ") + name);
         });
         connect(m_md.get(), &MilkdropWindow::transportKey, this, &App::transportKey);
         connect(&m_engine, &audio::AudioEngine::stateChanged, m_md.get(),

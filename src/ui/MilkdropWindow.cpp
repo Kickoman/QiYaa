@@ -3,6 +3,8 @@
 #include <algorithm>
 
 #include <QActionGroup>
+#include <QClipboard>
+#include <QGuiApplication>
 #include <QCursor>
 #include <QDesktopServices>
 #include <QDir>
@@ -66,9 +68,9 @@ void MilkdropWindow::wireView(MilkdropView* view) {
     view->setPresetDuration(m_seconds);
     view->setLocked(m_locked);
     connect(view, &MilkdropView::ready, this, [this, view] {
-        if (m_current < 0 && !m_presets.isEmpty()) m_current = m_shuffle ? m_presets.random(-1) : 0;
+        if (m_current < 0 && !m_presets.isEmpty()) m_current = followingPreset();
         if (m_current >= 0) view->loadPreset(m_presets.data(m_current), false);
-        if (m_current >= 0) Q_EMIT presetChanged(currentPreset());
+        if (m_current >= 0) Q_EMIT presetChanged(currentPreset(), false);
     });
     connect(view, &MilkdropView::failed, this, [this, view](const QString& reason) {
         qWarning("Milkdrop unavailable: %s", qPrintable(reason));
@@ -82,12 +84,15 @@ void MilkdropWindow::wireView(MilkdropView* view) {
     });
     connect(view, &MilkdropView::switchRequested, this, &MilkdropWindow::onSwitchRequested);
     connect(view, &MilkdropView::presetFailed, this, &MilkdropWindow::onPresetFailed);
+    connect(view, &MilkdropView::staysBlack, this, &MilkdropWindow::onStaysBlack);
+    connect(view, &MilkdropView::drawsPicture, this, [this] { m_blackInARow = 0; });
+    view->setBlackWatch(m_playing && m_blackInARow <= 5);
     connect(view, &MilkdropView::doubleClicked, this, [this] { setFullScreenMode(!isFullScreenMode()); });
     connect(view, &MilkdropView::contextMenuRequested, this, &MilkdropWindow::showMenu);
     connect(view, &MilkdropView::keyPressed, this, &MilkdropWindow::handleKey);
 }
 
-void MilkdropWindow::selectPreset(int index, bool smooth) {
+void MilkdropWindow::selectPreset(int index, bool smooth, bool byUser) {
     if (index < 0 || index >= m_presets.size()) return;
     const QByteArray milk = m_presets.data(index);
     if (milk.isEmpty()) return;
@@ -97,7 +102,7 @@ void MilkdropWindow::selectPreset(int index, bool smooth) {
     }
     m_current = index;
     if (MilkdropView* v = m_fullView ? m_fullView.get() : m_view) v->loadPreset(milk, smooth);
-    Q_EMIT presetChanged(currentPreset());
+    Q_EMIT presetChanged(currentPreset(), byUser);
     Q_EMIT settingsChanged();
 }
 
@@ -114,7 +119,7 @@ void MilkdropWindow::selectPreset(const QString& name) {
 
 void MilkdropWindow::nextPreset() {
     m_failuresInARow = 0;
-    selectPreset(m_shuffle ? m_presets.random(m_current) : m_presets.next(m_current));
+    selectPreset(followingPreset());
 }
 
 void MilkdropWindow::previousPreset() {
@@ -128,7 +133,9 @@ void MilkdropWindow::previousPreset() {
         if (m_current != index) m_current = keep;  // unreadable: stay
         return;
     }
-    selectPreset(m_presets.previous(m_current));
+    int prev = m_presets.previous(m_current);
+    for (int n = 0; n < m_presets.size() && isBlack(prev); ++n) prev = m_presets.previous(prev);
+    selectPreset(prev);
 }
 
 void MilkdropWindow::reloadPresets() {
@@ -164,6 +171,9 @@ void MilkdropWindow::setPresetSeconds(int seconds) {
 void MilkdropWindow::setPlaying(bool playing) {
     if (playing == m_playing) return;
     m_playing = playing;
+    // Silence may legitimately fade a preset to black: judge only with music.
+    if (m_view) m_view->setBlackWatch(playing && m_blackInARow <= 5);
+    if (m_fullView) m_fullView->setBlackWatch(playing && m_blackInARow <= 5);
     updateRendering();
 }
 
@@ -206,17 +216,62 @@ void MilkdropWindow::setFullScreenMode(bool on) {
     updateRendering();
 }
 
+int MilkdropWindow::followingPreset() const {
+    int index = m_current;
+    for (int attempt = 0; attempt < m_presets.size(); ++attempt) {
+        index = m_shuffle ? m_presets.random(m_current) : m_presets.next(index);
+        if (!isBlack(index)) return index;
+    }
+    return m_shuffle ? m_presets.random(m_current) : m_presets.next(m_current);  // all of them: don't get stuck
+}
+
+bool MilkdropWindow::isBlack(int index) const {
+    return index >= 0 && index < m_presets.size() && m_black.contains(m_presets.at(index).name);
+}
+
+QStringList MilkdropWindow::blackPresets() const {
+    QStringList out(m_black.cbegin(), m_black.cend());
+    out.sort();
+    return out;
+}
+
+void MilkdropWindow::setBlackPresets(const QStringList& names) {
+    m_black = QSet<QString>(names.cbegin(), names.cend());
+    m_blackInARow = 0;
+}
+
+void MilkdropWindow::onStaysBlack() {
+    const QString name = currentPreset();
+    if (name.isEmpty()) return;
+    const MilkdropView* v = m_fullView ? m_fullView.get() : m_view;
+    qWarning("Milkdrop: \"%s\" shows only black here (%s), skipping it", qPrintable(name),
+             v ? qPrintable(v->glInfo()) : "?");
+    // Black one after another: something else is wrong (no sound reaching it,
+    // a driver problem), so stop blaming presets.
+    if (++m_blackInARow > 5) {
+        qWarning("Milkdrop: many presets in a row stay black; not skipping any more");
+        if (m_view) m_view->setBlackWatch(false);
+        if (m_fullView) m_fullView->setBlackWatch(false);
+        return;
+    }
+    m_black.insert(name);
+    Q_EMIT settingsChanged();
+    m_failuresInARow = 0;
+    selectPreset(followingPreset(), false, false);
+}
+
 void MilkdropWindow::onSwitchRequested(bool hardCut) {
     if (m_locked || m_presets.isEmpty()) return;
     m_failuresInARow = 0;
-    selectPreset(m_shuffle ? m_presets.random(m_current) : m_presets.next(m_current), !hardCut);
+    m_blackInARow = 0;  // this one played its full time without going black
+    selectPreset(followingPreset(), !hardCut, false);
 }
 
 void MilkdropWindow::onPresetFailed(const QString& message) {
     qWarning("Milkdrop preset \"%s\" failed: %s", qPrintable(currentPreset()), qPrintable(message));
     // projectM keeps showing the previous preset; move on to another one.
     if (++m_failuresInARow >= std::min(10, m_presets.size())) return;
-    selectPreset(m_shuffle ? m_presets.random(m_current) : m_presets.next(m_current), false);
+    selectPreset(followingPreset(), false, false);
 }
 
 void MilkdropWindow::handleKey(int key, Qt::KeyboardModifiers mods) {
@@ -227,7 +282,7 @@ void MilkdropWindow::handleKey(int key, Qt::KeyboardModifiers mods) {
     case Qt::Key_P: previousPreset(); break;
     case Qt::Key_H:  // hard cut: no blending
         m_failuresInARow = 0;
-        selectPreset(m_shuffle ? m_presets.random(m_current) : m_presets.next(m_current), false);
+        selectPreset(followingPreset(), false);
         break;
     case Qt::Key_R: setShuffle(!m_shuffle); break;
     case Qt::Key_L:
@@ -263,7 +318,8 @@ void MilkdropWindow::showMenu(const QPoint& globalPos) {
     if (!m_presets.isEmpty()) {
         QMenu* list = menu->addMenu(QStringLiteral("Пресеты"));
         for (int i = 0; i < m_presets.size(); ++i) {
-            QAction* a = list->addAction(m_presets.at(i).name, this, [this, i] {
+            const QString label = isBlack(i) ? m_presets.at(i).name + QStringLiteral("  (здесь чёрный)") : m_presets.at(i).name;
+            QAction* a = list->addAction(label, this, [this, i] {
                 m_failuresInARow = 0;
                 selectPreset(i);
             });
@@ -298,6 +354,17 @@ void MilkdropWindow::showMenu(const QPoint& globalPos) {
         QDesktopServices::openUrl(QUrl::fromLocalFile(m_userDir));
     });
     menu->addAction(QStringLiteral("Перечитать пресеты"), this, &MilkdropWindow::reloadPresets);
+    menu->addAction(QStringLiteral("Скопировать название пресета"), this, [this] {
+        QGuiApplication::clipboard()->setText(currentPreset());
+    })->setEnabled(m_current >= 0);
+    if (!m_black.isEmpty()) {
+        menu->addAction(QStringLiteral("Вернуть пропущенные чёрные пресеты (%1)").arg(m_black.size()), this, [this] {
+            setBlackPresets({});
+            if (m_view) m_view->setBlackWatch(m_playing);
+            if (m_fullView) m_fullView->setBlackWatch(m_playing);
+            Q_EMIT settingsChanged();
+        });
+    }
     menu->popup(globalPos);
 }
 
