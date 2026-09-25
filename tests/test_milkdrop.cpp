@@ -2,6 +2,7 @@
 // context can be made (CTest runs this under Xvfb when it can), projectM
 // rendering inside the window.
 #include <QDir>
+#include <QElapsedTimer>
 #include <QFile>
 #include <QSignalSpy>
 #include <QTemporaryDir>
@@ -164,26 +165,38 @@ private Q_SLOTS:
         if (!v->isReady()) QSKIP(qPrintable("no OpenGL 3.3 here: " + v->failure()));
         qInfo("OpenGL: %s", qPrintable(v->glInfo()));
         QVERIFY(v->isRendering());
-        QVERIFY(QTest::qWaitFor([&] { return v->framesRendered() > 40; }, 15000));
+        QVERIFY(QTest::qWaitFor([&] { return v->framesRendered() > 10; }, 15000));
 
-        QSignalSpy captured(v, &MilkdropView::frameCaptured);
-        v->captureNextFrame();
-        QVERIFY(captured.wait(5000));
-        const QImage img = captured.first().first().value<QImage>();
+        // A preset loaded onto a black canvas fills it in over a few seconds
+        // (feedback), slower on a software renderer: keep looking for up to 20 s.
+        QImage img;
+        int colourCount = 0, lit = 0, samples = 0;
+        QElapsedTimer t;
+        t.start();
+        do {
+            QSignalSpy captured(v, &MilkdropView::frameCaptured);
+            v->captureNextFrame();
+            QVERIFY(captured.wait(5000));
+            img = captured.first().first().value<QImage>();
+            QSet<QRgb> colours;
+            lit = samples = 0;
+            for (int y = 0; y < img.height(); y += 4)
+                for (int x = 0; x < img.width(); x += 4) {
+                    const QRgb p = img.pixel(x, y);
+                    colours.insert(p);
+                    lit += qRed(p) + qGreen(p) + qBlue(p) > 30;
+                    ++samples;
+                }
+            colourCount = int(colours.size());
+            if (colourCount > 50 && lit > samples / 2) break;
+            QTest::qWait(500);
+        } while (t.elapsed() < 20000);
+        qInfo("after %lld ms: %d colours, %d of %d lit", t.elapsed(), colourCount, lit, samples);
         QCOMPARE(img.size(), v->size() * v->devicePixelRatio());
-        // Something was drawn: lit and colourful, not a flat colour.
-        QSet<QRgb> colours;
-        int lit = 0, samples = 0;
-        for (int y = 0; y < img.height(); y += 4)
-            for (int x = 0; x < img.width(); x += 4) {
-                const QRgb p = img.pixel(x, y);
-                colours.insert(p);
-                lit += qRed(p) + qGreen(p) + qBlue(p) > 30;
-                ++samples;
-            }
         if (!qEnvironmentVariableIsEmpty("QIYAA_TEST_SHOTS"))
             img.save(qEnvironmentVariable("QIYAA_TEST_SHOTS") + "/milkdrop.png");
-        QVERIFY2(colours.size() > 50, qPrintable(QString::number(colours.size())));
+        // Something was drawn: lit and colourful, not a flat colour.
+        QVERIFY2(colourCount > 50, qPrintable(QString::number(colourCount)));
         QVERIFY2(lit > samples / 2, qPrintable(QStringLiteral("%1 of %2 lit").arg(lit).arg(samples)));
         QVERIFY(qAlpha(img.pixel(img.width() / 2, img.height() / 2)) == 255);  // opaque
 
