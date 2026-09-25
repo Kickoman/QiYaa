@@ -2,6 +2,7 @@
 // miniaudio falls back to its "Null" backend, which still runs in real time.
 #include <QElapsedTimer>
 #include <QFile>
+#include <QMetaEnum>
 #include <functional>
 #include <QSignalSpy>
 #include <QTest>
@@ -16,6 +17,17 @@ class TestAudio : public QObject {
 private:
     AudioEngine engine;
     QByteArray mp3;
+
+    // The engine's state, for failure messages.
+    QString where(qsizetype advanced, qsizetype finished = -1) const {
+        return QStringLiteral("advanced %1, finished %2, at %3 s, %4, current %5, queued %6")
+            .arg(advanced)
+            .arg(finished)
+            .arg(engine.positionSeconds(), 0, 'f', 2)
+            .arg(QLatin1String(QMetaEnum::fromType<AudioEngine::State>().valueToKey(int(engine.state()))))
+            .arg(engine.currentStream())
+            .arg(engine.queuedStream());
+    }
 
     void pumpUntil(const std::function<bool()>& cond, int timeoutMs) {
         QElapsedTimer t;
@@ -176,7 +188,7 @@ private Q_SLOTS:
         QVERIFY(b != 0);
         QCOMPARE(engine.queuedStream(), b);
         pumpUntil([&] { return advanced.count() > 0 || finished.count() > 0; }, 3000);
-        QCOMPARE(advanced.count(), 1);
+        QVERIFY2(advanced.count() == 1, qPrintable(where(advanced.count(), finished.count())));
         QCOMPARE(finished.count(), 0);
         QVERIFY(states.isEmpty());  // no Stopped/Buffering in between
         QCOMPARE(engine.currentStream(), b);
@@ -207,7 +219,7 @@ private Q_SLOTS:
         // ...and it still follows later, from its beginning.
         QVERIFY(engine.seek(2.5));
         pumpUntil([&] { return advanced.count() > 0; }, 3000);
-        QCOMPARE(advanced.count(), 1);
+        QVERIFY2(advanced.count() == 1, qPrintable(where(advanced.count())));
         QVERIFY(engine.positionSeconds() < 0.3);
         engine.stop();
     }
@@ -259,7 +271,7 @@ private Q_SLOTS:
         engine.appendData(b, mp3.mid(4000));
         engine.finishData(b);
         pumpUntil([&] { return finished.count() > 0 || advanced.count() > 0; }, 3000);
-        QCOMPARE(advanced.count(), 1);
+        QVERIFY2(advanced.count() == 1, qPrintable(where(advanced.count(), finished.count())));
         QCOMPARE(finished.count(), 0);
         engine.stop();
     }

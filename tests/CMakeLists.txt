@@ -2,8 +2,10 @@ function(qiyaa_add_test name)
     qt_add_executable(${name} ${name}.cpp)
     target_link_libraries(${name} PRIVATE qiyaa_core Qt6::Test)
     add_test(NAME ${name} COMMAND ${name})
-    # Tests need no display.
-    set_tests_properties(${name} PROPERTIES ENVIRONMENT "QT_QPA_PLATFORM=offscreen")
+    # Tests need no display, and no sound card: miniaudio's Null output runs
+    # in real time like a device but doesn't depend on the machine's audio
+    # (the macOS runner has Core Audio, and its timing in the VM is unreliable).
+    set_tests_properties(${name} PROPERTIES ENVIRONMENT "QT_QPA_PLATFORM=offscreen;QIYAA_AUDIO_BACKEND=null")
 endfunction()
 
 qiyaa_add_test(test_snap)
@@ -21,7 +23,7 @@ qiyaa_add_test(test_windows)
 # Not on Windows: Qt splits platform arguments on ':', which breaks "C:/...".
 if(NOT WIN32)
     set_tests_properties(test_windows PROPERTIES ENVIRONMENT
-        "QT_QPA_PLATFORM=offscreen:configfile=${CMAKE_CURRENT_SOURCE_DIR}/data/screen-2560x1440.json")
+        "QT_QPA_PLATFORM=offscreen:configfile=${CMAKE_CURRENT_SOURCE_DIR}/data/screen-2560x1440.json;QIYAA_AUDIO_BACKEND=null")
 endif()
 
 # MPRIS: only where it's built (Linux with Qt D-Bus; macOS Qt has D-Bus too,
@@ -36,7 +38,7 @@ if(QIYAA_HAVE_MPRIS)
     else()
         add_test(NAME test_mpris COMMAND test_mpris)
     endif()
-    set_tests_properties(test_mpris PROPERTIES ENVIRONMENT "QT_QPA_PLATFORM=offscreen")
+    set_tests_properties(test_mpris PROPERTIES ENVIRONMENT "QT_QPA_PLATFORM=offscreen;QIYAA_AUDIO_BACKEND=null")
 endif()
 
 # Milkdrop: rendering needs an OpenGL 3.3 context. The offscreen platform has
@@ -50,6 +52,6 @@ if(QIYAA_HAVE_MILKDROP)
                  $<TARGET_FILE:test_milkdrop> rendersWithProjectM blackPictureIsNoticed fullScreenAndBack)
         # Fail instead of skipping: here OpenGL must work.
         set_tests_properties(test_milkdrop_gl PROPERTIES
-            ENVIRONMENT "QT_QPA_PLATFORM=xcb;QIYAA_EXPECT_GL=1;LIBGL_ALWAYS_SOFTWARE=1")
+            ENVIRONMENT "QT_QPA_PLATFORM=xcb;QIYAA_EXPECT_GL=1;LIBGL_ALWAYS_SOFTWARE=1;QIYAA_AUDIO_BACKEND=null")
     endif()
 endif()

@@ -436,12 +436,25 @@ bool AudioEngine::init(QString* error) {
 #if defined(__linux__) || defined(__FreeBSD__)
     // PipeWire/PulseAudio first, then ALSA. Skip JACK: it spams stderr when no
     // JACK server runs, and desktop users route through PipeWire anyway.
-    const ma_backend candidates[] = {ma_backend_pulseaudio, ma_backend_alsa, ma_backend_null};
+    std::vector<ma_backend> candidates = {ma_backend_pulseaudio, ma_backend_alsa, ma_backend_null};
 #elif defined(_WIN32)
-    const ma_backend candidates[] = {ma_backend_wasapi, ma_backend_dsound, ma_backend_winmm, ma_backend_null};
+    std::vector<ma_backend> candidates = {ma_backend_wasapi, ma_backend_dsound, ma_backend_winmm, ma_backend_null};
 #else
-    const ma_backend candidates[] = {ma_backend_coreaudio, ma_backend_null};
+    std::vector<ma_backend> candidates = {ma_backend_coreaudio, ma_backend_null};
 #endif
+    // QIYAA_AUDIO_BACKEND picks one backend by its miniaudio name: "null" (no
+    // sound, but real-time; the tests use it), "alsa", "pulseaudio", "wasapi"...
+    if (QString want = qEnvironmentVariable("QIYAA_AUDIO_BACKEND").remove(QLatin1Char(' ')); !want.isEmpty()) {
+        bool known = false;
+        for (int i = 0; i < MA_BACKEND_COUNT && !known; ++i) {
+            const auto b = ma_backend(i);
+            if (QString::fromLatin1(ma_get_backend_name(b)).remove(QLatin1Char(' ')).compare(want, Qt::CaseInsensitive) == 0) {
+                candidates = {b};
+                known = true;
+            }
+        }
+        if (!known) qWarning("QIYAA_AUDIO_BACKEND=%s: no such audio backend, using the default ones", qPrintable(want));
+    }
     // A context is bound to one backend, so try them one by one until a device opens.
     bool opened = false;
     for (ma_backend backend : candidates) {
