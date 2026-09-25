@@ -215,15 +215,54 @@ if(UNIX AND NOT APPLE)
     include(GNUInstallDirs)
     install(TARGETS qiyaa RUNTIME DESTINATION ${CMAKE_INSTALL_BINDIR})
     if(QIYAA_PROJECTM_FETCHED)
-        # A downloaded projectM ships with the app (and is found next to it).
-        install(TARGETS projectM LIBRARY DESTINATION ${CMAKE_INSTALL_LIBDIR} NAMELINK_SKIP)
-        set_target_properties(qiyaa PROPERTIES INSTALL_RPATH "$ORIGIN/../${CMAKE_INSTALL_LIBDIR}")
+        # A downloaded projectM ships with the app, by default in a private
+        # directory so it can't clash with a distribution's own projectM package.
+        if(NOT DEFINED QIYAA_BUNDLED_LIBDIR)
+            set(QIYAA_BUNDLED_LIBDIR ${CMAKE_INSTALL_LIBDIR}/qiyaa)
+        endif()
+        install(TARGETS projectM LIBRARY DESTINATION ${QIYAA_BUNDLED_LIBDIR} NAMELINK_SKIP)
+        install(FILES ${projectm_SOURCE_DIR}/LICENSE.txt DESTINATION ${CMAKE_INSTALL_DATADIR}/doc/qiyaa
+                RENAME projectM-LICENSE.txt)
+        set_target_properties(qiyaa PROPERTIES INSTALL_RPATH "$ORIGIN/../${QIYAA_BUNDLED_LIBDIR}")
     endif()
+
+    # .deb package (cpack -G DEB), built against the distribution's Qt: for
+    # Ubuntu 24.04+ / Debian 13+. Dependencies come from dpkg-shlibdeps, plus
+    # what Qt and miniaudio load at run time.
+    set(CPACK_PACKAGE_NAME qiyaa)
+    set(CPACK_PACKAGE_VENDOR "QiYaa contributors")
+    set(CPACK_PACKAGE_DESCRIPTION_SUMMARY "Winamp-style player for Yandex Music")
+    set(CPACK_PACKAGE_HOMEPAGE_URL "https://github.com/Kickoman/QiYaa")
+    set(CPACK_RESOURCE_FILE_LICENSE ${CMAKE_CURRENT_SOURCE_DIR}/LICENSE)
+    set(QIYAA_DEB_MAINTAINER "Kickoman <Kickoman@users.noreply.github.com>" CACHE STRING "Maintainer field of the .deb")
+    set(CPACK_DEBIAN_PACKAGE_MAINTAINER ${QIYAA_DEB_MAINTAINER})
+    set(CPACK_DEBIAN_PACKAGE_SECTION sound)
+    set(CPACK_DEBIAN_FILE_NAME DEB-DEFAULT)  # qiyaa_<version>_<arch>.deb
+    # The first line of the control file's Description comes from the summary above.
+    set(CPACK_DEBIAN_PACKAGE_DESCRIPTION "QiYaa plays Yandex Music (My Wave, likes, playlists, search) in the classic
+Winamp 2 look: .wsz skins, docking equalizer and playlist windows, spectrum
+and Milkdrop visualizations, media keys (MPRIS).")
+    set(CPACK_DEBIAN_PACKAGE_SHLIBDEPS ON)
+    if(QIYAA_PROJECTM_FETCHED)
+        # Our private projectM: dpkg-shlibdeps must not look for a package providing it.
+        set(CPACK_DEBIAN_PACKAGE_SHLIBDEPS_PRIVATE_DIRS ${projectm_BINARY_DIR}/src/libprojectM)
+    endif()
+    # Loaded at run time, invisible to dpkg-shlibdeps: the X11 platform plugin
+    # (the app runs through XWayland), the sound server's client library
+    # (miniaudio opens it itself) and, for QIYAA_NATIVE_WAYLAND=1, Qt's Wayland plugin.
+    set(CPACK_DEBIAN_PACKAGE_DEPENDS "qt6-qpa-plugins")
+    set(CPACK_DEBIAN_PACKAGE_RECOMMENDS "libpulse0")
+    set(CPACK_DEBIAN_PACKAGE_SUGGESTS "qt6-wayland")
+    set(CPACK_GENERATOR DEB)
+    include(CPack)
     install(FILES packaging/linux/qiyaa.desktop DESTINATION ${CMAKE_INSTALL_DATADIR}/applications)
     foreach(size 16 24 32 48 64 128 256 512)
         install(FILES resources/icons/qiyaa-${size}.png
                 DESTINATION ${CMAKE_INSTALL_DATADIR}/icons/hicolor/${size}x${size}/apps RENAME qiyaa.png)
     endforeach()
+    # License texts where Debian looks for them (/usr/share/doc/<package>/copyright).
+    install(FILES LICENSE DESTINATION ${CMAKE_INSTALL_DATADIR}/doc/qiyaa RENAME copyright)
+    install(FILES THIRD_PARTY.md DESTINATION ${CMAKE_INSTALL_DATADIR}/doc/qiyaa)
 else()
     install(TARGETS qiyaa BUNDLE DESTINATION . RUNTIME DESTINATION bin)
 endif()

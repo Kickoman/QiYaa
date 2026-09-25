@@ -39,7 +39,8 @@
 
 Готовые сборки лежат в [Releases](https://github.com/Kickoman/QiYaa/releases) (появляются, когда в репозиторий пушится тег вида `v0.2.0`) и в артефактах каждого прогона GitHub Actions.
 
-- **Linux** — `QiYaa-<версия>-x86_64.AppImage`: `chmod +x QiYaa-*.AppImage && ./QiYaa-*.AppImage`. Работает на Ubuntu 22.04+ и других дистрибутивах того же возраста и новее. Чтобы плеер появился в меню приложений, можно воспользоваться Gear Lever или AppImageLauncher.
+- **Linux, пакет .deb** (Ubuntu 24.04+, Debian 13+) — `qiyaa_<версия>_amd64.deb`: `sudo apt install ./qiyaa_*.deb`. Использует Qt из дистрибутива (apt сам доставит зависимости), сразу появляется в меню приложений, удаляется `sudo apt remove qiyaa`. Обновления вручную: скачать новый .deb и поставить так же.
+- **Linux, AppImage** (Ubuntu 22.04+ и другие дистрибутивы того же возраста и новее) — `QiYaa-<версия>-x86_64.AppImage`: `chmod +x QiYaa-*.AppImage && ./QiYaa-*.AppImage`. Всё своё носит с собой, ничего не ставит. Чтобы плеер появился в меню приложений, можно воспользоваться Gear Lever или AppImageLauncher.
 - **Windows** — `QiYaa-<версия>-windows-x64-setup.exe` (ставится для текущего пользователя, без прав администратора) или переносной `…-windows-x64.zip`. Сборка не подписана, поэтому SmartScreen может предупредить: «Подробнее» → «Выполнить в любом случае».
 - **macOS** (Apple Silicon) — `QiYaa-<версия>-macos-arm64.dmg`. Сборка не подписана: при первом запуске правый клик по приложению → «Открыть» (или `xattr -dr com.apple.quarantine /Applications/QiYaa.app`).
 
@@ -59,7 +60,7 @@
 ### Ubuntu 24.04
 
 ```sh
-sudo apt install build-essential cmake ninja-build qt6-base-dev libgl1-mesa-dev
+sudo apt install build-essential cmake ninja-build qt6-base-dev libqt6opengl6-dev libgl-dev
 cmake -S . -B build -G Ninja -DCMAKE_BUILD_TYPE=RelWithDebInfo
 cmake --build build
 ctest --test-dir build --output-on-failure   # тест MPRIS поднимает свою сессионную шину (dbus-run-session)
@@ -67,6 +68,8 @@ ctest --test-dir build --output-on-failure   # тест MPRIS поднимает
 ```
 
 Для звука miniaudio сам подгружает PulseAudio/PipeWire/ALSA во время работы — dev-пакеты не нужны.
+
+Свой .deb: настроить с `-DCMAKE_INSTALL_PREFIX=/usr -DCMAKE_BUILD_TYPE=Release`, собрать и выполнить `cd build && cpack -G DEB` (нужен `dpkg-dev`: зависимости пакета вычисляет `dpkg-shlibdeps`). Скачанный projectM кладётся в пакет отдельно, в `/usr/lib/<arch>/qiyaa/`, и не пересекается с projectM из дистрибутива.
 
 ### Windows
 
@@ -78,7 +81,7 @@ cmake --build build
 C:\Qt\6.8.3\msvc2022_64\bin\windeployqt build\QiYaa.exe
 ```
 
-Установщики собирает CI (`.github/workflows/ci.yml`): AppImage через linuxdeploy, установщик Windows через Inno Setup (`packaging/windows/qiyaa.iss`), dmg через `macdeployqt -dmg`. Иконка рисуется скриптом `tools/make_icons.py`.
+Установщики собирает CI (`.github/workflows/ci.yml`): .deb через CPack (на Qt из Ubuntu 24.04, после сборки CI ставит его и запускает), AppImage через linuxdeploy, установщик Windows через Inno Setup (`packaging/windows/qiyaa.iss`), dmg через `macdeployqt -dmg`. Иконка рисуется скриптом `tools/make_icons.py`.
 
 ## Параметры командной строки
 

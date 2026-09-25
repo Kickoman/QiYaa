@@ -20,20 +20,37 @@ jobs:
       fail-fast: false
       matrix:
         include:
-          # Distro Qt (6.4 on Ubuntu 24.04): proves we build with the minimum version.
+          # Distro Qt (6.4 on Ubuntu 24.04): proves we build with the minimum
+          # version, and without Milkdrop.
           - name: Linux (system Qt 6.4)
             os: ubuntu-24.04
             system_qt: true
+            cmake_args: -DQIYAA_WITH_MILKDROP=OFF
+          # The .deb: the distribution's Qt, with Milkdrop (projectM built and
+          # shipped privately). For Ubuntu 24.04+ / Debian 13+.
+          - name: Linux (system Qt 6.4, .deb)
+            os: ubuntu-24.04
+            system_qt: true
+            deb: true
+            cmake_args: -DQIYAA_REQUIRE_MILKDROP=ON -DCMAKE_INSTALL_PREFIX=/usr
+            artifact: QiYaa-Linux-deb
           # Built on the oldest supported base so the AppImage runs on Ubuntu 22.04+ (glibc 2.35).
           - name: Linux (Qt 6.8, AppImage)
             os: ubuntu-22.04
             qt_arch: linux_gcc_64
+            # linuxdeploy gathers all libraries in usr/lib anyway.
+            cmake_args: -DQIYAA_REQUIRE_MILKDROP=ON -DQIYAA_BUNDLED_LIBDIR=lib
+            artifact: QiYaa-Linux-AppImage
           - name: Windows (Qt 6.8, MSVC)
             os: windows-2022
             qt_arch: win64_msvc2022_64
+            cmake_args: -DQIYAA_REQUIRE_MILKDROP=ON
+            artifact: QiYaa-Windows
           - name: macOS (Qt 6.8, arm64)
             os: macos-14
             qt_arch: clang_64
+            cmake_args: -DQIYAA_REQUIRE_MILKDROP=ON
+            artifact: QiYaa-macOS
 
     steps:
       - uses: actions/checkout@v4
@@ -44,6 +61,10 @@ jobs:
           sudo apt-get update
           # dbus + gdbus: the MPRIS test talks to the app over a private session bus.
           sudo apt-get install -y qt6-base-dev libgl1-mesa-dev ninja-build dbus libglib2.0-bin
+          # The .deb build has Milkdrop: Qt OpenGL, and Xvfb + Mesa for its rendering test.
+          if [ "${{ matrix.deb }}" = "true" ]; then
+            sudo apt-get install -y libqt6opengl6-dev libgl-dev qt6-qpa-plugins xvfb libgl1-mesa-dri dpkg-dev
+          fi
 
       - name: Install Qt 6.8
         if: ${{ !matrix.system_qt }}
@@ -98,9 +119,8 @@ jobs:
         run: |
           GEN="-G Ninja"
           [ "$RUNNER_OS" = "macOS" ] && GEN=""
-          # The Qt 6.8 builds must have Milkdrop; the minimum-Qt build checks building without it.
-          if [ "${{ matrix.system_qt }}" = "true" ]; then MILKDROP="-DQIYAA_WITH_MILKDROP=OFF"; else MILKDROP="-DQIYAA_REQUIRE_MILKDROP=ON"; fi
-          cmake -S . -B build $GEN -DCMAKE_BUILD_TYPE=Release $MILKDROP $CMAKE_EXTRA
+          # Packaged builds must have Milkdrop; the plain system-Qt build checks building without it.
+          cmake -S . -B build $GEN -DCMAKE_BUILD_TYPE=Release ${{ matrix.cmake_args }} $CMAKE_EXTRA
           echo "VERSION=$(cat build/version.txt)" >> "$GITHUB_ENV"
 
       - name: Build
@@ -122,6 +142,22 @@ jobs:
             *)       BIN=build/QiYaa ;;
           esac
           "$BIN" --screenshot screenshot.png --offline
+
+      - name: Package (.deb)
+        if: matrix.deb
+        run: |
+          (cd build && cpack -G DEB)
+          mkdir -p dist && mv build/qiyaa_*.deb dist/
+          DEB=$(ls dist/qiyaa_*.deb)
+          dpkg-deb -I "$DEB"
+          # dpkg-shlibdeps must have found Qt (and not asked for a projectM package).
+          dpkg-deb -f "$DEB" Depends | tee /dev/stderr | grep -q libqt6widgets6
+          if dpkg-deb -f "$DEB" Depends | grep -qi projectm; then echo "depends on a projectM package"; exit 1; fi
+          # It must install with its dependencies and start from /usr/bin with its own projectM.
+          sudo apt-get install -y "./$DEB"
+          ldd /usr/bin/QiYaa | grep -q "/usr/lib/x86_64-linux-gnu/qiyaa/libprojectM-4.so.4"
+          QT_QPA_PLATFORM=offscreen QiYaa --screenshot deb.png --offline
+          ls /usr/share/applications/qiyaa.desktop /usr/share/icons/hicolor/256x256/apps/qiyaa.png
 
       - name: Package (Linux AppImage)
         if: runner.os == 'Linux' && !matrix.system_qt
@@ -174,9 +210,9 @@ jobs:
           mkdir -p dist && mv build/QiYaa.dmg "dist/QiYaa-$VERSION-macos-arm64.dmg"
 
       - uses: actions/upload-artifact@v4
-        if: ${{ !matrix.system_qt }}
+        if: matrix.artifact
         with:
-          name: QiYaa-${{ runner.os }}
+          name: ${{ matrix.artifact }}
           path: |
             dist/
             screenshot.png
@@ -198,6 +234,7 @@ jobs:
           generate_release_notes: true
           files: |
             artifacts/*/dist/*.AppImage
+            artifacts/*/dist/*.deb
             artifacts/*/dist/*.zip
             artifacts/*/dist/*-setup.exe
             artifacts/*/dist/*.dmg
