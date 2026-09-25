@@ -155,7 +155,10 @@ jobs:
           if dpkg-deb -f "$DEB" Depends | grep -qi projectm; then echo "depends on a projectM package"; exit 1; fi
           # It must install with its dependencies and start from /usr/bin with its own projectM.
           sudo apt-get install -y "./$DEB"
-          ldd /usr/bin/QiYaa | grep -q "/usr/lib/x86_64-linux-gnu/qiyaa/libprojectM-4.so.4"
+          # ldd shows the path as found through $ORIGIN (/usr/bin/../lib/...): normalise it.
+          PM=$(ldd /usr/bin/QiYaa | awk '/libprojectM/ {print $3}')
+          echo "projectM: $PM"
+          [ "$(dirname "$(realpath "$PM")")" = /usr/lib/x86_64-linux-gnu/qiyaa ]
           QT_QPA_PLATFORM=offscreen QiYaa --screenshot deb.png --offline
           ls /usr/share/applications/qiyaa.desktop /usr/share/icons/hicolor/256x256/apps/qiyaa.png
 
