@@ -118,15 +118,31 @@ private Q_SLOTS:
         w.selectPreset(1);
         w.previousPreset();  // wraps past A-first
         QCOMPARE(w.currentPreset(), QStringLiteral("mine"));
-        // ...or at random.
+        // ...or at random (many times: a black one must never come up, not just rarely).
         w.setShuffle(true);
-        for (int i = 0; i < 30; ++i) {
+        for (int i = 0; i < 1000; ++i) {
             w.nextPreset();
             QVERIFY(w.currentPreset() != QStringLiteral("A-first"));
         }
         // By hand it can still be picked.
         w.selectPreset(0);
         QCOMPARE(w.currentPreset(), QStringLiteral("A-first"));
+
+        // All the others black: stay on the one that shows something, in both modes.
+        w.setBlackPresets({"A-first", "b-second", "mine"});
+        w.selectPreset(2);
+        for (bool shuffle : {true, false}) {
+            w.setShuffle(shuffle);
+            for (int i = 0; i < 20; ++i) {
+                w.nextPreset();
+                QCOMPARE(w.currentPreset(), QStringLiteral("c-third"));
+            }
+        }
+        // All black: still moves on rather than getting stuck.
+        w.setBlackPresets({"A-first", "b-second", "c-third", "mine"});
+        w.setShuffle(false);
+        w.nextPreset();
+        QCOMPARE(w.currentPreset(), QStringLiteral("mine"));
 
         // Restored from the settings.
         MilkdropWindow w2(&engine, builtIn.path(), user.path(), &skin);

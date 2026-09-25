@@ -10,6 +10,7 @@
 #include <QDir>
 #include <QMenu>
 #include <QPainter>
+#include <QRandomGenerator>
 #include <QResizeEvent>
 #include <QScreen>
 #include <QUrl>
@@ -217,12 +218,25 @@ void MilkdropWindow::setFullScreenMode(bool on) {
 }
 
 int MilkdropWindow::followingPreset() const {
-    int index = m_current;
-    for (int attempt = 0; attempt < m_presets.size(); ++attempt) {
-        index = m_shuffle ? m_presets.random(m_current) : m_presets.next(index);
-        if (!isBlack(index)) return index;
+    if (m_presets.isEmpty()) return -1;
+    if (m_shuffle) {
+        // Draw only from the presets that can be shown (not by retrying random
+        // picks: those can all land on black ones).
+        QList<int> candidates;
+        for (int i = 0; i < m_presets.size(); ++i)
+            if (i != m_current && !isBlack(i)) candidates.append(i);
+        if (!candidates.isEmpty()) return candidates.at(int(QRandomGenerator::global()->bounded(candidates.size())));
+    } else {
+        int index = m_current;  // -1 before the first one: then next() starts at 0
+        const int others = m_current >= 0 ? m_presets.size() - 1 : m_presets.size();
+        for (int n = 0; n < others; ++n) {
+            index = m_presets.next(index);
+            if (!isBlack(index)) return index;
+        }
     }
-    return m_shuffle ? m_presets.random(m_current) : m_presets.next(m_current);  // all of them: don't get stuck
+    // Every other preset is black: stay on this one if it isn't, else don't get stuck.
+    if (m_current >= 0 && !isBlack(m_current)) return m_current;
+    return m_shuffle ? m_presets.random(m_current) : m_presets.next(m_current);
 }
 
 bool MilkdropWindow::isBlack(int index) const {
