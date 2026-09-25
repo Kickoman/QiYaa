@@ -209,8 +209,36 @@ jobs:
       - name: Package (macOS dmg)
         if: runner.os == 'macOS'
         run: |
-          macdeployqt build/QiYaa.app -dmg
-          mkdir -p dist && mv build/QiYaa.dmg "dist/QiYaa-$VERSION-macos-arm64.dmg"
+          # macdeployqt rewrites library paths and strips binaries, which breaks
+          # the signatures the linker made; on Apple Silicon a downloaded app with
+          # a broken signature is "damaged and can't be opened". -codesign=- signs
+          # every binary and then the bundle again, ad hoc (no Apple ID needed).
+          macdeployqt build/QiYaa.app -codesign=-
+          codesign --verify --deep --strict --verbose=2 build/QiYaa.app
+          codesign --display --verbose=2 build/QiYaa.app
+          # Gatekeeper's view, for the log: not notarized, so it is rejected, but
+          # the reason must not be an invalid signature.
+          spctl --assess --type execute --verbose=4 build/QiYaa.app || true
+          # The deployed app must start on its own (all libraries found and loadable).
+          build/QiYaa.app/Contents/MacOS/QiYaa --version
+
+          # Disk image: the app and a link to Applications to drag it onto.
+          mkdir -p dmgroot dist
+          ditto build/QiYaa.app dmgroot/QiYaa.app
+          ln -s /Applications dmgroot/Applications
+          DMG="dist/QiYaa-$VERSION-macos-arm64.dmg"
+          # hdiutil on the runners now and then fails with "Resource busy": retry.
+          for i in 1 2 3; do
+            if hdiutil create -volname QiYaa -srcfolder dmgroot -fs HFS+ -format UDZO -ov "$DMG"; then break; fi
+            [ "$i" = 3 ] && exit 1
+            sleep 10
+          done
+          # The copy inside the image must still be intact.
+          MNT="$RUNNER_TEMP/qiyaa-dmg"
+          hdiutil attach -nobrowse -readonly -mountpoint "$MNT" "$DMG"
+          codesign --verify --deep --strict --verbose=2 "$MNT/QiYaa.app"
+          ls -l "$MNT"
+          hdiutil detach "$MNT"
 
       - uses: actions/upload-artifact@v4
         if: matrix.artifact

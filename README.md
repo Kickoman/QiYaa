@@ -42,7 +42,7 @@
 - **Linux, пакет .deb** (Ubuntu 24.04+, Debian 13+) — `qiyaa_<версия>_amd64.deb`: `sudo apt install ./qiyaa_*.deb`. Использует Qt из дистрибутива (apt сам доставит зависимости), сразу появляется в меню приложений, удаляется `sudo apt remove qiyaa`. Обновления вручную: скачать новый .deb и поставить так же.
 - **Linux, AppImage** (Ubuntu 22.04+ и другие дистрибутивы того же возраста и новее) — `QiYaa-<версия>-x86_64.AppImage`: `chmod +x QiYaa-*.AppImage && ./QiYaa-*.AppImage`. Всё своё носит с собой, ничего не ставит. Чтобы плеер появился в меню приложений, можно воспользоваться Gear Lever или AppImageLauncher.
 - **Windows** — `QiYaa-<версия>-windows-x64-setup.exe` (ставится для текущего пользователя, без прав администратора) или переносной `…-windows-x64.zip`. Сборка не подписана, поэтому SmartScreen может предупредить: «Подробнее» → «Выполнить в любом случае».
-- **macOS** (Apple Silicon) — `QiYaa-<версия>-macos-arm64.dmg`. Сборка не подписана: при первом запуске правый клик по приложению → «Открыть» (или `xattr -dr com.apple.quarantine /Applications/QiYaa.app`).
+- **macOS** (Apple Silicon) — `QiYaa-<версия>-macos-arm64.dmg`: открыть и перетащить QiYaa в «Программы». Приложение подписано только «ad hoc», без Apple ID и нотаризации, поэтому при первом запуске macOS скажет, что не может проверить его на вредоносное ПО. На macOS 15 и новее: «Системные настройки» → «Конфиденциальность и безопасность» → внизу «Всё равно открыть» (появляется после первой попытки запуска). На macOS 14 и старее: правый клик по приложению → «Открыть». Или одной командой: `xattr -dr com.apple.quarantine /Applications/QiYaa.app`.
 
 ## Вход в Яндекс Музыку
 
@@ -81,7 +81,7 @@ cmake --build build
 C:\Qt\6.8.3\msvc2022_64\bin\windeployqt build\QiYaa.exe
 ```
 
-Установщики собирает CI (`.github/workflows/ci.yml`): .deb через CPack (на Qt из Ubuntu 24.04, после сборки CI ставит его и запускает), AppImage через linuxdeploy, установщик Windows через Inno Setup (`packaging/windows/qiyaa.iss`), dmg через `macdeployqt -dmg`. Иконка рисуется скриптом `tools/make_icons.py`.
+Установщики собирает CI (`.github/workflows/ci.yml`): .deb через CPack (на Qt из Ubuntu 24.04, после сборки CI ставит его и запускает), AppImage через linuxdeploy, установщик Windows через Inno Setup (`packaging/windows/qiyaa.iss`), dmg через `macdeployqt -codesign=-` (подпись ad hoc; CI проверяет её и в самом образе) и `hdiutil`. Иконка рисуется скриптом `tools/make_icons.py`.
 
 ## Параметры командной строки
 
