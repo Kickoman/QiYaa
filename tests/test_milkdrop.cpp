@@ -147,8 +147,13 @@ private Q_SLOTS:
     }
 
     void rendersWithProjectM() {
-        MilkdropWindow w(&engine, builtIn.path(), user.path(), &skin);
+        // The whole path on real OpenGL: Qt window + projectM + a real preset
+        // with warp and composite shaders (bright even without sound).
+        MilkdropWindow w(&engine, QStringLiteral(":/milkdrop"), user.path(), &skin);
         w.setSizeSteps({2, 4});
+        w.setLocked(true);
+        w.selectPreset(QStringLiteral("Geometric - RetroTrilogy(Final)"));
+        QCOMPARE(w.currentPreset(), QStringLiteral("Geometric - RetroTrilogy(Final)"));
         w.show();
         QVERIFY(QTest::qWaitForWindowExposed(&w));
         MilkdropView* v = w.view();
@@ -157,18 +162,30 @@ private Q_SLOTS:
         QVERIFY(QTest::qWaitFor([&] { return v->isReady() || !v->failure().isEmpty(); }, 5000));
         if (!v->isReady() && qEnvironmentVariableIsSet("QIYAA_EXPECT_GL")) QFAIL(qPrintable(v->failure()));
         if (!v->isReady()) QSKIP(qPrintable("no OpenGL 3.3 here: " + v->failure()));
+        qInfo("OpenGL: %s", qPrintable(v->glInfo()));
         QVERIFY(v->isRendering());
-        QVERIFY(QTest::qWaitFor([&] { return v->framesRendered() > 20; }, 10000));
-        const QImage img = v->grabFramebuffer();
-        QVERIFY(!img.isNull());
+        QVERIFY(QTest::qWaitFor([&] { return v->framesRendered() > 40; }, 15000));
+
+        QSignalSpy captured(v, &MilkdropView::frameCaptured);
+        v->captureNextFrame();
+        QVERIFY(captured.wait(5000));
+        const QImage img = captured.first().first().value<QImage>();
         QCOMPARE(img.size(), v->size() * v->devicePixelRatio());
-        // Something was drawn: not a single flat colour.
+        // Something was drawn: lit and colourful, not a flat colour.
         QSet<QRgb> colours;
+        int lit = 0, samples = 0;
         for (int y = 0; y < img.height(); y += 4)
-            for (int x = 0; x < img.width(); x += 4) colours.insert(img.pixel(x, y));
-        QVERIFY2(colours.size() > 8, qPrintable(QString::number(colours.size())));
+            for (int x = 0; x < img.width(); x += 4) {
+                const QRgb p = img.pixel(x, y);
+                colours.insert(p);
+                lit += qRed(p) + qGreen(p) + qBlue(p) > 30;
+                ++samples;
+            }
         if (!qEnvironmentVariableIsEmpty("QIYAA_TEST_SHOTS"))
             img.save(qEnvironmentVariable("QIYAA_TEST_SHOTS") + "/milkdrop.png");
+        QVERIFY2(colours.size() > 50, qPrintable(QString::number(colours.size())));
+        QVERIFY2(lit > samples / 2, qPrintable(QStringLiteral("%1 of %2 lit").arg(lit).arg(samples)));
+        QVERIFY(qAlpha(img.pixel(img.width() / 2, img.height() / 2)) == 255);  // opaque
 
         // Hidden: no more frames.
         w.hide();

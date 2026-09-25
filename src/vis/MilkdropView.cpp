@@ -89,6 +89,11 @@ void MilkdropView::setBlackWatch(bool on) {
     m_sinceLoad.start();  // judge only what plays from now on
 }
 
+void MilkdropView::captureNextFrame() {
+    m_captureRequested = true;
+    update();
+}
+
 void MilkdropView::setBlackWatchTiming(int graceMs, int intervalMs, int checks) {
     m_blackGraceMs = graceMs;
     m_blackIntervalMs = intervalMs;
@@ -232,6 +237,15 @@ void MilkdropView::paintGL() {
     makeOpaque();
     ++m_frames;
     watchForBlack();
+    if (std::exchange(m_captureRequested, false)) {
+        QImage frame(m_pixelSize, QImage::Format_RGBA8888);
+        QOpenGLFunctions* gl = context()->functions();
+        gl->glBindFramebuffer(GL_FRAMEBUFFER, defaultFramebufferObject());
+        gl->glPixelStorei(GL_PACK_ALIGNMENT, 4);
+        gl->glReadPixels(0, 0, frame.width(), frame.height(), GL_RGBA, GL_UNSIGNED_BYTE, frame.bits());
+        frame = frame.mirrored();  // OpenGL rows start at the bottom
+        QMetaObject::invokeMethod(this, [this, frame] { Q_EMIT frameCaptured(frame); }, Qt::QueuedConnection);
+    }
 }
 
 void MilkdropView::makeOpaque() {

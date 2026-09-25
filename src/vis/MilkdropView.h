@@ -9,6 +9,7 @@
 
 #include <QByteArray>
 #include <QElapsedTimer>
+#include <QImage>
 #include <QOpenGLWindow>
 #include <QString>
 #include <QTimer>
@@ -51,6 +52,11 @@ public:
     // `graceMs` after a preset load, and `checks` black samples in a row emit
     // staysBlack(). Only meaningful while music plays.
     void setBlackWatch(bool on);
+
+    // The next frame as drawn, read back before it's shown (frameCaptured).
+    // QOpenGLWindow::grabFramebuffer() can't do this: it reads the back
+    // buffer after the swap, whose content is undefined in this mode.
+    void captureNextFrame();
     void setBlackWatchTiming(int graceMs, int intervalMs, int checks);
 
 Q_SIGNALS:
@@ -60,6 +66,7 @@ Q_SIGNALS:
     void presetFailed(const QString& message);
     void staysBlack();
     void drawsPicture();  // the first sample after a load that isn't black
+    void frameCaptured(const QImage& frame);
     void doubleClicked();
     void contextMenuRequested(const QPoint& globalPos);
     void keyPressed(int key, Qt::KeyboardModifiers modifiers);
@@ -102,6 +109,7 @@ private:
     int m_blackChecksNeeded = 4;
     int m_blackChecks = 0;
     bool m_sawPicture = false;
+    bool m_captureRequested = false;
     QElapsedTimer m_sinceLoad;
     QElapsedTimer m_sinceCheck;
     unsigned m_probeFbo = 0;       // tiny render target the picture is scaled into
