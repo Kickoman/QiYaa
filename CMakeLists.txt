@@ -68,7 +68,7 @@ add_library(qiyaa_core STATIC
     src/yandex/token.cpp         src/yandex/token.h
     src/audio/audio_engine.cpp    src/audio/audio_engine.h
     src/audio/equalizer.cpp      src/audio/equalizer.h
-    src/audio/vis_tap.h
+    src/audio/vis_tap.cpp         src/audio/vis_tap.h
     src/audio/eq_presets.cpp      src/audio/eq_presets.h
     src/core/player.cpp          src/core/player.h
     src/core/cover_cache.cpp      src/core/cover_cache.h

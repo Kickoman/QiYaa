@@ -448,7 +448,7 @@ void MainWindow::paintSkin(QPainter& painter) {
         }
         activeSkin.drawText(
             painter, Skins::MainWindowSprites::kMarquee.topLeft(), text,
-            Skins::MainWindowSprites::kMarquee.width() + Skins::kCharW
+            Skins::MainWindowSprites::kMarquee.width() + Skins::kCharWidth
         );
         painter.restore();
     }
@@ -484,7 +484,7 @@ void MainWindow::paintSkin(QPainter& painter) {
         const int offset = std::max(0, (frame - 1) * Skins::kSliderFrameStep);
         activeSkin.draw(
             painter, TSheet::Volume,
-            QRect(0, offset, Skins::MainWindowSprites::kVolume.width(), Skins::kSliderFrameH),
+            QRect(0, offset, Skins::MainWindowSprites::kVolume.width(), Skins::kSliderFrameHeight),
             Skins::MainWindowSprites::kVolume.topLeft()
         );
         const int x = int(std::lround(
@@ -502,7 +502,7 @@ void MainWindow::paintSkin(QPainter& painter) {
         const int offset = int(std::abs(balancePercent) / 100.0 * 27) * Skins::kSliderFrameStep;
         activeSkin.draw(
             painter, TSheet::Balance,
-            QRect(9, offset, Skins::MainWindowSprites::kBalance.width(), Skins::kSliderFrameH),
+            QRect(9, offset, Skins::MainWindowSprites::kBalance.width(), Skins::kSliderFrameHeight),
             Skins::MainWindowSprites::kBalance.topLeft()
         );
         const int x = int(std::lround(

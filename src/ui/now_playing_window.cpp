@@ -14,7 +14,7 @@ namespace Ui {
 
 namespace {
 constexpr int kPad = 4;
-constexpr int kCoverPx = 400;  // requested size; drawn scaled
+constexpr int kCoverPixels = 400;  // requested size; drawn scaled
 }  // namespace
 
 NowPlayingWindow::NowPlayingWindow(
@@ -30,7 +30,7 @@ NowPlayingWindow::NowPlayingWindow(
     connect(corePlayer, &Core::Player::currentTrackChanged, this, [this] { update(); });
     connect(corePlayer->library(), &Yandex::Library::likesChanged, this, [this] { update(); });
     connect(coverCache, &Core::CoverCache::ready, this, [this](const QUrl& url) {
-        if (const auto* t = corePlayer->currentTrack(); t && t->coverUrl(kCoverPx) == url) {
+        if (const auto* t = corePlayer->currentTrack(); t && t->coverUrl(kCoverPixels) == url) {
             update();
         }
     });
@@ -48,7 +48,7 @@ void NowPlayingWindow::paintContent(QPainter& painter, const QRect& area) {
     const Yandex::Track* track = corePlayer->currentTrack();
 
     const QRect cover = coverRect();
-    const QImage image = track ? coverCache->get(track->coverUrl(kCoverPx)) : QImage();
+    const QImage image = track ? coverCache->get(track->coverUrl(kCoverPixels)) : QImage();
     if (!image.isNull()) {
         painter.save();
         painter.setRenderHint(QPainter::SmoothPixmapTransform, true);  // a photo, not pixel art

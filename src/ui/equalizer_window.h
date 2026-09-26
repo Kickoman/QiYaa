@@ -18,10 +18,7 @@ public:
     void setShaded(bool shaded) override;
     // Volume/balance shown in shade mode (they belong to the main window).
     void setMixer(int volume, int balance);
-    void setAutoOn(bool on) {
-        autoEnabled = on;
-        update();
-    }
+    void setAutoOn(bool on);
 
     // Spline through the band values, as drawn in the little graph (for tests).
     static QList<double> GraphCurve(const Audio::EqSettings& settings);

@@ -16,8 +16,8 @@ using Skins::GenWindowSprites;
 
 namespace {
 constexpr QSize kMinSize{275, 116};
-constexpr int kStepW = 25, kStepH = 29;
-constexpr int kTopH = 20, kBottomH = 14, kLeftW = 11, kRightW = 8;
+constexpr int kStepWidth = 25, kStepHeight = 29;
+constexpr int kTopHeight = 20, kBottomHeight = 14, kLeftWidth = 11, kRightWidth = 8;
 
 bool RectContains(const QRect& rect, QPoint point) {
     return point.x() >= rect.x() && point.y() >= rect.y() && point.x() < rect.x() + rect.width()
@@ -36,14 +36,18 @@ void GenWindow::setSizeSteps(QSize steps) {
     }
     resizeSteps = steps;
     setSkinSize(QSize(
-        kMinSize.width() + steps.width() * kStepW, kMinSize.height() + steps.height() * kStepH
+        kMinSize.width() + steps.width() * kStepWidth,
+        kMinSize.height() + steps.height() * kStepHeight
     ));
     Q_EMIT sizeStepsChanged(steps);
 }
 
 QRect GenWindow::contentRect() const {
     const QSize size = skinSize();
-    return {kLeftW, kTopH, size.width() - kLeftW - kRightW, size.height() - kTopH - kBottomH};
+    return {
+        kLeftWidth, kTopHeight, size.width() - kLeftWidth - kRightWidth,
+        size.height() - kTopHeight - kBottomHeight
+    };
 }
 
 void GenWindow::paintFrame(QPainter& painter) {
@@ -103,8 +107,8 @@ void GenWindow::paintFrame(QPainter& painter) {
     }
 
     // Sides: tiles, with the bottom pieces anchored to the bottom.
-    for (int y = kTopH; y < h - kBottomH; y += 29) {
-        const int tile = std::min(29, h - kBottomH - y);
+    for (int y = kTopHeight; y < h - kBottomHeight; y += 29) {
+        const int tile = std::min(29, h - kBottomHeight - y);
         activeSkin.draw(
             painter, TSheet::Gen, Skins::GenWindowSprites::kMiddleLeft.adjusted(0, 0, 0, tile - 29),
             {0, y}
@@ -112,26 +116,30 @@ void GenWindow::paintFrame(QPainter& painter) {
         activeSkin.draw(
             painter, TSheet::Gen,
             Skins::GenWindowSprites::kMiddleRight.adjusted(0, 0, 0, tile - 29),
-            {window - kRightW, y}
+            {window - kRightWidth, y}
         );
     }
     activeSkin.draw(
-        painter, TSheet::Gen, Skins::GenWindowSprites::kMiddleLeftBottom, {0, h - kBottomH - 24}
+        painter, TSheet::Gen, Skins::GenWindowSprites::kMiddleLeftBottom,
+        {0, h - kBottomHeight - 24}
     );
     activeSkin.draw(
         painter, TSheet::Gen, Skins::GenWindowSprites::kMiddleRightBottom,
-        {window - kRightW, h - kBottomH - 24}
+        {window - kRightWidth, h - kBottomHeight - 24}
     );
 
     // Bottom.
     for (int x = 125; x < window - 125; x += 25) {
         activeSkin.draw(
-            painter, TSheet::Gen, Skins::GenWindowSprites::kBottomFill, {x, h - kBottomH}
+            painter, TSheet::Gen, Skins::GenWindowSprites::kBottomFill, {x, h - kBottomHeight}
         );
     }
-    activeSkin.draw(painter, TSheet::Gen, Skins::GenWindowSprites::kBottomLeft, {0, h - kBottomH});
     activeSkin.draw(
-        painter, TSheet::Gen, Skins::GenWindowSprites::kBottomRight, {window - 125, h - kBottomH}
+        painter, TSheet::Gen, Skins::GenWindowSprites::kBottomLeft, {0, h - kBottomHeight}
+    );
+    activeSkin.draw(
+        painter, TSheet::Gen, Skins::GenWindowSprites::kBottomRight,
+        {window - 125, h - kBottomHeight}
     );
 }
 
@@ -145,7 +153,7 @@ void GenWindow::paintSkin(QPainter& painter) {
 }
 
 bool GenWindow::isDragArea(QPoint pos) const {
-    return pos.y() < kTopH;
+    return pos.y() < kTopHeight;
 }
 
 bool GenWindow::skinMousePress(QPoint pos, Qt::MouseButton button) {
@@ -176,8 +184,8 @@ void GenWindow::skinMouseMove(QPoint pos) {
     }
     const QPoint d = pos - dragStart;
     setSizeSteps(QSize(
-        dragStartSteps.width() + int(std::lround(double(d.x()) / kStepW)),
-        dragStartSteps.height() + int(std::lround(double(d.y()) / kStepH))
+        dragStartSteps.width() + int(std::lround(double(d.x()) / kStepWidth)),
+        dragStartSteps.height() + int(std::lround(double(d.y()) / kStepHeight))
     ));
 }
 

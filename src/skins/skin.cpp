@@ -221,7 +221,7 @@ QColor TextInkColor(const QImage& text) {
     const QRgb bg = text.pixel(text.width() - 1, 0);
     QHash<QRgb, int> counts;
     const int h = std::min(text.height(), 6);
-    const int w = std::min(text.width(), 26 * Skins::kCharW);
+    const int w = std::min(text.width(), 26 * Skins::kCharWidth);
     for (int y = 0; y < h; ++y) {
         for (int x = 0; x < w; ++x) {
             const QRgb px = text.pixel(x, y);
@@ -368,7 +368,9 @@ int Skin::drawGenText(QPainter& painter, const QPoint& at, const QString& text, 
         } else if (i >= 0 && i < letters.size()) {
             draw(
                 painter, Sheet::Gen,
-                QRect(letters[i].first, y, letters[i].second, Skins::GenWindowSprites::kLetterH),
+                QRect(
+                    letters[i].first, y, letters[i].second, Skins::GenWindowSprites::kLetterHeight
+                ),
                 QPoint(x, at.y())
             );
             x += letters[i].second;
@@ -451,7 +453,7 @@ namespace {
 
 CharRender ResolveChar(QChar ch) {
     CharRender r;
-    r.advance = Skins::kCharW;
+    r.advance = Skins::kCharWidth;
     if (FontCell(ch, &r.row, &r.col)) {
         r.kind = CharRender::Cell;
         return r;
@@ -491,7 +493,7 @@ int Skin::TextWidth(const QString& text) {
 
 int Skin::drawText(QPainter& painter, const QPoint& at, const QString& text, int maxWidth) const {
     const QImage& font = sheet(Sheet::Text);
-    const QRect spaceCell(30 * Skins::kCharW, 0, Skins::kCharW, Skins::kCharH);
+    const QRect spaceCell(30 * Skins::kCharWidth, 0, Skins::kCharWidth, Skins::kCharHeight);
     QColor ink;
     int x = at.x();
     for (QChar ch : text) {
@@ -508,16 +510,17 @@ int Skin::drawText(QPainter& painter, const QPoint& at, const QString& text, int
                 painter.drawImage(
                     QPoint(x, at.y()), font,
                     QRect(
-                        r.col * Skins::kCharW, r.row * Skins::kCharH, Skins::kCharW, Skins::kCharH
+                        r.col * Skins::kCharWidth, r.row * Skins::kCharHeight, Skins::kCharWidth,
+                        Skins::kCharHeight
                     )
                 );
                 break;
             case CharRender::Pixel:
                 // Background from the skin's space glyph, then the ink pixels.
-                for (int bx = 0; bx < r.advance; bx += Skins::kCharW) {
+                for (int bx = 0; bx < r.advance; bx += Skins::kCharWidth) {
                     painter.drawImage(
                         QPoint(x + bx, at.y()), font,
-                        spaceCell.adjusted(0, 0, std::min(0, r.advance - bx - Skins::kCharW), 0)
+                        spaceCell.adjusted(0, 0, std::min(0, r.advance - bx - Skins::kCharWidth), 0)
                     );
                 }
                 for (int row = 0; row < 6; ++row) {
@@ -532,7 +535,7 @@ int Skin::drawText(QPainter& painter, const QPoint& at, const QString& text, int
                 painter.setFont(FallbackFont());
                 painter.setPen(ink);
                 painter.drawText(
-                    QRect(x, at.y() - 1, r.advance, Skins::kCharH + 2),
+                    QRect(x, at.y() - 1, r.advance, Skins::kCharHeight + 2),
                     Qt::AlignLeft | Qt::AlignVCenter, QString(ch)
                 );
                 break;

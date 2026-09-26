@@ -40,7 +40,7 @@ bool Contains(const QRect& rect, QPoint point) {
 }
 
 QRect SliderRect(int element) {
-    const int x = element == kElPreamp ? Skins::EqualizerSprites::kPreampPos.x()
+    const int x = element == kElPreamp ? Skins::EqualizerSprites::kPreampPosition.x()
                                        : Skins::EqualizerSprites::kBandsX
             + (element - kElBand0) * Skins::EqualizerSprites::kBandStep;
     return {
@@ -105,10 +105,10 @@ QList<double> NaturalSpline(const QList<double>& xs, const QList<double>& ys) {
     return out;
 }
 
-constexpr int kGraphH = 19;
+constexpr int kGraphHeight = 19;
 
 double DbToGraphY(double db) {
-    return (1.0 - (db + Audio::kEqMaxDb) / (2 * Audio::kEqMaxDb)) * (kGraphH - 1);
+    return (1.0 - (db + Audio::kEqMaxDb) / (2 * Audio::kEqMaxDb)) * (kGraphHeight - 1);
 }
 
 }  // namespace
@@ -116,6 +116,11 @@ double DbToGraphY(double db) {
 EqualizerWindow::EqualizerWindow(const Skins::Skin* skin, QWidget* parent)
     : SkinnedWindow(skin, Skins::EqualizerSprites::kSize, parent) {
     setWindowTitle(QStringLiteral("QiYaa Equalizer"));
+}
+
+void EqualizerWindow::setAutoOn(bool on) {
+    autoEnabled = on;
+    update();
 }
 
 void EqualizerWindow::setSettings(const Audio::EqSettings& settings) {
@@ -154,7 +159,7 @@ void EqualizerWindow::drawSlider(QPainter& painter, QPoint at, double db, bool a
 }
 
 void EqualizerWindow::drawGraph(QPainter& painter) const {
-    const QPoint origin = Skins::EqualizerSprites::kGraphPos;
+    const QPoint origin = Skins::EqualizerSprites::kGraphPosition;
     skin().draw(painter, TSheet::EqMain, Skins::EqualizerSprites::kGraphBackground, origin);
     skin().draw(
         painter, TSheet::EqMain, Skins::EqualizerSprites::kPreampLine,
@@ -165,7 +170,7 @@ void EqualizerWindow::drawGraph(QPainter& painter) const {
     const QList<double> ys = GraphCurve(equalizerSettings);
     int lastY = int(std::lround(ys.first()));
     for (int x = 0; x < ys.size(); ++x) {
-        const int y = std::clamp(int(std::lround(ys[x])), 0, kGraphH - 1);
+        const int y = std::clamp(int(std::lround(ys[x])), 0, kGraphHeight - 1);
         const int top = std::min(y, lastY), bottom = std::max(y, lastY);
         for (int yy = top; yy <= bottom; ++yy) {
             // Colour depends on height, taken from the 1px column in the skin.
@@ -271,15 +276,17 @@ void EqualizerWindow::paintSkin(QPainter& painter) {
     };
     toggle(
         kElOn, Skins::EqualizerSprites::kOn, equalizerSettings.enabled,
-        Skins::EqualizerSprites::kOnPos
+        Skins::EqualizerSprites::kOnPosition
     );
-    toggle(kElAuto, Skins::EqualizerSprites::kAuto, autoEnabled, Skins::EqualizerSprites::kAutoPos);
+    toggle(
+        kElAuto, Skins::EqualizerSprites::kAuto, autoEnabled, Skins::EqualizerSprites::kAutoPosition
+    );
     activeSkin.draw(
         painter, TSheet::EqMain,
         pressedElement == kElPresets && pressedInside
             ? Skins::EqualizerSprites::kPresetsButtonSelected
             : Skins::EqualizerSprites::kPresetsButton,
-        Skins::EqualizerSprites::kPresetsPos
+        Skins::EqualizerSprites::kPresetsPosition
     );
 
     drawGraph(painter);
@@ -313,13 +320,13 @@ int EqualizerWindow::hitTest(QPoint point) const {
         }
         return kElNone;
     }
-    if (Contains({Skins::EqualizerSprites::kOnPos, QSize(26, 12)}, point)) {
+    if (Contains({Skins::EqualizerSprites::kOnPosition, QSize(26, 12)}, point)) {
         return kElOn;
     }
-    if (Contains({Skins::EqualizerSprites::kAutoPos, QSize(32, 12)}, point)) {
+    if (Contains({Skins::EqualizerSprites::kAutoPosition, QSize(32, 12)}, point)) {
         return kElAuto;
     }
-    if (Contains({Skins::EqualizerSprites::kPresetsPos, QSize(44, 12)}, point)) {
+    if (Contains({Skins::EqualizerSprites::kPresetsPosition, QSize(44, 12)}, point)) {
         return kElPresets;
     }
     if (Contains(SliderRect(kElPreamp), point)) {
@@ -557,7 +564,8 @@ void EqualizerWindow::showPresets() {
         menu->addAction(preset.name, this, [this, preset] { applyPreset(preset); });
     }
     const QPoint at(
-        Skins::EqualizerSprites::kPresetsPos.x(), Skins::EqualizerSprites::kPresetsPos.y() + 12
+        Skins::EqualizerSprites::kPresetsPosition.x(),
+        Skins::EqualizerSprites::kPresetsPosition.y() + 12
     );
     menu->popup(mapToGlobal(QPoint(qRound(at.x() * scale()), qRound(at.y() * scale()))));
 }

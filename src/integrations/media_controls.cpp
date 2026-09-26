@@ -8,7 +8,7 @@ namespace Integrations {
 using Audio::AudioEngine;
 
 namespace {
-constexpr int kCoverPx = 400;
+constexpr int kCoverPixels = 400;
 }
 
 MediaControls::MediaControls(
@@ -24,7 +24,7 @@ MediaControls::MediaControls(
     connect(corePlayer, &Core::Player::currentTrackChanged, this, [this] {
         // Make sure the cover gets downloaded, so artUrl() can become a local file.
         if (const auto* t = corePlayer->currentTrack(); t && coverCache) {
-            coverCache->get(t->coverUrl(kCoverPx));
+            coverCache->get(t->coverUrl(kCoverPixels));
         }
         Q_EMIT trackChanged();
     });
@@ -35,7 +35,7 @@ MediaControls::MediaControls(
     connect(corePlayer, &Core::Player::seeked, this, &MediaControls::seeked);
     if (coverCache) {
         connect(coverCache, &Core::CoverCache::ready, this, [this](const QUrl& url) {
-            if (const auto* t = corePlayer->currentTrack(); t && t->coverUrl(kCoverPx) == url) {
+            if (const auto* t = corePlayer->currentTrack(); t && t->coverUrl(kCoverPixels) == url) {
                 Q_EMIT artChanged();
             }
         });
@@ -89,7 +89,7 @@ bool MediaControls::seekTo(double seconds) {
 
 QUrl MediaControls::remoteArtUrl() const {
     const auto* t = corePlayer->currentTrack();
-    return t ? t->coverUrl(kCoverPx) : QUrl();
+    return t ? t->coverUrl(kCoverPixels) : QUrl();
 }
 
 QUrl MediaControls::artUrl() const {

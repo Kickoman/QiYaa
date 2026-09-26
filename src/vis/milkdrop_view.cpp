@@ -17,7 +17,7 @@ namespace Vis {
 
 namespace {
 constexpr uint32_t kMaxFramesPerFeed = 4096;
-constexpr int kProbeW = 32, kProbeH = 18;
+constexpr int kProbeWidth = 32, kProbeHeight = 18;
 constexpr int kBlackLevel = 12;  // brightest channel below this (of 255) everywhere = black
 
 QSurfaceFormat ViewFormat() {
@@ -341,7 +341,8 @@ bool MilkdropView::pictureIsBlack() {
         f->glGenTextures(1, &probeTex);
         f->glBindTexture(GL_TEXTURE_2D, probeTex);
         f->glTexImage2D(
-            GL_TEXTURE_2D, 0, GL_RGBA8, kProbeW, kProbeH, 0, GL_RGBA, GL_UNSIGNED_BYTE, nullptr
+            GL_TEXTURE_2D, 0, GL_RGBA8, kProbeWidth, kProbeHeight, 0, GL_RGBA, GL_UNSIGNED_BYTE,
+            nullptr
         );
         f->glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR);
         f->glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
@@ -354,13 +355,13 @@ bool MilkdropView::pictureIsBlack() {
     f->glBindFramebuffer(GL_READ_FRAMEBUFFER, screen);
     f->glBindFramebuffer(GL_DRAW_FRAMEBUFFER, probeFbo);
     f->glBlitFramebuffer(
-        0, 0, pixelSize.width(), pixelSize.height(), 0, 0, kProbeW, kProbeH, GL_COLOR_BUFFER_BIT,
-        GL_LINEAR
+        0, 0, pixelSize.width(), pixelSize.height(), 0, 0, kProbeWidth, kProbeHeight,
+        GL_COLOR_BUFFER_BIT, GL_LINEAR
     );
     f->glBindFramebuffer(GL_READ_FRAMEBUFFER, probeFbo);
-    std::array<quint8, kProbeW * kProbeH * 4> px{};
+    std::array<quint8, kProbeWidth * kProbeHeight * 4> px{};
     f->glPixelStorei(GL_PACK_ALIGNMENT, 4);
-    f->glReadPixels(0, 0, kProbeW, kProbeH, GL_RGBA, GL_UNSIGNED_BYTE, px.data());
+    f->glReadPixels(0, 0, kProbeWidth, kProbeHeight, GL_RGBA, GL_UNSIGNED_BYTE, px.data());
     f->glBindFramebuffer(GL_FRAMEBUFFER, screen);
     for (size_t i = 0; i < px.size(); i += 4) {
         if (std::max({px[i], px[i + 1], px[i + 2]}) >= kBlackLevel) {

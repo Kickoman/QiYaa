@@ -2,12 +2,43 @@
 
 #include <QStringDecoder>
 
+#include <algorithm>
+#include <array>
+#include <cmath>
+
 namespace Audio {
 
 namespace {
+struct WinampPreset {
+    const char* name;
+    int preamp;
+    std::array<int, kEqBands> bands;
+};
+
+// Winamp's built-in presets (webamp's presets/builtin.json).
+constexpr WinampPreset kWinampPresets[] = {
+    {"Classical", 33, {33, 33, 33, 33, 33, 33, 20, 20, 20, 16}},
+    {"Club", 33, {33, 33, 38, 42, 42, 42, 38, 33, 33, 33}},
+    {"Dance", 33, {48, 44, 36, 32, 32, 22, 20, 20, 32, 32}},
+    {"Laptop speakers/headphones", 33, {40, 50, 41, 26, 28, 35, 40, 48, 53, 56}},
+    {"Large hall", 33, {49, 49, 42, 42, 33, 24, 24, 24, 33, 33}},
+    {"Party", 33, {44, 44, 33, 33, 33, 33, 33, 33, 44, 44}},
+    {"Pop", 33, {29, 40, 44, 45, 41, 30, 28, 28, 29, 29}},
+    {"Reggae", 33, {33, 33, 31, 22, 33, 43, 43, 33, 33, 33}},
+    {"Rock", 33, {45, 40, 23, 19, 26, 39, 47, 50, 50, 50}},
+    {"Soft", 33, {40, 35, 30, 28, 30, 39, 46, 48, 50, 52}},
+    {"Ska", 33, {28, 24, 25, 31, 39, 42, 47, 48, 50, 48}},
+    {"Full Bass", 33, {48, 48, 48, 42, 35, 25, 18, 15, 14, 14}},
+    {"Soft Rock", 33, {39, 39, 36, 31, 25, 23, 26, 31, 37, 47}},
+    {"Full Treble", 33, {16, 16, 16, 25, 37, 50, 58, 58, 58, 60}},
+    {"Full Bass & Treble", 33, {44, 42, 33, 20, 24, 35, 46, 50, 52, 52}},
+    {"Live", 33, {24, 33, 39, 41, 42, 42, 39, 37, 37, 36}},
+    {"Techno", 33, {45, 42, 33, 23, 24, 33, 45, 48, 48, 47}},
+};
+
 constexpr char kHeader[] = "Winamp EQ library file v1.1";
-constexpr int kHeaderLen = sizeof(kHeader) - 1;  // 27
-constexpr int kNameLen = 257;
+constexpr int kHeaderLength = sizeof(kHeader) - 1;  // 27
+constexpr int kNameLength = 257;
 constexpr int kValues = kEqBands + 1;
 
 // Winamp wrote names in the Windows ANSI code page; we write UTF-8 unless the
@@ -35,8 +66,8 @@ QByteArray EncodeName(const QString& name) {
     if (utf8) {
         out = name.toUtf8();
     }
-    if (out.size() > kNameLen - 1) {
-        out.truncate(kNameLen - 1);
+    if (out.size() > kNameLength - 1) {
+        out.truncate(kNameLength - 1);
         if (utf8) {  // don't cut a character in half
             while (!out.isEmpty() && (quint8(out.back()) & 0xC0) == 0x80) {
                 out.chop(1);
@@ -51,17 +82,17 @@ QByteArray EncodeName(const QString& name) {
 }  // namespace
 
 bool ParseEqf(const QByteArray& data, QList<EqPreset>* out) {
-    if (!data.startsWith(kHeader) || data.size() < kHeaderLen + 4) {
+    if (!data.startsWith(kHeader) || data.size() < kHeaderLength + 4) {
         return false;
     }
-    qsizetype i = kHeaderLen + 4;  // skip ^Z "!--"
+    qsizetype i = kHeaderLength + 4;  // skip ^Z "!--"
     QList<EqPreset> presets;
-    while (i + kNameLen + kValues <= data.size()) {
-        const QByteArray rawName = data.mid(i, kNameLen);
+    while (i + kNameLength + kValues <= data.size()) {
+        const QByteArray rawName = data.mid(i, kNameLength);
         const qsizetype nul = rawName.indexOf('\0');
         EqPreset preset;
         preset.name = DecodeName(nul >= 0 ? rawName.left(nul) : rawName);
-        i += kNameLen;
+        i += kNameLength;
         auto value = [&](int k) { return 64 - int(quint8(data[i + k])); };
         for (int band = 0; band < kEqBands; ++band) {
             preset.settings.bandsDb[band] = std::round(EqfToDb(value(band)) * 10) / 10;
@@ -83,12 +114,36 @@ QByteArray WriteEqf(const QList<EqPreset>& presets) {
     out += "!--";
     for (const EqPreset& preset : presets) {
         QByteArray name = EncodeName(preset.name);
-        name.append(QByteArray(kNameLen - name.size(), '\0'));
+        name.append(QByteArray(kNameLength - name.size(), '\0'));
         out += name;
         for (int band = 0; band < kEqBands; ++band) {
             out += char(64 - DbToEqf(preset.settings.bandsDb[band]));
         }
         out += char(64 - DbToEqf(preset.settings.preampDb));
+    }
+    return out;
+}
+
+// Winamp's centre notch is 33 (writing 0 dB gives 33 too), so 33 reads as exactly 0 dB.
+double EqfToDb(int value) {
+    value = std::clamp(value, 1, 64);
+    return value == 33 ? 0.0 : (double(value) - 1.0) / 63.0 * 24.0 - 12.0;
+}
+
+int DbToEqf(double db) {
+    return std::clamp(int(std::lround((db + 12.0) / 24.0 * 63.0 + 1.0)), 1, 64);
+}
+
+QList<EqPreset> BuiltinEqPresets() {
+    QList<EqPreset> out;
+    for (const WinampPreset& source : kWinampPresets) {
+        EqPreset preset;
+        preset.name = QString::fromLatin1(source.name);
+        preset.settings.preampDb = EqfToDb(source.preamp);
+        for (int i = 0; i < kEqBands; ++i) {
+            preset.settings.bandsDb[i] = EqfToDb(source.bands[i]);
+        }
+        out << preset;
     }
     return out;
 }

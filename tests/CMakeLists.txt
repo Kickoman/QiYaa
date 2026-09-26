@@ -1,6 +1,10 @@
+add_library(qiyaa_test_support STATIC support/mock_http_server.cpp support/mock_http_server.h)
+target_include_directories(qiyaa_test_support PUBLIC ${CMAKE_CURRENT_SOURCE_DIR})
+target_link_libraries(qiyaa_test_support PUBLIC Qt6::Core Qt6::Network)
+
 function(qiyaa_add_test name)
     qt_add_executable(${name} ${name}.cpp)
-    target_link_libraries(${name} PRIVATE qiyaa_core Qt6::Test)
+    target_link_libraries(${name} PRIVATE qiyaa_core qiyaa_test_support Qt6::Test)
     add_test(NAME ${name} COMMAND ${name})
     # Tests need no display, and no sound card: miniaudio's Null output runs
     # in real time like a device but doesn't depend on the machine's audio

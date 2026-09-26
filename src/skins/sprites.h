@@ -58,10 +58,10 @@ inline constexpr QRect kMono{29, 12, 27, 12};
 inline constexpr QRect kMonoSelected{29, 0, 27, 12};
 
 // ------------------------------------------------------------------ NUMBERS.BMP / NUMS_EX.BMP
-inline constexpr int kDigitW = 9;
-inline constexpr int kDigitH = 13;
+inline constexpr int kDigitWidth = 9;
+inline constexpr int kDigitHeight = 13;
 inline constexpr QRect DigitSprite(int d) {
-    return {d * kDigitW, 0, kDigitW, kDigitH};
+    return {d * kDigitWidth, 0, kDigitWidth, kDigitHeight};
 }
 inline constexpr QRect kMinusSign{20, 6, 5, 1};  // numbers.bmp
 inline constexpr QRect kMinusSignEx{99, 0, 9, 13};  // nums_ex.bmp
@@ -90,15 +90,15 @@ inline constexpr ToggleSprite
 // ------------------------------------------------------------------ VOLUME.BMP / BALANCE.BMP
 // Background is a vertical strip of 28 frames, 15px apart, 13px high.
 inline constexpr int kSliderFrameStep = 15;
-inline constexpr int kSliderFrameH = 13;
+inline constexpr int kSliderFrameHeight = 13;
 inline constexpr QRect kVolumeThumb{15, 422, 14, 11};
 inline constexpr QRect kVolumeThumbSelected{0, 422, 14, 11};
 inline constexpr QRect kBalanceThumb{15, 422, 14, 11};
 inline constexpr QRect kBalanceThumbSelected{0, 422, 14, 11};
 
 // ------------------------------------------------------------------ TEXT.BMP
-inline constexpr int kCharW = 5;
-inline constexpr int kCharH = 6;
+inline constexpr int kCharWidth = 5;
+inline constexpr int kCharHeight = 6;
 
 // ------------------------------------------------------------------ EQMAIN.BMP
 struct EqualizerSprites {
@@ -125,11 +125,11 @@ struct EqualizerSprites {
 
     // Layout.
     static constexpr QPoint kClose{264, 3};
-    static constexpr QPoint kOnPos{14, 18};
-    static constexpr QPoint kAutoPos{40, 18};
-    static constexpr QPoint kPresetsPos{217, 18};
-    static constexpr QPoint kGraphPos{86, 17};
-    static constexpr QPoint kPreampPos{21, 38};
+    static constexpr QPoint kOnPosition{14, 18};
+    static constexpr QPoint kAutoPosition{40, 18};
+    static constexpr QPoint kPresetsPosition{217, 18};
+    static constexpr QPoint kGraphPosition{86, 17};
+    static constexpr QPoint kPreampPosition{21, 38};
     static constexpr int kBandsX = 78;  // first band
     static constexpr int kBandStep = 18;
     static constexpr int kSlidersY = 38;
@@ -178,13 +178,13 @@ struct PlaylistSprites {
     static constexpr QRect kShadeRightSelected{99, 42, 50, 14};
 
     static constexpr QSize kMinSize{275, 116};
-    static constexpr int kStepW = 25;
-    static constexpr int kStepH = 29;
-    static constexpr int kTopH = 20;
-    static constexpr int kBottomH = 38;
-    static constexpr int kLeftW = 12;
-    static constexpr int kRightW = 20;
-    static constexpr int kRowH = 13;
+    static constexpr int kStepWidth = 25;
+    static constexpr int kStepHeight = 29;
+    static constexpr int kTopHeight = 20;
+    static constexpr int kBottomHeight = 38;
+    static constexpr int kLeftWidth = 12;
+    static constexpr int kRightWidth = 20;
+    static constexpr int kRowHeight = 13;
 };
 
 // ------------------------------------------------------------------ GEN.BMP (generic windows)
@@ -211,7 +211,7 @@ struct GenWindowSprites {
     static constexpr QRect kCloseSelected{148, 42, 9, 9};
     static constexpr int kLettersYSelected = 88;
     static constexpr int kLettersY = 96;
-    static constexpr int kLetterH = 7;
+    static constexpr int kLetterHeight = 7;
 };
 
 // ------------------------------------------------------------------ main window layout
