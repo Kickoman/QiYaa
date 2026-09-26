@@ -66,8 +66,8 @@ public:
     struct PlaylistStyle {
         QColor normal{0x00, 0xFF, 0x00};
         QColor current{0xFF, 0xFF, 0xFF};
-        QColor normalBg{0x00, 0x00, 0x00};
-        QColor selectedBg{0x00, 0x00, 0xC6};
+        QColor normalBackground{0x00, 0x00, 0x00};
+        QColor selectedBackground{0x00, 0x00, 0xC6};
         QString font = QStringLiteral("Arial");
     };
 
@@ -79,7 +79,7 @@ public:
     const QImage& sheet(Sheet sheet) const;  // null QImage when absent
     bool numbersAreExtended() const;         // Numbers holds nums_ex.bmp, not numbers.bmp
 
-    void draw(QPainter& painter, Sheet bitmap, const QRect& src, const QPoint& dst) const;
+    void draw(QPainter& painter, Sheet bitmap, const QRect& source, const QPoint& target) const;
 
     int drawGenText(QPainter& painter, const QPoint& at, const QString& text, bool selected) const;
     int genTextWidth(const QString& text) const;
@@ -122,8 +122,8 @@ the fallback and the new skin share the pixel data. Where each item comes from:
 Every sheet is converted to `QImage::Format_ARGB32_Premultiplied`. The file formats and the limits
 are under [File formats](#file-formats).
 
-**Drawing.** All positions are skin pixels at scale 1. The painter's transform does the scaling,
-and `src/ui` sets it. `draw()` copies `src` from the sheet to `dst` and does nothing if the sheet
+**Drawing.** All positions are skin pixels at scale 1. The painter's transform does the scaling, and
+`src/ui` sets it. `draw()` copies `source` from the sheet to `target` and does nothing if the sheet
 is absent.
 
 **Bitmap text (`drawText`, `TextWidth`).** Each character is resolved in this order:
@@ -213,7 +213,7 @@ before it calls `RegionFromPolygons`. `RegionFromPolygons` unites the polygons, 
 namespace Skins {
 struct ButtonSprite { QRect normal; QRect pressed; };
 struct ToggleSprite { QRect off; QRect offPressed; QRect on; QRect onPressed; };
-inline constexpr QRect DigitSprite(int d);  // digit d in NUMBERS.BMP / NUMS_EX.BMP
+inline constexpr QRect DigitSprite(int digit);  // the digit's cell in NUMBERS.BMP / NUMS_EX.BMP
 // ... constants and structs below
 }
 ```
@@ -229,9 +229,9 @@ values come from webamp. Which entries cover which bitmap:
 | CBUTTONS.BMP (`CButtons`) | `ButtonSprite`s `kPrevious`, `kPlay`, `kPause`, `kStop`, `kNext`, `kEject` |
 | PLAYPAUS.BMP (`PlayPaus`) | `kPlayingIndicator`, `kPausedIndicator`, `kStoppedIndicator`, `kWorkingIndicator` |
 | MONOSTER.BMP (`MonoSter`) | `kStereo(Selected)`, `kMono(Selected)` |
-| NUMBERS.BMP / NUMS_EX.BMP (`Numbers`) | `kDigitWidth`, `kDigitHeight`, `DigitSprite(d)`, `kMinusSign` (numbers.bmp), `kMinusSignEx` (nums_ex.bmp) |
+| NUMBERS.BMP / NUMS_EX.BMP (`Numbers`) | `kDigitWidth`, `kDigitHeight`, `DigitSprite(digit)`, `kMinusSign` (numbers.bmp), `kMinusSignEx` (nums_ex.bmp) |
 | POSBAR.BMP (`PosBar`) | `kPositionBackground`, `kPositionThumb(Selected)` |
-| SHUFREP.BMP (`ShufRep`) | `ToggleSprite`s `kShuffle`, `kRepeat`, `kEqButton`, `kPlButton` |
+| SHUFREP.BMP (`ShufRep`) | `ToggleSprite`s `kShuffle`, `kRepeat`, `kEqButton`, `kPlaylistButton` |
 | VOLUME.BMP / BALANCE.BMP (`Volume`, `Balance`) | `kSliderFrameStep`, `kSliderFrameHeight`, `kVolumeThumb(Selected)`, `kBalanceThumb(Selected)` |
 | TEXT.BMP (`Text`) | `kCharWidth`, `kCharHeight` |
 | EQMAIN.BMP (`EqMain`) | `EqualizerSprites`, including the equalizer window layout |
@@ -376,8 +376,8 @@ This is a port of webamp's `genGenTextSprites()`.
   (`kSliderFrameStep`) and 13 px high (`kSliderFrameHeight`). The 14×11 thumbs are at y = 422.
 - EQMAIN.BMP: 28 slider frames (low to high value) of 14×63 px from (13, 164), 14 per row, 15 px
   apart, with rows 65 px apart. There is also a 1×19 column of graph-line colours at (115, 294).
-- NUMBERS.BMP: digits 0–9 in 9×13 cells at x = 9*d*. The minus is the 5×1 dash at (20, 6).
-  NUMS_EX.BMP has the same digits plus a minus in its own 9×13 cell at x = 99.
+- NUMBERS.BMP: digits 0–9 in 9×13 cells, digit *d* at x = 9*d*. The minus is the 5×1 dash at (20,
+  6). NUMS_EX.BMP has the same digits plus a minus in its own 9×13 cell at x = 99.
 
 ## Errors
 

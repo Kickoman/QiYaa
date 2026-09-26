@@ -14,7 +14,7 @@ cover images or decide what plays next: that is [src/core](../core/README.md) (`
 | File | Contains |
 |---|---|
 | `api_client.h/.cpp` | `ApiClient` — authorised GET/POST, the `{"result": …}` envelope, the pending-POST count; `Account`, `Track`, `ResolvedUrl`, `TForm`; `accountStatus`, `tracks`, `resolveTrackUrl`, `reportPlayStarted` |
-| `library.h/.cpp` | `Library` — the logged-in account, likes and dislikes, playlists, "Для вас" playlists, artists, albums, stations, waves (rotor sessions, feedback, the wheel), search; `NamedRef`, `PlaylistRef`, `Station`, `WaveBatch`, `Wave`, `WaveEvent`, `SearchResult` |
+| `library.h/.cpp` | `Library` — the logged-in account, likes and dislikes, playlists, "Для вас" playlists, artists, albums, stations, waves (rotor sessions, feedback, the wheel), search; `NamedReference`, `PlaylistReference`, `Station`, `WaveBatch`, `Wave`, `WaveEvent`, `SearchResult` |
 | `oauth.h/.cpp` | `DeviceLogin` — the OAuth device-code flow; `BrowserLoginUrl` for the implicit-grant fallback |
 | `token.h/.cpp` | `NormalizeToken`, `FindToken`, `SaveToken`, `ForgetToken`; `TokenSource` |
 | `track_url.h/.cpp` | `ParseDownloadVariants`, `PickBestVariant`, `ParseDownloadInfo`, `BuildTrackUrl` — from download-info to a signed mp3 link; `DownloadVariant`, `DownloadInfo` |
@@ -72,7 +72,7 @@ public:
     using TCallback = std::function<void(const T& value, const QString& error)>;
     using TJsonCallback = std::function<void(const QJsonValue& result, const QString& error)>;
 
-    explicit ApiClient(QNetworkAccessManager* nam, QObject* parent = nullptr);
+    explicit ApiClient(QNetworkAccessManager* networkAccessManager, QObject* parent = nullptr);
 
     void setToken(const QString& token);
     const QString& token() const;
@@ -99,8 +99,8 @@ Q_SIGNALS:
 };
 ```
 
-- The client does not own `nam`; the manager must outlive it. Use both from the thread that owns
-  the manager (the GUI thread in the application).
+- The client does not own `networkAccessManager`; the manager must outlive it. Use both from the
+  thread that owns the manager (the GUI thread in the application).
 - Every callback runs from the event loop on the client's thread, after the call that started the
   request has returned. It runs once per request: `callback(result, "")` on success, where
   `result` is the unwrapped envelope, and `callback({}, error)` on failure; typed calls pass a
@@ -111,9 +111,9 @@ Q_SIGNALS:
 - `ParseTrack` reads the fields listed under [Track objects](#track-objects). `IdString` turns a
   JSON number into integer text (through `qint64`), returns a string as is, and anything else as
   an empty string.
-- `Track::coverUrl(size)` replaces `%%` with `<size>x<size>` and prepends `https://` unless the
-  URI already starts with `http`. `webUrl()` is `https://music.yandex.ru/album/<albumId>/track/<id>`,
-  or `https://music.yandex.ru/track/<id>` without an album. `displayTitle()` is the bare title when
+- `Track::coverUrl(size)` replaces `%%` with `<size>x<size>` and prepends `https://` unless the URI
+  already starts with `http`. `webUrl()` is `https://music.yandex.ru/album/<albumId>/track/<id>`, or
+  `https://music.yandex.ru/track/<id>` without an album. `displayTitle()` is the bare title when
   there are no artists.
 - `tracks(ids)` sends every id in one request; `Library::tracksByIds` does the chunking.
 - `resolveTrackUrl(trackId)` uses the part of `trackId` before the first `:` (so `id:albumId` is
@@ -145,9 +145,9 @@ Q_SIGNALS:
 ## `library.h` — `Library`
 
 ```cpp
-struct NamedRef { QString id; QString name; };
+struct NamedReference { QString id; QString name; };
 
-struct PlaylistRef {
+struct PlaylistReference {
     QString ownerUid;
     QString kind;
     QString title;
@@ -197,19 +197,19 @@ public:
 
     void likedTracks(TCallback<QList<Track>> callback);
     void tracksByIds(const QStringList& ids, TCallback<QList<Track>> callback);
-    void userPlaylists(TCallback<QList<PlaylistRef>> callback);
-    void playlistTracks(const PlaylistRef& playlist, TCallback<QList<Track>> callback);
-    void likedArtists(TCallback<QList<NamedRef>> callback);
+    void userPlaylists(TCallback<QList<PlaylistReference>> callback);
+    void playlistTracks(const PlaylistReference& playlist, TCallback<QList<Track>> callback);
+    void likedArtists(TCallback<QList<NamedReference>> callback);
     void artistTopTracks(const QString& artistId, TCallback<QList<Track>> callback);
-    void likedAlbums(TCallback<QList<NamedRef>> callback);
+    void likedAlbums(TCallback<QList<NamedReference>> callback);
     void albumTracks(const QString& albumId, TCallback<QList<Track>> callback);
     void stations(TCallback<QList<Station>> callback);
     void startWave(const QStringList& seeds, TCallback<WaveBatch> callback);
     void moreWave(const QString& sessionId, const QStringList& queue, TCallback<WaveBatch> callback);
     void search(const QString& text, TCallback<SearchResult> callback);
 
-    void personalPlaylists(TCallback<QList<PlaylistRef>> callback);   // "Для вас"
-    void playlistRecommendations(const PlaylistRef& playlist, TCallback<QList<Track>> callback);
+    void personalPlaylists(TCallback<QList<PlaylistReference>> callback);   // "Для вас"
+    void playlistRecommendations(const PlaylistReference& playlist, TCallback<QList<Track>> callback);
     void wheelWaves(const QStringList& seeds, TCallback<QList<Wave>> callback);
 
     void waveFeedback(
@@ -226,7 +226,7 @@ public:
     void setLiked(const QString& trackId, bool liked, TCallback<bool> callback);
     void dislike(const QString& trackId, TCallback<bool> callback);
 
-    static QList<Track> ParseTrackArray(const QJsonArray& arr);
+    static QList<Track> ParseTrackArray(const QJsonArray& items);
     static WaveBatch ParseWaveBatch(const QJsonValue& result);
 
 Q_SIGNALS:
@@ -303,7 +303,7 @@ Q_SIGNALS:
 ```cpp
 class DeviceLogin : public QObject {
 public:
-    explicit DeviceLogin(QNetworkAccessManager* nam, QObject* parent = nullptr);
+    explicit DeviceLogin(QNetworkAccessManager* networkAccessManager, QObject* parent = nullptr);
     ~DeviceLogin() override;   // cancels
 
     void setBaseUrl(const QString& base);   // tests: instead of https://oauth.yandex.ru
@@ -343,8 +343,8 @@ Two ways to a token without an embedded browser:
   says whose).
 - Only the access token is passed on; `expires_in` and any refresh token of the `/token` reply
   are ignored.
-- Same threading and ownership rules as `ApiClient`: `nam` is not owned and must outlive the
-  object.
+- Same threading and ownership rules as `ApiClient`: `networkAccessManager` is not owned and must
+  outlive the object.
 
 **Traps:**
 - A transport error while polling (timeout, network down) ends the flow with `failed(<Qt error>)`;
@@ -417,7 +417,8 @@ struct DownloadInfo {      // reply of GET {downloadInfoUrl}&format=json
 };
 
 QList<DownloadVariant> ParseDownloadVariants(const QJsonArray& result);
-std::optional<DownloadVariant> PickBestVariant(const QList<DownloadVariant>& variants);   // nullopt when empty
+// nullopt when empty
+std::optional<DownloadVariant> PickBestVariant(const QList<DownloadVariant>& variants);
 std::optional<DownloadInfo> ParseDownloadInfo(const QByteArray& json);   // nullopt when unusable
 QUrl BuildTrackUrl(const DownloadInfo& info);
 ```
@@ -536,16 +537,16 @@ otherwise from the element itself.
    https://{host}/get-mp3/{md5(salt + path[1:] + s)}/{ts}{path}
    ```
 
-   The MD5 runs over the bytes of the salt `kSignSalt` (`track_url.cpp`), the UTF-8 path without
-   its leading `/`, and the UTF-8 `s`, and is written as 32 lowercase hex digits. The path keeps
-   its leading `/`, so it follows `ts` directly. Example from `signsTrackUrlLikeYaamp`: host
-   `s123vla.storage.yandex.net`, path `/rmusic/U2FsdGVk/abc`, ts `000612a3b4c5d`, s `deadbeef`
-   give `https://s123vla.storage.yandex.net/get-mp3/5c38e49c01f9a959428986790af6f9ca/000612a3b4c5d/rmusic/U2FsdGVk/abc`.
+   The MD5 runs over the bytes of the salt `kSignSalt` (`track_url.cpp`), the UTF-8 path without its
+   leading `/`, and the UTF-8 `s`, and is written as 32 lowercase hex digits. The path keeps its
+   leading `/`, so it follows `ts` directly. Example from `signsTrackUrlLikeYaamp`: host
+   `s123vla.storage.yandex.net`, path `/rmusic/U2FsdGVk/abc`, ts `000612a3b4c5d`, s `deadbeef` give
+   `https://s123vla.storage.yandex.net/get-mp3/5c38e49c01f9a959428986790af6f9ca/000612a3b4c5d/rmusic/U2FsdGVk/abc`.
 
 ## Errors
 
-The module throws nothing and catches nothing, and it has no `Error` class; the project's
-exception trees are `Audio::Error` and `Skins::Error`. Every failure is data:
+The module throws nothing and catches nothing, and it has no `Error` class (the project's error
+policy is in [docs/architecture.md](../../docs/architecture.md#errors)). Every failure is data:
 
 | Where | Failure arrives as |
 |---|---|

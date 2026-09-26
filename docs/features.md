@@ -92,9 +92,10 @@ Winamp, график кривой. Двойной клик по ползунку
 
 ## Медиаклавиши и системная панель
 
-- **Linux:** QiYaa публикует себя по MPRIS как `org.mpris.MediaPlayer2.qiyaa`: работают медиаклавиши,
-  панель плеера GNOME/KDE с обложкой, экран блокировки и `playerctl`. Если это имя уже занято другой
-  копией QiYaa, вторая регистрируется как `org.mpris.MediaPlayer2.qiyaa.instance<номер процесса>`.
+- **Linux:** QiYaa публикует себя по MPRIS как `org.mpris.MediaPlayer2.qiyaa`: работают
+  медиаклавиши, панель плеера GNOME/KDE с обложкой, экран блокировки и `playerctl`. Если это имя уже
+  занято другой копией QiYaa, вторая регистрируется как
+  `org.mpris.MediaPlayer2.qiyaa.instance<номер_процесса>`.
 - **Windows:** System Media Transport Controls — медиаклавиши, панель громкости и экран блокировки.
 - **macOS:** пока нет.
 

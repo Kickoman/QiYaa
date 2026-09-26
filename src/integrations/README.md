@@ -99,10 +99,10 @@ Q_SIGNALS:
 - **Covers** are the 400×400 px variant (`kCoverPixels`, via `Yandex::Track::coverUrl(400)`). On
   every `Player::currentTrackChanged` it calls `CoverCache::get` for that URL *before* emitting
   `trackChanged`: a cover already on disk is therefore a `file://` URL in `artUrl()` when the
-  listeners run, and a missing one starts downloading. When `CoverCache::ready` reports the
-  current track's URL, `artChanged` fires and `artUrl()` has become `file://` (the cache writes
-  the file before it signals, unless that write fails). With `covers == nullptr`, `artUrl()` is always the https URL and
-  `artChanged` never fires. A failed download leaves the https URL and emits nothing.
+  listeners run, and a missing one starts downloading. When `CoverCache::ready` reports the current
+  track's URL, `artChanged` fires and `artUrl()` has become `file://` (the cache writes the file
+  before it signals, unless that write fails). With `covers == nullptr`, `artUrl()` is always the
+  https URL and `artChanged` never fires. A failed download leaves the https URL and emits nothing.
 - **Signals.** `trackChanged` follows `Player::currentTrackChanged`; `statusChanged` follows
   `AudioEngine::stateChanged` of `player->engine()`; `modesChanged` follows
   `Player::modesChanged`; `seeked` follows `Player::seeked` (the clamped target in seconds, after
@@ -274,7 +274,8 @@ copy. It skips itself without a session bus, and skips the `gdbus` cases without
 ```cpp
 class Smtc : public QObject {
 public:
-    Smtc(MediaControls* controls, QWidget* window, QObject* parent = nullptr);  // window: the main window, not null
+    // window: the main window, not null
+    Smtc(MediaControls* controls, QWidget* window, QObject* parent = nullptr);
     ~Smtc() override;
 
     bool isActive() const;  // false when SMTC could not be set up
@@ -288,7 +289,7 @@ public:
   command of the same name. Other buttons (FastForward, Rewind, Record, ChannelUp/Down) are
   neither enabled nor handled.
 - **Threads.** `ButtonPressed` handlers run on a WinRT thread, not the Qt thread. The handler
-  only reads `args.Button()` and posts a queued call to `QCoreApplication::instance()`, so
+  only reads `arguments.Button()` and posts a queued call to `QCoreApplication::instance()`, so
   `handleButton` and everything after it run on the GUI thread. The posted lambda holds a
   `QPointer<Smtc>`: a press still queued when the `Smtc` is destroyed is dropped.
 - **What it publishes.** `PlaybackStatus` from `MediaControls::status()` on every

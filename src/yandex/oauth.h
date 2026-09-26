@@ -14,7 +14,7 @@ namespace Yandex {
 class DeviceLogin : public QObject {
     Q_OBJECT
 public:
-    explicit DeviceLogin(QNetworkAccessManager* nam, QObject* parent = nullptr);
+    explicit DeviceLogin(QNetworkAccessManager* networkAccessManager, QObject* parent = nullptr);
     ~DeviceLogin() override;
 
     void setBaseUrl(const QString& base) { baseUrl = base; }

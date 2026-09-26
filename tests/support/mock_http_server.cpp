@@ -115,16 +115,16 @@ void MockHttpServer::handle(QTcpSocket* socket, QByteArray& buffer) {
             }
         }
     }
-    QByteArray out = "HTTP/1.1 " + QByteArray::number(response.status) + " X\r\n";
-    out += "Content-Type: application/json\r\nConnection: close\r\n";
-    out +=
+    QByteArray reply = "HTTP/1.1 " + QByteArray::number(response.status) + " X\r\n";
+    reply += "Content-Type: application/json\r\nConnection: close\r\n";
+    reply +=
         "Content-Length: " + QByteArray::number(response.body.size()) + "\r\n\r\n" + response.body;
     QPointer<QTcpSocket> guard(socket);
-    QTimer::singleShot(response.delayMs, socket, [guard, out] {
+    QTimer::singleShot(response.delayMs, socket, [guard, reply] {
         if (!guard) {
             return;
         }
-        guard->write(out);
+        guard->write(reply);
         guard->disconnectFromHost();
     });
 }

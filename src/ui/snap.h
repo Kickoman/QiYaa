@@ -17,7 +17,7 @@ QRect PickScreen(const QRect& rect, const QList<QRect>& screens);
 
 QPoint ClampInside(const QRect& rect, const QRect& screen);
 
-bool Touching(const QRect& a, const QRect& b);
+bool Touching(const QRect& first, const QRect& second);
 
 QList<int> ConnectedGroup(int start, const QList<QRect>& rects);
 

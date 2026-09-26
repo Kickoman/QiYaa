@@ -22,15 +22,17 @@ int BottomEdge(const QRect& rect) {
     return rect.y() + rect.height();
 }
 
-bool WithinDistance(int a, int value, int d) {
-    return std::abs(a - value) < d;
+bool WithinDistance(int edge, int value, int distance) {
+    return std::abs(edge - value) < distance;
 }
 
-bool OverlapX(const QRect& a, const QRect& b, int d) {
-    return LeftEdge(a) <= RightEdge(b) + d && LeftEdge(b) <= RightEdge(a) + d;
+bool OverlapX(const QRect& first, const QRect& second, int distance) {
+    return LeftEdge(first) <= RightEdge(second) + distance
+        && LeftEdge(second) <= RightEdge(first) + distance;
 }
-bool OverlapY(const QRect& a, const QRect& b, int d) {
-    return TopEdge(a) <= BottomEdge(b) + d && TopEdge(b) <= BottomEdge(a) + d;
+bool OverlapY(const QRect& first, const QRect& second, int distance) {
+    return TopEdge(first) <= BottomEdge(second) + distance
+        && TopEdge(second) <= BottomEdge(first) + distance;
 }
 
 struct Snapped {
@@ -38,36 +40,38 @@ struct Snapped {
     std::optional<int> y;
 };
 
-Snapped SnapOne(const QRect& a, const QRect& b, int d) {
-    Snapped s;
-    if (OverlapY(a, b, d)) {
-        if (WithinDistance(LeftEdge(a), RightEdge(b), d)) {
-            s.x = RightEdge(b);
-        } else if (WithinDistance(RightEdge(a), LeftEdge(b), d)) {
-            s.x = LeftEdge(b) - a.width();
-        } else if (WithinDistance(LeftEdge(a), LeftEdge(b), d)) {
-            s.x = LeftEdge(b);
-        } else if (WithinDistance(RightEdge(a), RightEdge(b), d)) {
-            s.x = RightEdge(b) - a.width();
+Snapped SnapOne(const QRect& moving, const QRect& other, int distance) {
+    Snapped snapped;
+    if (OverlapY(moving, other, distance)) {
+        if (WithinDistance(LeftEdge(moving), RightEdge(other), distance)) {
+            snapped.x = RightEdge(other);
+        } else if (WithinDistance(RightEdge(moving), LeftEdge(other), distance)) {
+            snapped.x = LeftEdge(other) - moving.width();
+        } else if (WithinDistance(LeftEdge(moving), LeftEdge(other), distance)) {
+            snapped.x = LeftEdge(other);
+        } else if (WithinDistance(RightEdge(moving), RightEdge(other), distance)) {
+            snapped.x = RightEdge(other) - moving.width();
         }
     }
-    if (OverlapX(a, b, d)) {
-        if (WithinDistance(TopEdge(a), BottomEdge(b), d)) {
-            s.y = BottomEdge(b);
-        } else if (WithinDistance(BottomEdge(a), TopEdge(b), d)) {
-            s.y = TopEdge(b) - a.height();
-        } else if (WithinDistance(TopEdge(a), TopEdge(b), d)) {
-            s.y = TopEdge(b);
-        } else if (WithinDistance(BottomEdge(a), BottomEdge(b), d)) {
-            s.y = BottomEdge(b) - a.height();
+    if (OverlapX(moving, other, distance)) {
+        if (WithinDistance(TopEdge(moving), BottomEdge(other), distance)) {
+            snapped.y = BottomEdge(other);
+        } else if (WithinDistance(BottomEdge(moving), TopEdge(other), distance)) {
+            snapped.y = TopEdge(other) - moving.height();
+        } else if (WithinDistance(TopEdge(moving), TopEdge(other), distance)) {
+            snapped.y = TopEdge(other);
+        } else if (WithinDistance(BottomEdge(moving), BottomEdge(other), distance)) {
+            snapped.y = BottomEdge(other) - moving.height();
         }
     }
-    return s;
+    return snapped;
 }
 
-long long DistanceSquared(const QRect& a, const QRect& b) {
-    const long long dx = std::max({0, LeftEdge(b) - RightEdge(a), LeftEdge(a) - RightEdge(b)});
-    const long long dy = std::max({0, TopEdge(b) - BottomEdge(a), TopEdge(a) - BottomEdge(b)});
+long long DistanceSquared(const QRect& first, const QRect& second) {
+    const long long dx =
+        std::max({0, LeftEdge(second) - RightEdge(first), LeftEdge(first) - RightEdge(second)});
+    const long long dy =
+        std::max({0, TopEdge(second) - BottomEdge(first), TopEdge(first) - BottomEdge(second)});
     return dx * dx + dy * dy;
 }
 
@@ -76,12 +80,12 @@ long long DistanceSquared(const QRect& a, const QRect& b) {
 QPoint SnapToOthers(const QRect& moving, const QList<QRect>& others, int distance) {
     QPoint point = moving.topLeft();
     for (const QRect& other : others) {
-        const Snapped s = SnapOne(moving, other, distance);
-        if (s.x) {
-            point.setX(*s.x);
+        const Snapped snapped = SnapOne(moving, other, distance);
+        if (snapped.x) {
+            point.setX(*snapped.x);
         }
-        if (s.y) {
-            point.setY(*s.y);
+        if (snapped.y) {
+            point.setY(*snapped.y);
         }
     }
     return point;
@@ -106,24 +110,24 @@ QPoint SnapWithin(const QRect& moving, const QRect& screen, int distance) {
 QRect PickScreen(const QRect& rect, const QList<QRect>& screens) {
     QRect best;
     long long bestArea = -1;
-    for (const QRect& s : screens) {
-        const QRect i = s.intersected(rect);
-        const long long area = i.isEmpty() ? 0 : 1LL * i.width() * i.height();
+    for (const QRect& screen : screens) {
+        const QRect overlap = screen.intersected(rect);
+        const long long area = overlap.isEmpty() ? 0 : 1LL * overlap.width() * overlap.height();
         if (area > bestArea) {
             bestArea = area;
-            best = s;
+            best = screen;
         }
     }
     if (bestArea > 0 || screens.isEmpty()) {
         return best;
     }
 
-    long long bestDist = std::numeric_limits<long long>::max();
-    for (const QRect& s : screens) {
-        const long long dist = DistanceSquared(rect, s);
-        if (dist < bestDist) {
-            bestDist = dist;
-            best = s;
+    long long bestDistance = std::numeric_limits<long long>::max();
+    for (const QRect& screen : screens) {
+        const long long distance = DistanceSquared(rect, screen);
+        if (distance < bestDistance) {
+            bestDistance = distance;
+            best = screen;
         }
     }
     return best;
@@ -150,13 +154,17 @@ QPoint ClampInside(const QRect& rect, const QRect& screen) {
     return {x, y};
 }
 
-bool Touching(const QRect& a, const QRect& b) {
-    const bool yOverlap = TopEdge(a) < BottomEdge(b) && TopEdge(b) < BottomEdge(a);
-    const bool xOverlap = LeftEdge(a) < RightEdge(b) && LeftEdge(b) < RightEdge(a);
-    if (yOverlap && (RightEdge(a) == LeftEdge(b) || RightEdge(b) == LeftEdge(a))) {
+bool Touching(const QRect& first, const QRect& second) {
+    const bool yOverlap =
+        TopEdge(first) < BottomEdge(second) && TopEdge(second) < BottomEdge(first);
+    const bool xOverlap =
+        LeftEdge(first) < RightEdge(second) && LeftEdge(second) < RightEdge(first);
+    if (yOverlap
+        && (RightEdge(first) == LeftEdge(second) || RightEdge(second) == LeftEdge(first))) {
         return true;
     }
-    if (xOverlap && (BottomEdge(a) == TopEdge(b) || BottomEdge(b) == TopEdge(a))) {
+    if (xOverlap
+        && (BottomEdge(first) == TopEdge(second) || BottomEdge(second) == TopEdge(first))) {
         return true;
     }
     return false;
@@ -171,9 +179,9 @@ QList<int> ConnectedGroup(int start, const QList<QRect>& rects) {
     }
     seen[start] = true;
     while (!queue.isEmpty()) {
-        const int cur = queue.takeFirst();
+        const int current = queue.takeFirst();
         for (int i = 0; i < rects.size(); ++i) {
-            if (seen[i] || !Touching(rects[cur], rects[i])) {
+            if (seen[i] || !Touching(rects[current], rects[i])) {
                 continue;
             }
             seen[i] = true;
@@ -189,33 +197,34 @@ QList<int> StackBelow(int self, const QList<QRect>& rects, int dy, const QList<b
         return {};
     }
     const auto isSolid = [&](int i) { return solid.isEmpty() || solid.value(i, true); };
-    const QRect old = rects[self];
-    const QRect grown = old.adjusted(0, 0, 0, dy);
+    const QRect oldRect = rects[self];
+    const QRect grown = oldRect.adjusted(0, 0, 0, dy);
     const auto hangsFrom = [](const QRect& upper, const QRect& lower) {
         return BottomEdge(upper) == TopEdge(lower) && LeftEdge(upper) < RightEdge(lower)
             && LeftEdge(lower) < RightEdge(upper);
     };
-    const int n = int(rects.size());
-    QList<bool> blocked(n, false);
+    const int count = int(rects.size());
+    QList<bool> blocked(count, false);
     for (;;) {
-        QList<bool> moving(n, false);
+        QList<bool> moving(count, false);
         for (bool changed = true; changed;) {
             changed = false;
-            for (int i = 0; i < n; ++i) {
-                if (i == self || moving[i] || blocked[i] || TopEdge(rects[i]) < BottomEdge(old)) {
+            for (int i = 0; i < count; ++i) {
+                if (i == self || moving[i] || blocked[i]
+                    || TopEdge(rects[i]) < BottomEdge(oldRect)) {
                     continue;
                 }
-                bool follows = hangsFrom(old, rects[i]);
-                for (int j = 0; j < n && !follows; ++j) {
+                bool follows = hangsFrom(oldRect, rects[i]);
+                for (int j = 0; j < count && !follows; ++j) {
                     follows = moving[j] && hangsFrom(rects[j], rects[i]);
                 }
                 if (dy > 0) {
                     follows = follows || grown.intersects(rects[i]);
-                    for (int j = 0; j < n && !follows; ++j) {
+                    for (int j = 0; j < count && !follows; ++j) {
                         follows = moving[j] && rects[j].translated(0, dy).intersects(rects[i]);
                     }
                 } else if (follows) {
-                    for (int j = 0; j < n; ++j) {
+                    for (int j = 0; j < count; ++j) {
                         if (j != self && j != i && !moving[j] && isSolid(j)
                             && hangsFrom(rects[j], rects[i])) {
                             follows = false;
@@ -229,12 +238,12 @@ QList<int> StackBelow(int self, const QList<QRect>& rects, int dy, const QList<b
         }
         bool conflict = false;
         if (dy < 0) {
-            for (int i = 0; i < n; ++i) {
+            for (int i = 0; i < count; ++i) {
                 if (!moving[i]) {
                     continue;
                 }
                 const QRect moved = rects[i].translated(0, dy);
-                for (int j = 0; j < n; ++j) {
+                for (int j = 0; j < count; ++j) {
                     if (j != self && j != i && !moving[j] && isSolid(j)
                         && moved.intersects(rects[j])) {
                         blocked[i] = conflict = true;
@@ -243,13 +252,13 @@ QList<int> StackBelow(int self, const QList<QRect>& rects, int dy, const QList<b
             }
         }
         if (!conflict) {
-            QList<int> out;
-            for (int i = 0; i < n; ++i) {
+            QList<int> followers;
+            for (int i = 0; i < count; ++i) {
                 if (moving[i]) {
-                    out << i;
+                    followers << i;
                 }
             }
-            return out;
+            return followers;
         }
     }
 }

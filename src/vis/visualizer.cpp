@@ -19,9 +19,9 @@ namespace Vis {
 
 namespace {
 
-QColor VisColor(const Skins::Skin& skin, int i) {
-    const auto& c = skin.visColors();
-    return i < c.size() ? c[i] : QColor(Qt::green);
+QColor VisColor(const Skins::Skin& skin, int index) {
+    const auto& colors = skin.visColors();
+    return index < colors.size() ? colors[index] : QColor(Qt::green);
 }
 
 class Spectrum : public Visualizer {
@@ -39,41 +39,46 @@ public:
 
     void update(const VisFrame& frame) override {
         const double binHz = double(frame.sampleRate) / frame.fftSize;
-        const double lo = 60.0, hi = std::min(16'000.0, frame.sampleRate / 2.0);
-        for (int value = 0; value < kBars; ++value) {
-            const double f0 = lo * std::pow(hi / lo, double(value) / kBars);
-            const double f1 = lo * std::pow(hi / lo, double(value + 1) / kBars);
-            int i0 = std::clamp(int(f0 / binHz), 1, int(frame.spectrum.size()) - 1);
-            int i1 = std::clamp(int(std::ceil(f1 / binHz)), i0 + 1, int(frame.spectrum.size()));
+        const double lowestHz = 60.0, highestHz = std::min(16'000.0, frame.sampleRate / 2.0);
+        for (int bar = 0; bar < kBars; ++bar) {
+            const double bandLowHz = lowestHz * std::pow(highestHz / lowestHz, double(bar) / kBars);
+            const double bandHighHz =
+                lowestHz * std::pow(highestHz / lowestHz, double(bar + 1) / kBars);
+            int firstBin = std::clamp(int(bandLowHz / binHz), 1, int(frame.spectrum.size()) - 1);
+            int endBin = std::clamp(
+                int(std::ceil(bandHighHz / binHz)), firstBin + 1, int(frame.spectrum.size())
+            );
             float peakDb = kMinDb;
-            for (int i = i0; i < i1; ++i) {
+            for (int i = firstBin; i < endBin; ++i) {
                 peakDb = std::max(peakDb, frame.spectrum[i]);
             }
             const float target = std::clamp((peakDb - kMinDb) / (kMaxDb - kMinDb), 0.0f, 1.0f);
-            bars[value] = std::max(target, bars[value] - 0.07f);
-            float peak = peaks[value] - 0.0004f * peakFrames[value] * peakFrames[value];
-            if (peak < bars[value]) {
-                peak = bars[value];
-                peakFrames[value] = 0;
+            bars[bar] = std::max(target, bars[bar] - 0.07f);
+            float peak = peaks[bar] - 0.0004f * peakFrames[bar] * peakFrames[bar];
+            if (peak < bars[bar]) {
+                peak = bars[bar];
+                peakFrames[bar] = 0;
             } else {
-                ++peakFrames[value];
+                ++peakFrames[bar];
             }
-            peaks[value] = std::max(peak, 0.0f);
+            peaks[bar] = std::max(peak, 0.0f);
         }
     }
 
     void render(QPainter& painter, const QRect& area, const Skins::Skin& skin) const override {
-        const int h = area.height();
-        for (int value = 0; value < kBars; ++value) {
-            const int x = area.x() + value * 4;
-            const int barH = int(std::ceil(bars[value] * h));
-            for (int i = 0; i < barH; ++i) {
-                const int colorIndex = 2 + (h - 1 - i) * 16 / h;
-                painter.fillRect(x, area.y() + h - 1 - i, 3, 1, VisColor(skin, colorIndex));
+        const int areaHeight = area.height();
+        for (int bar = 0; bar < kBars; ++bar) {
+            const int x = area.x() + bar * 4;
+            const int barHeight = int(std::ceil(bars[bar] * areaHeight));
+            for (int i = 0; i < barHeight; ++i) {
+                const int colorIndex = 2 + (areaHeight - 1 - i) * 16 / areaHeight;
+                painter.fillRect(
+                    x, area.y() + areaHeight - 1 - i, 3, 1, VisColor(skin, colorIndex)
+                );
             }
-            const int peakY = int(std::ceil(peaks[value] * h));
-            if (peakY > 0) {
-                painter.fillRect(x, area.y() + h - peakY, 3, 1, VisColor(skin, 23));
+            const int peakHeight = int(std::ceil(peaks[bar] * areaHeight));
+            if (peakHeight > 0) {
+                painter.fillRect(x, area.y() + areaHeight - peakHeight, 3, 1, VisColor(skin, 23));
             }
         }
     }
@@ -87,44 +92,45 @@ private:
 class Oscilloscope : public Visualizer {
 public:
     QString name() const override { return QStringLiteral("Осциллограф"); }
-    void reset() override { ys.fill(-1); }
+    void reset() override { rows.fill(-1); }
 
     void update(const VisFrame& frame) override {
-        const int n = int(frame.left.size());
+        const int sampleCount = int(frame.left.size());
         // Winamp shows ~576 samples across the 75 px area.
-        const int window = std::min(n, 576);
-        const int start = n - window;
+        const int shownSamples = std::min(sampleCount, 576);
+        const int start = sampleCount - shownSamples;
         for (int x = 0; x < kWidth; ++x) {
-            const int i = start + x * window / kWidth;
-            const float v = 0.5f * (frame.left[i] + frame.right[i]);
-            ys[x] = std::clamp(int(std::lround(7.5f - v * 8.0f)), 0, 15);
+            const int sample = start + x * shownSamples / kWidth;
+            const float mono = 0.5f * (frame.left[sample] + frame.right[sample]);
+            rows[x] = std::clamp(int(std::lround(7.5f - mono * 8.0f)), 0, 15);
         }
     }
 
     void render(QPainter& painter, const QRect& area, const Skins::Skin& skin) const override {
-        if (ys[0] < 0) {
+        if (rows[0] < 0) {
             return;
         }
-        int last = ys[0];
+        int previousY = rows[0];
         for (int x = 0; x < kWidth && x < area.width(); ++x) {
-            const int y = ys[x];
-            const int top = std::min(last, y), bottom = std::max(last, y);
-            for (int yy = top; yy <= bottom; ++yy) {
-                const int dist = int(std::abs(yy - 7.5f));
+            const int y = rows[x];
+            const int top = std::min(previousY, y), bottom = std::max(previousY, y);
+            for (int row = top; row <= bottom; ++row) {
+                const int distance = int(std::abs(row - 7.5f));
                 painter.fillRect(
-                    area.x() + x, area.y() + yy, 1, 1, VisColor(skin, 18 + std::min(4, dist / 2))
+                    area.x() + x, area.y() + row, 1, 1,
+                    VisColor(skin, 18 + std::min(4, distance / 2))
                 );
             }
-            last = y;
+            previousY = y;
         }
     }
 
 private:
     static constexpr int kWidth = 75;
-    std::array<int, kWidth> ys = [] {
-        std::array<int, kWidth> a{};
-        a.fill(-1);
-        return a;
+    std::array<int, kWidth> rows = [] {
+        std::array<int, kWidth> initialRows{};
+        initialRows.fill(-1);
+        return initialRows;
     }();
 };
 
@@ -179,10 +185,11 @@ const std::vector<float>& Analyzer::analyze(std::span<const float> mono) {
         }
     }
     // A full-scale sine gives magnitude n/4 with a Hann window -> 0 dBFS.
-    const float norm = 4.0f / n;
+    const float magnitudeScale = 4.0f / n;
     for (int i = 0; i <= n / 2; ++i) {
-        const float mag = std::sqrt(real[i] * real[i] + imaginary[i] * imaginary[i]) * norm;
-        decibels[i] = 20.0f * std::log10(std::max(mag, 1e-9f));
+        const float magnitude =
+            std::sqrt(real[i] * real[i] + imaginary[i] * imaginary[i]) * magnitudeScale;
+        decibels[i] = 20.0f * std::log10(std::max(magnitude, 1e-9f));
     }
     return decibels;
 }

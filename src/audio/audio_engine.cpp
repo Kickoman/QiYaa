@@ -28,10 +28,10 @@ constexpr ma_uint32 kRingSeconds = 2;
 
 class StreamBuffer {
 public:
-    void append(const char* data, size_t n) {
+    void append(const char* data, size_t byteCount) {
         {
             std::lock_guard lock(mutex);
-            bytes.insert(bytes.end(), data, data + n);
+            bytes.insert(bytes.end(), data, data + byteCount);
         }
         wakeUp.notify_all();
     }
@@ -56,7 +56,7 @@ public:
     }
     void rewind() {
         std::lock_guard lock(mutex);
-        cursorRow = 0;
+        readOffset = 0;
     }
     size_t size() const {
         std::lock_guard lock(mutex);
@@ -67,21 +67,21 @@ public:
         return isFinished;
     }
 
-    ma_result read(void* out, size_t n, size_t* got) {
+    ma_result read(void* destination, size_t bytesToRead, size_t* bytesRead) {
         std::unique_lock lock(mutex);
-        wakeUp.wait(lock, [&] { return interrupted || isFinished || bytes.size() > cursorRow; });
-        *got = 0;
+        wakeUp.wait(lock, [&] { return interrupted || isFinished || bytes.size() > readOffset; });
+        *bytesRead = 0;
         if (interrupted) {
             return MA_CANCELLED;
         }
-        const size_t avail = bytes.size() - std::min(cursorRow, bytes.size());
-        const size_t take = std::min(n, avail);
-        if (take == 0) {
+        const size_t available = bytes.size() - std::min(readOffset, bytes.size());
+        const size_t bytesToCopy = std::min(bytesToRead, available);
+        if (bytesToCopy == 0) {
             return MA_AT_END;
         }
-        std::memcpy(out, bytes.data() + cursorRow, take);
-        cursorRow += take;
-        *got = take;
+        std::memcpy(destination, bytes.data() + readOffset, bytesToCopy);
+        readOffset += bytesToCopy;
+        *bytesRead = bytesToCopy;
         return MA_SUCCESS;
     }
 
@@ -90,7 +90,7 @@ public:
         ma_int64 target = 0;
         switch (origin) {
             case ma_seek_origin_start: target = offset; break;
-            case ma_seek_origin_current: target = ma_int64(cursorRow) + offset; break;
+            case ma_seek_origin_current: target = ma_int64(readOffset) + offset; break;
             case ma_seek_origin_end:
                 // Size is unknown until the download completes; don't stall streaming for it.
                 if (!isFinished) {
@@ -111,7 +111,7 @@ public:
         if (target > ma_int64(bytes.size())) {
             return MA_BAD_SEEK;
         }
-        cursorRow = size_t(target);
+        readOffset = size_t(target);
         return MA_SUCCESS;
     }
 
@@ -119,13 +119,13 @@ private:
     mutable std::mutex mutex;
     std::condition_variable wakeUp;
     std::vector<char> bytes;
-    size_t cursorRow = 0;
+    size_t readOffset = 0;
     bool isFinished = false;
     bool endedWithError = false;
     bool interrupted = false;
 };
 
-struct AudioEngine::Impl {
+struct AudioEngine::Implementation {
     ma_context context{};
     bool contextReady = false;
     ma_device device{};
@@ -138,11 +138,11 @@ struct AudioEngine::Impl {
     std::atomic<bool> stopDecoder{false};
 
     std::atomic<bool> outputEnabled{false};
-    std::atomic<float> gainL{1.0f};
-    std::atomic<float> gainR{1.0f};
+    std::atomic<float> gainLeft{1.0f};
+    std::atomic<float> gainRight{1.0f};
     std::atomic<ma_uint64> framesPlayed{0};
     EqualizerDsp eq;
-    VisTap vis;
+    VisTap visTap;
     std::atomic<ma_int64> frameOffset{0};
 
     std::atomic<bool> decoderStarted{false};
@@ -158,7 +158,7 @@ struct AudioEngine::Impl {
     std::atomic<bool> haltAtBoundary{false};
     std::atomic<int> nextRate{0};
     std::atomic<int> nextChannels{0};
-    std::atomic<TStreamId> failedQueued{0};
+    std::atomic<TStreamId> failedQueuedId{0};
 
     // Guarded by queueMutex.
     std::mutex queueMutex;
@@ -169,9 +169,10 @@ struct AudioEngine::Impl {
     TStreamId chainedId = 0;
     std::vector<std::shared_ptr<StreamBuffer>> decoderHeld;
 
-    static void DataCallback(ma_device* dev, void* out, const void*, ma_uint32 frameCount) {
-        auto* self = static_cast<Impl*>(dev->pUserData);
-        auto* dst = static_cast<float*>(out);
+    static void
+    DataCallback(ma_device* outputDevice, void* output, const void*, ma_uint32 frameCount) {
+        auto* self = static_cast<Implementation*>(outputDevice->pUserData);
+        auto* outputSamples = static_cast<float*>(output);
         ma_uint32 written = 0;
         // While a seek is pending the decoder thread owns the ring (see seek()).
         if (self->outputEnabled.load(std::memory_order_acquire)
@@ -187,43 +188,51 @@ struct AudioEngine::Impl {
                     : ma_uint32(std::min<ma_uint64>(frameCount, boundary - played));
             }
             while (written < limit) {
-                ma_uint32 n = limit - written;
-                void* src = nullptr;
-                if (ma_pcm_rb_acquire_read(&self->ring, &n, &src) != MA_SUCCESS || n == 0) {
+                ma_uint32 regionFrames = limit - written;
+                void* ringRegion = nullptr;
+                if (ma_pcm_rb_acquire_read(&self->ring, &regionFrames, &ringRegion) != MA_SUCCESS
+                    || regionFrames == 0) {
                     break;
                 }
-                std::memcpy(dst + written * kChannels, src, n * kChannels * sizeof(float));
-                ma_pcm_rb_commit_read(&self->ring, n);
-                written += n;
+                std::memcpy(
+                    outputSamples + written * kChannels, ringRegion,
+                    regionFrames * kChannels * sizeof(float)
+                );
+                ma_pcm_rb_commit_read(&self->ring, regionFrames);
+                written += regionFrames;
             }
-            self->eq.process({dst, written * kChannels});
-            self->vis.write({dst, written * kChannels});
-            const float gl = self->gainL.load(std::memory_order_relaxed);
-            const float gr = self->gainR.load(std::memory_order_relaxed);
+            self->eq.process({outputSamples, written * kChannels});
+            self->visTap.write({outputSamples, written * kChannels});
+            const float leftGain = self->gainLeft.load(std::memory_order_relaxed);
+            const float rightGain = self->gainRight.load(std::memory_order_relaxed);
             for (ma_uint32 i = 0; i < written; ++i) {
-                dst[i * 2] = std::clamp(dst[i * 2] * gl, -1.0f, 1.0f);
-                dst[i * 2 + 1] = std::clamp(dst[i * 2 + 1] * gr, -1.0f, 1.0f);
+                outputSamples[i * 2] = std::clamp(outputSamples[i * 2] * leftGain, -1.0f, 1.0f);
+                outputSamples[i * 2 + 1] =
+                    std::clamp(outputSamples[i * 2 + 1] * rightGain, -1.0f, 1.0f);
             }
             self->framesPlayed.fetch_add(written, std::memory_order_relaxed);
         }
         if (written < frameCount) {
             std::memset(
-                dst + written * kChannels, 0, (frameCount - written) * kChannels * sizeof(float)
+                outputSamples + written * kChannels, 0,
+                (frameCount - written) * kChannels * sizeof(float)
             );
         }
     }
 
-    static ma_result OnRead(ma_decoder* dec, void* out, size_t n, size_t* got) {
-        return static_cast<StreamBuffer*>(dec->pUserData)->read(out, n, got);
+    static ma_result
+    OnRead(ma_decoder* decoder, void* destination, size_t bytesToRead, size_t* bytesRead) {
+        return static_cast<StreamBuffer*>(decoder->pUserData)
+            ->read(destination, bytesToRead, bytesRead);
     }
-    static ma_result OnSeek(ma_decoder* dec, ma_int64 off, ma_seek_origin origin) {
-        return static_cast<StreamBuffer*>(dec->pUserData)->seek(off, origin);
+    static ma_result OnSeek(ma_decoder* decoder, ma_int64 offset, ma_seek_origin origin) {
+        return static_cast<StreamBuffer*>(decoder->pUserData)->seek(offset, origin);
     }
 
     // Heap-allocated: ma_decoder must not move.
     struct Source {
-        std::shared_ptr<StreamBuffer> buf;
-        ma_decoder dec{};
+        std::shared_ptr<StreamBuffer> buffer;
+        ma_decoder decoder{};
         int rate = 0;
         int channels = 0;
         bool initialised = false;
@@ -233,50 +242,59 @@ struct AudioEngine::Impl {
         Source& operator=(const Source&) = delete;
         ~Source() {
             if (initialised) {
-                ma_decoder_uninit(&dec);
+                ma_decoder_uninit(&decoder);
             }
         }
     };
 
-    std::unique_ptr<Source> openSource(std::shared_ptr<StreamBuffer> buf) {
-        auto s = std::make_unique<Source>();
-        s->buf = std::move(buf);
-        ma_decoder_config cfg = ma_decoder_config_init(ma_format_f32, kChannels, sampleRate);
-        cfg.encodingFormat = ma_encoding_format_mp3;
-        ma_result r = ma_decoder_init(&Impl::OnRead, &Impl::OnSeek, s->buf.get(), &cfg, &s->dec);
-        if (r != MA_SUCCESS && !stopDecoder) {
-            s->buf->seek(0, ma_seek_origin_start);
-            cfg.encodingFormat = ma_encoding_format_unknown;
-            r = ma_decoder_init(&Impl::OnRead, &Impl::OnSeek, s->buf.get(), &cfg, &s->dec);
+    std::unique_ptr<Source> openSource(std::shared_ptr<StreamBuffer> buffer) {
+        auto source = std::make_unique<Source>();
+        source->buffer = std::move(buffer);
+        ma_decoder_config decoderConfig =
+            ma_decoder_config_init(ma_format_f32, kChannels, sampleRate);
+        decoderConfig.encodingFormat = ma_encoding_format_mp3;
+        ma_result result = ma_decoder_init(
+            &Implementation::OnRead, &Implementation::OnSeek, source->buffer.get(), &decoderConfig,
+            &source->decoder
+        );
+        if (result != MA_SUCCESS && !stopDecoder) {
+            source->buffer->seek(0, ma_seek_origin_start);
+            decoderConfig.encodingFormat = ma_encoding_format_unknown;
+            result = ma_decoder_init(
+                &Implementation::OnRead, &Implementation::OnSeek, source->buffer.get(),
+                &decoderConfig, &source->decoder
+            );
         }
-        if (r != MA_SUCCESS) {
+        if (result != MA_SUCCESS) {
             return nullptr;
         }
-        s->initialised = true;
-        ma_format fmt;
-        ma_uint32 ch = 0, rate = 0;
-        if (ma_data_source_get_data_format(s->dec.pBackend, &fmt, &ch, &rate, nullptr, 0)
+        source->initialised = true;
+        ma_format format;
+        ma_uint32 channels = 0, rate = 0;
+        if (ma_data_source_get_data_format(
+                source->decoder.pBackend, &format, &channels, &rate, nullptr, 0
+            )
             == MA_SUCCESS) {
-            s->rate = int(rate);
-            s->channels = int(ch);
+            source->rate = int(rate);
+            source->channels = int(channels);
         }
-        return s;
+        return source;
     }
 
     void decoderMain(
         std::shared_ptr<StreamBuffer> first,
-        std::atomic<int>* srcRate,
-        std::atomic<int>* srcChannels
+        std::atomic<int>* sourceRate,
+        std::atomic<int>* sourceChannelCount
     ) {
-        std::unique_ptr<Source> cur = openSource(std::move(first));
-        if (!cur) {
+        std::unique_ptr<Source> current = openSource(std::move(first));
+        if (!current) {
             if (!stopDecoder) {
                 decoderFailed = true;
             }
             return;
         }
-        *srcRate = cur->rate;
-        *srcChannels = cur->channels;
+        *sourceRate = current->rate;
+        *sourceChannelCount = current->channels;
         decoderStarted = true;
 
         std::unique_ptr<Source> tail;
@@ -286,11 +304,11 @@ struct AudioEngine::Impl {
         // Call with queueMutex held.
         auto publishHeld = [&] {
             decoderHeld.clear();
-            if (cur) {
-                decoderHeld.push_back(cur->buf);
+            if (current) {
+                decoderHeld.push_back(current->buffer);
             }
             if (tail) {
-                decoderHeld.push_back(tail->buf);
+                decoderHeld.push_back(tail->buffer);
             }
         };
         {
@@ -299,29 +317,29 @@ struct AudioEngine::Impl {
         }
 
         auto tryChain = [&]() -> bool {
-            std::shared_ptr<StreamBuffer> buf;
+            std::shared_ptr<StreamBuffer> buffer;
             TStreamId id = 0;
             {
                 std::lock_guard lock(queueMutex);
                 if (!queued || !queued->finished() || finishedReported) {
                     return false;
                 }
-                buf = std::move(queued);
+                buffer = std::move(queued);
                 id = std::exchange(queuedId, 0);
                 chainingId = id;
                 dropChaining = false;
-                decoderHeld.push_back(buf);
+                decoderHeld.push_back(buffer);
             }
-            std::unique_ptr<Source> next = openSource(buf);
+            std::unique_ptr<Source> next = openSource(buffer);
             std::lock_guard lock(queueMutex);
             chainingId = 0;
             if (!next || dropChaining || stopDecoder || finishedReported) {
                 if (!next && !dropChaining && !stopDecoder) {
-                    failedQueued = id;
+                    failedQueuedId = id;
                 } else if (next && finishedReported && !dropChaining && !stopDecoder) {
                     // Already reported finished: hand it back for playQueuedNow().
-                    buf->rewind();
-                    queued = buf;
+                    buffer->rewind();
+                    queued = buffer;
                     queuedId = id;
                 }
                 dropChaining = false;
@@ -329,11 +347,11 @@ struct AudioEngine::Impl {
                 return false;
             }
             chainedId = id;
-            tail = std::move(cur);
-            cur = std::move(next);
+            tail = std::move(current);
+            current = std::move(next);
             ++epoch;
-            nextRate = cur->rate;
-            nextChannels = cur->channels;
+            nextRate = current->rate;
+            nextChannels = current->channels;
             boundaryFrame.store(written, std::memory_order_release);
             decoderEpoch.store(epoch, std::memory_order_release);
             publishHeld();
@@ -347,13 +365,13 @@ struct AudioEngine::Impl {
                 if (tail && seekEpoch.load(std::memory_order_acquire) < epoch) {
                     std::lock_guard lock(queueMutex);
                     if (!haltAtBoundary) {
-                        cur->buf->rewind();
-                        queued = cur->buf;
+                        current->buffer->rewind();
+                        queued = current->buffer;
                         queuedId = chainedId;
                     }
                     chainedId = 0;
                     haltAtBoundary = false;
-                    cur = std::move(tail);
+                    current = std::move(tail);
                     --epoch;
                     decoderEpoch.store(epoch, std::memory_order_release);
                     publishHeld();
@@ -363,7 +381,7 @@ struct AudioEngine::Impl {
                     publishHeld();
                 }
                 // May block until that part is downloaded.
-                ma_decoder_seek_to_pcm_frame(&cur->dec, ma_uint64(target));
+                ma_decoder_seek_to_pcm_frame(&current->decoder, ma_uint64(target));
                 if (stopDecoder) {
                     break;
                 }
@@ -394,23 +412,25 @@ struct AudioEngine::Impl {
                 std::this_thread::sleep_for(std::chrono::milliseconds(10));
                 continue;
             }
-            ma_uint64 got = 0;
-            const ma_result r = ma_decoder_read_pcm_frames(&cur->dec, chunk.data(), 1024, &got);
-            ma_uint32 remaining = ma_uint32(got);
-            const float* p = chunk.data();
+            ma_uint64 framesRead = 0;
+            const ma_result result =
+                ma_decoder_read_pcm_frames(&current->decoder, chunk.data(), 1024, &framesRead);
+            ma_uint32 remaining = ma_uint32(framesRead);
+            const float* remainingSamples = chunk.data();
             while (remaining > 0) {
-                ma_uint32 n = remaining;
-                void* dst = nullptr;
-                if (ma_pcm_rb_acquire_write(&ring, &n, &dst) != MA_SUCCESS || n == 0) {
+                ma_uint32 regionFrames = remaining;
+                void* ringRegion = nullptr;
+                if (ma_pcm_rb_acquire_write(&ring, &regionFrames, &ringRegion) != MA_SUCCESS
+                    || regionFrames == 0) {
                     break;
                 }
-                std::memcpy(dst, p, n * kChannels * sizeof(float));
-                ma_pcm_rb_commit_write(&ring, n);
-                p += n * kChannels;
-                remaining -= n;
-                written += n;
+                std::memcpy(ringRegion, remainingSamples, regionFrames * kChannels * sizeof(float));
+                ma_pcm_rb_commit_write(&ring, regionFrames);
+                remainingSamples += regionFrames * kChannels;
+                remaining -= regionFrames;
+                written += regionFrames;
             }
-            if (r == MA_AT_END || (r != MA_SUCCESS && got == 0)) {
+            if (result == MA_AT_END || (result != MA_SUCCESS && framesRead == 0)) {
                 if (tail || !tryChain()) {
                     decoderDone = true;
                 }
@@ -425,21 +445,21 @@ struct AudioEngine::Impl {
             std::lock_guard lock(queueMutex);
             held = decoderHeld;
         }
-        for (const auto& s : streams) {
-            s->interrupt();
+        for (const auto& buffer : streams) {
+            buffer->interrupt();
         }
-        for (const auto& s : held) {
-            s->interrupt();
+        for (const auto& buffer : held) {
+            buffer->interrupt();
         }
         if (decoderThread.joinable()) {
             decoderThread.join();
         }
         stopDecoder = false;
-        for (const auto& s : held) {
-            s->resume();
+        for (const auto& buffer : held) {
+            buffer->resume();
         }
-        for (const auto& s : streams) {
-            s->resume();
+        for (const auto& buffer : streams) {
+            buffer->resume();
         }
         std::lock_guard lock(queueMutex);
         queued.reset();
@@ -452,35 +472,35 @@ struct AudioEngine::Impl {
 
 AudioEngine::AudioEngine(QObject* parent)
     : QObject(parent)
-    , d(std::make_unique<Impl>()) {
+    , implementation(std::make_unique<Implementation>()) {
     updateGains();
 }
 
 AudioEngine::~AudioEngine() {
-    d->outputEnabled = false;
-    d->stopDecoderThread(streams);
-    if (d->deviceReady) {
-        ma_device_uninit(&d->device);
+    implementation->outputEnabled = false;
+    implementation->stopDecoderThread(streams);
+    if (implementation->deviceReady) {
+        ma_device_uninit(&implementation->device);
     }
-    if (d->contextReady) {
-        ma_context_uninit(&d->context);
+    if (implementation->contextReady) {
+        ma_context_uninit(&implementation->context);
     }
-    if (d->ringReady) {
-        ma_pcm_rb_uninit(&d->ring);
+    if (implementation->ringReady) {
+        ma_pcm_rb_uninit(&implementation->ring);
     }
 }
 
 AudioEngine::InitResult AudioEngine::init() {
-    if (d->deviceReady) {
+    if (implementation->deviceReady) {
         return {true, {}};
     }
-    ma_device_config cfg = ma_device_config_init(ma_device_type_playback);
-    cfg.playback.format = ma_format_f32;
-    cfg.playback.channels = kChannels;
-    cfg.sampleRate = 0;  // device native
-    cfg.dataCallback = &Impl::DataCallback;
-    cfg.pUserData = d.get();
-    cfg.performanceProfile = ma_performance_profile_conservative;
+    ma_device_config deviceConfig = ma_device_config_init(ma_device_type_playback);
+    deviceConfig.playback.format = ma_format_f32;
+    deviceConfig.playback.channels = kChannels;
+    deviceConfig.sampleRate = 0;  // device native
+    deviceConfig.dataCallback = &Implementation::DataCallback;
+    deviceConfig.pUserData = implementation.get();
+    deviceConfig.performanceProfile = ma_performance_profile_conservative;
 #if defined(__linux__) || defined(__FreeBSD__)
     // No JACK: it spams stderr when no JACK server runs.
     std::vector<ma_backend> candidates = {ma_backend_pulseaudio, ma_backend_alsa, ma_backend_null};
@@ -491,38 +511,40 @@ AudioEngine::InitResult AudioEngine::init() {
 #else
     std::vector<ma_backend> candidates = {ma_backend_coreaudio, ma_backend_null};
 #endif
-    if (QString want = qEnvironmentVariable("QIYAA_AUDIO_BACKEND").remove(QLatin1Char(' '));
-        !want.isEmpty()) {
+    if (QString requestedBackend =
+            qEnvironmentVariable("QIYAA_AUDIO_BACKEND").remove(QLatin1Char(' '));
+        !requestedBackend.isEmpty()) {
         bool known = false;
         for (int i = 0; i < MA_BACKEND_COUNT && !known; ++i) {
-            const auto b = ma_backend(i);
-            if (QString::fromLatin1(ma_get_backend_name(b))
+            const auto backend = ma_backend(i);
+            if (QString::fromLatin1(ma_get_backend_name(backend))
                     .remove(QLatin1Char(' '))
-                    .compare(want, Qt::CaseInsensitive)
+                    .compare(requestedBackend, Qt::CaseInsensitive)
                 == 0) {
-                candidates = {b};
+                candidates = {backend};
                 known = true;
             }
         }
         if (!known) {
             qWarning(
                 "QIYAA_AUDIO_BACKEND=%s: no such audio backend, using the default ones",
-                qPrintable(want)
+                qPrintable(requestedBackend)
             );
         }
     }
     // A context is bound to one backend, so try them one by one until a device opens.
     bool opened = false;
     for (ma_backend backend : candidates) {
-        if (ma_context_init(&backend, 1, nullptr, &d->context) != MA_SUCCESS) {
+        if (ma_context_init(&backend, 1, nullptr, &implementation->context) != MA_SUCCESS) {
             continue;
         }
-        if (ma_device_init(&d->context, &cfg, &d->device) == MA_SUCCESS) {
-            d->contextReady = true;
+        if (ma_device_init(&implementation->context, &deviceConfig, &implementation->device)
+            == MA_SUCCESS) {
+            implementation->contextReady = true;
             opened = true;
             break;
         }
-        ma_context_uninit(&d->context);
+        ma_context_uninit(&implementation->context);
     }
     if (!opened) {
         QStringList tried;
@@ -533,120 +555,122 @@ AudioEngine::InitResult AudioEngine::init() {
             false, QStringLiteral("no audio output device opens (tried %1)").arg(tried.join(u", "))
         };
     }
-    d->deviceReady = true;
-    d->sampleRate = d->device.sampleRate;
-    d->eq.setSampleRate(d->sampleRate);
+    implementation->deviceReady = true;
+    implementation->sampleRate = implementation->device.sampleRate;
+    implementation->eq.setSampleRate(implementation->sampleRate);
     if (ma_pcm_rb_init(
-            ma_format_f32, kChannels, d->sampleRate * kRingSeconds, nullptr, nullptr, &d->ring
+            ma_format_f32, kChannels, implementation->sampleRate * kRingSeconds, nullptr, nullptr,
+            &implementation->ring
         )
         != MA_SUCCESS) {
         return {
             false,
             QStringLiteral("cannot allocate a %1-second ring buffer at %2 Hz")
                 .arg(kRingSeconds)
-                .arg(d->sampleRate)
+                .arg(implementation->sampleRate)
         };
     }
-    d->ringReady = true;
+    implementation->ringReady = true;
     return {true, {}};
 }
 
 QString AudioEngine::backendName() const {
-    if (!d->deviceReady) {
+    if (!implementation->deviceReady) {
         return QStringLiteral("none");
     }
-    return QString::fromLatin1(ma_get_backend_name(d->device.pContext->backend));
+    return QString::fromLatin1(ma_get_backend_name(implementation->device.pContext->backend));
 }
 
 void AudioEngine::dropStreams() {
-    d->outputEnabled.store(false, std::memory_order_release);
-    d->stopDecoderThread(streams);
+    implementation->outputEnabled.store(false, std::memory_order_release);
+    implementation->stopDecoderThread(streams);
     streams.clear();
-    current = queued = 0;
+    currentId = queuedId = 0;
 }
 
 void AudioEngine::startDecoder() {
     // Stopping the device guarantees the callback isn't inside the ring right now.
-    if (d->deviceReady && ma_device_is_started(&d->device)) {
-        ma_device_stop(&d->device);
+    if (implementation->deviceReady && ma_device_is_started(&implementation->device)) {
+        ma_device_stop(&implementation->device);
     }
-    ma_pcm_rb_reset(&d->ring);
-    if (d->deviceReady) {
-        ma_device_start(&d->device);
+    ma_pcm_rb_reset(&implementation->ring);
+    if (implementation->deviceReady) {
+        ma_device_start(&implementation->device);
     }
 
-    d->framesPlayed = 0;
-    d->frameOffset = 0;
-    d->decoderStarted = false;
-    d->decoderDone = false;
-    d->decoderFailed = false;
-    d->finishedReported = false;
-    d->seekRequest = -1;
-    d->decoderEpoch = 0;
-    d->uiEpoch = 0;
-    d->failedQueued = 0;
+    implementation->framesPlayed = 0;
+    implementation->frameOffset = 0;
+    implementation->decoderStarted = false;
+    implementation->decoderDone = false;
+    implementation->decoderFailed = false;
+    implementation->finishedReported = false;
+    implementation->seekRequest = -1;
+    implementation->decoderEpoch = 0;
+    implementation->uiEpoch = 0;
+    implementation->failedQueuedId = 0;
     sourceRate = 0;
     sourceChannelCount = 0;
 
-    d->decoderThread = std::thread(
-        &Impl::decoderMain, d.get(), streams.value(current), &sourceRate, &sourceChannelCount
+    implementation->decoderThread = std::thread(
+        &Implementation::decoderMain, implementation.get(), streams.value(currentId), &sourceRate,
+        &sourceChannelCount
     );
-    d->outputEnabled.store(true, std::memory_order_release);
+    implementation->outputEnabled.store(true, std::memory_order_release);
     setState(State::Buffering);
 }
 
 AudioEngine::TStreamId AudioEngine::beginStream() {
     dropStreams();
-    if (!d->ringReady) {
+    if (!implementation->ringReady) {
         setState(State::Stopped);
         Q_EMIT errorOccurred(QStringLiteral("no audio output device"));
         return 0;
     }
-    current = ++lastId;
-    streams.insert(current, std::make_shared<StreamBuffer>());
+    currentId = ++lastId;
+    streams.insert(currentId, std::make_shared<StreamBuffer>());
     startDecoder();
-    return current;
+    return currentId;
 }
 
 AudioEngine::TStreamId AudioEngine::queueStream() {
     clearQueued();
-    if (!d->decoderThread.joinable()) {
+    if (!implementation->decoderThread.joinable()) {
         return 0;
     }
-    queued = ++lastId;
-    auto buf = std::make_shared<StreamBuffer>();
-    streams.insert(queued, buf);
-    std::lock_guard lock(d->queueMutex);
-    d->queued = std::move(buf);
-    d->queuedId = queued;
-    return queued;
+    queuedId = ++lastId;
+    auto buffer = std::make_shared<StreamBuffer>();
+    streams.insert(queuedId, buffer);
+    std::lock_guard lock(implementation->queueMutex);
+    implementation->queued = std::move(buffer);
+    implementation->queuedId = queuedId;
+    return queuedId;
 }
 
 void AudioEngine::clearQueued() {
-    const TStreamId id = std::exchange(queued, 0);
+    const TStreamId id = std::exchange(queuedId, 0);
     if (!id) {
         return;
     }
-    std::shared_ptr<StreamBuffer> buf = streams.take(id);
-    std::lock_guard lock(d->queueMutex);
-    if (d->queuedId == id) {
-        d->queued.reset();
-        d->queuedId = 0;
-    } else if (d->chainingId == id) {
-        d->dropChaining = true;
-        if (buf) {
-            buf->interrupt();
+    std::shared_ptr<StreamBuffer> buffer = streams.take(id);
+    std::lock_guard lock(implementation->queueMutex);
+    if (implementation->queuedId == id) {
+        implementation->queued.reset();
+        implementation->queuedId = 0;
+    } else if (implementation->chainingId == id) {
+        implementation->dropChaining = true;
+        if (buffer) {
+            buffer->interrupt();
         }
-    } else if (d->chainedId == id) {
-        d->haltAtBoundary = true;
-        if (buf) {
-            buf->interrupt();
+    } else if (implementation->chainedId == id) {
+        implementation->haltAtBoundary = true;
+        if (buffer) {
+            buffer->interrupt();
         }
     }
 }
 
 AudioEngine::TStreamId AudioEngine::queuedStream() const {
-    return queued && d->failedQueued.load() != queued ? queued : 0;
+    return queuedId && implementation->failedQueuedId.load() != queuedId ? queuedId : 0;
 }
 
 AudioEngine::TStreamId AudioEngine::playQueuedNow() {
@@ -654,33 +678,33 @@ AudioEngine::TStreamId AudioEngine::playQueuedNow() {
     if (!id) {
         return 0;
     }
-    std::shared_ptr<StreamBuffer> buf = streams.value(id);
-    d->outputEnabled.store(false, std::memory_order_release);
-    d->stopDecoderThread(streams);
+    std::shared_ptr<StreamBuffer> buffer = streams.value(id);
+    implementation->outputEnabled.store(false, std::memory_order_release);
+    implementation->stopDecoderThread(streams);
     streams.clear();
-    buf->rewind();
-    streams.insert(id, buf);
-    current = id;
-    queued = 0;
+    buffer->rewind();
+    streams.insert(id, buffer);
+    currentId = id;
+    queuedId = 0;
     startDecoder();
     return id;
 }
 
 void AudioEngine::appendData(TStreamId stream, const QByteArray& bytes) {
-    if (const auto buf = streams.value(stream)) {
-        buf->append(bytes.constData(), size_t(bytes.size()));
+    if (const auto buffer = streams.value(stream)) {
+        buffer->append(bytes.constData(), size_t(bytes.size()));
     }
 }
 
 void AudioEngine::finishData(TStreamId stream) {
-    if (const auto buf = streams.value(stream)) {
-        buf->finish(false);
+    if (const auto buffer = streams.value(stream)) {
+        buffer->finish(false);
     }
 }
 
 void AudioEngine::failData(TStreamId stream) {
-    if (const auto buf = streams.value(stream)) {
-        buf->finish(true);
+    if (const auto buffer = streams.value(stream)) {
+        buffer->finish(true);
     }
 }
 
@@ -688,8 +712,8 @@ void AudioEngine::pause() {
     if (currentState != State::Playing && currentState != State::Buffering) {
         return;
     }
-    if (d->deviceReady) {
-        ma_device_stop(&d->device);
+    if (implementation->deviceReady) {
+        ma_device_stop(&implementation->device);
     }
     setState(State::Paused);
 }
@@ -698,67 +722,72 @@ void AudioEngine::resume() {
     if (currentState != State::Paused) {
         return;
     }
-    if (d->deviceReady) {
-        ma_device_start(&d->device);
+    if (implementation->deviceReady) {
+        ma_device_start(&implementation->device);
     }
-    setState(d->decoderStarted ? State::Playing : State::Buffering);
+    setState(implementation->decoderStarted ? State::Playing : State::Buffering);
 }
 
 void AudioEngine::stop() {
     dropStreams();
-    if (d->deviceReady && ma_device_is_started(&d->device)) {
-        ma_device_stop(&d->device);
+    if (implementation->deviceReady && ma_device_is_started(&implementation->device)) {
+        ma_device_stop(&implementation->device);
     }
-    d->framesPlayed = 0;
-    d->frameOffset = 0;
+    implementation->framesPlayed = 0;
+    implementation->frameOffset = 0;
     setState(State::Stopped);
 }
 
 bool AudioEngine::seek(double seconds) {
-    if (!d->decoderThread.joinable() || !d->decoderStarted || seconds < 0) {
+    if (!implementation->decoderThread.joinable() || !implementation->decoderStarted
+        || seconds < 0) {
         return false;
     }
     // ma_device_stop() waits for a running callback; after the restart the callback sees
     // seekRequest >= 0 and leaves the ring alone until the decoder thread clears it.
-    const bool wasRunning = d->deviceReady && ma_device_is_started(&d->device);
+    const bool wasRunning =
+        implementation->deviceReady && ma_device_is_started(&implementation->device);
     if (wasRunning) {
-        ma_device_stop(&d->device);
+        ma_device_stop(&implementation->device);
     }
     // The track the UI shows; the decoder may already be in the next one.
-    d->seekEpoch.store(d->uiEpoch.load(), std::memory_order_release);
-    d->seekRequest.store(ma_int64(seconds * d->sampleRate), std::memory_order_release);
+    implementation->seekEpoch.store(implementation->uiEpoch.load(), std::memory_order_release);
+    implementation->seekRequest.store(
+        ma_int64(seconds * implementation->sampleRate), std::memory_order_release
+    );
     if (wasRunning) {
-        ma_device_start(&d->device);
+        ma_device_start(&implementation->device);
     }
     return true;
 }
 
 double AudioEngine::positionSeconds() const {
-    if (d->sampleRate == 0) {
+    if (implementation->sampleRate == 0) {
         return 0;
     }
-    const ma_int64 frames = d->frameOffset.load() + ma_int64(d->framesPlayed.load());
-    return double(std::max<ma_int64>(0, frames)) / d->sampleRate;
+    const ma_int64 frames =
+        implementation->frameOffset.load() + ma_int64(implementation->framesPlayed.load());
+    return double(std::max<ma_int64>(0, frames)) / implementation->sampleRate;
 }
 
 void AudioEngine::setEqualizer(const EqSettings& settings) {
-    d->eq.publish(settings);
+    implementation->eq.publish(settings);
 }
 
 void AudioEngine::readVisSamples(std::span<float> left, std::span<float> right) const {
-    d->vis.read(left, right);
+    implementation->visTap.read(left, right);
 }
 
 VisReadResult AudioEngine::readNewVisSamples(uint32_t cursor, std::span<float> stereo) const {
-    return d->vis.readNew(cursor, stereo);
+    return implementation->visTap.readNew(cursor, stereo);
 }
 
 uint32_t AudioEngine::visCursor() const {
-    return d->vis.position();
+    return implementation->visTap.position();
 }
 
 int AudioEngine::outputSampleRate() const {
-    return int(d->sampleRate);
+    return int(implementation->sampleRate);
 }
 
 void AudioEngine::setVolume(int percent) {
@@ -772,16 +801,16 @@ void AudioEngine::setBalance(int balance) {
 }
 
 void AudioEngine::updateGains() {
-    const float v = float(volumePercent) / 100.0f;
-    const float g = v * v;
-    const float b = float(balancePercent) / 100.0f;
-    d->gainL = g * (b > 0 ? 1.0f - b : 1.0f);
-    d->gainR = g * (b < 0 ? 1.0f + b : 1.0f);
+    const float volume = float(volumePercent) / 100.0f;
+    const float gain = volume * volume;
+    const float balance = float(balancePercent) / 100.0f;
+    implementation->gainLeft = gain * (balance > 0 ? 1.0f - balance : 1.0f);
+    implementation->gainRight = gain * (balance < 0 ? 1.0f + balance : 1.0f);
 }
 
 void AudioEngine::poll() {
-    if (d->decoderFailed.exchange(false)) {
-        const std::shared_ptr<StreamBuffer> buffer = streams.value(current);
+    if (implementation->decoderFailed.exchange(false)) {
+        const std::shared_ptr<StreamBuffer> buffer = streams.value(currentId);
         const qulonglong received = buffer ? buffer->size() : 0;
         stop();
         Q_EMIT errorOccurred(
@@ -791,47 +820,51 @@ void AudioEngine::poll() {
         );
         return;
     }
-    if (const TStreamId bad = d->failedQueued.exchange(0); bad && bad == queued) {
-        streams.remove(bad);
-        queued = 0;
+    if (const TStreamId failedId = implementation->failedQueuedId.exchange(0);
+        failedId && failedId == queuedId) {
+        streams.remove(failedId);
+        queuedId = 0;
     }
-    const int chained = d->decoderEpoch.load(std::memory_order_acquire);
-    if (chained > d->uiEpoch.load() && d->seekRequest.load() < 0 && !d->finishedReported
-        && d->framesPlayed.load() >= d->boundaryFrame.load(std::memory_order_acquire)) {
-        if (d->haltAtBoundary) {
+    const int chainedEpoch = implementation->decoderEpoch.load(std::memory_order_acquire);
+    if (chainedEpoch > implementation->uiEpoch.load() && implementation->seekRequest.load() < 0
+        && !implementation->finishedReported
+        && implementation->framesPlayed.load()
+            >= implementation->boundaryFrame.load(std::memory_order_acquire)) {
+        if (implementation->haltAtBoundary) {
             {
-                std::lock_guard lock(d->queueMutex);
-                d->finishedReported = true;
+                std::lock_guard lock(implementation->queueMutex);
+                implementation->finishedReported = true;
             }
             Q_EMIT trackFinished();
             return;
         }
         {
-            std::lock_guard lock(d->queueMutex);
-            d->chainedId = 0;
+            std::lock_guard lock(implementation->queueMutex);
+            implementation->chainedId = 0;
         }
-        d->frameOffset = -ma_int64(d->boundaryFrame.load());
-        d->uiEpoch.store(chained, std::memory_order_release);
-        streams.remove(current);
-        current = std::exchange(queued, 0);
-        sourceRate = d->nextRate.load();
-        sourceChannelCount = d->nextChannels.load();
+        implementation->frameOffset = -ma_int64(implementation->boundaryFrame.load());
+        implementation->uiEpoch.store(chainedEpoch, std::memory_order_release);
+        streams.remove(currentId);
+        currentId = std::exchange(queuedId, 0);
+        sourceRate = implementation->nextRate.load();
+        sourceChannelCount = implementation->nextChannels.load();
         Q_EMIT trackAdvanced();
         return;
     }
-    if (currentState == State::Buffering && d->decoderStarted
-        && ma_pcm_rb_available_read(&d->ring) > 0) {
+    if (currentState == State::Buffering && implementation->decoderStarted
+        && ma_pcm_rb_available_read(&implementation->ring) > 0) {
         setState(State::Playing);
     }
-    if (currentState == State::Playing && d->decoderDone && ma_pcm_rb_available_read(&d->ring) == 0
-        && d->seekRequest.load() < 0 && !d->finishedReported) {
+    if (currentState == State::Playing && implementation->decoderDone
+        && ma_pcm_rb_available_read(&implementation->ring) == 0
+        && implementation->seekRequest.load() < 0 && !implementation->finishedReported) {
         {
             // Under the lock: a chain in progress re-checks finishedReported before committing.
-            std::lock_guard lock(d->queueMutex);
-            if (d->decoderEpoch.load() > d->uiEpoch.load()) {
+            std::lock_guard lock(implementation->queueMutex);
+            if (implementation->decoderEpoch.load() > implementation->uiEpoch.load()) {
                 return;
             }
-            d->finishedReported = true;
+            implementation->finishedReported = true;
         }
         Q_EMIT trackFinished();
     }

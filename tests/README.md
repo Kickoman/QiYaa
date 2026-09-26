@@ -97,7 +97,7 @@ directly. With no session bus it then skips itself in `initTestCase`. On a deskt
 **milkdrop_gl_test**: projectM needs an OpenGL 3.3 context, and the offscreen platform has
 none. With `QIYAA_HAVE_MILKDROP`, `xvfb-run` and the target `Qt6::QXcbIntegrationPlugin`
 available, CTest adds a second entry. It runs `rendersWithProjectM`, `blackPictureIsNoticed`
-and `fullScreenAndBack` under `xvfb-run -a -s "-screen 0 1280x1024x24 +extension GLX"` with
+and `fullScreenTakesOverRenderingAndGivesItBack` under `xvfb-run -a -s "-screen 0 1280x1024x24 +extension GLX"` with
 `QT_QPA_PLATFORM=xcb`, `LIBGL_ALWAYS_SOFTWARE=1` (Mesa's software renderer),
 `QIYAA_AUDIO_BACKEND=null` and `QIYAA_EXPECT_GL=1`. `QIYAA_EXPECT_GL` turns "no OpenGL here"
 from a skip into a failure, because on that runner OpenGL must work (but see **Traps**).
@@ -112,7 +112,7 @@ pictures into an existing directory; nothing creates it:
 **tests/data**
 
 - `sine440_3s.mp3` feeds `audio_test` and every track of `library_test`'s preload tests.
-  `audio_test` checks 44,100 Hz and 2 channels on it. `rapidSeeksWhileDownloading` joins 13
+  `audio_test` checks 44,100 Hz and 2 channels on it. `rapidSeeksWhileDownloadingLandOnTheLastTarget` joins 13
   copies into a stream of about 39 s, which works because MP3 frames concatenate.
 - `screen-2560x1440.json` is used only by `windows_test`.
 - `golden/` holds the seven PNGs of `screenshots_test`. Recording writes here, into the source
@@ -212,9 +212,9 @@ public:
   waiting.
 - A header sent twice keeps its last value. Request bodies must carry `Content-Length`; chunked
   bodies are not read. `QNetworkAccessManager` sends `Content-Length` for byte-array bodies.
-- HTTP only. Yandex track links are always `https://`, so `library_test`'s `LocalNam` (a
-  `QNetworkAccessManager`) rewrites `https` URLs with host `127.0.0.1` to `http`. The
-  `/get-mp3/…` link then reaches this server.
+- HTTP only. Yandex track links are always `https://`, so `library_test`'s
+  `LocalNetworkAccessManager` (a `QNetworkAccessManager`) rewrites `https` URLs with host
+  `127.0.0.1` to `http`. The `/get-mp3/…` link then reaches this server.
 - It is a `QObject` without `Q_OBJECT`, so it has no signals. Wait on the client's signals or
   callbacks instead.
 
@@ -264,16 +264,16 @@ These are facts the function names do not carry. What each module promises is in
 
 **audio_test.** `initTestCase` skips the whole suite if `engine.init()` fails. It sets volume
 0, in case the binary runs outside CTest on a real device, and logs the backend name. All
-functions share one engine and each starts a new stream. `where(advanced, finished)` puts the
-engine's state into the failure messages of the chaining tests: signals seen, position, state,
-current and queued stream ids.
+functions share one engine and each starts a new stream. `describeEngine(advancedCount,
+finishedCount)` puts the engine's state into the failure messages of the chaining tests: signals
+seen, position, state, current and queued stream ids.
 
 - `streamsInChunksAndPlays` feeds the file like a slow network, 4 KB every 10 ms.
-- `rapidSeeksWhileDownloading` feeds 64 KB, then 16 KB after each of 24 seeks (3 rounds of 8
+- `rapidSeeksWhileDownloadingLandOnTheLastTarget` feeds 64 KB, then 16 KB after each of 24 seeks (3 rounds of 8
   targets, some past what has been downloaded). A final seek to 12 s must play from [12, 14) s.
 - `playerPollsTheEngine`: nobody calls `engine.poll()`, so the `Core::Player`'s own timer must
   notice the end of the track.
-- `restartWhileStreaming`: five `beginStream()` calls 30 ms apart, mid-download, must not hang
+- `restartingWhileStreamingDoesNotHang`: five `beginStream()` calls 30 ms apart, mid-download, must not hang
   or crash.
 
 The chaining tests start with two helpers. `startNearEnd(at)` plays the file and seeks to `at`
@@ -291,13 +291,13 @@ The chaining tests start with two helpers. `startNearEnd(at)` plays the file and
 - `partlyDownloadedQueuedStreamIsNotChained`: chaining waits for the whole file. Until then the
   track ends with `trackFinished`, and the Player starts the queued stream with
   `playQueuedNow()`.
-- `stopWhileQueuedDataIsMissing` and `clearingAChainedStreamThenRestartingDoesNotHang`:
+- `stopReturnsPromptlyWhileQueuedDataIsMissing` and `clearingAChainedStreamThenRestartingDoesNotHang`:
   `stop()` and `beginStream()` must return within 1 s. The decoder never waits forever for a
   queued stream's data.
 
 **dsp_test.**
 
-- `settingsChangeWhileProcessing` publishes new settings before each of 100 blocks of 480
+- `settingsChangingWhileProcessingKeepsOutputBounded` publishes new settings before each of 100 blocks of 480
   frames. The output must stay finite and below 4.0 in magnitude.
 - `presetsLookRight`: "Full Bass" is above +5 dB in band 0 and below −5 dB in band 9.
 - The `.eqf` tests pin these facts (the layout itself is in
@@ -322,7 +322,7 @@ collects a `(value, error)` callback, and `wait()` spins for up to 5 s.
 
 - `slowLoadDoesNotReplaceNewerChoice`: the likes answer after 300 ms (`delayMs`). "Моя волна"
   is chosen in the meantime, and the late likes must be ignored.
-- `wheelOfWavesWithUnwrappedBody`: `/wheel/new` answers without the `{"result": …}` envelope.
+- `wheelOfWavesReadsAnUnwrappedBodyAndSkipsOtherItems`: `/wheel/new` answers without the `{"result": …}` envelope.
 - Wave feedback goes to the session endpoint `/rotor/session/<id>/feedback` first. On an HTTP
   4xx (404 here) it falls back to `/rotor/station/<station>/feedback?batch-id=…`, and that
   session stays on the station endpoint without retrying. On a 5xx there is no fallback,
@@ -332,10 +332,10 @@ collects a `(value, error)` callback, and `wait()` spins for up to 5 s.
 - The track-event log entries are `"<int(TrackEvent)>:<track id>"`, where 0 is Started,
   1 Finished and 2 Skipped. Playing another index logs Skipped for the current track.
   Replacing the queue does the same.
-- `AudioRig` is a separate `LocalNam`, `ApiClient`, `Library`, engine and `Player` that really
-  plays (on the Null output). `setUpAudio` serves, for each id, `download-info`, then
-  `/dlinfo<id>`, then the mp3 under `/get-mp3/`. It returns false, and the test skips, when the
-  mp3 can't be read or the engine can't start.
+- `PlaybackStack` is a separate `LocalNetworkAccessManager`, `ApiClient`, `Library`, engine and
+  `Player` that really plays (on the Null output). `setUpAudio` serves, for each id,
+  `download-info`, then `/dlinfo<id>`, then the mp3 under `/get-mp3/`. It returns false, and the
+  test skips, when the mp3 can't be read or the engine can't start.
 - `playerPreloadsAndAdvancesSeamlessly`: once track 11 is downloaded, 12 is fetched in the
   background (`preloadedIndex() == 1`). The advance is `trackAdvanced`, never `trackFinished`,
   logged as Started 11, Finished 11, Started 12. The download info for 12 is requested once.
@@ -352,7 +352,7 @@ events go through `QCoreApplication::sendEvent`, which is synchronous.
   to it.
 - At scale 2 the window is 550×232. At 1.5 it is 413×174, and clicks map back to skin
   coordinates. `setScale(1.3333)` rounds to 1.35.
-- `fractionalScale` grabs the window at 1.5, the sharp-bilinear path, but checks only the
+- `fractionalScaleSizesTheWindowAndMapsClicksBack` grabs the window at 1.5, the sharp-bilinear path, but checks only the
   image size, not the pixels.
 
 **milkdrop_test.**
@@ -365,7 +365,8 @@ events go through `QCoreApplication::sendEvent`, which is synchronous.
 - `builtInPresetsAreBundled` expects at least 50 presets in `:/milkdrop`, each containing
   `[preset`.
 - `windowSwitchesPresets` expects no `view()` before the window is shown, because it creates
-  nothing OpenGL until then. `onSwitchRequested(false)` stands for projectM's "time is up".
+  nothing OpenGL until then. `onSwitchRequested(Vis::PresetTransition::Blend)` stands for
+  projectM's "time is up".
 - `onStaysBlack()` stands for the detector reporting the current preset.
   `manyBlackInARowStopsBlamingPresets` reports 12 in a row, and only 5 are recorded. Black
   presets one after another mean something else is wrong, such as no sound reaching projectM
@@ -381,7 +382,7 @@ events go through `QCoreApplication::sendEvent`, which is synchronous.
 - `blackPictureIsNoticed`: `black.milk` draws nothing (decay 0, no wave, borders or motion
   vectors) and must raise `staysBlack`. `white.milk` has a 0.5-wide white outer border and must
   raise `drawsPicture`.
-- `fullScreenAndBack`: in fullscreen the windowed view stops rendering, because the fullscreen
+- `fullScreenTakesOverRenderingAndGivesItBack`: in fullscreen the windowed view stops rendering, because the fullscreen
   view renders instead. The final `qWait(100)` lets the deleted fullscreen view go.
 
 **mpris_test.** The suite shares these fixtures:
@@ -496,17 +497,17 @@ D-Bus, and OpenGL on a software renderer. This is how they stay stable:
 - **Shared state in `library_test`.** Later functions rely on earlier ones:
   - `connectsAccountWithAuthHeader` logs in as uid 42, which the `/users/42/…` routes need;
   - the `/tracks/` route from `likedTracksFetchesMetadataAndRemembersLikes` also answers
-    `playlistWithoutEmbeddedTracksFetchesByIds` and `artistsAndTopTracks`.
+    `playlistWithoutEmbeddedTracksFetchesByIds` and `likedArtistsAndTheirTopTracksAreParsed`.
 
   To run one function, name its prerequisites before it. Qt Test runs named functions in the
   order given.
 - **Shared state in `mpris_test`.** `appSideChangesAreAnnounced` waits for `Shuffle` to change
   to false. `Player::setShuffle` announces only real changes, so this needs
-  `writableProperties` to have switched shuffle on first. That in turn needs `gdbus`, so with
+  `writablePropertiesReachThePlayerAndAreAnnounced` to have switched shuffle on first. That in turn needs `gdbus`, so with
   no `gdbus` or run alone, it times out after 3 s.
 - **`QIYAA_EXPECT_GL` is not honoured everywhere.** `rendersWithProjectM` fails when the view
   is missing or never gets ready. `blackPictureIsNoticed` fails only when the view is missing.
-  `fullScreenAndBack` never checks the variable. `milkdrop_gl_test` can therefore pass with
+  `fullScreenTakesOverRenderingAndGivesItBack` never checks the variable. `milkdrop_gl_test` can therefore pass with
   skips; read the ctest output for `SKIP`.
 - **Synthetic input uses skin coordinates.** Examples: Shuffle at (184, 96); the volume slider
   from x = 107; EQ band 60 Hz at x = 78 with 51 px of travel; the playlist's first row at
@@ -516,8 +517,8 @@ D-Bus, and OpenGL on a software renderer. This is how they stay stable:
 - **`QTEST_MAIN` or `QTEST_GUILESS_MAIN`.** Suites that create widgets or paint use
   `QTEST_MAIN`: dsp, main_window, milkdrop, screenshots, skin and windows. The others use
   `QTEST_GUILESS_MAIN` (`QCoreApplication`), and a widget created there aborts the test.
-- **`stopWhileQueuedDataIsMissing` always feeds half the file.** It appends
-  `mp3.left(70000 < mp3.size() ? 70000 : mp3.size() / 2)`, and the fixture is 24,494 bytes,
+- **`stopReturnsPromptlyWhileQueuedDataIsMissing` always feeds half the file.** It appends
+  `mp3.left(70'000 < mp3.size() ? 70'000 : mp3.size() / 2)`, and the fixture is 24,494 bytes,
   so the 70,000 branch is never taken.
 
 ## Not here

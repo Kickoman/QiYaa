@@ -43,7 +43,7 @@ knows where files live. Details: [src/app](../src/app/README.md).
 ```
 Ui (menu)  ──source──▶  Core::Player  ──resolveTrackUrl──▶  Yandex::ApiClient
                             │  ▲
-          download bytes    │  │ poll() every 100 ms: state, trackFinished, trackAdvanced
+          download bytes    │  │ poll(): state, trackFinished, trackAdvanced
                             ▼  │
                       Audio::AudioEngine ─▶ decoder thread ─▶ ring (2 s) ─▶ device callback
                                                                   EQ → VisTap → volume, balance

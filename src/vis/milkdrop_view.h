@@ -59,7 +59,7 @@ Q_SIGNALS:
     void drawsPicture();
     void frameCaptured(const QImage& frame);
     void doubleClicked();
-    void contextMenuRequested(const QPoint& globalPos);
+    void contextMenuRequested(const QPoint& globalPosition);
     void keyPressed(int key, Qt::KeyboardModifiers modifiers);
 
 protected:
@@ -85,7 +85,7 @@ private:
     QTimer timer;
     uint32_t visReadCursor = 0;
     std::vector<float> pcm;
-    std::optional<std::pair<QByteArray, PresetTransition>> pending;
+    std::optional<std::pair<QByteArray, PresetTransition>> pendingPreset;
     double duration = 30;
     bool lockEnabled = false;
     QStringList texturePaths;
@@ -103,8 +103,8 @@ private:
     bool captureRequested = false;
     QElapsedTimer sinceLoad;
     QElapsedTimer sinceCheck;
-    unsigned probeFbo = 0;
-    unsigned probeTex = 0;
+    unsigned probeFramebuffer = 0;
+    unsigned probeTexture = 0;
 };
 
 }  // namespace Vis

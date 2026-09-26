@@ -60,7 +60,7 @@ class TestScreenshots : public QObject {
     Q_OBJECT
 private:
     Skins::Skin skin;
-    QNetworkAccessManager nam;
+    QNetworkAccessManager networkManager;
     std::unique_ptr<Yandex::ApiClient> api;
     std::unique_ptr<Yandex::Library> library;
     std::unique_ptr<Audio::AudioEngine> engine;
@@ -92,7 +92,7 @@ private Q_SLOTS:
     void initTestCase() {
         skin = Skins::Skin::BuiltinBase();
         QVERIFY(skin.isValid());
-        api = std::make_unique<Yandex::ApiClient>(&nam);
+        api = std::make_unique<Yandex::ApiClient>(&networkManager);
         library = std::make_unique<Yandex::Library>(api.get());
         engine = std::make_unique<Audio::AudioEngine>();
         player = std::make_unique<Core::Player>(library.get(), engine.get());

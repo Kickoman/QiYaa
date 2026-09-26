@@ -25,9 +25,9 @@ namespace {
 const QString kService = QStringLiteral("org.mpris.MediaPlayer2.qiyaatest");
 const QString kPath = QStringLiteral("/org/mpris/MediaPlayer2");
 
-QList<Yandex::Track> MakeTracks(int n) {
-    QList<Yandex::Track> out;
-    for (int i = 0; i < n; ++i) {
+QList<Yandex::Track> MakeTracks(int count) {
+    QList<Yandex::Track> tracks;
+    for (int i = 0; i < count; ++i) {
         Yandex::Track track;
         track.id = QString::number(100 + i);
         track.albumId = QStringLiteral("7");
@@ -35,9 +35,9 @@ QList<Yandex::Track> MakeTracks(int n) {
         track.artists = {QStringLiteral("Кино")};
         track.albumTitle = QStringLiteral("Альбом");
         track.durationMs = 200'000;
-        out << track;
+        tracks << track;
     }
-    return out;
+    return tracks;
 }
 
 class ChangeSink : public QObject {
@@ -55,10 +55,10 @@ public Q_SLOTS:
 class TestMpris : public QObject {
     Q_OBJECT
 private:
-    QTemporaryDir tmp;
-    QNetworkAccessManager nam;
+    QTemporaryDir coverDirectory;
+    QNetworkAccessManager networkManager;
     std::unique_ptr<Yandex::ApiClient> api;
-    std::unique_ptr<Yandex::Library> lib;
+    std::unique_ptr<Yandex::Library> library;
     std::unique_ptr<Audio::AudioEngine> engine;
     std::unique_ptr<Core::Player> player;
     std::unique_ptr<Core::CoverCache> covers;
@@ -69,17 +69,18 @@ private:
     QString gdbus;
 
     // Runs gdbus asynchronously so our event loop can serve the call.
-    QString gdbusCall(const QStringList& args) {
-        QProcess p;
-        p.start(
+    QString gdbusCall(const QStringList& arguments) {
+        QProcess process;
+        process.start(
             gdbus,
             QStringList{"call", "--session", "--dest", kService, "--object-path", kPath, "--method"}
-                + args
+                + arguments
         );
-        if (!QTest::qWaitFor([&] { return p.state() == QProcess::NotRunning; }, 5000)) {
+        if (!QTest::qWaitFor([&] { return process.state() == QProcess::NotRunning; }, 5000)) {
             return QStringLiteral("<timeout>");
         }
-        return QString::fromUtf8(p.readAllStandardOutput() + p.readAllStandardError()).trimmed();
+        return QString::fromUtf8(process.readAllStandardOutput() + process.readAllStandardError())
+            .trimmed();
     }
 
 private Q_SLOTS:
@@ -88,13 +89,13 @@ private Q_SLOTS:
             QSKIP("no D-Bus session bus (run under dbus-run-session)");
         }
         gdbus = QStandardPaths::findExecutable(QStringLiteral("gdbus"));
-        api = std::make_unique<Yandex::ApiClient>(&nam);
+        api = std::make_unique<Yandex::ApiClient>(&networkManager);
         api->setBaseUrl(QStringLiteral("http://127.0.0.1:9")
         );  // nothing listens: link requests fail fast
-        lib = std::make_unique<Yandex::Library>(api.get());
+        library = std::make_unique<Yandex::Library>(api.get());
         engine = std::make_unique<Audio::AudioEngine>();
-        player = std::make_unique<Core::Player>(lib.get(), engine.get());
-        covers = std::make_unique<Core::CoverCache>(nullptr, tmp.path());
+        player = std::make_unique<Core::Player>(library.get(), engine.get());
+        covers = std::make_unique<Core::CoverCache>(nullptr, coverDirectory.path());
         Integrations::MediaControls::Hooks hooks;
         hooks.volume = [this] { return volume; };
         hooks.setVolume = [this](int value) {
@@ -112,7 +113,7 @@ private Q_SLOTS:
         player->setQueue(MakeTracks(3), QStringLiteral("T"), false);
     }
 
-    void rootInterface() {
+    void rootInterfaceNamesTheAppAndRaisesIt() {
         QDBusInterface root(kService, kPath, QStringLiteral("org.mpris.MediaPlayer2"));
         QVERIFY(root.isValid());
         QCOMPARE(root.property("Identity").toString(), QStringLiteral("QiYaa"));
@@ -124,14 +125,16 @@ private Q_SLOTS:
         QCOMPARE(raised, 1);
     }
 
-    void metadataOfCurrentTrack() {
+    void metadataDescribesTheCurrentTrack() {
         QDBusInterface playerInterface(
             kService, kPath, QStringLiteral("org.mpris.MediaPlayer2.Player")
         );
-        const QVariantMap md = playerInterface.property("Metadata").toMap();
-        QCOMPARE(md.value("xesam:title").toString(), QStringLiteral("Песня 1"));
-        QCOMPARE(md.value("xesam:artist").toStringList(), QStringList{QStringLiteral("Кино")});
-        QCOMPARE(md.value("mpris:length").toLongLong(), 200'000'000LL);
+        const QVariantMap metadata = playerInterface.property("Metadata").toMap();
+        QCOMPARE(metadata.value("xesam:title").toString(), QStringLiteral("Песня 1"));
+        QCOMPARE(
+            metadata.value("xesam:artist").toStringList(), QStringList{QStringLiteral("Кино")}
+        );
+        QCOMPARE(metadata.value("mpris:length").toLongLong(), 200'000'000LL);
         QCOMPARE(playerInterface.property("PlaybackStatus").toString(), QStringLiteral("Stopped"));
     }
 
@@ -145,14 +148,14 @@ private Q_SLOTS:
             QStringLiteral("PropertiesChanged"), &sink,
             SLOT(onChanged(QString, QVariantMap, QStringList))
         ));
-        const QString out = gdbusCall({QStringLiteral("org.mpris.MediaPlayer2.Player.Next")});
-        QVERIFY2(out == QStringLiteral("()"), qPrintable(out));
+        const QString reply = gdbusCall({QStringLiteral("org.mpris.MediaPlayer2.Player.Next")});
+        QVERIFY2(reply == QStringLiteral("()"), qPrintable(reply));
         QCOMPARE(player->currentIndex(), 1);
         // Clients (GNOME's media panel) learn about the new track from PropertiesChanged.
         QVERIFY(QTest::qWaitFor(
             [&] {
-                for (const auto& c : sink.changes) {
-                    if (c.contains("Metadata")) {
+                for (const auto& change : sink.changes) {
+                    if (change.contains("Metadata")) {
                         return true;
                     }
                 }
@@ -165,7 +168,7 @@ private Q_SLOTS:
         QCOMPARE(player->currentIndex(), 0);
     }
 
-    void writableProperties() {
+    void writablePropertiesReachThePlayerAndAreAnnounced() {
         if (gdbus.isEmpty()) {
             QSKIP("gdbus not installed");
         }
@@ -175,24 +178,31 @@ private Q_SLOTS:
             QStringLiteral("PropertiesChanged"), &sink,
             SLOT(onChanged(QString, QVariantMap, QStringList))
         ));
-        const QString set = QStringLiteral("org.freedesktop.DBus.Properties.Set");
-        const QString iface = QStringLiteral("org.mpris.MediaPlayer2.Player");
-        gdbusCall({set, iface, QStringLiteral("Volume"), QStringLiteral("<0.3>")});
+        const QString setMethod = QStringLiteral("org.freedesktop.DBus.Properties.Set");
+        const QString playerInterfaceName = QStringLiteral("org.mpris.MediaPlayer2.Player");
+        gdbusCall(
+            {setMethod, playerInterfaceName, QStringLiteral("Volume"), QStringLiteral("<0.3>")}
+        );
         QCOMPARE(volume, 30);
-        gdbusCall({set, iface, QStringLiteral("Shuffle"), QStringLiteral("<true>")});
+        gdbusCall(
+            {setMethod, playerInterfaceName, QStringLiteral("Shuffle"), QStringLiteral("<true>")}
+        );
         QVERIFY(player->shuffle());
-        gdbusCall({set, iface, QStringLiteral("LoopStatus"), QStringLiteral("<'Playlist'>")});
+        gdbusCall(
+            {setMethod, playerInterfaceName, QStringLiteral("LoopStatus"),
+             QStringLiteral("<'Playlist'>")}
+        );
         QVERIFY(player->repeat());
-        QDBusInterface playerInterface(kService, kPath, iface);
+        QDBusInterface playerInterface(kService, kPath, playerInterfaceName);
         QVERIFY(qFuzzyCompare(playerInterface.property("Volume").toDouble(), 0.3));
         QVERIFY(QTest::qWaitFor(
             [&] {
-                bool vol = false, shuffle = false;
-                for (const auto& c : sink.changes) {
-                    vol = vol || c.contains("Volume");
-                    shuffle = shuffle || c.contains("Shuffle");
+                bool volumeChanged = false, shuffleChanged = false;
+                for (const auto& change : sink.changes) {
+                    volumeChanged = volumeChanged || change.contains("Volume");
+                    shuffleChanged = shuffleChanged || change.contains("Shuffle");
                 }
-                return vol && shuffle;
+                return volumeChanged && shuffleChanged;
             },
             3000
         ));
@@ -209,14 +219,15 @@ private Q_SLOTS:
         controls->hooks().setVolume(80);
         QVERIFY(QTest::qWaitFor(
             [&] {
-                bool vol = false, shuffle = false;
-                for (const auto& c : sink.changes) {
-                    vol = vol
-                        || (c.contains("Volume") && qFuzzyCompare(c.value("Volume").toDouble(), 0.8)
-                        );
-                    shuffle = shuffle || (c.contains("Shuffle") && !c.value("Shuffle").toBool());
+                bool volumeChanged = false, shuffleChanged = false;
+                for (const auto& change : sink.changes) {
+                    volumeChanged = volumeChanged
+                        || (change.contains("Volume")
+                            && qFuzzyCompare(change.value("Volume").toDouble(), 0.8));
+                    shuffleChanged = shuffleChanged
+                        || (change.contains("Shuffle") && !change.value("Shuffle").toBool());
                 }
-                return vol && shuffle;
+                return volumeChanged && shuffleChanged;
             },
             3000
         ));

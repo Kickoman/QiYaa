@@ -52,8 +52,8 @@ inline constexpr QRect kMonoSelected{29, 0, 27, 12};
 
 inline constexpr int kDigitWidth = 9;
 inline constexpr int kDigitHeight = 13;
-inline constexpr QRect DigitSprite(int d) {
-    return {d * kDigitWidth, 0, kDigitWidth, kDigitHeight};
+inline constexpr QRect DigitSprite(int digit) {
+    return {digit * kDigitWidth, 0, kDigitWidth, kDigitHeight};
 }
 inline constexpr QRect kMinusSign{20, 6, 5, 1};  // numbers.bmp
 inline constexpr QRect kMinusSignEx{99, 0, 9, 13};  // nums_ex.bmp
@@ -75,7 +75,7 @@ inline constexpr ToggleSprite
 inline constexpr ToggleSprite
     kEqButton{{0, 61, 23, 12}, {46, 61, 23, 12}, {0, 73, 23, 12}, {46, 73, 23, 12}};
 inline constexpr ToggleSprite
-    kPlButton{{23, 61, 23, 12}, {69, 61, 23, 12}, {23, 73, 23, 12}, {69, 73, 23, 12}};
+    kPlaylistButton{{23, 61, 23, 12}, {69, 61, 23, 12}, {23, 73, 23, 12}, {69, 73, 23, 12}};
 
 inline constexpr int kSliderFrameStep = 15;
 inline constexpr int kSliderFrameHeight = 13;
@@ -212,7 +212,7 @@ struct MainWindowSprites {
     static constexpr QRect kVolume{107, 57, 68, 13};
     static constexpr QRect kBalance{177, 57, 38, 13};
     static constexpr QPoint kEqButton{219, 58};
-    static constexpr QPoint kPlButton{242, 58};
+    static constexpr QPoint kPlaylistButton{242, 58};
     static constexpr QRect kPosition{16, 72, 248, 10};
     static constexpr QPoint kPrevious{16, 88};
     static constexpr QPoint kPlay{39, 88};

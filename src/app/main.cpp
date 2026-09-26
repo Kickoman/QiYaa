@@ -37,7 +37,7 @@ void ChoosePlatform() {
 
 int Run(int& argc, char* argv[]) {
     ChoosePlatform();
-    QApplication app(argc, argv);
+    QApplication qtApplication(argc, argv);
     QApplication::setApplicationName(QStringLiteral("QiYaa"));
     QGuiApplication::setDesktopFileName(QStringLiteral("qiyaa"));
     {
@@ -85,7 +85,7 @@ int Run(int& argc, char* argv[]) {
         {screenshotOption, skinOption, fileOption, offlineOption, textOption, demoOption,
          scaleOption}
     );
-    commandLine.process(app);
+    commandLine.process(qtApplication);
 
     const bool screenshot = commandLine.isSet(screenshotOption);
     App::Application::Options options;
@@ -120,12 +120,12 @@ int Run(int& argc, char* argv[]) {
         App::StreamLocalFile(application.engine(), commandLine.value(fileOption));
     }
     if (screenshot) {
-        QTimer::singleShot(1500, &app, [&] {
+        QTimer::singleShot(1500, &qtApplication, [&] {
             const bool ok = application.snapshot().save(commandLine.value(screenshotOption));
             QApplication::exit(ok ? kSuccess : kFailure);
         });
     }
-    return app.exec();
+    return qtApplication.exec();
 }
 
 }  // namespace

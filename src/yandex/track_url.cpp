@@ -72,9 +72,9 @@ std::optional<DownloadInfo> ParseDownloadInfo(const QByteArray& json) {
 
 QUrl BuildTrackUrl(const DownloadInfo& info) {
     const QByteArray toSign = QByteArray(kSignSalt) + info.path.mid(1).toUtf8() + info.s.toUtf8();
-    const QByteArray sign = QCryptographicHash::hash(toSign, QCryptographicHash::Md5).toHex();
+    const QByteArray signature = QCryptographicHash::hash(toSign, QCryptographicHash::Md5).toHex();
     return QUrl(QStringLiteral("https://%1/get-mp3/%2/%3%4")
-                    .arg(info.host, QString::fromLatin1(sign), info.ts, info.path));
+                    .arg(info.host, QString::fromLatin1(signature), info.ts, info.path));
 }
 
 }  // namespace Yandex

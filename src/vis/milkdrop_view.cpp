@@ -1,6 +1,7 @@
 #include "vis/milkdrop_view.h"
 
 #include "audio/audio_engine.h"
+#include "audio/vis_tap.h"
 
 #include <QKeyEvent>
 #include <QMouseEvent>
@@ -27,14 +28,14 @@ constexpr int kBlackLevel = 12;
 
 QSurfaceFormat ViewFormat() {
     // projectM 4 needs OpenGL 3.3 core. macOS only gives core profiles when asked.
-    QSurfaceFormat f;
-    f.setVersion(3, 3);
-    f.setProfile(QSurfaceFormat::CoreProfile);
-    f.setDepthBufferSize(0);
-    f.setStencilBufferSize(0);
-    f.setAlphaBufferSize(0);
-    f.setSwapInterval(1);
-    return f;
+    QSurfaceFormat format;
+    format.setVersion(3, 3);
+    format.setProfile(QSurfaceFormat::CoreProfile);
+    format.setDepthBufferSize(0);
+    format.setStencilBufferSize(0);
+    format.setAlphaBufferSize(0);
+    format.setSwapInterval(1);
+    return format;
 }
 }  // namespace
 
@@ -45,14 +46,14 @@ QString MilkdropView::OpenGlProblem() {
         if (!probe.create()) {
             return QStringLiteral("нет OpenGL");
         }
-        const QSurfaceFormat f = probe.format();
+        const QSurfaceFormat contextFormat = probe.format();
         if (probe.isOpenGLES()) {
             return QStringLiteral("есть только OpenGL ES, а нужен OpenGL 3.3");
         }
-        if (f.majorVersion() * 10 + f.minorVersion() < 33) {
+        if (contextFormat.majorVersion() * 10 + contextFormat.minorVersion() < 33) {
             return QStringLiteral("нужен OpenGL 3.3, а доступен %1.%2")
-                .arg(f.majorVersion())
-                .arg(f.minorVersion());
+                .arg(contextFormat.majorVersion())
+                .arg(contextFormat.minorVersion());
         }
         return QString();
     }();
@@ -80,11 +81,11 @@ void MilkdropView::destroyProjectM() {
     if (context()) {
         makeCurrent();
     }
-    if (probeFbo && QOpenGLContext::currentContext()) {
-        QOpenGLExtraFunctions* f = QOpenGLContext::currentContext()->extraFunctions();
-        f->glDeleteFramebuffers(1, &probeFbo);
-        f->glDeleteTextures(1, &probeTex);
-        probeFbo = probeTex = 0;
+    if (probeFramebuffer && QOpenGLContext::currentContext()) {
+        QOpenGLExtraFunctions* gl = QOpenGLContext::currentContext()->extraFunctions();
+        gl->glDeleteFramebuffers(1, &probeFramebuffer);
+        gl->glDeleteTextures(1, &probeTexture);
+        probeFramebuffer = probeTexture = 0;
     }
     projectm_destroy(projectM);
     projectM = nullptr;
@@ -94,7 +95,7 @@ void MilkdropView::destroyProjectM() {
 }
 
 void MilkdropView::loadPreset(const QByteArray& milk, PresetTransition transition) {
-    pending = std::make_pair(milk, transition);
+    pendingPreset = std::make_pair(milk, transition);
     update();
 }
 
@@ -156,40 +157,43 @@ void MilkdropView::applySettings() {
 
 void MilkdropView::applyTexturePaths() {
     // Needs our context current (paintGL / initializeGL).
-    std::vector<QByteArray> utf8;
-    std::vector<const char*> ptrs;
-    for (const QString& p : texturePaths) {
-        utf8.push_back(p.toUtf8());
+    std::vector<QByteArray> utf8Paths;
+    std::vector<const char*> pathPointers;
+    for (const QString& path : texturePaths) {
+        utf8Paths.push_back(path.toUtf8());
     }
-    for (const QByteArray& p : utf8) {
-        ptrs.push_back(p.constData());
+    for (const QByteArray& utf8Path : utf8Paths) {
+        pathPointers.push_back(utf8Path.constData());
     }
-    projectm_set_texture_search_paths(projectM, ptrs.data(), ptrs.size());
+    projectm_set_texture_search_paths(projectM, pathPointers.data(), pathPointers.size());
     texturePathsDirty = false;
 }
 
 void MilkdropView::syncWindowSize() {
     // Device pixels: a move to a screen with another scale factor changes them
     // without a resize.
-    const QSize px = size() * devicePixelRatio();
-    if (px == pixelSize) {
+    const QSize devicePixelSize = size() * devicePixelRatio();
+    if (devicePixelSize == pixelSize) {
         return;
     }
-    pixelSize = px;
-    projectm_set_window_size(projectM, size_t(px.width()), size_t(px.height()));
+    pixelSize = devicePixelSize;
+    projectm_set_window_size(
+        projectM, size_t(devicePixelSize.width()), size_t(devicePixelSize.height())
+    );
 }
 
 void MilkdropView::initializeGL() {
-    QOpenGLContext* ctx = context();
-    const QSurfaceFormat f = ctx ? ctx->format() : QSurfaceFormat();
-    if (!ctx || !ctx->isValid() || QOpenGLContext::currentContext() != ctx) {
+    QOpenGLContext* windowContext = context();
+    const QSurfaceFormat contextFormat = windowContext ? windowContext->format() : QSurfaceFormat();
+    if (!windowContext || !windowContext->isValid()
+        || QOpenGLContext::currentContext() != windowContext) {
         failureReason = QStringLiteral("нет OpenGL");
-    } else if (ctx->isOpenGLES()) {
+    } else if (windowContext->isOpenGLES()) {
         failureReason = QStringLiteral("есть только OpenGL ES, а нужен OpenGL 3.3");
-    } else if (f.majorVersion() * 10 + f.minorVersion() < 33) {
+    } else if (contextFormat.majorVersion() * 10 + contextFormat.minorVersion() < 33) {
         failureReason = QStringLiteral("нужен OpenGL 3.3, а доступен %1.%2")
-                            .arg(f.majorVersion())
-                            .arg(f.minorVersion());
+                            .arg(contextFormat.majorVersion())
+                            .arg(contextFormat.minorVersion());
     } else {
         projectM = projectm_create();
         if (!projectM) {
@@ -225,9 +229,10 @@ void MilkdropView::initializeGL() {
         projectM,
         [](const char*, const char* message, void* self) {
             auto* view = static_cast<MilkdropView*>(self);
-            const QString msg = QString::fromUtf8(message);
+            const QString messageText = QString::fromUtf8(message);
             QMetaObject::invokeMethod(
-                view, [view, msg] { Q_EMIT view->presetFailed(msg); }, Qt::QueuedConnection
+                view, [view, messageText] { Q_EMIT view->presetFailed(messageText); },
+                Qt::QueuedConnection
             );
         },
         this
@@ -236,11 +241,11 @@ void MilkdropView::initializeGL() {
     applyTexturePaths();
     visReadCursor = audioEngine->visCursor();
     {
-        QOpenGLFunctions* gl = ctx->functions();
-        auto str = [gl](GLenum e) {
-            return QString::fromLatin1(reinterpret_cast<const char*>(gl->glGetString(e)));
+        QOpenGLFunctions* gl = windowContext->functions();
+        auto glString = [gl](GLenum name) {
+            return QString::fromLatin1(reinterpret_cast<const char*>(gl->glGetString(name)));
         };
-        glInfoText = str(GL_VERSION) + QStringLiteral(" | ") + str(GL_RENDERER);
+        glInfoText = glString(GL_VERSION) + QStringLiteral(" | ") + glString(GL_RENDERER);
         qInfo("Milkdrop: OpenGL %s", qPrintable(glInfoText));
     }
     sinceLoad.start();
@@ -256,9 +261,10 @@ void MilkdropView::resizeGL(int, int) {
 
 void MilkdropView::paintGL() {
     if (!projectM) {
-        if (QOpenGLContext* ctx = QOpenGLContext::currentContext(); ctx && ctx == context()) {
-            ctx->functions()->glClearColor(0, 0, 0, 1);
-            ctx->functions()->glClear(GL_COLOR_BUFFER_BIT);
+        if (QOpenGLContext* currentContext = QOpenGLContext::currentContext();
+            currentContext && currentContext == context()) {
+            currentContext->functions()->glClearColor(0, 0, 0, 1);
+            currentContext->functions()->glClear(GL_COLOR_BUFFER_BIT);
         }
         return;
     }
@@ -266,8 +272,8 @@ void MilkdropView::paintGL() {
     if (texturePathsDirty) {
         applyTexturePaths();
     }
-    if (pending) {
-        const auto [milk, transition] = *std::exchange(pending, std::nullopt);
+    if (pendingPreset) {
+        const auto [milk, transition] = *std::exchange(pendingPreset, std::nullopt);
         projectm_load_preset_data(
             projectM, milk.constData(), transition == PresetTransition::Blend
         );
@@ -275,10 +281,10 @@ void MilkdropView::paintGL() {
         blackChecks = 0;
         sawPicture = false;
     }
-    const Audio::VisReadResult fed = audioEngine->readNewVisSamples(visReadCursor, pcm);
-    visReadCursor = fed.cursor;
-    if (fed.frames > 0) {
-        projectm_pcm_add_float(projectM, pcm.data(), fed.frames, PROJECTM_STEREO);
+    const Audio::VisReadResult newSamples = audioEngine->readNewVisSamples(visReadCursor, pcm);
+    visReadCursor = newSamples.cursor;
+    if (newSamples.frames > 0) {
+        projectm_pcm_add_float(projectM, pcm.data(), newSamples.frames, PROJECTM_STEREO);
     }
     projectm_opengl_render_frame(projectM);
     makeOpaque();
@@ -335,35 +341,37 @@ void MilkdropView::watchForBlack() {
 }
 
 bool MilkdropView::pictureIsBlack() {
-    QOpenGLExtraFunctions* f = context()->extraFunctions();
-    if (!probeFbo) {
-        f->glGenTextures(1, &probeTex);
-        f->glBindTexture(GL_TEXTURE_2D, probeTex);
-        f->glTexImage2D(
+    QOpenGLExtraFunctions* gl = context()->extraFunctions();
+    if (!probeFramebuffer) {
+        gl->glGenTextures(1, &probeTexture);
+        gl->glBindTexture(GL_TEXTURE_2D, probeTexture);
+        gl->glTexImage2D(
             GL_TEXTURE_2D, 0, GL_RGBA8, kProbeWidth, kProbeHeight, 0, GL_RGBA, GL_UNSIGNED_BYTE,
             nullptr
         );
-        f->glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR);
-        f->glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
-        f->glBindTexture(GL_TEXTURE_2D, 0);
-        f->glGenFramebuffers(1, &probeFbo);
-        f->glBindFramebuffer(GL_FRAMEBUFFER, probeFbo);
-        f->glFramebufferTexture2D(GL_FRAMEBUFFER, GL_COLOR_ATTACHMENT0, GL_TEXTURE_2D, probeTex, 0);
+        gl->glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR);
+        gl->glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
+        gl->glBindTexture(GL_TEXTURE_2D, 0);
+        gl->glGenFramebuffers(1, &probeFramebuffer);
+        gl->glBindFramebuffer(GL_FRAMEBUFFER, probeFramebuffer);
+        gl->glFramebufferTexture2D(
+            GL_FRAMEBUFFER, GL_COLOR_ATTACHMENT0, GL_TEXTURE_2D, probeTexture, 0
+        );
     }
-    const GLuint screen = defaultFramebufferObject();
-    f->glBindFramebuffer(GL_READ_FRAMEBUFFER, screen);
-    f->glBindFramebuffer(GL_DRAW_FRAMEBUFFER, probeFbo);
-    f->glBlitFramebuffer(
+    const GLuint windowFramebuffer = defaultFramebufferObject();
+    gl->glBindFramebuffer(GL_READ_FRAMEBUFFER, windowFramebuffer);
+    gl->glBindFramebuffer(GL_DRAW_FRAMEBUFFER, probeFramebuffer);
+    gl->glBlitFramebuffer(
         0, 0, pixelSize.width(), pixelSize.height(), 0, 0, kProbeWidth, kProbeHeight,
         GL_COLOR_BUFFER_BIT, GL_LINEAR
     );
-    f->glBindFramebuffer(GL_READ_FRAMEBUFFER, probeFbo);
-    std::array<quint8, kProbeWidth * kProbeHeight * 4> px{};
-    f->glPixelStorei(GL_PACK_ALIGNMENT, 4);
-    f->glReadPixels(0, 0, kProbeWidth, kProbeHeight, GL_RGBA, GL_UNSIGNED_BYTE, px.data());
-    f->glBindFramebuffer(GL_FRAMEBUFFER, screen);
-    for (size_t i = 0; i < px.size(); i += 4) {
-        if (std::max({px[i], px[i + 1], px[i + 2]}) >= kBlackLevel) {
+    gl->glBindFramebuffer(GL_READ_FRAMEBUFFER, probeFramebuffer);
+    std::array<quint8, kProbeWidth * kProbeHeight * 4> pixels{};
+    gl->glPixelStorei(GL_PACK_ALIGNMENT, 4);
+    gl->glReadPixels(0, 0, kProbeWidth, kProbeHeight, GL_RGBA, GL_UNSIGNED_BYTE, pixels.data());
+    gl->glBindFramebuffer(GL_FRAMEBUFFER, windowFramebuffer);
+    for (size_t i = 0; i < pixels.size(); i += 4) {
+        if (std::max({pixels[i], pixels[i + 1], pixels[i + 2]}) >= kBlackLevel) {
             return false;
         }
     }

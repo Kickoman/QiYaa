@@ -15,8 +15,8 @@ class CoverCache : public QObject {
     Q_OBJECT
 public:
     explicit CoverCache(
-        QNetworkAccessManager* nam,
-        const QString& cacheDir = {},
+        QNetworkAccessManager* networkAccessManager,
+        const QString& cacheDirectory = {},
         QObject* parent = nullptr
     );
 

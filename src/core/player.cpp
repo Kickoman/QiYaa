@@ -49,8 +49,8 @@ Player::Player(Yandex::Library* library, Audio::AudioEngine* engine, QObject* pa
         openTrack.reset();
         if (!preload || preload->stream != audioEngine->currentStream()
             || preload->index >= queuedTracks.size()) {
-            const int i = sequentialNext();
-            i >= 0 ? playIndex(i) : stop();
+            const int nextIndex = sequentialNext();
+            nextIndex >= 0 ? playIndex(nextIndex) : stop();
             return;
         }
         const Preload upcoming = *std::exchange(preload, std::nullopt);
@@ -65,8 +65,8 @@ Player::Player(Yandex::Library* library, Audio::AudioEngine* engine, QObject* pa
         maybeLoadMore();
         trackStarted(queuedTracks[playingIndex], upcoming.bitrate);
     });
-    connect(audioEngine, &Audio::AudioEngine::errorOccurred, this, [this](const QString& msg) {
-        Q_EMIT statusMessage(QStringLiteral("Audio error: ") + msg);
+    connect(audioEngine, &Audio::AudioEngine::errorOccurred, this, [this](const QString& message) {
+        Q_EMIT statusMessage(QStringLiteral("Audio error: ") + message);
     });
     pollTimer.setInterval(100);
     connect(&pollTimer, &QTimer::timeout, this, [this] {
@@ -90,8 +90,8 @@ void Player::setQueue(
     const QList<Yandex::Track>& tracks,
     const QString& title,
     bool autoplay,
-    TMoreFn more,
-    TEventFn events
+    TLoadMoreCallback more,
+    TEventCallback events
 ) {
     stop();
     reportEvent = std::move(events);
@@ -137,14 +137,14 @@ void Player::removeTracks(QList<int> indices) {
     std::sort(indices.begin(), indices.end(), std::greater<>());
     indices.erase(std::unique(indices.begin(), indices.end()), indices.end());
     bool removedCurrent = false;
-    for (int i : indices) {
-        if (i < 0 || i >= queuedTracks.size()) {
+    for (int index : indices) {
+        if (index < 0 || index >= queuedTracks.size()) {
             continue;
         }
-        queuedTracks.removeAt(i);
-        if (i == playingIndex) {
+        queuedTracks.removeAt(index);
+        if (index == playingIndex) {
             removedCurrent = true;
-        } else if (i < playingIndex) {
+        } else if (index < playingIndex) {
             --playingIndex;
         }
     }
@@ -171,8 +171,8 @@ const Yandex::Track* Player::currentTrack() const {
 }
 
 double Player::durationSeconds() const {
-    const auto* t = currentTrack();
-    return t ? double(t->durationMs) / 1000.0 : 0.0;
+    const auto* track = currentTrack();
+    return track ? double(track->durationMs) / 1000.0 : 0.0;
 }
 
 void Player::play() {
@@ -204,14 +204,14 @@ void Player::closeOpenTrack() {
 }
 
 double Player::accumulatePlayedSeconds() {
-    const double pos = audioEngine->positionSeconds();
-    const double step = pos - lastPosition;
+    const double position = audioEngine->positionSeconds();
+    const double step = position - lastPosition;
     // Normal progress between two polls is ~0.1 s; bigger jumps are seeks.
     if (audioEngine->state() == Audio::AudioEngine::State::Playing && step > 0 && step < 1.0) {
-        played += step;
+        playedSeconds += step;
     }
-    lastPosition = pos;
-    return played;
+    lastPosition = position;
+    return playedSeconds;
 }
 
 void Player::setShuffle(bool on) {
@@ -246,9 +246,9 @@ int Player::sequentialNext() const {
     if (queuedTracks.isEmpty()) {
         return -1;
     }
-    const int i = playingIndex + 1;
-    if (i < queuedTracks.size()) {
-        return i;
+    const int nextIndex = playingIndex + 1;
+    if (nextIndex < queuedTracks.size()) {
+        return nextIndex;
     }
     if (loadMore || !repeatEnabled) {
         return -1;
@@ -260,11 +260,11 @@ int Player::pickNext() const {
     if (!shuffleEnabled || queuedTracks.size() < 2) {
         return sequentialNext();
     }
-    int i;
+    int randomIndex;
     do {
-        i = int(QRandomGenerator::global()->bounded(queuedTracks.size()));
-    } while (i == playingIndex);
-    return i;
+        randomIndex = int(QRandomGenerator::global()->bounded(queuedTracks.size()));
+    } while (randomIndex == playingIndex);
+    return randomIndex;
 }
 
 void Player::next() {
@@ -274,9 +274,9 @@ void Player::next() {
     if (preload) {
         return playIndex(preload->index);
     }
-    const int i = pickNext();
-    if (i >= 0) {
-        return playIndex(i);
+    const int nextIndex = pickNext();
+    if (nextIndex >= 0) {
+        return playIndex(nextIndex);
     }
     if (loadMore) {
         stop();
@@ -298,13 +298,14 @@ void Player::previous() {
 }
 
 bool Player::seekFraction(double fraction) {
-    const double dur = durationSeconds();
-    return dur > 0 && seekTo(std::clamp(fraction, 0.0, 1.0) * dur);
+    const double duration = durationSeconds();
+    return duration > 0 && seekTo(std::clamp(fraction, 0.0, 1.0) * duration);
 }
 
 bool Player::seekTo(double seconds) {
-    const double dur = durationSeconds();
-    const double target = dur > 0 ? std::clamp(seconds, 0.0, dur) : std::max(0.0, seconds);
+    const double duration = durationSeconds();
+    const double target =
+        duration > 0 ? std::clamp(seconds, 0.0, duration) : std::max(0.0, seconds);
     if (!audioEngine->seek(target)) {
         return false;
     }
@@ -373,7 +374,7 @@ void Player::playIndex(int index) {
 
     yandexLibrary->api()->resolveTrackUrl(
         track.id,
-        [this, requestGeneration, track](const Yandex::ResolvedUrl& url, const QString& error) {
+        [this, requestGeneration, track](const Yandex::ResolvedUrl& link, const QString& error) {
             if (requestGeneration != generation) {
                 return;
             }
@@ -382,8 +383,8 @@ void Player::playIndex(int index) {
                 audioEngine->stop();
                 return;
             }
-            download = startDownload(url.url, streamId);
-            trackStarted(track, url.bitrateKbps);
+            download = startDownload(link.url, streamId);
+            trackStarted(track, link.bitrateKbps);
         }
     );
 }
@@ -395,7 +396,7 @@ void Player::trackStarted(const Yandex::Track& track, int bitrate) {
     );
     openTrack = track;
     openTrackEvents = reportEvent;
-    played = 0;
+    playedSeconds = 0;
     lastPosition = 0;
     if (reportEvent) {
         reportEvent(TrackEvent::Started, track, 0);
@@ -405,12 +406,12 @@ void Player::trackStarted(const Yandex::Track& track, int bitrate) {
 }
 
 QNetworkReply* Player::startDownload(const QUrl& url, TStreamId stream) {
-    QNetworkRequest req(url);
-    req.setAttribute(
+    QNetworkRequest request(url);
+    request.setAttribute(
         QNetworkRequest::RedirectPolicyAttribute, QNetworkRequest::NoLessSafeRedirectPolicy
     );
-    req.setTransferTimeout(kDownloadTimeoutMs);
-    QNetworkReply* reply = yandexLibrary->api()->network()->get(req);
+    request.setTransferTimeout(kDownloadTimeoutMs);
+    QNetworkReply* reply = yandexLibrary->api()->network()->get(request);
     // The engine ignores data for streams it has dropped meanwhile.
     connect(reply, &QNetworkReply::readyRead, this, [this, reply, stream] {
         audioEngine->appendData(stream, reply->readAll());
@@ -476,7 +477,7 @@ void Player::maybePreload() {
         upcoming.trackId,
         [self,
          requestGeneration =
-             upcoming.generation](const Yandex::ResolvedUrl& url, const QString& error) {
+             upcoming.generation](const Yandex::ResolvedUrl& link, const QString& error) {
             if (!self || !self->preload || self->preload->generation != requestGeneration) {
                 return;
             }
@@ -486,8 +487,8 @@ void Player::maybePreload() {
                 return;
             }
             self->preload->stream = stream;
-            self->preload->bitrate = url.bitrateKbps;
-            self->preload->reply = self->startDownload(url.url, stream);
+            self->preload->bitrate = link.bitrateKbps;
+            self->preload->reply = self->startDownload(link.url, stream);
         }
     );
 }
@@ -516,9 +517,9 @@ void Player::refreshPreload() {
                     index = i;
                 }
             }
-        } else if (const int i = sequentialNext();
-                   i >= 0 && queuedTracks[i].id == preload->trackId) {
-            index = i;
+        } else if (const int nextIndex = sequentialNext();
+                   nextIndex >= 0 && queuedTracks[nextIndex].id == preload->trackId) {
+            index = nextIndex;
         }
         if (index >= 0) {
             preload->index = index;

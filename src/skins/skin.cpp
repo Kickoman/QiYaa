@@ -47,24 +47,24 @@ QHash<QString, QByteArray> ReadZip(const QByteArray& zip) {
             + std::to_string(kMaxEntries)
         );
     }
-    qint64 total = 0;
+    qint64 totalBytes = 0;
     for (mz_uint i = 0; i < count; ++i) {
         if (mz_zip_reader_is_file_a_directory(&archive, i)) {
             continue;
         }
-        mz_zip_archive_file_stat st{};
-        if (!mz_zip_reader_file_stat(&archive, i, &st)) {
+        mz_zip_archive_file_stat entry{};
+        if (!mz_zip_reader_file_stat(&archive, i, &entry)) {
             continue;
         }
-        const QString name = QFileInfo(QString::fromUtf8(st.m_filename)).fileName().toLower();
+        const QString name = QFileInfo(QString::fromUtf8(entry.m_filename)).fileName().toLower();
         if (files.contains(name)) {
             continue;
         }
-        if (st.m_uncomp_size > kMaxEntryBytes
-            || total + qint64(st.m_uncomp_size) > kMaxTotalBytes) {
+        if (entry.m_uncomp_size > kMaxEntryBytes
+            || totalBytes + qint64(entry.m_uncomp_size) > kMaxTotalBytes) {
             continue;
         }
-        total += qint64(st.m_uncomp_size);
+        totalBytes += qint64(entry.m_uncomp_size);
         size_t size = 0;
         void* data = mz_zip_reader_extract_to_heap(&archive, i, &size, 0);
         if (!data) {
@@ -78,10 +78,10 @@ QHash<QString, QByteArray> ReadZip(const QByteArray& zip) {
 }
 
 QImage DecodeImage(const QByteArray& bytes) {
-    QBuffer buf;
-    buf.setData(bytes);
-    buf.open(QIODevice::ReadOnly);
-    QImageReader reader(&buf);
+    QBuffer buffer;
+    buffer.setData(bytes);
+    buffer.open(QIODevice::ReadOnly);
+    QImageReader reader(&buffer);
     reader.setDecideFormatFromContent(true);
     QImage image = reader.read();
     if (image.isNull()) {
@@ -91,15 +91,18 @@ QImage DecodeImage(const QByteArray& bytes) {
 }
 
 QList<QColor> ParseVisColors(const QByteArray& text) {
-    static const QRegularExpression rgb(QStringLiteral("^\\s*(\\d+)\\s*,\\s*(\\d+)\\s*,\\s*(\\d+)")
+    static const QRegularExpression colorPattern(
+        QStringLiteral("^\\s*(\\d+)\\s*,\\s*(\\d+)\\s*,\\s*(\\d+)")
     );
     QList<QColor> colors;
     for (const QByteArray& line : text.split('\n')) {
-        const auto m = rgb.match(QString::fromLatin1(line));
-        if (!m.hasMatch()) {
+        const auto match = colorPattern.match(QString::fromLatin1(line));
+        if (!match.hasMatch()) {
             continue;
         }
-        colors << QColor(m.captured(1).toInt(), m.captured(2).toInt(), m.captured(3).toInt());
+        colors << QColor(
+            match.captured(1).toInt(), match.captured(2).toInt(), match.captured(3).toInt()
+        );
         if (colors.size() == 24) {
             break;
         }
@@ -115,12 +118,12 @@ struct FontCellPosition {
 // Port of webamp's FONT_LOOKUP.
 std::optional<FontCellPosition> FontCell(QChar character) {
     static const QHash<char16_t, std::pair<int, int>> table = [] {
-        QHash<char16_t, std::pair<int, int>> t;
+        QHash<char16_t, std::pair<int, int>> cells;
         for (int i = 0; i < 26; ++i) {
-            t.insert(char16_t(u'a' + i), {0, i});
+            cells.insert(char16_t(u'a' + i), {0, i});
         }
         for (int i = 0; i < 10; ++i) {
-            t.insert(char16_t(u'0' + i), {1, i});
+            cells.insert(char16_t(u'0' + i), {1, i});
         }
         const std::pair<char16_t, std::pair<int, int>> extra[] = {
             {u'"', {0, 26}}, {u'@', {0, 27}}, {u' ', {0, 30}}, {u'…', {1, 10}},  {u'.', {1, 11}},
@@ -131,10 +134,10 @@ std::optional<FontCellPosition> FontCell(QChar character) {
             {u'Ö', {2, 1}},  {u'Ä', {2, 2}},  {u'?', {2, 3}},  {u'*', {2, 4}},   {u'<', {1, 22}},
             {u'>', {1, 23}}, {u'{', {1, 22}}, {u'}', {1, 23}},
         };
-        for (const auto& [ch, pos] : extra) {
-            t.insert(ch, pos);
+        for (const auto& [symbol, cell] : extra) {
+            cells.insert(symbol, cell);
         }
-        return t;
+        return cells;
     }();
     auto it = table.constFind(character.toLower().unicode());
     if (it == table.cend()) {
@@ -147,7 +150,7 @@ std::optional<FontCellPosition> FontCell(QChar character) {
 }
 
 struct PixelGlyph {
-    char16_t ch;
+    char16_t character;
     int width;
     const char* rows[6];
 };
@@ -200,9 +203,9 @@ char16_t CyrillicLookalike(char16_t upper) {
 }
 
 const PixelGlyph* FindPixelGlyph(char16_t upper) {
-    for (const PixelGlyph& g : kCyrillicGlyphs) {
-        if (g.ch == upper) {
-            return &g;
+    for (const PixelGlyph& glyph : kCyrillicGlyphs) {
+        if (glyph.character == upper) {
+            return &glyph;
         }
     }
     return nullptr;
@@ -218,27 +221,27 @@ struct CharRender {
 };
 
 const QFont& FallbackFont() {
-    static const QFont f = [] {
+    static const QFont fallbackFont = [] {
         QFont font(QStringLiteral("Sans Serif"));
         font.setPixelSize(7);
         font.setHintingPreference(QFont::PreferFullHinting);
         font.setStyleStrategy(QFont::NoAntialias);
         return font;
     }();
-    return f;
+    return fallbackFont;
 }
 
-QColor TextInkColor(const QImage& text) {
-    if (text.isNull()) {
+QColor TextInkColor(const QImage& textSheet) {
+    if (textSheet.isNull()) {
         return Qt::green;
     }
-    const QRgb background = text.pixel(text.width() - 1, 0);
+    const QRgb background = textSheet.pixel(textSheet.width() - 1, 0);
     std::map<QRgb, int> counts;
-    const int rows = std::min(text.height(), 6);
-    const int columns = std::min(text.width(), 26 * Skins::kCharWidth);
+    const int rows = std::min(textSheet.height(), 6);
+    const int columns = std::min(textSheet.width(), 26 * Skins::kCharWidth);
     for (int y = 0; y < rows; ++y) {
         for (int x = 0; x < columns; ++x) {
-            const QRgb pixel = text.pixel(x, y);
+            const QRgb pixel = textSheet.pixel(x, y);
             if (pixel != background) {
                 ++counts[pixel];
             }
@@ -264,8 +267,8 @@ CharRender ResolveChar(QChar character) {
         return render;
     }
     const char16_t upper = character.toUpper().unicode();
-    if (const char16_t alike = CyrillicLookalike(upper)) {
-        if (const std::optional<FontCellPosition> cell = FontCell(QChar(alike))) {
+    if (const char16_t lookalike = CyrillicLookalike(upper)) {
+        if (const std::optional<FontCellPosition> cell = FontCell(QChar(lookalike))) {
             render.kind = CharRender::Kind::Cell;
             render.cell = *cell;
             return render;
@@ -278,9 +281,9 @@ CharRender ResolveChar(QChar character) {
         return render;
     }
     // Accented Latin: drop the accent, like webamp's deburr().
-    const QString base = QString(character).normalized(QString::NormalizationForm_D);
-    if (!base.isEmpty() && base.at(0) != character) {
-        if (const std::optional<FontCellPosition> cell = FontCell(base.at(0))) {
+    const QString decomposed = QString(character).normalized(QString::NormalizationForm_D);
+    if (!decomposed.isEmpty() && decomposed.at(0) != character) {
+        if (const std::optional<FontCellPosition> cell = FontCell(decomposed.at(0))) {
             render.kind = CharRender::Kind::Cell;
             render.cell = *cell;
             return render;
@@ -329,8 +332,8 @@ void Skin::loadArchive(const QByteArray& archive, const Skin* fallback) {
     }
 
     auto load = [&](Sheet sheet, std::initializer_list<const char*> names) {
-        for (const char* n : names) {
-            const auto it = files.constFind(QString::fromLatin1(n));
+        for (const char* name : names) {
+            const auto it = files.constFind(QString::fromLatin1(name));
             if (it == files.cend()) {
                 continue;
             }
@@ -375,9 +378,9 @@ void Skin::loadArchive(const QByteArray& archive, const Skin* fallback) {
 
     regionData = ParseRegionTxt(files.value(QStringLiteral("region.txt")));
     if (files.contains(QStringLiteral("pledit.txt"))) {
-        plStyle = ParsePlaylistStyle(files.value(QStringLiteral("pledit.txt")));
+        pleditStyle = ParsePlaylistStyle(files.value(QStringLiteral("pledit.txt")));
     } else if (fallback) {
-        plStyle = fallback->plStyle;
+        pleditStyle = fallback->pleditStyle;
     }
     visualizationColors = ParseVisColors(files.value(QStringLiteral("viscolor.txt")));
     if (visualizationColors.size() < 24 && fallback) {
@@ -392,21 +395,21 @@ void Skin::loadArchive(const QByteArray& archive, const Skin* fallback) {
 void Skin::measureGenLetters() {
     // Port of webamp's genGenTextSprites().
     auto measure = [](const QImage& image, int y) {
-        QList<std::pair<int, int>> out;
+        QList<std::pair<int, int>> letters;
         if (image.isNull() || y >= image.height()) {
-            return out;
+            return letters;
         }
-        const QRgb bg = image.pixel(0, y);
+        const QRgb separatorColor = image.pixel(0, y);
         int x = 1;
         for (int i = 0; i < 26; ++i) {
             int next = x;
-            while (next < image.width() && image.pixel(next, y) != bg) {
+            while (next < image.width() && image.pixel(next, y) != separatorColor) {
                 ++next;
             }
-            out.append({x, next - x});
+            letters.append({x, next - x});
             x = next + 1;
         }
-        return out;
+        return letters;
     };
     const QImage& gen = sheet(Sheet::Gen);
     genLettersSelected = measure(gen, Skins::GenWindowSprites::kLettersYSelected);
@@ -414,16 +417,16 @@ void Skin::measureGenLetters() {
 }
 
 int Skin::genTextWidth(const QString& text) const {
-    int w = 0;
+    int width = 0;
     for (QChar character : text) {
-        const int i = character.toUpper().unicode() - u'A';
+        const int letterIndex = character.toUpper().unicode() - u'A';
         if (character == u' ') {
-            w += 5;
-        } else if (i >= 0 && i < genLetters.size()) {
-            w += genLetters[i].second;
+            width += 5;
+        } else if (letterIndex >= 0 && letterIndex < genLetters.size()) {
+            width += genLetters[letterIndex].second;
         }
     }
-    return w;
+    return width;
 }
 
 int Skin::drawGenText(QPainter& painter, const QPoint& at, const QString& text, bool selected)
@@ -433,18 +436,19 @@ int Skin::drawGenText(QPainter& painter, const QPoint& at, const QString& text, 
         selected ? Skins::GenWindowSprites::kLettersYSelected : Skins::GenWindowSprites::kLettersY;
     int x = at.x();
     for (QChar character : text) {
-        const int i = character.toUpper().unicode() - u'A';
+        const int letterIndex = character.toUpper().unicode() - u'A';
         if (character == u' ') {
             x += 5;
-        } else if (i >= 0 && i < letters.size()) {
+        } else if (letterIndex >= 0 && letterIndex < letters.size()) {
             draw(
                 painter, Sheet::Gen,
                 QRect(
-                    letters[i].first, y, letters[i].second, Skins::GenWindowSprites::kLetterHeight
+                    letters[letterIndex].first, y, letters[letterIndex].second,
+                    Skins::GenWindowSprites::kLetterHeight
                 ),
                 QPoint(x, at.y())
             );
-            x += letters[i].second;
+            x += letters[letterIndex].second;
         }
     }
     return x - at.x();
@@ -452,14 +456,16 @@ int Skin::drawGenText(QPainter& painter, const QPoint& at, const QString& text, 
 
 Skin::PlaylistStyle Skin::ParsePlaylistStyle(const QByteArray& text) {
     PlaylistStyle style;
-    static const QRegularExpression line(QStringLiteral("^\\s*([A-Za-z]+)\\s*=\\s*(.*?)\\s*$"));
-    for (const QByteArray& raw : text.split('\n')) {
-        const auto m = line.match(QString::fromLatin1(raw).remove(u'\r'));
-        if (!m.hasMatch()) {
+    static const QRegularExpression keyValuePattern(
+        QStringLiteral("^\\s*([A-Za-z]+)\\s*=\\s*(.*?)\\s*$")
+    );
+    for (const QByteArray& rawLine : text.split('\n')) {
+        const auto match = keyValuePattern.match(QString::fromLatin1(rawLine).remove(u'\r'));
+        if (!match.hasMatch()) {
             continue;
         }
-        const QString key = m.captured(1).toLower();
-        QString value = m.captured(2);
+        const QString key = match.captured(1).toLower();
+        QString value = match.captured(2);
         if (key == QLatin1String("font")) {
             if (!value.isEmpty()) {
                 style.font = value;
@@ -469,18 +475,18 @@ Skin::PlaylistStyle Skin::ParsePlaylistStyle(const QByteArray& text) {
         if (!value.startsWith(u'#')) {
             value.prepend(u'#');
         }
-        const QColor c = QColor::fromString(value.left(7));
-        if (!c.isValid()) {
+        const QColor color = QColor::fromString(value.left(7));
+        if (!color.isValid()) {
             continue;
         }
         if (key == QLatin1String("normal")) {
-            style.normal = c;
+            style.normal = color;
         } else if (key == QLatin1String("current")) {
-            style.current = c;
+            style.current = color;
         } else if (key == QLatin1String("normalbg")) {
-            style.normalBg = c;
+            style.normalBackground = color;
         } else if (key == QLatin1String("selectedbg")) {
-            style.selectedBg = c;
+            style.selectedBackground = color;
         }
     }
     return style;
@@ -496,58 +502,61 @@ const QImage& Skin::sheet(Sheet sheet) const {
     return it == sheets.cend() ? empty : *it;
 }
 
-void Skin::draw(QPainter& painter, Sheet bitmap, const QRect& src, const QPoint& dst) const {
+void Skin::draw(QPainter& painter, Sheet bitmap, const QRect& source, const QPoint& target) const {
     const QImage& image = sheet(bitmap);
     if (image.isNull()) {
         return;
     }
-    painter.drawImage(dst, image, src);
+    painter.drawImage(target, image, source);
 }
 
 int Skin::TextWidth(const QString& text) {
-    int w = 0;
-    for (QChar ch : text) {
-        w += ResolveChar(ch).advance;
+    int width = 0;
+    for (QChar character : text) {
+        width += ResolveChar(character).advance;
     }
-    return w;
+    return width;
 }
 
 int Skin::drawText(QPainter& painter, const QPoint& at, const QString& text, int maxWidth) const {
-    const QImage& font = sheet(Sheet::Text);
+    const QImage& textSheet = sheet(Sheet::Text);
     const QRect spaceCell(30 * Skins::kCharWidth, 0, Skins::kCharWidth, Skins::kCharHeight);
     QColor ink;
     int x = at.x();
-    for (QChar ch : text) {
-        const CharRender r = ResolveChar(ch);
-        if (maxWidth >= 0 && x + r.advance > at.x() + maxWidth) {
+    for (QChar character : text) {
+        const CharRender render = ResolveChar(character);
+        if (maxWidth >= 0 && x + render.advance > at.x() + maxWidth) {
             break;
         }
-        if ((r.kind == CharRender::Kind::Pixel || r.kind == CharRender::Kind::SystemFont)
+        if ((render.kind == CharRender::Kind::Pixel || render.kind == CharRender::Kind::SystemFont)
             && !ink.isValid()) {
-            ink = TextInkColor(font);
+            ink = TextInkColor(textSheet);
         }
 
-        switch (r.kind) {
+        switch (render.kind) {
             case CharRender::Kind::Cell:
                 painter.drawImage(
-                    QPoint(x, at.y()), font,
+                    QPoint(x, at.y()), textSheet,
                     QRect(
-                        r.cell.column * Skins::kCharWidth, r.cell.row * Skins::kCharHeight,
-                        Skins::kCharWidth, Skins::kCharHeight
+                        render.cell.column * Skins::kCharWidth,
+                        render.cell.row * Skins::kCharHeight, Skins::kCharWidth, Skins::kCharHeight
                     )
                 );
                 break;
             case CharRender::Kind::Pixel:
-                for (int bx = 0; bx < r.advance; bx += Skins::kCharWidth) {
+                for (int tileOffset = 0; tileOffset < render.advance;
+                     tileOffset += Skins::kCharWidth) {
                     painter.drawImage(
-                        QPoint(x + bx, at.y()), font,
-                        spaceCell.adjusted(0, 0, std::min(0, r.advance - bx - Skins::kCharWidth), 0)
+                        QPoint(x + tileOffset, at.y()), textSheet,
+                        spaceCell.adjusted(
+                            0, 0, std::min(0, render.advance - tileOffset - Skins::kCharWidth), 0
+                        )
                     );
                 }
                 for (int row = 0; row < 6; ++row) {
-                    for (int col = 0; col < r.glyph->width; ++col) {
-                        if (r.glyph->rows[row][col] == '#') {
-                            painter.fillRect(x + col, at.y() + row, 1, 1, ink);
+                    for (int column = 0; column < render.glyph->width; ++column) {
+                        if (render.glyph->rows[row][column] == '#') {
+                            painter.fillRect(x + column, at.y() + row, 1, 1, ink);
                         }
                     }
                 }
@@ -556,12 +565,12 @@ int Skin::drawText(QPainter& painter, const QPoint& at, const QString& text, int
                 painter.setFont(FallbackFont());
                 painter.setPen(ink);
                 painter.drawText(
-                    QRect(x, at.y() - 1, r.advance, Skins::kCharHeight + 2),
-                    Qt::AlignLeft | Qt::AlignVCenter, QString(ch)
+                    QRect(x, at.y() - 1, render.advance, Skins::kCharHeight + 2),
+                    Qt::AlignLeft | Qt::AlignVCenter, QString(character)
                 );
                 break;
         }
-        x += r.advance;
+        x += render.advance;
     }
     return x - at.x();
 }

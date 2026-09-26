@@ -36,8 +36,10 @@ constexpr int kStatusShowMs = 3000;
 const QString kMarqueeSeparator = QStringLiteral("  ***  ");
 
 QString FormatTime(double seconds) {
-    const int s = std::max(0, int(seconds));
-    return QStringLiteral("%1:%2").arg(s / 60).arg(s % 60, 2, 10, QLatin1Char('0'));
+    const int wholeSeconds = std::max(0, int(seconds));
+    return QStringLiteral("%1:%2")
+        .arg(wholeSeconds / 60)
+        .arg(wholeSeconds % 60, 2, 10, QLatin1Char('0'));
 }
 
 bool Contains(const QRect& rect, QPoint point) {
@@ -57,8 +59,8 @@ MainWindow::MainWindow(Core::Player* player, const Skins::Skin* skin, QWidget* p
     blink.start();
     marqueeStep.start();
     lastFullRepaint.start();
-    visL.resize(kVisSamples);
-    visR.resize(kVisSamples);
+    visLeft.resize(kVisSamples);
+    visRight.resize(kVisSamples);
     visMono.resize(kVisSamples);
     setVisMode(VisMode::Spectrum);
 
@@ -83,8 +85,8 @@ void MainWindow::setEqButton(bool on) {
     update();
 }
 
-void MainWindow::setPlButton(bool on) {
-    plOn = on;
+void MainWindow::setPlaylistButton(bool on) {
+    playlistOn = on;
     update();
 }
 
@@ -150,16 +152,16 @@ void MainWindow::setStatusText(const QString& text) {
 }
 
 void MainWindow::refreshTimer() {
-    const auto st = corePlayer->engine()->state();
-    const bool playing =
-        st == Audio::AudioEngine::State::Playing || st == Audio::AudioEngine::State::Buffering;
+    const auto state = corePlayer->engine()->state();
+    const bool playing = state == Audio::AudioEngine::State::Playing
+        || state == Audio::AudioEngine::State::Buffering;
     visActive = playing && visualizer && isVisible() && !isMinimized() && !isShaded();
     int interval = 0;
     if (visActive) {
         interval = kVisFrameMs;
     } else if (playing) {
         interval = kFullRepaintMs;
-    } else if (st == Audio::AudioEngine::State::Paused) {
+    } else if (state == Audio::AudioEngine::State::Paused) {
         interval = 250;
     } else if (!statusText.isEmpty()
                || Skins::Skin::TextWidth(marqueeText())
@@ -179,14 +181,14 @@ void MainWindow::refreshTimer() {
 
 void MainWindow::updateVis() {
     auto* engine = corePlayer->engine();
-    engine->readVisSamples(visL, visR);
+    engine->readVisSamples(visLeft, visRight);
     for (int i = 0; i < kVisSamples; ++i) {
-        visMono[i] = 0.5f * (visL[i] + visR[i]);
+        visMono[i] = 0.5f * (visLeft[i] + visRight[i]);
     }
     const auto& spectrum = analyzer.analyze(visMono);
     Vis::VisFrame frame;
-    frame.left = visL;
-    frame.right = visR;
+    frame.left = visLeft;
+    frame.right = visRight;
     frame.spectrum = spectrum;
     frame.sampleRate = std::max(1, engine->outputSampleRate());
     frame.fftSize = kVisSamples;
@@ -194,22 +196,22 @@ void MainWindow::updateVis() {
 }
 
 void MainWindow::tick() {
-    bool full = lastFullRepaint.elapsed() >= (visActive ? kFullRepaintMs : 0);
+    bool fullRepaint = lastFullRepaint.elapsed() >= (visActive ? kFullRepaintMs : 0);
     if (!statusText.isEmpty() && statusAge.elapsed() > kStatusShowMs) {
         statusText.clear();
-        full = true;
+        fullRepaint = true;
     }
     if (statusText.isEmpty() && marqueeStep.elapsed() >= kMarqueeStepMs
         && pressedElement != Element::Marquee) {
         marqueeStep.restart();
         ++marqueeOffset;
-        full = true;
+        fullRepaint = true;
     }
     if (visActive) {
         updateVis();
     }
     refreshTimer();
-    if (full) {
+    if (fullRepaint) {
         lastFullRepaint.restart();
         update();
     } else {
@@ -246,18 +248,18 @@ QString MainWindow::marqueeText() const {
             .arg(balancePercent < 0 ? "LEFT" : "RIGHT");
     }
     if (pressedElement == Element::Position && seekPreview >= 0) {
-        const double dur = corePlayer->durationSeconds();
+        const double duration = corePlayer->durationSeconds();
         return QStringLiteral("SEEK TO: %1/%2 (%3%)")
-            .arg(FormatTime(seekPreview * dur), FormatTime(dur))
+            .arg(FormatTime(seekPreview * duration), FormatTime(duration))
             .arg(int(seekPreview * 100));
     }
-    const auto* t = corePlayer->currentTrack();
-    if (!t) {
+    const auto* track = corePlayer->currentTrack();
+    if (!track) {
         return QStringLiteral("QiYaa %1").arg(QApplication::applicationVersion());
     }
     return QStringLiteral("%1. %2 (%3)")
         .arg(corePlayer->currentIndex() + 1)
-        .arg(t->displayTitle(), FormatTime(t->durationMs / 1000.0));
+        .arg(track->displayTitle(), FormatTime(track->durationMs / 1000.0));
 }
 
 void MainWindow::drawButton(
@@ -276,18 +278,19 @@ void MainWindow::drawButton(
 }
 
 void MainWindow::drawTime(QPainter& painter) const {
-    const auto st = corePlayer->engine()->state();
-    if (st == Audio::AudioEngine::State::Stopped) {
+    const auto state = corePlayer->engine()->state();
+    if (state == Audio::AudioEngine::State::Stopped) {
         return;
     }
-    if (st == Audio::AudioEngine::State::Paused && (blink.elapsed() / 1000) % 2 == 1) {
+    if (state == Audio::AudioEngine::State::Paused && (blink.elapsed() / 1000) % 2 == 1) {
         return;
     }
 
-    const double pos = corePlayer->engine()->positionSeconds();
-    const double dur = corePlayer->durationSeconds();
-    const bool remaining = remainingTimeShown && dur > 0;
-    const int secs = remaining ? std::max(0, int(std::ceil(dur - pos))) : int(pos);
+    const double position = corePlayer->engine()->positionSeconds();
+    const double duration = corePlayer->durationSeconds();
+    const bool remaining = remainingTimeShown && duration > 0;
+    const int totalSeconds =
+        remaining ? std::max(0, int(std::ceil(duration - position))) : int(position);
     if (remaining) {
         // Minus sign: its own digit-sized cell in nums_ex.bmp, a 5x1 dash in numbers.bmp.
         if (skin().numbersAreExtended()) {
@@ -302,9 +305,9 @@ void MainWindow::drawTime(QPainter& painter) const {
             );
         }
     }
-    const int mm = std::min(secs / 60, 99);
-    const int ss = secs % 60;
-    const int digits[4] = {mm / 10, mm % 10, ss / 10, ss % 10};
+    const int minutes = std::min(totalSeconds / 60, 99);
+    const int seconds = totalSeconds % 60;
+    const int digits[4] = {minutes / 10, minutes % 10, seconds / 10, seconds % 10};
     const int offsets[4] = {9, 21, 39, 51};
     for (int i = 0; i < 4; ++i) {
         skin().draw(
@@ -315,21 +318,22 @@ void MainWindow::drawTime(QPainter& painter) const {
 }
 
 QString MainWindow::miniTimeText() const {
-    const auto st = corePlayer->engine()->state();
-    if (st == Audio::AudioEngine::State::Stopped) {
+    const auto state = corePlayer->engine()->state();
+    if (state == Audio::AudioEngine::State::Stopped) {
         return {};
     }
-    if (st == Audio::AudioEngine::State::Paused && (blink.elapsed() / 1000) % 2 == 1) {
+    if (state == Audio::AudioEngine::State::Paused && (blink.elapsed() / 1000) % 2 == 1) {
         return {};
     }
-    const double pos = corePlayer->engine()->positionSeconds();
-    const double dur = corePlayer->durationSeconds();
-    const bool remaining = remainingTimeShown && dur > 0;
-    const int secs = remaining ? std::max(0, int(std::ceil(dur - pos))) : int(pos);
+    const double position = corePlayer->engine()->positionSeconds();
+    const double duration = corePlayer->durationSeconds();
+    const bool remaining = remainingTimeShown && duration > 0;
+    const int totalSeconds =
+        remaining ? std::max(0, int(std::ceil(duration - position))) : int(position);
     return QStringLiteral("%1%2:%3")
         .arg(remaining ? QStringLiteral("-") : QString())
-        .arg(std::min(secs / 60, 99))
-        .arg(secs % 60, 2, 10, QLatin1Char('0'));
+        .arg(std::min(totalSeconds / 60, 99))
+        .arg(totalSeconds % 60, 2, 10, QLatin1Char('0'));
 }
 
 void MainWindow::paintShaded(QPainter& painter) {
@@ -357,15 +361,15 @@ void MainWindow::paintShaded(QPainter& painter) {
         Skins::kCloseButtonDown
     );
 
-    const QString t = miniTimeText().rightJustified(5, u' ');
-    activeSkin.drawText(painter, {127, 4}, t, 25);
+    const QString timeText = miniTimeText().rightJustified(5, u' ');
+    activeSkin.drawText(painter, {127, 4}, timeText, 25);
 
-    const double dur = corePlayer->durationSeconds();
-    if (corePlayer->engine()->state() != Audio::AudioEngine::State::Stopped && dur > 0) {
-        const double frac = seekPreview >= 0
+    const double duration = corePlayer->durationSeconds();
+    if (corePlayer->engine()->state() != Audio::AudioEngine::State::Stopped && duration > 0) {
+        const double fraction = seekPreview >= 0
             ? seekPreview
-            : std::clamp(corePlayer->engine()->positionSeconds() / dur, 0.0, 1.0);
-        const int x = int(std::lround(frac * (17 - 3)));
+            : std::clamp(corePlayer->engine()->positionSeconds() / duration, 0.0, 1.0);
+        const int x = int(std::lround(fraction * (17 - 3)));
         const QRect thumb = x == 0 ? Skins::kShadePositionThumbLeft
             : x >= 14              ? Skins::kShadePositionThumbRight
                                    : Skins::kShadePositionThumb;
@@ -378,8 +382,8 @@ void MainWindow::paintSkin(QPainter& painter) {
         return paintShaded(painter);
     }
     const Skins::Skin& activeSkin = skin();
-    const auto st = corePlayer->engine()->state();
-    const bool stopped = st == Audio::AudioEngine::State::Stopped;
+    const auto state = corePlayer->engine()->state();
+    const bool stopped = state == Audio::AudioEngine::State::Stopped;
 
     activeSkin.draw(painter, TSheet::Main, Skins::kMainBackground, {0, 0});
     activeSkin.draw(
@@ -406,13 +410,13 @@ void MainWindow::paintSkin(QPainter& painter) {
         painter, TSheet::TitleBar, Skins::kClutterBar, Skins::MainWindowSprites::kClutter
     );
 
-    const QRect indicator = st == Audio::AudioEngine::State::Paused ? Skins::kPausedIndicator
-        : stopped                                                   ? Skins::kStoppedIndicator
-                                                                    : Skins::kPlayingIndicator;
+    const QRect indicator = state == Audio::AudioEngine::State::Paused ? Skins::kPausedIndicator
+        : stopped                                                      ? Skins::kStoppedIndicator
+                                                                       : Skins::kPlayingIndicator;
     activeSkin.draw(painter, TSheet::PlayPaus, indicator, Skins::MainWindowSprites::kPlayPause);
-    if (!stopped && st != Audio::AudioEngine::State::Paused) {
+    if (!stopped && state != Audio::AudioEngine::State::Paused) {
         // Little LED: green while playing, red while waiting for data.
-        const bool buffering = st == Audio::AudioEngine::State::Buffering;
+        const bool buffering = state == Audio::AudioEngine::State::Buffering;
         activeSkin.draw(
             painter, TSheet::PlayPaus, QRect(buffering ? 36 : 39, 0, 3, 9),
             Skins::MainWindowSprites::kPlayPause - QPoint(2, 0)
@@ -421,8 +425,8 @@ void MainWindow::paintSkin(QPainter& painter) {
     drawTime(painter);
 
     if (visualizer
-        && (st == Audio::AudioEngine::State::Playing || st == Audio::AudioEngine::State::Buffering
-        )) {
+        && (state == Audio::AudioEngine::State::Playing
+            || state == Audio::AudioEngine::State::Buffering)) {
         painter.save();
         painter.setClipRect(Skins::MainWindowSprites::kVisualizer);
         visualizer->render(painter, Skins::MainWindowSprites::kVisualizer, activeSkin);
@@ -437,9 +441,9 @@ void MainWindow::paintSkin(QPainter& painter) {
             && Skins::Skin::TextWidth(text) > Skins::MainWindowSprites::kMarquee.width();
         if (scroll) {
             const QString loop = text + kMarqueeSeparator;
-            const int n = int(loop.size());
-            const int off = n ? marqueeOffset % n : 0;
-            text = loop.mid(off) + loop.left(off) + loop;
+            const int loopLength = int(loop.size());
+            const int offset = loopLength ? marqueeOffset % loopLength : 0;
+            text = loop.mid(offset) + loop.left(offset) + loop;
         }
         activeSkin.drawText(
             painter, Skins::MainWindowSprites::kMarquee.topLeft(), text,
@@ -452,8 +456,8 @@ void MainWindow::paintSkin(QPainter& painter) {
         const int kbps = corePlayer->currentBitrate();
         const int khz = (corePlayer->engine()->sourceSampleRate() + 500) / 1000;
         if (kbps > 0) {
-            const QString t = QString::number(kbps).rightJustified(3, u' ').right(3);
-            activeSkin.drawText(painter, Skins::MainWindowSprites::kKbps, t);
+            const QString bitrateText = QString::number(kbps).rightJustified(3, u' ').right(3);
+            activeSkin.drawText(painter, Skins::MainWindowSprites::kKbps, bitrateText);
         }
         if (khz > 0) {
             activeSkin.drawText(
@@ -462,13 +466,13 @@ void MainWindow::paintSkin(QPainter& painter) {
             );
         }
     }
-    const int ch = stopped ? 0 : corePlayer->engine()->sourceChannels();
+    const int channels = stopped ? 0 : corePlayer->engine()->sourceChannels();
     activeSkin.draw(
-        painter, TSheet::MonoSter, ch == 1 ? Skins::kMonoSelected : Skins::kMono,
+        painter, TSheet::MonoSter, channels == 1 ? Skins::kMonoSelected : Skins::kMono,
         Skins::MainWindowSprites::kMono
     );
     activeSkin.draw(
-        painter, TSheet::MonoSter, ch >= 2 ? Skins::kStereoSelected : Skins::kStereo,
+        painter, TSheet::MonoSter, channels >= 2 ? Skins::kStereoSelected : Skins::kStereo,
         Skins::MainWindowSprites::kStereo
     );
 
@@ -509,28 +513,31 @@ void MainWindow::paintSkin(QPainter& painter) {
         );
     }
 
-    auto toggle = [&](Element element, const Skins::ToggleSprite& spr, bool on, QPoint at) {
+    auto toggle = [&](Element element, const Skins::ToggleSprite& sprite, bool on, QPoint at) {
         const bool down = pressedElement == element && pressedInside;
         activeSkin.draw(
             painter, TSheet::ShufRep,
-            on ? (down ? spr.onPressed : spr.on) : (down ? spr.offPressed : spr.off), at
+            on ? (down ? sprite.onPressed : sprite.on) : (down ? sprite.offPressed : sprite.off), at
         );
     };
     toggle(Element::EqToggle, Skins::kEqButton, eqOn, Skins::MainWindowSprites::kEqButton);
-    toggle(Element::PlToggle, Skins::kPlButton, plOn, Skins::MainWindowSprites::kPlButton);
+    toggle(
+        Element::PlaylistToggle, Skins::kPlaylistButton, playlistOn,
+        Skins::MainWindowSprites::kPlaylistButton
+    );
 
     activeSkin.draw(
         painter, TSheet::PosBar, Skins::kPositionBackground,
         Skins::MainWindowSprites::kPosition.topLeft()
     );
-    const double dur = corePlayer->durationSeconds();
-    if (!stopped && dur > 0) {
-        const double frac = seekPreview >= 0
+    const double duration = corePlayer->durationSeconds();
+    if (!stopped && duration > 0) {
+        const double fraction = seekPreview >= 0
             ? seekPreview
-            : std::clamp(corePlayer->engine()->positionSeconds() / dur, 0.0, 1.0);
+            : std::clamp(corePlayer->engine()->positionSeconds() / duration, 0.0, 1.0);
         const int x =
-            int(frac * (Skins::MainWindowSprites::kPosition.width() - Skins::kPositionThumb.width())
-            );
+            int(fraction
+                * (Skins::MainWindowSprites::kPosition.width() - Skins::kPositionThumb.width()));
         activeSkin.draw(
             painter, TSheet::PosBar,
             pressedElement == Element::Position ? Skins::kPositionThumbSelected
@@ -620,7 +627,7 @@ MainWindow::Element MainWindow::hitTest(QPoint point) const {
         {{Skins::MainWindowSprites::kShuffle, QSize(47, 15)}, Element::Shuffle},
         {{Skins::MainWindowSprites::kRepeat, QSize(28, 15)}, Element::Repeat},
         {{Skins::MainWindowSprites::kEqButton, QSize(23, 12)}, Element::EqToggle},
-        {{Skins::MainWindowSprites::kPlButton, QSize(23, 12)}, Element::PlToggle},
+        {{Skins::MainWindowSprites::kPlaylistButton, QSize(23, 12)}, Element::PlaylistToggle},
         {Skins::MainWindowSprites::kVolume, Element::Volume},
         {Skins::MainWindowSprites::kBalance, Element::Balance},
         {Skins::MainWindowSprites::kPosition, Element::Position},
@@ -636,8 +643,8 @@ MainWindow::Element MainWindow::hitTest(QPoint point) const {
     return Element::None;
 }
 
-bool MainWindow::isDragArea(QPoint point) const {
-    const Element element = hitTest(point);
+bool MainWindow::isDragArea(QPoint skinPos) const {
+    const Element element = hitTest(skinPos);
     return element == Element::None || element == Element::Marquee;
 }
 
@@ -692,9 +699,9 @@ void MainWindow::skinMouseRelease(QPoint pos, Qt::MouseButton button) {
 }
 
 void MainWindow::updateSliderFromMouse(Element element, QPoint point) {
-    auto fraction = [&](const QRect& rect, int thumbW) {
-        const double x = point.x() - rect.x() - thumbW / 2.0;
-        return std::clamp(x / double(rect.width() - thumbW), 0.0, 1.0);
+    auto fraction = [&](const QRect& rect, int thumbWidth) {
+        const double x = point.x() - rect.x() - thumbWidth / 2.0;
+        return std::clamp(x / double(rect.width() - thumbWidth), 0.0, 1.0);
     };
     switch (element) {
         case Element::Volume:
@@ -736,7 +743,7 @@ void MainWindow::activate(Element element) {
         case Element::Shuffle: corePlayer->setShuffle(!corePlayer->shuffle()); break;
         case Element::Repeat: corePlayer->setRepeat(!corePlayer->repeat()); break;
         case Element::EqToggle: Q_EMIT eqToggleRequested(); break;
-        case Element::PlToggle: Q_EMIT plToggleRequested(); break;
+        case Element::PlaylistToggle: Q_EMIT playlistToggleRequested(); break;
         case Element::Visualizer: setVisMode(VisMode((int(visualizationMode) + 1) % 3)); break;
         case Element::Time: setShowsRemainingTime(!remainingTimeShown); break;
         default: break;

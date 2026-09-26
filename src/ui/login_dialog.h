@@ -20,7 +20,7 @@ class LoginDialog : public QDialog {
     Q_OBJECT
 public:
     explicit LoginDialog(
-        QNetworkAccessManager* nam,
+        QNetworkAccessManager* networkManager,
         QWidget* parent = nullptr,
         const QString& oauthBase = {}
     );
@@ -32,7 +32,7 @@ private:
     void fitToContents();
     void tryPasted();
 
-    Yandex::DeviceLogin* device;
+    Yandex::DeviceLogin* deviceLogin;
     QLabel* codeLabel;
     QLabel* deviceStatus;
     QPushButton* openDevice;

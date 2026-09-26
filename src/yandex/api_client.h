@@ -54,7 +54,7 @@ public:
     using TCallback = std::function<void(const T& value, const QString& error)>;
     using TJsonCallback = std::function<void(const QJsonValue& result, const QString& error)>;
 
-    explicit ApiClient(QNetworkAccessManager* nam, QObject* parent = nullptr);
+    explicit ApiClient(QNetworkAccessManager* networkAccessManager, QObject* parent = nullptr);
 
     void setToken(const QString& token) { accessToken = token; }
     const QString& token() const { return accessToken; }

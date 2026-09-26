@@ -12,12 +12,12 @@
 
 namespace Yandex {
 
-struct NamedRef {
+struct NamedReference {
     QString id;
     QString name;
 };
 
-struct PlaylistRef {
+struct PlaylistReference {
     QString ownerUid;
     QString kind;
     QString title;
@@ -70,11 +70,11 @@ public:
 
     void likedTracks(TCallback<QList<Track>> callback);
     void tracksByIds(const QStringList& ids, TCallback<QList<Track>> callback);
-    void userPlaylists(TCallback<QList<PlaylistRef>> callback);
-    void playlistTracks(const PlaylistRef& playlist, TCallback<QList<Track>> callback);
-    void likedArtists(TCallback<QList<NamedRef>> callback);
+    void userPlaylists(TCallback<QList<PlaylistReference>> callback);
+    void playlistTracks(const PlaylistReference& playlist, TCallback<QList<Track>> callback);
+    void likedArtists(TCallback<QList<NamedReference>> callback);
     void artistTopTracks(const QString& artistId, TCallback<QList<Track>> callback);
-    void likedAlbums(TCallback<QList<NamedRef>> callback);
+    void likedAlbums(TCallback<QList<NamedReference>> callback);
     void albumTracks(const QString& albumId, TCallback<QList<Track>> callback);
     void stations(TCallback<QList<Station>> callback);
     void startWave(const QStringList& seeds, TCallback<WaveBatch> callback);
@@ -82,8 +82,9 @@ public:
     moreWave(const QString& sessionId, const QStringList& queue, TCallback<WaveBatch> callback);
     void search(const QString& text, TCallback<SearchResult> callback);
 
-    void personalPlaylists(TCallback<QList<PlaylistRef>> callback);
-    void playlistRecommendations(const PlaylistRef& playlist, TCallback<QList<Track>> callback);
+    void personalPlaylists(TCallback<QList<PlaylistReference>> callback);
+    void
+    playlistRecommendations(const PlaylistReference& playlist, TCallback<QList<Track>> callback);
     void wheelWaves(const QStringList& seeds, TCallback<QList<Wave>> callback);
 
     void waveFeedback(
@@ -100,7 +101,7 @@ public:
     void setLiked(const QString& trackId, bool liked, TCallback<bool> callback);
     void dislike(const QString& trackId, TCallback<bool> callback);
 
-    static QList<Track> ParseTrackArray(const QJsonArray& arr);
+    static QList<Track> ParseTrackArray(const QJsonArray& items);
     static WaveBatch ParseWaveBatch(const QJsonValue& result);
 
 Q_SIGNALS:
@@ -108,7 +109,11 @@ Q_SIGNALS:
     void likesChanged();
 
 private:
-    void tracksChunk(QStringList remaining, QList<Track> acc, TCallback<QList<Track>> callback);
+    void tracksChunk(
+        QStringList remaining,
+        QList<Track> fetchedTracks,
+        TCallback<QList<Track>> callback
+    );
     void tracksFromItems(const QJsonArray& items, TCallback<QList<Track>> callback);
     QString userPath(const QString& rest) const;
 

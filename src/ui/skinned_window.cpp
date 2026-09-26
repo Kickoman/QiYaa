@@ -23,16 +23,16 @@ namespace Ui {
 
 namespace {
 QList<SkinnedWindow*>& WindowRegistry() {
-    static QList<SkinnedWindow*> list;
-    return list;
+    static QList<SkinnedWindow*> windows;
+    return windows;
 }
 
 QList<QRect> ScreenRects() {
-    QList<QRect> out;
+    QList<QRect> rects;
     for (QScreen* targetScreen : QGuiApplication::screens()) {
-        out << targetScreen->availableGeometry();
+        rects << targetScreen->availableGeometry();
     }
-    return out;
+    return rects;
 }
 }  // namespace
 
@@ -55,8 +55,8 @@ SkinnedWindow::SkinnedWindow(const Skins::Skin* skin, QSize skinSize, QWidget* p
         }
     };
     connect(qApp, &QGuiApplication::screenRemoved, this, recheck);
-    connect(qApp, &QGuiApplication::screenAdded, this, [this](QScreen* s) {
-        connect(s, &QScreen::availableGeometryChanged, this, [this] {
+    connect(qApp, &QGuiApplication::screenAdded, this, [this](QScreen* addedScreen) {
+        connect(addedScreen, &QScreen::availableGeometryChanged, this, [this] {
             if (isVisible()) {
                 ensureVisible();
             }
@@ -201,11 +201,11 @@ QList<SkinnedWindow*> SkinnedWindow::dockedWindows() const {
         visible << window;
         rects << window->frameGeometry();
     }
-    QList<SkinnedWindow*> out;
+    QList<SkinnedWindow*> docked;
     for (int i : Ui::ConnectedGroup(self, rects)) {
-        out << visible[i];
+        docked << visible[i];
     }
-    return out;
+    return docked;
 }
 
 QPoint SkinnedWindow::toSkin(QPointF widgetPos) const {
@@ -215,16 +215,16 @@ QPoint SkinnedWindow::toSkin(QPointF widgetPos) const {
 }
 
 int SkinnedWindow::wheelSteps(QWheelEvent* event) {
-    wheelAccum += event->angleDelta().y();
-    const int steps = wheelAccum / 120;
-    wheelAccum -= steps * 120;
+    wheelRemainder += event->angleDelta().y();
+    const int steps = wheelRemainder / 120;
+    wheelRemainder -= steps * 120;
     return steps;
 }
 
-void SkinnedWindow::updateSkinRect(const QRect& rect) {
+void SkinnedWindow::updateSkinRect(const QRect& skinRect) {
     const QRectF scaled(
-        rect.x() * scaleFactor, rect.y() * scaleFactor, rect.width() * scaleFactor,
-        rect.height() * scaleFactor
+        skinRect.x() * scaleFactor, skinRect.y() * scaleFactor, skinRect.width() * scaleFactor,
+        skinRect.height() * scaleFactor
     );
     update(scaled.toAlignedRect().adjusted(-1, -1, 1, 1));
 }
@@ -237,10 +237,10 @@ void SkinnedWindow::applyMask() {
         clearMask();
         return;
     }
-    const QTransform t = QTransform::fromScale(scaleFactor, scaleFactor);
+    const QTransform transform = QTransform::fromScale(scaleFactor, scaleFactor);
     QList<QPolygon> scaled;
-    for (const QPolygon& poly : *it) {
-        scaled << t.map(QPolygonF(poly)).toPolygon();
+    for (const QPolygon& polygon : *it) {
+        scaled << transform.map(QPolygonF(polygon)).toPolygon();
     }
     setMask(Skins::RegionFromPolygons(scaled));
 }
@@ -253,27 +253,27 @@ void SkinnedWindow::paintEvent(QPaintEvent*) {
         paintSkin(painter);
         return;
     }
-    const int n = int(std::ceil(scaleFactor * devicePixelRatioF() - 1e-6));
-    const QSize bufSize = skinPixelSize * n;
-    if (buffer.size() != bufSize) {
-        buffer = QImage(bufSize, QImage::Format_ARGB32_Premultiplied);
+    const int bufferScale = int(std::ceil(scaleFactor * devicePixelRatioF() - 1e-6));
+    const QSize bufferSize = skinPixelSize * bufferScale;
+    if (buffer.size() != bufferSize) {
+        buffer = QImage(bufferSize, QImage::Format_ARGB32_Premultiplied);
     }
     {
-        QPainter bp(&buffer);
-        bp.setRenderHint(QPainter::SmoothPixmapTransform, false);
-        bp.scale(n, n);
-        paintSkin(bp);
+        QPainter bufferPainter(&buffer);
+        bufferPainter.setRenderHint(QPainter::SmoothPixmapTransform, false);
+        bufferPainter.scale(bufferScale, bufferScale);
+        paintSkin(bufferPainter);
     }
     painter.setRenderHint(QPainter::SmoothPixmapTransform, true);
     painter.drawImage(rect(), buffer);
 }
 
 void SkinnedWindow::mousePressEvent(QMouseEvent* event) {
-    const QPoint sp = toSkin(event->position());
-    if (skinMousePress(sp, event->button())) {
+    const QPoint skinPos = toSkin(event->position());
+    if (skinMousePress(skinPos, event->button())) {
         return;
     }
-    if (event->button() != Qt::LeftButton || !isDragArea(sp)) {
+    if (event->button() != Qt::LeftButton || !isDragArea(skinPos)) {
         return;
     }
 
@@ -284,7 +284,7 @@ void SkinnedWindow::mousePressEvent(QMouseEvent* event) {
         return;
     }
     dragging = true;
-    pressGlobal = event->globalPosition().toPoint();
+    pressGlobalPosition = event->globalPosition().toPoint();
     dragGroup.clear();
     dragGroup.append({this, pos()});
     if (dragsDocked) {
@@ -303,15 +303,15 @@ void SkinnedWindow::mouseMoveEvent(QMouseEvent* event) {
         skinMouseMove(toSkin(event->position()));
         return;
     }
-    const QPoint delta = event->globalPosition().toPoint() - pressGlobal;
+    const QPoint delta = event->globalPosition().toPoint() - pressGlobalPosition;
     QList<QRect> others;
     for (SkinnedWindow* window : WindowRegistry()) {
         if (!window->isVisible()) {
             continue;
         }
         const bool inGroup =
-            std::any_of(dragGroup.cbegin(), dragGroup.cend(), [window](const auto& g) {
-                return g.first == window;
+            std::any_of(dragGroup.cbegin(), dragGroup.cend(), [window](const auto& member) {
+                return member.first == window;
             });
         if (!inGroup) {
             others << window->frameGeometry();

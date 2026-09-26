@@ -4,10 +4,10 @@ Namespace `Ui`. This folder holds the widgets the user sees: the main, equalizer
 windows, the GEN.BMP-framed "Now playing" and Milkdrop windows, their common base class (frameless,
 scaled, snapping, docking, shade mode), the pure geometry behind snapping, the Yandex part of the
 context menus, and the login dialog. The windows paint sprites and turn clicks into calls on
-`Core::Player` or into signals. They do not load skins or parse skin files ([src/skins](../skins/README.md)),
-draw the spectrum or run projectM ([src/vis](../vis/README.md)), keep the queue or play audio
-([src/core](../core/README.md), [src/audio](../audio/README.md)), talk to Yandex
-([src/yandex](../yandex/README.md)), or create, lay out, connect and save the windows
+`Core::Player` or into signals. They do not load skins or parse skin files
+([src/skins](../skins/README.md)), draw the spectrum or run projectM ([src/vis](../vis/README.md)),
+keep the queue or play audio ([src/core](../core/README.md), [src/audio](../audio/README.md)), talk
+to Yandex ([src/yandex](../yandex/README.md)), or create, lay out, connect and save the windows
 ([src/app](../app/README.md)).
 
 | File | Contains |
@@ -107,7 +107,7 @@ public:
     void setSkinSize(QSize size);
 
     void setDragsDockedWindows(bool on);             // a drag also moves the docked group
-    void setSecondary();                             // Windows: Qt::Tool (no taskbar button); no-op elsewhere
+    void setSecondary();                             // Windows: Qt::Tool, no taskbar button
     void placeAt(QPoint pos);                        // clamped onto the screens; no-op on native Wayland
     void ensureVisible();                            // placeAt(pos())
     QList<SkinnedWindow*> dockedWindows() const;     // visible, touching directly or through others
@@ -132,8 +132,8 @@ protected:
     virtual void skinChanged();
     virtual QString regionSection() const;           // region.txt section; empty = rectangle
 
-    void resizeKeepingStack(QSize skinSize);
-    void applyShade(bool shaded, QSize skinSize);
+    void resizeKeepingStack(QSize newSkinSize);
+    void applyShade(bool shaded, QSize newSkinSize);
     QPoint toSkin(QPointF widgetPos) const;
     int wheelSteps(QWheelEvent* event);              // whole notches; positive = away from the user
     void applyMask();
@@ -147,12 +147,12 @@ A top-level `Qt::Window | Qt::FramelessWindowHint` widget with `WA_OpaquePaintEv
 **Painting.** At an integer scale `paintSkin` gets a painter scaled by `scale()` with
 `SmoothPixmapTransform` off, so every skin pixel is a square of whole pixels. At a fractional scale
 nearest-neighbour would make some skin pixels 1 px and others 2 px wide, so the window is painted
-"sharp bilinear": `paintSkin` draws at `n = ceil(scale × devicePixelRatio)` times the skin size
-into an ARGB32-premultiplied buffer with nearest-neighbour, and that buffer is drawn into `rect()`
-with smooth scaling. The buffer is kept between paints, dropped when the size changes and
-reallocated when `n` changes. `updateSkinRect` repaints a skin rect scaled, aligned outwards and
-grown by 1 px on each side (the smooth scaling bleeds into neighbours). An activation change
-repaints everything (title bars have active and inactive sprites).
+"sharp bilinear": `paintSkin` draws at `bufferScale = ceil(scale × devicePixelRatio)` times the skin
+size into an ARGB32-premultiplied buffer with nearest-neighbour, and that buffer is drawn into
+`rect()` with smooth scaling. The buffer is kept between paints, dropped when the size changes and
+reallocated when `bufferScale` changes. `updateSkinRect` repaints a skin rect scaled, aligned
+outwards and grown by 1 px on each side (the smooth scaling bleeds into neighbours). An activation
+change repaints everything (title bars have active and inactive sprites).
 
 **Mask.** `applyMask` takes the polygons of `regionSection()` from `Skin::region()`, scales the
 polygons themselves (not a `QRegion`, which would lose accuracy at fractional scales) and sets
@@ -177,14 +177,14 @@ geometry, and moves every member by the same offset, so the group snaps and is c
 rectangle. Members are held by `QPointer`; one destroyed mid-drag is skipped. The left-button
 release ends the drag and emits `moveFinished` (the app saves positions).
 
-**Shade and the stack.** `applyShade(shaded, size)` sets the flag, calls `resizeKeepingStack`,
-re-applies the mask and emits `shadeChanged` last, so listeners see final positions.
-`resizeKeepingStack(size)` snapshots the frame rects of all registered windows, hidden ones too (so
-they are still docked when shown again), with their visibility as `solid`; resizes; and moves the
-windows `StackBelow` returns by the height difference in widget pixels. If the window grew and is
-visible, the moved windows and its docked group are then shifted together so that their union stays
-on its screen (a stack growing near the bottom edge is lifted). On native Wayland only the window
-itself resizes.
+**Shade and the stack.** `applyShade(shaded, newSkinSize)` sets the flag, calls
+`resizeKeepingStack`, re-applies the mask and emits `shadeChanged` last, so listeners see final
+positions. `resizeKeepingStack(newSkinSize)` snapshots the frame rects of all registered windows,
+hidden ones too (so they are still docked when shown again), with their visibility as `solid`;
+resizes; and moves the windows `StackBelow` returns by the height difference in widget pixels. If
+the window grew and is visible, the moved windows and its docked group are then shifted together so
+that their union stays on its screen (a stack growing near the bottom edge is lifted). On native
+Wayland only the window itself resizes.
 
 `wheelSteps` adds `angleDelta().y()` to an accumulator and returns whole 120-unit notches, keeping
 the remainder, so touchpads and smooth-scrolling mice step like a wheel.
@@ -221,7 +221,7 @@ QPoint SnapToOthers(const QRect& moving, const QList<QRect>& others, int distanc
 QPoint SnapWithin(const QRect& moving, const QRect& screen, int distance = kSnapDistance);
 QRect PickScreen(const QRect& rect, const QList<QRect>& screens);  // empty QRect when screens is empty
 QPoint ClampInside(const QRect& rect, const QRect& screen);
-bool Touching(const QRect& a, const QRect& b);
+bool Touching(const QRect& first, const QRect& second);
 QList<int> ConnectedGroup(int start, const QList<QRect>& rects);  // without start itself
 QList<int> StackBelow(int self, const QList<QRect>& rects, int dy, const QList<bool>& solid = {});
 QPoint ResolveDragPosition(
@@ -287,7 +287,7 @@ public:
     int balance() const;
 
     void setEqButton(bool on);                  // the owner reports whether EQ / playlist are shown
-    void setPlButton(bool on);
+    void setPlaylistButton(bool on);
 
     VisMode visMode() const;
     void setVisMode(VisMode mode);
@@ -300,7 +300,7 @@ public:
 
 Q_SIGNALS:
     void eqToggleRequested();
-    void plToggleRequested();
+    void playlistToggleRequested();
     void menuRequested(QPoint globalPos);          // options button or right click
     void sourcesMenuRequested(QPoint globalPos);   // eject button
     void closeRequested();                         // close button or window-manager close
@@ -354,6 +354,26 @@ toggles shade, the wheel changes the volume by 4 per notch and shows `VOLUME: n%
 ## EqualizerWindow — `equalizer_window.h/.cpp`
 
 ```cpp
+struct EqualizerControl {
+    enum class Kind {
+        None,
+        Close,
+        Shade,
+        ShadeVolume,
+        ShadeBalance,
+        On,
+        Auto,
+        Presets,
+        Preamp,
+        Band
+    };
+
+    Kind kind = Kind::None;
+    int band = 0;
+
+    bool operator==(const EqualizerControl&) const = default;
+};
+
 class EqualizerWindow : public SkinnedWindow {
 public:
     explicit EqualizerWindow(const Skins::Skin* skin, QWidget* parent = nullptr);
@@ -404,8 +424,8 @@ is missing). The preamp line is drawn at the preamp's height.
 
 **Traps:**
 - `setSettings` emits nothing: the owner applies the settings to the engine itself.
-- `pressedElement` is an `int` holding the `kEl*` ids of the `.cpp`: 0 none, 1 close, 2 ON,
-  3 AUTO, 4 presets, 5 preamp, 6–15 bands, 20 shade button, 21/22 shade-mode volume/balance.
+- `pressedControl` is an `EqualizerControl`: its `band` means something only for `Kind::Band`,
+  and `ShadeVolume`/`ShadeBalance` are the shade-mode sliders.
 - The reset menu item emits `settingsChanged` but no `statusText`.
 
 ## PlaylistWindow — `playlist_window.h/.cpp`
@@ -435,7 +455,7 @@ Q_SIGNALS:
 
 Frame from PLEDIT.BMP: top 20, bottom 38, left 12, right 20 px; rows are 13 px and start 3 px
 below the top of the list. Text uses the PLEDIT.TXT font at 9 px with 0.5 px letter spacing, the
-current track in the `current` colour, selected rows on `selectedBg`, durations right-aligned
+current track in the `current` colour, selected rows on `selectedBackground`, durations right-aligned
 (`h:mm:ss` from one hour). Rectangular (no region mask). The title bar (y < 20) drags the window; in
 shade mode the whole strip does, except the close (width − 11, 3) and shade (width − 21, 3)
 buttons, 9x9 each, which act on release inside.
@@ -540,10 +560,12 @@ browser. `Player` and `CoverCache` are not owned.
 ```cpp
 class MilkdropWindow : public GenWindow {
 public:
+    enum class PresetOrigin { User, Automatic };
+
     MilkdropWindow(
         Audio::AudioEngine* engine,
-        const QString& builtInDir,         // bundled presets (":/milkdrop")
-        const QString& userDir,            // the user's .milk files and textures/
+        const QString& builtInPresetDirectory,  // bundled presets (":/milkdrop")
+        const QString& userPresetDirectory,     // the user's .milk files and textures/
         const Skins::Skin* skin,
         QWidget* parent = nullptr
     );
@@ -551,7 +573,11 @@ public:
     const Vis::MilkdropPresets& presets() const;
     int currentIndex() const;              // -1 before the first preset
     QString currentPreset() const;
-    void selectPreset(int index, bool smooth = true, bool byUser = true);
+    void selectPreset(
+        int index,
+        Vis::PresetTransition transition = Vis::PresetTransition::Blend,
+        PresetOrigin origin = PresetOrigin::User
+    );
     void selectPreset(const QString& name);
     void nextPreset();
     void previousPreset();
@@ -571,17 +597,17 @@ public:
     Vis::MilkdropView* view() const;       // null before the first show and without OpenGL
     QString failure() const;               // why nothing can be shown; empty when fine
 
-    void onSwitchRequested(bool hardCut);  // the view's signals, public for tests
+    void onSwitchRequested(Vis::PresetTransition transition);  // the view's signals, public for tests
     void onPresetFailed(const QString& message);
     void onStaysBlack();
 
     QStringList blackPresets() const;      // sorted names
     void setBlackPresets(const QStringList& names);
     bool isBlack(int index) const;
-    QString userPresetDir() const;
+    QString userPresetDirectory() const;
 
 Q_SIGNALS:
-    void presetChanged(const QString& name, bool byUser);
+    void presetChanged(const QString& name, Ui::MilkdropWindow::PresetOrigin origin);
     void settingsChanged();                // preset, shuffle, lock, interval or black list changed
     void transportKey(int key);            // Z, X, C, V, B, Left, Right pressed in the view
 };
@@ -592,11 +618,11 @@ see [src/vis](../vis/README.md)); OpenGL is not touched until the window is firs
 probing it loads the GPU driver. On the first show `Vis::MilkdropView::OpenGlProblem()` is checked;
 if OpenGL is usable a `MilkdropView` (a `QOpenGLWindow`) is embedded with
 `QWidget::createWindowContainer` over `contentRect()` (scaled, focus on click). The container owns
-that view. Texture search paths are `userDir` and `userDir/textures`. When the view is ready it
-starts with the selected preset, or the first `followingPreset()`, without blending, and emits
-`presetChanged(name, false)`. When a view fails, the embedded one is hidden and stops rendering, a
-full-screen one closes; `failure()` then returns the reason and the frame shows
-`Milkdrop недоступен: <reason>`.
+that view. Texture search paths are `userPresetDirectory` and `userPresetDirectory/textures`. When
+the view is ready it starts with the selected preset, or the first `followingPreset()`, without
+blending, and emits `presetChanged(name, PresetOrigin::Automatic)`. When a view fails, the embedded
+one is hidden and stops rendering, a full-screen one closes; `failure()` then returns the reason and
+the frame shows `Milkdrop недоступен: <reason>`.
 
 Rendering: the embedded view renders while the window is visible and the view has not failed; in
 full screen only the full-screen view renders. `setPlaying` switches between 60 and 20 fps. Full
@@ -605,11 +631,12 @@ geometry with a blank cursor. It is refused when the embedded view is missing or
 full screen hides it, releases it to `deleteLater` and reloads the current preset in the embedded
 view without blending; hiding the window leaves full screen.
 
-**Switching.** `selectPreset(index, smooth, byUser)` ignores an index out of range or a preset
+**Switching.** `selectPreset(index, transition, origin)` ignores an index out of range or a preset
 whose file reads as empty. Otherwise it records the previous index in the history (up to 100
-entries), loads the preset into the active view (blended when `smooth`) and emits
-`presetChanged(name, byUser)` and `settingsChanged`. `byUser` is false for every automatic switch;
-the app shows the name in the main window's marquee only when it is true. `followingPreset()`:
+entries), loads the preset into the active view (blended when `transition` is `Blend`) and emits
+`presetChanged(name, origin)` and `settingsChanged`. `origin` is `Automatic` for every automatic
+switch; the app shows the name in the main window's marquee only when it is `User`.
+`followingPreset()`:
 - shuffle: uniformly at random (`QRandomGenerator::global()`) among the presets that are not black
   and not the current one; drawing from that list, not retrying random picks, is what keeps a
   black preset from ever coming up;
@@ -620,8 +647,8 @@ the app shows the name in the main window's marquee only when it is true. `follo
 
 `previousPreset()` in shuffle mode pops the history (without recording where it came from); with
 an empty history, or in order mode, it steps back in list order skipping black presets.
-`MilkdropView::switchRequested(hardCut)` (the preset's time is up) switches to
-`followingPreset()`, blended unless `hardCut`; ignored when locked or when there are no presets.
+`MilkdropView::switchRequested(transition)` (the preset's time is up) switches to
+`followingPreset()` with that `transition`; ignored when locked or when there are no presets.
 `presetFailed` (projectM keeps showing the previous preset) moves on to `followingPreset()`
 without blending, and gives up after `min(10, number of presets)` failures in a row. `nextPreset`,
 `previousPreset`, the H key, a pick from the menu, `switchRequested` and `staysBlack` reset that
@@ -709,7 +736,7 @@ unless `isLatestSourceRequest(ticket)`; the `Player` is held through `QPointer`.
 class LoginDialog : public QDialog {
 public:
     explicit LoginDialog(
-        QNetworkAccessManager* nam,
+        QNetworkAccessManager* networkManager,
         QWidget* parent = nullptr,
         const QString& oauthBase = {}     // empty = https://oauth.yandex.ru; tests pass a mock server
     );
@@ -717,13 +744,13 @@ public:
 };
 ```
 
-Two ways in. By device code, the preferred one, shown first: the constructor starts `Yandex::DeviceLogin`; on `codeReady` the code
-is shown large and copied to the clipboard, and a button opens the verification URL; `succeeded`
-accepts the dialog with that token; `failed` shows the reason and disables the button. By pasting:
-a `music.yandex.ru/#access_token=…` address or the bare token, extracted with
-`Yandex::NormalizeToken`; nothing found shows a red message, otherwise the dialog is accepted.
-Accepting cancels the device polling. The token is not stored here (the app does that). Minimum
-width 460 px.
+Two ways in. By device code, the preferred one, shown first: the constructor starts
+`Yandex::DeviceLogin`; on `codeReady` the code is shown large and copied to the clipboard, and a
+button opens the verification URL; `succeeded` accepts the dialog with that token; `failed` shows
+the reason and disables the button. By pasting: a `music.yandex.ru/#access_token=…` address or the
+bare token, extracted with `Yandex::NormalizeToken`; nothing found shows a red message, otherwise
+the dialog is accepted. Accepting cancels the device polling. The token is not stored here (the app
+does that). Minimum width 460 px.
 
 **Traps:**
 - Constructing the dialog starts network traffic, before `exec()`.
@@ -747,11 +774,11 @@ Nothing is parsed here: bitmaps, `region.txt` and `PLEDIT.TXT` arrive parsed in 
 ## Errors
 
 Nothing in `src/ui` throws. The only `catch` is `EqualizerWindow`'s around `Audio::ParseEqf`: an
-`Audio::Error` becomes `statusText("EQ: " + what())`. Everything else is data:
+`Audio::Error` becomes `statusText("EQ: <file>: " + what())`. Everything else is data:
 
 | Failure | Reported as |
 |---|---|
-| `.eqf` cannot be opened, is above 1 MiB, cannot be saved | `EqualizerWindow::statusText` (`EQ: <file>: <reason>`, `EQ: <file> — <n> КБ, а пресеты не больше 1024 КБ`, `EQ: <file> не сохранён: <reason>`); a `ParseEqf` error arrives as `EQ: <file>: <what>` |
+| `.eqf` cannot be opened, is above 1 MiB, cannot be saved | `EqualizerWindow::statusText`: `EQ: <file>: <reason>`, `EQ: <file> — <n> КБ, а пресеты не больше 1024 КБ`, `EQ: <file> не сохранён: <reason>` |
 | Yandex request fails | error string from the `Library` callback → `Player::statusMessage`, or a disabled `Ошибка: …` item in a submenu; `moreWave` errors go to `qWarning` only |
 | Device login fails, pasted text holds no token | labels in `LoginDialog` |
 | No usable OpenGL, projectM fails | `MilkdropWindow::failure()`, painted in the frame; `qWarning` |
@@ -768,7 +795,8 @@ windows only receive a `const Skins::Skin*`.
   detection timing), the preset list and its order: [src/vis](../vis/README.md).
 - The queue, playback control, source tickets, covers: [src/core](../core/README.md).
 - Yandex requests, the OAuth device flow, token parsing: [src/yandex](../yandex/README.md).
-- The equalizer DSP, the `.eqf` layout, built-in presets, the audio engine: [src/audio](../audio/README.md).
+- The equalizer DSP, the `.eqf` layout, built-in presets, the audio engine:
+  [src/audio](../audio/README.md).
 - Creating and wiring the windows, the default layout, saving and restoring positions and sizes,
   scale changes with re-docking, always-on-top, the main and sources menus around the Yandex
   items, shortcuts and transport keys: [src/app](../app/README.md).

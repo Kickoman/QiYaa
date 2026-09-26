@@ -44,10 +44,10 @@ public:
     void appendData(TStreamId stream, const QByteArray& bytes);
     void finishData(TStreamId stream);
     void failData(TStreamId stream);
-    void appendData(const QByteArray& bytes) { appendData(current, bytes); }
-    void finishData() { finishData(current); }
-    void failData() { failData(current); }
-    TStreamId currentStream() const { return current; }
+    void appendData(const QByteArray& bytes) { appendData(currentId, bytes); }
+    void finishData() { finishData(currentId); }
+    void failData() { failData(currentId); }
+    TStreamId currentStream() const { return currentId; }
 
     void pause();
     void resume();
@@ -77,7 +77,7 @@ Q_SIGNALS:
     void errorOccurred(const QString& message);
 
 private:
-    struct Impl;
+    struct Implementation;
     void setState(State state);
     void updateGains();
     void startDecoder();
@@ -85,10 +85,10 @@ private:
 
     QHash<TStreamId, std::shared_ptr<StreamBuffer>> streams;
     TStreamId lastId = 0;
-    TStreamId current = 0;
-    TStreamId queued = 0;
+    TStreamId currentId = 0;
+    TStreamId queuedId = 0;
 
-    std::unique_ptr<Impl> d;
+    std::unique_ptr<Implementation> implementation;
     State currentState = State::Stopped;
     int volumePercent = 75;
     int balancePercent = 0;

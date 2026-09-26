@@ -20,31 +20,32 @@ namespace {
 constexpr char kClientId[] = "23cabbbdc6cd418abb4b39c32c41195d";
 constexpr char kClientSecret[] = "53bc75238f0c4d08a118e51fe9203300";
 constexpr int kTimeoutMs = 20'000;
+constexpr int kSlowDownStepMs = 2000;
 
 QByteArray FormBody(const QList<std::pair<QString, QString>>& form) {
     QByteArray body;
-    for (const auto& [k, v] : form) {
+    for (const auto& [key, value] : form) {
         if (!body.isEmpty()) {
             body += '&';
         }
-        body += QUrl::toPercentEncoding(k) + '=' + QUrl::toPercentEncoding(v);
+        body += QUrl::toPercentEncoding(key) + '=' + QUrl::toPercentEncoding(value);
     }
     return body;
 }
 
 QNetworkRequest FormRequest(const QUrl& url) {
-    QNetworkRequest req(url);
-    req.setHeader(
+    QNetworkRequest request(url);
+    request.setHeader(
         QNetworkRequest::ContentTypeHeader, QStringLiteral("application/x-www-form-urlencoded")
     );
-    req.setTransferTimeout(kTimeoutMs);
-    return req;
+    request.setTransferTimeout(kTimeoutMs);
+    return request;
 }
 }  // namespace
 
-DeviceLogin::DeviceLogin(QNetworkAccessManager* nam, QObject* parent)
+DeviceLogin::DeviceLogin(QNetworkAccessManager* networkAccessManager, QObject* parent)
     : QObject(parent)
-    , networkManager(nam)
+    , networkManager(networkAccessManager)
     , baseUrl(QStringLiteral("https://oauth.yandex.ru")) {
     pollTimer.setSingleShot(true);
     connect(&pollTimer, &QTimer::timeout, this, &DeviceLogin::poll);
@@ -90,25 +91,25 @@ void DeviceLogin::start() {
         deviceCode = object.value(QStringLiteral("device_code")).toString();
         const QString userCode = object.value(QStringLiteral("user_code")).toString();
         if (deviceCode.isEmpty() || userCode.isEmpty()) {
-            QString err = object.value(QStringLiteral("error_description")).toString();
-            if (err.isEmpty()) {
-                err = object.value(QStringLiteral("error")).toString();
+            QString message = object.value(QStringLiteral("error_description")).toString();
+            if (message.isEmpty()) {
+                message = object.value(QStringLiteral("error")).toString();
             }
-            if (err.isEmpty()) {
-                err = reply->errorString();
+            if (message.isEmpty()) {
+                message = reply->errorString();
             }
-            Q_EMIT failed(err);
+            Q_EMIT failed(message);
             return;
         }
-        QUrl verify(object.value(QStringLiteral("verification_url")).toString());
-        if (!verify.isValid() || verify.isEmpty()) {
-            verify = QUrl(QStringLiteral("https://ya.ru/device"));
+        QUrl verificationUrl(object.value(QStringLiteral("verification_url")).toString());
+        if (!verificationUrl.isValid() || verificationUrl.isEmpty()) {
+            verificationUrl = QUrl(QStringLiteral("https://ya.ru/device"));
         }
-        const int interval = std::max(1, object.value(QStringLiteral("interval")).toInt(5));
-        const int expires = object.value(QStringLiteral("expires_in")).toInt(300);
-        deadlineMs = QDateTime::currentMSecsSinceEpoch() + expires * 1000LL;
-        pollTimer.setInterval(interval * 1000);
-        Q_EMIT codeReady(userCode, verify);
+        const int intervalSeconds = std::max(1, object.value(QStringLiteral("interval")).toInt(5));
+        const int lifetimeSeconds = object.value(QStringLiteral("expires_in")).toInt(300);
+        deadlineMs = QDateTime::currentMSecsSinceEpoch() + lifetimeSeconds * 1000LL;
+        pollTimer.setInterval(intervalSeconds * 1000);
+        Q_EMIT codeReady(userCode, verificationUrl);
         pollTimer.start();
     });
 }
@@ -146,17 +147,17 @@ void DeviceLogin::poll() {
         if (error == QLatin1String("authorization_pending")
             || error == QLatin1String("slow_down")) {
             if (error == QLatin1String("slow_down")) {
-                pollTimer.setInterval(pollTimer.interval() + 2000);
+                pollTimer.setInterval(pollTimer.interval() + kSlowDownStepMs);
             }
             pollTimer.start();
             return;
         }
-        QString desc = object.value(QStringLiteral("error_description")).toString();
-        if (desc.isEmpty()) {
-            desc = error.isEmpty() ? reply->errorString() : error;
+        QString description = object.value(QStringLiteral("error_description")).toString();
+        if (description.isEmpty()) {
+            description = error.isEmpty() ? reply->errorString() : error;
         }
         deviceCode.clear();
-        Q_EMIT failed(desc);
+        Q_EMIT failed(description);
     });
 }
 

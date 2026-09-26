@@ -30,7 +30,7 @@ protected:
     virtual bool contentMousePress(QPoint, Qt::MouseButton) { return false; }
 
     void paintSkin(QPainter& painter) override;
-    bool isDragArea(QPoint pos) const override;
+    bool isDragArea(QPoint skinPos) const override;
     bool skinMousePress(QPoint pos, Qt::MouseButton button) override;
     void skinMouseMove(QPoint pos) override;
     void skinMouseRelease(QPoint pos, Qt::MouseButton button) override;

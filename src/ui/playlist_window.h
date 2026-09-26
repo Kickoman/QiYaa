@@ -41,7 +41,7 @@ Q_SIGNALS:
 protected:
     void closeEvent(QCloseEvent* event) override;
     void paintSkin(QPainter& painter) override;
-    bool isDragArea(QPoint pos) const override;
+    bool isDragArea(QPoint skinPos) const override;
     bool skinMousePress(QPoint pos, Qt::MouseButton button) override;
     void skinMouseMove(QPoint pos) override;
     void skinMouseRelease(QPoint pos, Qt::MouseButton button) override;
@@ -77,7 +77,7 @@ private:
     void drawBottomInfo(QPainter& painter) const;
     void popupAt(QMenu* menu, QPoint skinPos);
     Button buttonAt(QPoint point) const;
-    void selectRow(int row, Qt::KeyboardModifiers mods);
+    void selectRow(int row, Qt::KeyboardModifiers modifiers);
 
     Core::Player* corePlayer;
     QSize resizeSteps{0, 4};

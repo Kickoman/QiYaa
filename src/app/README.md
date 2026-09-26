@@ -17,7 +17,7 @@ HTTP, OAuth and the token file format in [src/yandex](../yandex/README.md); `.ws
 | File | Contains |
 |---|---|
 | `application.h/.cpp` | `App::Application` and its `Options`: ownership, wiring, layout, menus, shortcuts, settings, login, skins, quit, `snapshot()` |
-| `paths.h/.cpp` | `ConfigDir`, `YaampDataDirs`, `TokenFile`, `YaampTokenFiles`: where settings and tokens live |
+| `paths.h/.cpp` | `ConfigDirectory`, `YaampDataDirectories`, `TokenFile`, `YaampTokenFiles`: where settings and tokens live |
 | `offline_sources.h/.cpp` | `StreamLocalFile` (a local file fed to the engine like a download) and `DemoTracks` (nine sample entries) |
 | `main.cpp` | `main()` of the `qiyaa` executable: platform choice, command-line options, `--screenshot`, exit codes |
 
@@ -60,7 +60,7 @@ class Application : public QObject {
 public:
     struct Options {
         QString skinOverride;           // --skin; empty = the `skin` setting
-        QString settingsFile;           // empty = <ConfigDir>/settings.ini
+        QString settingsFile;           // empty = <ConfigDirectory>/settings.ini
         bool offline = false;           // start() does not look for a token
         bool audio = true;              // false: AudioEngine::init() is never called
         bool readOnlySettings = false;  // settings, covers, Milkdrop presets in a temp dir
@@ -119,7 +119,7 @@ that may hold its file.
 **Construction**, in this order:
 
 1. Picks the settings file (INI format): `settings.ini` in a new `QTemporaryDir` when
-   `readOnlySettings`, else `settingsFile`, else `<ConfigDir>/settings.ini`.
+   `readOnlySettings`, else `settingsFile`, else `<ConfigDirectory>/settings.ini`.
 2. Loads the built-in base skin `:/skins/base-2.91.wsz` (`Skins::Skin::BuiltinBase()`). It is also
    the fallback for bitmaps other skins lack.
 3. With `audio`, calls `AudioEngine::init()`. On failure it logs `Audio: <message>` and the app
@@ -129,15 +129,15 @@ that may hold its file.
 5. Creates the main, equalizer, playlist and now-playing windows and the cover cache
    (`<temp dir>/covers` when `readOnlySettings`, else the default of
    [src/core](../core/README.md)). With `QIYAA_HAVE_MILKDROP` it also creates the Milkdrop window,
-   with built-in presets from `:/milkdrop` and user presets from `<ConfigDir>/milkdrop`
+   with built-in presets from `:/milkdrop` and user presets from `<ConfigDirectory>/milkdrop`
    (`<temp dir>/milkdrop` when `readOnlySettings`). Every window gets the shortcuts listed below;
    all but the main window are "secondary" (no taskbar button on Windows).
 6. Restores the settings listed in [Settings](#settings) and connects the windows:
    - the equalizer's shade mode shows and sets the main window's volume and balance (`setMixer`,
      `volumeRequested`, `balanceRequested`);
    - the equalizer's `statusText` goes to the main window's marquee;
-   - a Milkdrop preset picked by hand (`presetChanged` with `byUser`) shows `Milkdrop: <name>` in
-     the marquee;
+   - a Milkdrop preset picked by hand (`presetChanged` with `PresetOrigin::User`) shows `Milkdrop:
+     <name>` in the marquee;
    - Milkdrop's `transportKey` (transport keys pressed while the visualization has the focus)
      goes to the same handler as the shortcuts;
    - Milkdrop is told whether the engine state is `Playing`.
@@ -171,7 +171,7 @@ now.
    and may move itself back onto the screen, so the main window's position is read only after
    this step.
 3. Puts each docked window back at main position + offset × new scale, snapped with
-   `Ui::SnapToOthers(rect, placed, 4)` to the windows already placed. Window sizes are rounded one
+   `Ui::SnapToOthers(frame, placed, 4)` to the windows already placed. Window sizes are rounded one
    by one, and the 4 px snap closes the resulting 1 px gaps.
 4. Moves the visible group as a whole into the screen it is on (`Ui::PickScreen`,
    `Ui::ClampInside`). If the group is wider or taller than that screen, it calls
@@ -193,9 +193,9 @@ window, then shows again those that were visible, because changing window flags 
 `equalizer/auto`. It writes the five `*/pos` keys only when all three hold: the platform lets the
 app place windows (`SkinnedWindow::CanPositionWindows()`, false on native Wayland), the main window
 is visible, and no `--scale` override is active. It runs when any window finishes a move
-(`moveFinished`), on a shade change, on a `setScale` with `ScaleScope::Saved`, on a choice in the Visualization
-submenu, in `quit()` and on `aboutToQuit`. The other settings are written the moment they change
-(see the table).
+(`moveFinished`), on a shade change, on a `setScale` with `ScaleScope::Saved`, on a choice in the
+Visualization submenu, in `quit()` and on `aboutToQuit`. The other settings are written the moment
+they change (see the table).
 
 **`quit()`** runs once; a second call returns at once. It calls `saveState()`, then
 `Player::shutDown()` (stops playback, which reports the open track to the wave as skipped, and
@@ -219,7 +219,7 @@ default offscreen screen, where the scale tests skip themselves).
   existing ones, and needs `installShortcuts()`, an entry in `windows()` and its settings keys.
 - `Options::offline` only skips the token lookup in `start()`. The menu item "Войти в Яндекс
   Музыку..." still logs in. `readOnlySettings` does not redirect the token file: a login during
-  such a run writes the real `<ConfigDir>/token`.
+  such a run writes the real `<ConfigDirectory>/token`.
 - `Options::settingsFile` is not set by anyone now, neither `main.cpp` nor the tests.
 - After `--scale`, window positions are not saved for the rest of the run, unless the user picks a
   size from the menu (a `setScale` with `ScaleScope::Saved` clears `transientScale`).
@@ -254,7 +254,7 @@ accepted token formats and the rule that an empty own file means "logged out" ar
 - No token: the marquee shows `Войдите: правый клик → Войти`, and `login()` is queued, so it runs
   once the event loop starts.
 - A token: logs `Using Yandex token from <origin>` and calls `applyToken(token, save)`. `save` is
-  true only when the origin is neither under `ConfigDir()` nor the environment variable (an
+  true only when the origin is neither under `ConfigDirectory()` nor the environment variable (an
   origin starting with `environment`), so a token imported from Yaamp is copied into QiYaa's own
   token file once the account connects.
 
@@ -279,10 +279,10 @@ bundled skin, or the path picked in the file dialog.
 
 ### Menus
 
-`showMainMenu(globalPos)` answers the main window's options button and right-click, and the
-playlist's ADD button and right-click. `showSourcesMenu(globalPos)` answers the main window's eject
-button. Both build a `QMenu` parented to the main window, open it with `popup()` and delete it on
-close.
+`showMainMenu(globalPosition)` answers the main window's options button and right-click, and the
+playlist's ADD button and right-click. `showSourcesMenu(globalPosition)` answers the main window's
+eject button. Both build a `QMenu` parented to the main window, open it with `popup()` and delete it
+on close.
 
 The sources menu holds the Yandex items from `Ui::AddLibraryActions` (only "Войти в Яндекс
 Музыку..." while logged out; it calls `login()`). The main menu, top to bottom:
@@ -301,7 +301,7 @@ The sources menu holds the Yandex items from `Ui::AddLibraryActions` (only "Во
 
 ### Shortcuts
 
-`installShortcuts(window)` adds one `QAction` per key to each of the five windows. `QAction`'s
+`installShortcuts(widget)` adds one `QAction` per key to each of the five windows. `QAction`'s
 default context is the window, so the keys work while any of the player's windows is active.
 
 | Key | Action |
@@ -388,34 +388,34 @@ skins by [src/skins](../skins/README.md).
 
 ```cpp
 namespace App {
-QString ConfigDir();            // created if missing
-QStringList YaampDataDirs();    // old Yaamp data folders, may not exist
-QString TokenFile();            // <ConfigDir>/token
-QStringList YaampTokenFiles();  // <dir>/token.json for each YaampDataDirs() entry, same order
+QString ConfigDirectory();            // created if missing
+QStringList YaampDataDirectories();    // old Yaamp data folders, may not exist
+QString TokenFile();            // <ConfigDirectory>/token
+QStringList YaampTokenFiles();  // <dir>/token.json for each YaampDataDirectories() entry, same order
 }
 ```
 
-`ConfigDir()` is `QStandardPaths::GenericConfigLocation` + `/QiYaa`. `YaampDataDirs()` is where
+`ConfigDirectory()` is `QStandardPaths::GenericConfigLocation` + `/QiYaa`. `YaampDataDirectories()` is where
 Electron's `app.getPath('userData')` (`<appData>/<productName>`) put the old Yaamp's data, with the
 product name spelled `Yaamp` and then `yaamp`:
 
-| OS | `ConfigDir()` | `YaampDataDirs()` |
+| OS | `ConfigDirectory()` | `YaampDataDirectories()` |
 |---|---|---|
 | Linux, BSD | `$XDG_CONFIG_HOME/QiYaa`, default `~/.config/QiYaa` | `$XDG_CONFIG_HOME/Yaamp`, `…/yaamp`; `~/.config/…` when the variable is empty or unset |
 | Windows | `%LOCALAPPDATA%\QiYaa` | `%APPDATA%\Yaamp`, `%APPDATA%\yaamp`; none when `APPDATA` is unset |
 | macOS | `~/Library/Preferences/QiYaa` | `~/Library/Application Support/Yaamp`, `…/yaamp` |
 
-What lives in `ConfigDir()`: `settings.ini`, `token` and, in a Milkdrop build, `milkdrop/` (the
+What lives in `ConfigDirectory()`: `settings.ini`, `token` and, in a Milkdrop build, `milkdrop/` (the
 user's own presets). The cover cache is not there: [src/core](../core/README.md) chooses its
 place.
 
 **Traps:**
-- `ConfigDir()` calls `QDir().mkpath()` on every call, `TokenFile()` included, and ignores a
+- `ConfigDirectory()` calls `QDir().mkpath()` on every call, `TokenFile()` included, and ignores a
   failure.
 - On Windows QiYaa's folder is under Local (`%LOCALAPPDATA%`, Qt's choice), while Yaamp's is under
   Roaming (`%APPDATA%`); on macOS it is `Preferences`, not `Application Support`.
-- The "imported" test in `start()` is a string-prefix test against `ConfigDir()`. If `TokenFile()`
-  ever moves out of `ConfigDir()`, QiYaa's own token counts as imported and is saved again at every
+- The "imported" test in `start()` is a string-prefix test against `ConfigDirectory()`. If `TokenFile()`
+  ever moves out of `ConfigDirectory()`, QiYaa's own token counts as imported and is saved again at every
   start.
 - On case-insensitive file systems (Windows, macOS by default) `Yaamp` and `yaamp` are the same
   folder, so the same `token.json` may be read twice; `FindToken` stops at the first usable one.

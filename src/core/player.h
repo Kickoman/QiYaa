@@ -20,9 +20,10 @@ namespace Core {
 class Player : public QObject {
     Q_OBJECT
 public:
-    using TMoreFn = std::function<void(std::function<void(const QList<Yandex::Track>&)> done)>;
+    using TLoadMoreCallback =
+        std::function<void(std::function<void(const QList<Yandex::Track>&)> done)>;
     enum class TrackEvent { Started, Finished, Skipped };
-    using TEventFn =
+    using TEventCallback =
         std::function<void(TrackEvent event, const Yandex::Track& track, double playedSeconds)>;
 
     Player(Yandex::Library* library, Audio::AudioEngine* engine, QObject* parent = nullptr);
@@ -34,8 +35,8 @@ public:
         const QList<Yandex::Track>& tracks,
         const QString& title,
         bool autoplay,
-        TMoreFn more = {},
-        TEventFn events = {}
+        TLoadMoreCallback more = {},
+        TEventCallback events = {}
     );
     void appendTracks(const QList<Yandex::Track>& tracks);
     void removeTracks(QList<int> indices);
@@ -104,11 +105,11 @@ private:
     Audio::AudioEngine* audioEngine;
     QList<Yandex::Track> queuedTracks;
     QString titleText;
-    TMoreFn loadMore;
-    TEventFn reportEvent;
+    TLoadMoreCallback loadMore;
+    TEventCallback reportEvent;
     std::optional<Yandex::Track> openTrack;
-    TEventFn openTrackEvents;
-    double played = 0;
+    TEventCallback openTrackEvents;
+    double playedSeconds = 0;
     double lastPosition = 0;
     bool downloadFailed = false;
     bool isShutDown = false;

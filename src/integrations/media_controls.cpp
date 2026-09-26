@@ -25,8 +25,8 @@ MediaControls::MediaControls(
     , coverCache(covers)
     , hookFunctions(std::move(hooks)) {
     connect(corePlayer, &Core::Player::currentTrackChanged, this, [this] {
-        if (const auto* t = corePlayer->currentTrack(); t && coverCache) {
-            coverCache->get(t->coverUrl(kCoverPixels));
+        if (const auto* track = corePlayer->currentTrack(); track && coverCache) {
+            coverCache->get(track->coverUrl(kCoverPixels));
         }
         Q_EMIT trackChanged();
     });
@@ -37,7 +37,8 @@ MediaControls::MediaControls(
     connect(corePlayer, &Core::Player::seeked, this, &MediaControls::seeked);
     if (coverCache) {
         connect(coverCache, &Core::CoverCache::ready, this, [this](const QUrl& url) {
-            if (const auto* t = corePlayer->currentTrack(); t && t->coverUrl(kCoverPixels) == url) {
+            if (const auto* track = corePlayer->currentTrack();
+                track && track->coverUrl(kCoverPixels) == url) {
                 Q_EMIT artChanged();
             }
         });
@@ -90,8 +91,8 @@ bool MediaControls::seekTo(double seconds) {
 }
 
 QUrl MediaControls::remoteArtUrl() const {
-    const auto* t = corePlayer->currentTrack();
-    return t ? t->coverUrl(kCoverPixels) : QUrl();
+    const auto* track = corePlayer->currentTrack();
+    return track ? track->coverUrl(kCoverPixels) : QUrl();
 }
 
 QUrl MediaControls::artUrl() const {

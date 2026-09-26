@@ -14,7 +14,7 @@ colours from [src/skins](../skins/README.md).
 |---|---|
 | `visualizer.h` | `VisFrame`, the `Visualizer` interface, `MakeSpectrum`, `MakeOscilloscope`, `Analyzer` |
 | `visualizer.cpp` | `Analyzer` (Hann window + radix-2 FFT), the file-local `Spectrum` and `Oscilloscope` |
-| `milkdrop_presets.h/.cpp` | `MilkdropPresets` — built-in and user `.milk` files in a fixed order, read with a 1 MiB bound |
+| `milkdrop_presets.h/.cpp` | `PresetTransition` (cut or blend); `MilkdropPresets` — built-in and user `.milk` files in a fixed order, read with a 1 MiB bound |
 | `milkdrop_view.h/.cpp` | `MilkdropView` — projectM 4 in a `QOpenGLWindow`: OpenGL 3.3 probe, PCM feed, deferred preset loads, black-picture watch, frame capture. Built only with Milkdrop |
 
 ## Dependencies
@@ -22,7 +22,8 @@ colours from [src/skins](../skins/README.md).
 Module order: `audio`, `yandex`, `skins` → **`vis`**, `core` → `ui`, `integrations` → `app`.
 
 - `qiyaa_vis` links PUBLIC `Qt6::Gui`, PRIVATE `qiyaa_audio` and `qiyaa_skins`. Those two stay
-  private because the headers only forward-declare `Audio::AudioEngine` and `Skins::Skin`:
+  private because the headers include no other module's header and only forward-declare
+  `Audio::AudioEngine` and `Skins::Skin`:
   `audio/audio_engine.h` is included by `milkdrop_view.cpp` alone, `skins/skin.h` by
   `visualizer.cpp` alone.
 - With Milkdrop (CMake finds `Qt6::OpenGL` and projectM 4.1 or newer, or downloads projectM v4.1.7
@@ -38,7 +39,7 @@ Checks, from the repository root:
 
 ```bash
 grep -rnE --include='*.h' --include='*.cpp' '#include "(core|ui|integrations|app|yandex)/' src/vis/   # must print nothing
-grep -n '#include "' src/vis/*.h                                                                      # must print nothing
+grep -n '#include "' src/vis/*.h | grep -v '"vis/'                                                  # must print nothing
 grep -rl --include='*.h' --include='*.cpp' 'projectM-4/' src/vis/ | grep -v 'milkdrop_view.cpp$'      # must print nothing
 grep -rnw --include='*.h' --include='*.cpp' throw src/vis/                                            # must print nothing
 ```
@@ -49,7 +50,7 @@ grep -rnw --include='*.h' --include='*.cpp' throw src/vis/                      
 struct VisFrame {
     std::span<const float> left, right;  // latest PCM, -1..1, same length
     std::span<const float> spectrum;     // magnitudes in dBFS, bins 0..fftSize/2
-    int sampleRate = 44100;
+    int sampleRate = 44'100;
     int fftSize = 1024;
 };
 
@@ -84,31 +85,32 @@ index the skin does not have is drawn `Qt::green`.
 | Index | Used for |
 |---|---|
 | 0, 1 | not used here (background, grid dots) |
-| 2..17 | spectrum bars by row: `2 + rowFromTop * 16 / h`, so 2 at the top of the area, 17 at the bottom |
+| 2..17 | spectrum bars by row: `2 + rowFromTop * 16 / areaHeight`, so 2 at the top of the area, 17 at the bottom |
 | 18..21 | oscilloscope by distance from the centre line: `18 + min(4, int(abs(row - 7.5)) / 2)` |
 | 22 | never reached: the largest distance on 16 rows is 7 |
 | 23 | spectrum peaks |
 
 **Spectrum** (`MakeSpectrum`, Winamp's 19-bar analyzer with falling peaks):
 
-- 19 bars on a log frequency scale from 60 Hz to `min(16000, sampleRate / 2)` Hz. Bar `b` covers
-  `60 * r^(b/19)` to `60 * r^((b+1)/19)` Hz with `r = hi / 60`, and shows the loudest bin in that
-  range: at least one bin, never bin 0 (DC).
+- 19 bars on a log frequency scale from `lowestHz` = 60 Hz to `highestHz` = `min(16000, sampleRate /
+  2)` Hz. Bar `bar` covers `60 * r^(bar/19)` to `60 * r^((bar+1)/19)` Hz with `r = highestHz / 60`,
+  and shows the loudest bin in that range: at least one bin, never bin 0 (DC).
 - −72 dBFS is an empty bar, −6 dBFS a full one, linear in dB between.
 - A bar jumps up at once and falls by 0.07 of the height per `update` (Winamp's "fast" falloff):
   a full bar empties in 15 updates.
 - A peak is pushed up by its bar. Otherwise it drops by `0.0004 * t²` of the height per `update`,
   `t` being the number of updates since it was last pushed (0 the first time): it holds for one
   update, then falls faster and faster.
-- Bar `b` is 3 px wide at `area.x() + 4 * b` (the 19 bars span 75 px) and `ceil(level * h)` rows
-  high, `h = area.height()`. The peak is one row at `h - ceil(peak * h)` in colour 23, drawn while
-  above 0.
+- Bar `bar` is 3 px wide at `area.x() + 4 * bar` (the 19 bars span 75 px) and `ceil(level *
+  areaHeight)` rows high, `areaHeight = area.height()`. The peak is one row at `areaHeight -
+  ceil(peak * areaHeight)` in colour 23, drawn while above 0.
 
 **Oscilloscope** (`MakeOscilloscope`, Winamp's "lines" style):
 
-- Uses the last `min(n, 576)` samples of the frame (`n = left.size()`), one mono sample
-  `(L + R) / 2` per column over 75 columns (`start + x * window / 75`, no averaging).
-- Row `clamp(lround(7.5 - 8 * v), 0, 15)`: +1 at the top (row 0), −1 at the bottom (row 15),
+- Uses the last `shownSamples = min(sampleCount, 576)` samples of the frame (`sampleCount =
+  left.size()`), one mono sample `(L + R) / 2` per column over 75 columns (`start + x * shownSamples
+  / 75`, no averaging).
+- Row `clamp(lround(7.5 - 8 * mono), 0, 15)`: +1 at the top (row 0), −1 at the bottom (row 15),
   silence on row 8.
 - Each column fills the vertical run from the previous column's row to its own, so the trace is
   continuous. Nothing is drawn before the first `update` or after `reset`.
@@ -153,6 +155,8 @@ public:
 ## `milkdrop_presets.h/.cpp`: `MilkdropPresets`
 
 ```cpp
+enum class PresetTransition { Cut, Blend };  // how a preset replaces the one on screen
+
 class MilkdropPresets {
 public:
     struct Preset {
@@ -161,7 +165,7 @@ public:
         bool builtIn = true;
     };
 
-    void load(const QString& builtInDir, const QString& userDir);
+    void load(const QString& builtInDirectory, const QString& userDirectory);
 
     int size() const;
     bool isEmpty() const;
@@ -175,6 +179,9 @@ public:
 };
 ```
 
+- `PresetTransition` is what `MilkdropView::loadPreset` takes and `switchRequested` carries: `Cut`
+  replaces the picture at once, `Blend` fades over projectM's soft-cut time (3 s). It lives in this
+  header, which is built with or without Milkdrop, and `milkdrop_view.h` includes it.
 - `load` replaces the whole list: the built-in folder's presets first, then the user's. A folder
   contributes its readable, non-hidden files matching `*.milk`, top level only. Qt name filters
   ignore case unless `QDir::CaseSensitive` is given, so `X.MILK` counts too.
@@ -216,7 +223,7 @@ public:
 
     static QString OpenGlProblem();  // empty when OpenGL 3.3 core is available
 
-    void loadPreset(const QByteArray& milk, bool smooth);  // at the next frame; smooth = 3 s blend
+    void loadPreset(const QByteArray& milk, PresetTransition transition);  // at the next frame
     void setPresetDuration(double seconds);                 // then switchRequested(); default 30
     void setLocked(bool locked);                            // projectM requests no switches
     void setTextureSearchPaths(const QStringList& paths);   // at the next frame
@@ -235,13 +242,13 @@ public:
 Q_SIGNALS:
     void ready();
     void failed(const QString& reason);
-    void switchRequested(bool hardCut);
+    void switchRequested(Vis::PresetTransition transition);
     void presetFailed(const QString& message);
     void staysBlack();
     void drawsPicture();
     void frameCaptured(const QImage& frame);
     void doubleClicked();
-    void contextMenuRequested(const QPoint& globalPos);
+    void contextMenuRequested(const QPoint& globalPosition);
     void keyPressed(int key, Qt::KeyboardModifiers modifiers);
 };
 ```
@@ -340,12 +347,12 @@ back buffer after the swap, whose content is undefined in `NoPartialUpdate` mode
 |---|---|---|
 | `ready()` | `initializeGL` started projectM | directly, inside `initializeGL`, context current |
 | `failed(reason)` | `initializeGL` could not; the timer is stopped | directly, inside `initializeGL` |
-| `switchRequested(hardCut)` | projectM wants the next preset: the time is up (`hardCut` false) or a beat-driven hard cut (`true`) | queued; projectM calls back from inside `projectm_opengl_render_frame` |
+| `switchRequested(transition)` | projectM wants the next preset: the time is up (`Blend`) or a beat-driven hard cut (`Cut`) | queued; projectM calls back from inside `projectm_opengl_render_frame` |
 | `presetFailed(message)` | projectM could not load the data given to `loadPreset`; the previous preset stays | queued; from inside `projectm_load_preset_data` |
 | `staysBlack()`, `drawsPicture()` | the black-picture watch, above | queued, from `paintGL` |
 | `frameCaptured(frame)` | the frame after `captureNextFrame()` | queued, from `paintGL` |
 | `doubleClicked()` | left-button double click | directly |
-| `contextMenuRequested(globalPos)` | right button pressed | directly |
+| `contextMenuRequested(globalPosition)` | right button pressed | directly |
 | `keyPressed(key, modifiers)` | every key press; the view acts on none | directly |
 
 Queued signals are posted with the view as the context object: if the view is deleted first, they
@@ -378,8 +385,8 @@ are dropped.
   `projectm_set_preset_locked`, which in projectM 4.1.7 re-arms the request when unlocked).
   projectM 4.1.7 also varies the time: it draws it from a normal distribution around the duration
   (σ = 1 s, its default "easter egg"), at least 1 s.
-- Hard cuts stay at projectM's default, off in 4.1.7, so `hardCut` is false unless someone enables
-  them.
+- Hard cuts stay at projectM's default, off in 4.1.7, so `transition` is `Blend` unless someone
+  enables them.
 - More than 4096 frames between two paints (about 93 ms at 44.1 kHz): the older ones are skipped,
   not queued. 4096 is also the size of the audio engine's tap.
 - The probe samples, it does not average: a `GL_LINEAR` blit reads about 2×2 source pixels per
@@ -424,8 +431,8 @@ preset of the Cream of the Crop collection is about 60 KB, the largest of the 15
 
 ## Errors
 
-This module defines no exception type and throws nothing (the last check above). The project's
-only exception trees, `Audio::Error` and `Skins::Error`, are neither thrown nor caught here. Every
+This module defines no exception type, throws nothing (the last check above) and catches nothing;
+the project's error policy is in [docs/architecture.md](../../docs/architecture.md#errors). Every
 failure is data:
 
 | Where | Failure | The caller gets |

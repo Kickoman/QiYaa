@@ -19,16 +19,16 @@ namespace {
 constexpr int kTimeoutMs = 20'000;
 
 QNetworkRequest MakeRequest(const QUrl& url, const QString& token) {
-    QNetworkRequest req(url);
+    QNetworkRequest request(url);
     if (!token.isEmpty()) {
-        req.setRawHeader("Authorization", "OAuth " + token.toUtf8());
+        request.setRawHeader("Authorization", "OAuth " + token.toUtf8());
     }
-    req.setRawHeader("Accept-Language", "ru");
-    req.setTransferTimeout(kTimeoutMs);
-    req.setAttribute(
+    request.setRawHeader("Accept-Language", "ru");
+    request.setTransferTimeout(kTimeoutMs);
+    request.setAttribute(
         QNetworkRequest::RedirectPolicyAttribute, QNetworkRequest::NoLessSafeRedirectPolicy
     );
-    return req;
+    return request;
 }
 }  // namespace
 
@@ -53,9 +53,9 @@ QUrl Track::webUrl() const {
     return QUrl(QStringLiteral("https://music.yandex.ru/album/%1/track/%2").arg(albumId, id));
 }
 
-ApiClient::ApiClient(QNetworkAccessManager* nam, QObject* parent)
+ApiClient::ApiClient(QNetworkAccessManager* networkAccessManager, QObject* parent)
     : QObject(parent)
-    , networkManager(nam)
+    , networkManager(networkAccessManager)
     , baseUrl(QStringLiteral("https://api.music.yandex.net")) { }
 
 QString ApiClient::IdString(const QJsonValue& value) {
@@ -75,26 +75,26 @@ void ApiClient::getJson(const QString& path, const QUrlQuery& query, TJsonCallba
 
 void ApiClient::postForm(const QString& path, const TForm& form, TJsonCallback callback) {
     QByteArray body;
-    for (const auto& [k, v] : form) {
+    for (const auto& [key, value] : form) {
         if (!body.isEmpty()) {
             body += '&';
         }
-        body += QUrl::toPercentEncoding(k) + '=' + QUrl::toPercentEncoding(v);
+        body += QUrl::toPercentEncoding(key) + '=' + QUrl::toPercentEncoding(value);
     }
-    QNetworkRequest req = MakeRequest(QUrl(baseUrl + path), accessToken);
-    req.setHeader(
+    QNetworkRequest request = MakeRequest(QUrl(baseUrl + path), accessToken);
+    request.setHeader(
         QNetworkRequest::ContentTypeHeader, QStringLiteral("application/x-www-form-urlencoded")
     );
-    QNetworkReply* reply = networkManager->post(req, body);
+    QNetworkReply* reply = networkManager->post(request, body);
     handleJson(reply, std::move(callback));
     trackPost(reply);
 }
 
 void ApiClient::postJson(const QString& path, const QJsonObject& body, TJsonCallback callback) {
-    QNetworkRequest req = MakeRequest(QUrl(baseUrl + path), accessToken);
-    req.setHeader(QNetworkRequest::ContentTypeHeader, QStringLiteral("application/json"));
+    QNetworkRequest request = MakeRequest(QUrl(baseUrl + path), accessToken);
+    request.setHeader(QNetworkRequest::ContentTypeHeader, QStringLiteral("application/json"));
     QNetworkReply* reply =
-        networkManager->post(req, QJsonDocument(body).toJson(QJsonDocument::Compact));
+        networkManager->post(request, QJsonDocument(body).toJson(QJsonDocument::Compact));
     handleJson(reply, std::move(callback));
     trackPost(reply);
 }
@@ -114,26 +114,27 @@ void ApiClient::handleJson(QNetworkReply* reply, TJsonCallback callback) {
         reply->deleteLater();
         const QByteArray body = reply->readAll();
         const int status = reply->attribute(QNetworkRequest::HttpStatusCodeAttribute).toInt();
-        const QJsonDocument doc = QJsonDocument::fromJson(body);
-        const QJsonObject obj = doc.object();
+        const QJsonDocument document = QJsonDocument::fromJson(body);
+        const QJsonObject object = document.object();
 
         if (reply->error() != QNetworkReply::NoError || status >= 400) {
-            QString msg = obj.value(QStringLiteral("error"))
-                              .toObject()
-                              .value(QStringLiteral("message"))
-                              .toString();
-            if (msg.isEmpty()) {
-                msg = obj.value(QStringLiteral("error")).toString();
+            QString message = object.value(QStringLiteral("error"))
+                                  .toObject()
+                                  .value(QStringLiteral("message"))
+                                  .toString();
+            if (message.isEmpty()) {
+                message = object.value(QStringLiteral("error")).toString();
             }
-            if (msg.isEmpty()) {
-                msg = reply->errorString();
+            if (message.isEmpty()) {
+                message = reply->errorString();
             }
             callback(
-                {}, QStringLiteral("HTTP %1 from %2: %3").arg(status).arg(reply->url().path(), msg)
+                {},
+                QStringLiteral("HTTP %1 from %2: %3").arg(status).arg(reply->url().path(), message)
             );
             return;
         }
-        if (!doc.isObject()) {
+        if (!document.isObject()) {
             callback(
                 {},
                 QStringLiteral("%1: the %2-byte reply is not a JSON object")
@@ -143,8 +144,8 @@ void ApiClient::handleJson(QNetworkReply* reply, TJsonCallback callback) {
             return;
         }
         callback(
-            obj.contains(QStringLiteral("result")) ? obj.value(QStringLiteral("result"))
-                                                   : QJsonValue(obj),
+            object.contains(QStringLiteral("result")) ? object.value(QStringLiteral("result"))
+                                                      : QJsonValue(object),
             {}
         );
     });
@@ -157,18 +158,19 @@ void ApiClient::accountStatus(TCallback<Account> callback) {
             if (!error.isEmpty()) {
                 return callback({}, error);
             }
-            const QJsonObject a = result.toObject().value(QStringLiteral("account")).toObject();
-            Account acc;
-            acc.uid = IdString(a.value(QStringLiteral("uid")));
-            acc.login = a.value(QStringLiteral("login")).toString();
-            acc.displayName = a.value(QStringLiteral("displayName")).toString();
-            if (acc.displayName.isEmpty()) {
-                acc.displayName = acc.login;
+            const QJsonObject accountObject =
+                result.toObject().value(QStringLiteral("account")).toObject();
+            Account account;
+            account.uid = IdString(accountObject.value(QStringLiteral("uid")));
+            account.login = accountObject.value(QStringLiteral("login")).toString();
+            account.displayName = accountObject.value(QStringLiteral("displayName")).toString();
+            if (account.displayName.isEmpty()) {
+                account.displayName = account.login;
             }
-            if (acc.uid.isEmpty()) {
+            if (account.uid.isEmpty()) {
                 return callback({}, QStringLiteral("not authorized (no uid) — token expired?"));
             }
-            callback(acc, {});
+            callback(account, {});
         }
     );
 }
@@ -182,8 +184,8 @@ Track ApiClient::ParseTrack(const QJsonValue& value) {
     if (!version.isEmpty()) {
         track.title += QStringLiteral(" (%1)").arg(version);
     }
-    for (const QJsonValue& a : object.value(QStringLiteral("artists")).toArray()) {
-        track.artists << a.toObject().value(QStringLiteral("name")).toString();
+    for (const QJsonValue& artist : object.value(QStringLiteral("artists")).toArray()) {
+        track.artists << artist.toObject().value(QStringLiteral("name")).toString();
     }
     const QJsonArray albums = object.value(QStringLiteral("albums")).toArray();
     if (!albums.isEmpty()) {

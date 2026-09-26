@@ -41,8 +41,8 @@ public:
     struct PlaylistStyle {
         QColor normal{0x00, 0xFF, 0x00};
         QColor current{0xFF, 0xFF, 0xFF};
-        QColor normalBg{0x00, 0x00, 0x00};
-        QColor selectedBg{0x00, 0x00, 0xC6};
+        QColor normalBackground{0x00, 0x00, 0x00};
+        QColor selectedBackground{0x00, 0x00, 0xC6};
         QString font = QStringLiteral("Arial");
     };
 
@@ -56,7 +56,7 @@ public:
     const QImage& sheet(Sheet sheet) const;
     bool numbersAreExtended() const { return numbersEx; }
 
-    void draw(QPainter& painter, Sheet bitmap, const QRect& src, const QPoint& dst) const;
+    void draw(QPainter& painter, Sheet bitmap, const QRect& source, const QPoint& target) const;
 
     int drawGenText(QPainter& painter, const QPoint& at, const QString& text, bool selected) const;
     int genTextWidth(const QString& text) const;
@@ -66,7 +66,7 @@ public:
 
     const TRegionData& region() const { return regionData; }
     const QList<QColor>& visColors() const { return visualizationColors; }
-    const PlaylistStyle& playlistStyle() const { return plStyle; }
+    const PlaylistStyle& playlistStyle() const { return pleditStyle; }
 
     static PlaylistStyle ParsePlaylistStyle(const QByteArray& text);
 
@@ -74,7 +74,7 @@ private:
     QHash<Sheet, QImage> sheets;
     TRegionData regionData;
     QList<QColor> visualizationColors;
-    PlaylistStyle plStyle;
+    PlaylistStyle pleditStyle;
     QList<std::pair<int, int>> genLetters;
     QList<std::pair<int, int>> genLettersSelected;
     void loadArchive(const QByteArray& archive, const Skin* fallback);

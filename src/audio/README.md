@@ -12,7 +12,7 @@ equalizer window ([src/ui](../ui/README.md)). Namespace `Audio`, library `qiyaa_
 
 | File | Contains |
 |---|---|
-| `audio_engine.h/.cpp` | `AudioEngine` — streams, state, seeking, gapless chaining, volume, balance, `poll()`. Only in the `.cpp`: `StreamBuffer` (one downloading file) and `AudioEngine::Impl` (miniaudio context and device, ring buffer, decoder thread, device callback) |
+| `audio_engine.h/.cpp` | `AudioEngine` — streams, state, seeking, gapless chaining, volume, balance, `poll()`. Only in the `.cpp`: `StreamBuffer` (one downloading file) and `AudioEngine::Implementation` (miniaudio context and device, ring buffer, decoder thread, device callback) |
 | `equalizer.h/.cpp` | `EqSettings`, `EqualizerDsp` — preamp and 10 peaking biquads per channel, coefficients handed to the audio thread through a triple buffer; `kEqBands`, `kEqBandHz`, `kEqMaxDb` |
 | `eq_presets.h/.cpp` | `EqPreset`; `ParseEqf`, `WriteEqf` (`.eqf` and `.q1`); `EqfToDb`, `DbToEqf`; `BuiltinEqPresets` — Winamp's 17 presets |
 | `vis_tap.h/.cpp` | `VisTap` — the last 4096 output frames, for visualizations |
@@ -21,8 +21,8 @@ equalizer window ([src/ui](../ui/README.md)). Namespace `Audio`, library `qiyaa_
 
 ## Dependencies
 
-- `qiyaa_audio` links PUBLIC `Qt6::Core` (`QObject`, `QString`, `QByteArray`, `QHash`, `QList`,
-  `QStringDecoder`) and PRIVATE `qiyaa_miniaudio`.
+- `qiyaa_audio` links PUBLIC `Qt6::Core` (`QObject`, `QString`, `QStringList`, `QByteArray`,
+  `QHash`, `QList`, `QStringConverter`, `QStringDecoder`) and PRIVATE `qiyaa_miniaudio`.
 - `qiyaa_miniaudio` is a separate static library built from `src/audio/miniaudio_impl.c` against
   `contrib/miniaudio/miniaudio.h` (miniaudio 0.11.25) with `MA_NO_ENCODING MA_NO_GENERATION
   MA_NO_VORBIS`, so the decoders compiled in are WAV, FLAC and MP3. It links `Threads::Threads` and
@@ -33,7 +33,7 @@ equalizer window ([src/ui](../ui/README.md)). Namespace `Audio`, library `qiyaa_
   `Qt6::Network`. It sits at the bottom of the module order; which modules link it is in
   [docs/architecture.md](../../docs/architecture.md#modules).
 - miniaudio stays private: no header includes `miniaudio.h`. `AudioEngine` holds everything
-  miniaudio-typed through `std::unique_ptr<Impl>` and a forward-declared `StreamBuffer`.
+  miniaudio-typed through `std::unique_ptr<Implementation>` and a forward-declared `StreamBuffer`.
 - Inside the module: `audio_engine.h` and `eq_presets.h` include `equalizer.h`,
   `audio_engine.cpp` includes `equalizer.h` and `vis_tap.h`, `eq_presets.cpp` includes `error.h`.
   `equalizer.h`, `vis_tap.h` and `error.h` include no file of the module.
@@ -43,7 +43,7 @@ grep -rnE '#include "(app|core|integrations|skins|ui|vis|yandex)/' src/audio/ --
 grep -rlE '#include [<"]miniaudio' src/ --include='*.h' --include='*.cpp' --include='*.c' \
     | grep -vxE 'src/audio/(audio_engine\.cpp|miniaudio_impl\.c)'                                  # must print nothing
 grep -rnE '#include <Q' src/audio/ --include='*.h' --include='*.cpp' \
-    | grep -vE '<Q(ByteArray|Hash|List|Object|String|StringDecoder)>'                              # must print nothing
+    | grep -vE '<Q(ByteArray|Hash|List|Object|String|StringConverter|StringDecoder|StringList)>'                              # must print nothing
 grep -rnw 'throw' src/audio/ --include='*.h' --include='*.cpp' | grep -v '^src/audio/eq_presets.cpp:'   # must print nothing
 ```
 
@@ -95,8 +95,8 @@ public:
     void setBalance(int balance);      // clamped to -100 (left) .. 100 (right)
     void setEqualizer(const EqSettings& settings);
 
-    void readVisSamples(float* left, float* right, uint32_t count) const;   // count capped at 4096
-    uint32_t readNewVisSamples(uint32_t* cursor, float* stereo, uint32_t maxFrames) const;
+    void readVisSamples(std::span<float> left, std::span<float> right) const;   // <= 4096 frames
+    VisReadResult readNewVisSamples(uint32_t cursor, std::span<float> stereo) const;
     uint32_t visCursor() const;
     int outputSampleRate() const;      // the device's rate; 44100 before init()
 
@@ -160,8 +160,8 @@ All signals are emitted synchronously on the UI thread:
 
 `poll()` emits at most one of `trackFinished`, `trackAdvanced`, `errorOccurred` and returns right
 after it, so a connected slot may call back into the engine (`Player` starts the next track from
-its `trackFinished` slot). Nothing is reported between polls; `Player` polls every 100 ms while the
-state is not `Stopped`.
+its `trackFinished` slot). Nothing is reported between polls; how often `Player` polls is in
+[src/core](../core/README.md).
 
 ### Position, volume, balance
 
@@ -181,10 +181,10 @@ volume.
 | Thread | Runs |
 |---|---|
 | UI thread: the thread that owns the engine (the Qt main thread in the app) | every public method and signal, `startDecoder()`, `stopDecoderThread()`, `ma_device_start()`/`ma_device_stop()`, `EqualizerDsp::publish()`, `VisTap::read()`/`readNew()` |
-| Decoder thread: a `std::thread` on `Impl::decoderMain`, one per `beginStream()`/`playQueuedNow()`, joined by the next of those, by `stop()` and by the destructor | `ma_decoder_*` on the current source, `StreamBuffer::read()`/`seek()` through `OnRead`/`OnSeek`, every write into the ring, the ring reset of a seek, gapless chaining |
-| Device thread: miniaudio's, running `Impl::DataCallback` | every read from the ring, `EqualizerDsp::process()`, `VisTap::write()`, the gains |
+| Decoder thread: a `std::thread` on `Implementation::decoderMain`, one per `beginStream()`/`playQueuedNow()`, joined by the next of those, by `stop()` and by the destructor | `ma_decoder_*` on the current source, `StreamBuffer::read()`/`seek()` through `OnRead`/`OnSeek`, every write into the ring, the ring reset of a seek, gapless chaining |
+| Device thread: miniaudio's, running `Implementation::DataCallback` | every read from the ring, `EqualizerDsp::process()`, `VisTap::write()`, the gains |
 
-`AudioEngine`'s own members (`streams`, `lastId`, `current`, `queued`, `currentState`,
+`AudioEngine`'s own members (`streams`, `lastId`, `currentId`, `queuedId`, `currentState`,
 `volumePercent`, `balancePercent`) belong to the UI thread; `sourceRate` and `sourceChannelCount`
 are atomics because the decoder thread sets them when the first stream opens. The callback takes no
 mutex and allocates nothing (`DataCallback`, `EqualizerDsp::process`, `VisTap::write`); it relies
@@ -207,12 +207,12 @@ single-producer, single-consumer: the decoder thread writes, the callback reads,
    `compare_exchange_strong(target, -1)`. If a newer seek replaced the target meanwhile, the
    exchange fails and the loop serves the newer seek, still owning the ring.
 
-**Atomics in `Impl`:**
+**Atomics in `Implementation`:**
 
 | Field | Written by | Read by | Meaning |
 |---|---|---|---|
 | `outputEnabled` | UI | callback | false: the callback writes silence and leaves the ring alone |
-| `gainL`, `gainR` | UI | callback | linear gain per channel, volume and balance included |
+| `gainLeft`, `gainRight` | UI | callback | linear gain per channel, volume and balance included |
 | `framesPlayed` | callback (+frames taken); decoder (0 at a seek); UI (0 in `startDecoder()`, `stop()`) | UI, callback | frames played since the last ring reset |
 | `frameOffset` | decoder (seek target); UI (0; −`boundaryFrame` at an advance) | UI | track position of `framesPlayed == 0` |
 | `seekRequest` | UI (target frame); decoder (back to −1) | decoder, callback, UI | ≥ 0: a seek is pending and the ring belongs to the decoder |
@@ -226,12 +226,12 @@ single-producer, single-consumer: the decoder thread writes, the callback reads,
 | `boundaryFrame` | decoder (at a chain) | UI, callback | `framesPlayed` value where `decoderEpoch` starts |
 | `haltAtBoundary` | UI (`clearQueued()`, `stopDecoderThread()`), decoder (undo); always under `queueMutex` | callback, UI, decoder | the chained stream was cancelled: stop at the boundary |
 | `nextRate`, `nextChannels` | decoder (at a chain) | UI (at the advance) | source format of the chained stream |
-| `failedQueued` | decoder; UI (0 in `startDecoder()`) | UI (exchanged in `poll()`, compared in `queuedStream()`) | id of a queued stream the decoder could not open |
+| `failedQueuedId` | decoder; UI (0 in `startDecoder()`) | UI (exchanged in `poll()`, compared in `queuedStream()`) | id of a queued stream the decoder could not open |
 | `stopDecoder` | UI | decoder | leave the loop |
 
 `boundaryFrame` is stored (release) before `decoderEpoch` (release), so whoever loads the new epoch
 (acquire) also sees its boundary. `startDecoder()` resets `framesPlayed`, `frameOffset`, the three
-`decoder*` flags, `finishedReported`, `seekRequest`, both epochs and `failedQueued` before it
+`decoder*` flags, `finishedReported`, `seekRequest`, both epochs and `failedQueuedId` before it
 spawns the thread. The previous thread has been joined and the callback reads none of them while
 `outputEnabled` is false, so those writes race with nothing.
 
@@ -267,7 +267,7 @@ after `outputEnabled = false`:
    stream, the tail).
 3. Join. Interrupted reads return at once and the thread's sleeps are 10 or 20 ms, but a decode or
    seek already running inside miniaudio finishes first. `audio_test`
-   (`clearingAChainedStreamThenRestartingDoesNotHang`, `stopWhileQueuedDataIsMissing`) requires
+   (`clearingAChainedStreamThenRestartingDoesNotHang`, `stopReturnsPromptlyWhileQueuedDataIsMissing`) requires
    `stop()` and `beginStream()` to return within 1000 ms.
 4. `stopDecoder = false`; `resume()` the same buffers; under `queueMutex` clear `queued`,
    `queuedId`, `chainingId`, `chainedId`, `dropChaining`, `haltAtBoundary`, `decoderHeld`.
@@ -301,27 +301,27 @@ Each decoder run numbers its tracks from 0. `decoderEpoch` is the track being wr
 ring, `uiEpoch` the one `poll()` has announced. The decoder chains only when it holds no tail (the
 previous track's source, kept until the UI passes the boundary), so the two differ by at most 1.
 
-**Chain** (`tryChain`, decoder thread). Happens when the current source ends and all of these
-hold: there is no tail, a stream is waiting in `Impl::queued`, that stream is `finished()`, and
+**Chain** (`tryChain`, decoder thread). Happens when the current source ends and all of these hold:
+there is no tail, a stream is waiting in `Implementation::queued`, that stream is `finished()`, and
 `finishedReported` is false. `finished()` means the download ended, successfully or not. Only a
-complete stream is chained, so opening and decoding it never wait for the network (an ID3 tag with
-a large cover alone can exceed any "enough to start" threshold), and a stream that is not complete
-in time is started by the caller the usual way. Steps: under `queueMutex`
-take the stream out of `queued`, set `chainingId`, add it to `decoderHeld`; open it outside the
-lock; under `queueMutex` again either discard it or commit. It is discarded if the open failed,
-if `clearQueued()` set `dropChaining`, if the thread is stopping, or if `poll()` reported the end
-meanwhile. Unless it was cancelled or the thread is stopping, a failed open sets
-`failedQueued = id`, and a stream that opened but lost the race with `trackFinished` is rewound
-and put back into `queued` for `playQueuedNow()`. Commit: `chainedId = id`, the old source
-becomes the tail, `epoch + 1`, `nextRate`/`nextChannels`, `boundaryFrame = written`,
-`decoderEpoch = epoch`. The new source's frames follow the old ones in the same ring. When the queued stream completes after the current
+complete stream is chained, so opening and decoding it never wait for the network (an ID3 tag with a
+large cover alone can exceed any "enough to start" threshold), and a stream that is not complete in
+time is started by the caller the usual way. Steps: under `queueMutex` take the stream out of
+`queued`, set `chainingId`, add it to `decoderHeld`; open it outside the lock; under `queueMutex`
+again either discard it or commit. It is discarded if the open failed, if `clearQueued()` set
+`dropChaining`, if the thread is stopping, or if `poll()` reported the end meanwhile. Unless it was
+cancelled or the thread is stopping, a failed open sets `failedQueuedId = id`, and a stream that
+opened but lost the race with `trackFinished` is rewound and put back into `queued` for
+`playQueuedNow()`. Commit: `chainedId = id`, the old source becomes the tail, `epoch + 1`,
+`nextRate`/`nextChannels`, `boundaryFrame = written`, `decoderEpoch = epoch`. The new source's
+frames follow the old ones in the same ring. When the queued stream completes after the current
 source ended, the decoder, now `decoderDone`, retries every 20 ms until `finishedReported`
 (`queuedStreamArrivingLateStillChains`).
 
 **Advance** (`poll()`, UI thread). When `decoderEpoch > uiEpoch`, no seek is pending, the end was
 not reported and `framesPlayed >= boundaryFrame`: `chainedId = 0` (under `queueMutex`),
 `frameOffset = −boundaryFrame`, `uiEpoch = decoderEpoch`, the old current stream is dropped,
-`current` becomes the queued id, the source format comes from `nextRate`/`nextChannels`, and
+`currentId` becomes the queued id, the source format comes from `nextRate`/`nextChannels`, and
 `trackAdvanced` is emitted. The decoder drops the tail on its next pass. The audio has no gap
 because the first frame of the new track follows the last frame of the old one in the ring; the
 signal comes up to one poll interval later.
@@ -334,7 +334,7 @@ decrements the epoch. The queued stream chains again later from its beginning
 
 **Cancel** (`clearQueued()`, UI thread). The id is removed from `streams` at once, and under
 `queueMutex`:
-- still waiting in `Impl::queued`: it is removed, nothing else happens;
+- still waiting in `Implementation::queued`: it is removed, nothing else happens;
 - being opened (`chainingId`): `dropChaining = true` and its buffer is interrupted, so `tryChain`
   discards it;
 - chained (`chainedId`): `haltAtBoundary = true` and its buffer is interrupted, which ends its
@@ -342,7 +342,7 @@ decrements the epoch. The queued stream chains again later from its beginning
   `poll()` reports `trackFinished` instead of `trackAdvanced`. The chained frames stay in the ring
   until the next reset.
 
-**Undecodable queued stream.** `failedQueued` makes `queuedStream()` return 0 at once; `poll()`
+**Undecodable queued stream.** `failedQueuedId` makes `queuedStream()` return 0 at once; `poll()`
 then drops the stream. The current track ends with `trackFinished`
 (`undecodableQueuedStreamIsSkipped`).
 
@@ -365,14 +365,14 @@ does not change.
 ```cpp
 class StreamBuffer {
 public:
-    void append(const char* data, size_t n);
+    void append(const char* data, size_t byteCount);
     void finish(bool failed);
     void interrupt();                                        // until resume()
     void resume();
     void rewind();                                           // read cursor back to byte 0
     size_t size() const;
     bool finished() const;                                   // the download ended, either way
-    ma_result read(void* out, size_t n, size_t* got);        // blocks
+    ma_result read(void* destination, size_t bytesToRead, size_t* bytesRead);        // blocks
     ma_result seek(ma_int64 offset, ma_seek_origin origin);  // blocks
 };
 ```
@@ -381,7 +381,7 @@ public:
   No size limit.
 - `read()` waits until the buffer is interrupted, finished, or has bytes past the cursor. It
   returns `MA_CANCELLED` when interrupted, `MA_AT_END` at the end of a finished stream, and
-  otherwise copies what is there, up to `n` bytes (a short read does not wait for more).
+  otherwise copies what is there, up to `bytesToRead` bytes (a short read does not wait for more).
 - `seek()` refuses a negative target and a seek from the end before the download finished
   (`MA_BAD_SEEK`: the size is unknown until then, and waiting would stall streaming). A target
   past the downloaded bytes waits until the download reaches it (`MA_SUCCESS`), finishes short of
@@ -460,7 +460,7 @@ stops the decoder thread, then uninitialises the device, the context and the rin
 ```cpp
 inline constexpr int kEqBands = 10;
 inline constexpr std::array<double, kEqBands> kEqBandHz = {60,   170,  310,   600,   1000,
-                                                           3000, 6000, 12000, 14000, 16000};
+                                                           3000, 6000, 12'000, 14'000, 16'000};
 inline constexpr double kEqMaxDb = 12.0;
 
 struct EqSettings {
@@ -476,7 +476,7 @@ public:
     EqualizerDsp();                                   // 44100 Hz, flat
     void setSampleRate(uint32_t rate);                // 0 means 44100; only while process() cannot run
     void publish(const EqSettings& settings);         // UI thread
-    void process(float* frames, uint32_t frameCount); // audio thread: interleaved stereo, in place
+    void process(std::span<float> stereoFrames); // audio thread: interleaved stereo, in place
     static double ResponseDb(const EqSettings& settings, double hz, double sampleRate);
 };
 ```
@@ -537,7 +537,7 @@ QList<EqPreset> BuiltinEqPresets();   // 17 presets, all with preamp 0 dB
   encoding on Windows and as Latin-1 elsewhere, and rounds every value to 0.1 dB.
 
 **Traps:**
-- A round trip is lossy: 64 levels over 24 dB are steps of 0.38 dB (`eqfRoundTrip` allows 0.25).
+- A round trip is lossy: 64 levels over 24 dB are steps of 0.38 dB (`eqfRoundTripKeepsNamesAndLevels` allows 0.25).
 - `BuiltinEqPresets()` values are not rounded to 0.1 dB, parsed ones are (value 20 is −4.76 dB
   built in, −4.8 dB after a parse).
 - A Winamp preset named in cp1251 reads as Latin-1 mojibake outside Windows.
@@ -547,12 +547,21 @@ QList<EqPreset> BuiltinEqPresets();   // 17 presets, all with preamp 0 dB
 ## `vis_tap.h` — `VisTap`
 
 ```cpp
+struct VisReadResult {
+    uint32_t frames = 0;
+    uint32_t cursor = 0;
+};
+
 class VisTap {
 public:
     static constexpr uint32_t kSize = 4096;   // frames; a power of two
-    void write(const float* frames, uint32_t frameCount);        // audio thread, interleaved stereo
-    void read(float* left, float* right, uint32_t count) const;  // UI thread; count <= kSize
-    uint32_t readNew(uint32_t* cursor, float* stereo, uint32_t maxFrames) const;   // UI thread
+
+    // Audio thread: interleaved stereo frames.
+    void write(std::span<const float> stereoFrames);
+    // UI thread; at most kSize samples per channel.
+    void read(std::span<float> left, std::span<float> right) const;
+    // UI thread.
+    VisReadResult readNew(uint32_t cursor, std::span<float> stereo) const;
     uint32_t position() const;                                   // frames written, wraps at 2^32
     void clear();
 };
@@ -561,12 +570,14 @@ public:
 - Two arrays of 4096 floats (left, right) and a free-running `std::atomic<uint32_t>` frame counter;
   slot = counter & 4095. `write()` stores the samples, then the counter (release); readers load the
   counter (acquire) and copy. Nothing is locked, and the arrays never move.
-- `read()` copies the latest `count` frames, oldest first. `readNew()` copies the frames written
-  since `*cursor`, at most `kSize` and at most `maxFrames` (the newest ones), interleaved into
-  `stereo` (2 × `maxFrames` floats), sets `*cursor` to the current counter and returns the number
-  of frames. The unsigned difference `end - *cursor` stays correct across the wrap at 2^32.
+- `read()` copies the latest min(`left.size()`, `right.size()`, `kSize`) frames, oldest first.
+  `readNew()` copies the frames written since `cursor`, at most `kSize` and at most `stereo.size() /
+  2` (the newest ones), interleaved into `stereo`, and returns their number in `frames` and the
+  current counter in `cursor`, the value to pass next time. The unsigned difference `end - cursor`
+  stays correct across the wrap at 2^32.
 - In the engine the tap receives what the callback took from the ring, after the equalizer and
-  before volume, balance and clamping. `AudioEngine::readVisSamples()` caps `count` at 4096;
+  before volume, balance and clamping. `AudioEngine::readVisSamples()` and `readNewVisSamples()`
+  pass through to `read()` and `readNew()`;
   `visCursor()` is `position()`. A reader that wants every sample once (Milkdrop) starts its cursor
   from `visCursor()`, so it does not replay what played while it was off.
 
@@ -578,7 +589,7 @@ public:
   4096 survive. A `readNew()` reader that falls more than 4096 frames behind loses the older ones
   silently.
 - The counter stops during pause, underruns, pending seeks and after a halted boundary: `read()`
-  keeps returning the last frames, `readNew()` returns 0.
+  keeps returning the last frames, `readNew()` returns 0 frames.
 - Samples can exceed ±1 (equalizer boost) and do not follow the volume.
 - `clear()` is not safe while `write()` runs, and nothing calls it.
 
@@ -624,7 +635,8 @@ does not bound the input; the equalizer window refuses files over 1 MiB before r
 in the status line.
 
 Everything else is data:
-- `init()` returns `InitResult{ok, message}`; see [Output device](#output-device-and-qiyaa_audio_backend).
+- `init()` returns `InitResult{ok, message}`; see [Output
+  device](#output-device-and-qiyaa_audio_backend).
 - `beginStream()` without a device returns 0, sets `Stopped` and emits
   `errorOccurred("no audio output device")`.
 - A first stream that cannot be decoded: `poll()` calls `stop()` and emits
@@ -644,7 +656,7 @@ decoder thread, so an allocation failure there (`std::bad_alloc`) would end the 
 ## Not here
 
 - Which track plays next, when the next one is queued (`maybePreload`), the downloads that feed
-  `appendData()`, the messages for failed downloads, and the 100 ms timer that calls `poll()`:
+  `appendData()`, the messages for failed downloads, and the timer that calls `poll()`:
   `Player` in [src/core](../core/README.md).
 - Resolving a track id into a download link: [src/yandex](../yandex/README.md).
 - Spectrum, oscilloscope and Milkdrop, which read the tap through `readVisSamples()` and
@@ -653,7 +665,7 @@ decoder thread, so an allocation failure there (`std::bad_alloc`) would end the 
 - The equalizer window, its sliders and preset menu, loading and saving `.eqf` files from disk:
   [src/ui](../ui/README.md).
 - Calling `init()` (skipped in screenshot mode), saving the equalizer settings, and streaming a
-  local file into the engine (`StreamLocalFile` in `main.cpp`, 64 KiB every 20 ms):
+  local file into the engine (`StreamLocalFile` in `offline_sources.cpp`, 64 KiB every 20 ms):
   [src/app](../app/README.md).
 - miniaudio itself: `contrib/miniaudio/`, built by the top-level `CMakeLists.txt`. The user-facing
-  description of `QIYAA_AUDIO_BACKEND` is in the top-level `README.md`.
+  description of `QIYAA_AUDIO_BACKEND` is in [docs/cli.md](../../docs/cli.md).

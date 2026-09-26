@@ -40,19 +40,19 @@ private:
         float b0 = 1, b1 = 0, b2 = 0, a1 = 0, a2 = 0;
         bool identity = true;
     };
-    struct Coeffs {
+    struct Coefficients {
         bool enabled = false;
         float preamp = 1.0f;
         std::array<Biquad, kEqBands> bands{};
     };
 
-    static Coeffs ComputeCoefficients(const EqSettings& settings, double sampleRate);
+    static Coefficients ComputeCoefficients(const EqSettings& settings, double sampleRate);
 
     double sampleRate = 44'100;
     EqSettings lastSettings;
 
     // Triple buffer: writer owns `back`, reader owns `front`, `middle` is exchanged.
-    std::array<Coeffs, 3> coefficientSlots{};
+    std::array<Coefficients, 3> coefficientSlots{};
     int back = 0;
     int front = 1;
     std::atomic<int> middle{2 | 0};  // index | (dirty << 2)

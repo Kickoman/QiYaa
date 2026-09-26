@@ -57,7 +57,7 @@ Q_SIGNALS:
 protected:
     void closeEvent(QCloseEvent* event) override;
     void paintSkin(QPainter& painter) override;
-    bool isDragArea(QPoint pos) const override;
+    bool isDragArea(QPoint skinPos) const override;
     bool skinMousePress(QPoint pos, Qt::MouseButton button) override;
     void skinMouseMove(QPoint pos) override;
     void skinMouseRelease(QPoint pos, Qt::MouseButton button) override;
@@ -80,7 +80,7 @@ private:
 
     Audio::EqSettings equalizerSettings;
     bool autoEnabled = false;
-    EqualizerControl pressed;
+    EqualizerControl pressedControl;
     bool pressedInside = false;
     int volumePercent = 75;
     int balancePercent = 0;

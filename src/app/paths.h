@@ -5,9 +5,9 @@
 
 namespace App {
 
-QString ConfigDir();
+QString ConfigDirectory();
 
-QStringList YaampDataDirs();
+QStringList YaampDataDirectories();
 
 QString TokenFile();
 QStringList YaampTokenFiles();

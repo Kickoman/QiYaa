@@ -16,7 +16,7 @@ public:
         bool builtIn = true;
     };
 
-    void load(const QString& builtInDir, const QString& userDir);
+    void load(const QString& builtInDirectory, const QString& userDirectory);
 
     int size() const { return int(presetList.size()); }
     bool isEmpty() const { return presetList.isEmpty(); }

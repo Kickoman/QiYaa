@@ -65,8 +65,8 @@ protected:
     virtual void skinChanged() { }
     virtual QString regionSection() const { return {}; }
 
-    void resizeKeepingStack(QSize skinSize);
-    void applyShade(bool shaded, QSize skinSize);
+    void resizeKeepingStack(QSize newSkinSize);
+    void applyShade(bool shaded, QSize newSkinSize);
 
     QPoint toSkin(QPointF widgetPos) const;
     int wheelSteps(QWheelEvent* event);
@@ -89,10 +89,10 @@ private:
     bool dragsDocked = false;
     bool shadeEnabled = false;
     QImage buffer;
-    int wheelAccum = 0;
+    int wheelRemainder = 0;
 
     bool dragging = false;
-    QPoint pressGlobal;
+    QPoint pressGlobalPosition;
     QRect groupStartBounds;
     QList<std::pair<QPointer<SkinnedWindow>, QPoint>> dragGroup;
 };

@@ -36,8 +36,8 @@ public:
 
     MilkdropWindow(
         Audio::AudioEngine* engine,
-        const QString& builtInDir,
-        const QString& userDir,
+        const QString& builtInPresetDirectory,
+        const QString& userPresetDirectory,
         const Skins::Skin* skin,
         QWidget* parent = nullptr
     );
@@ -77,7 +77,7 @@ public:
     QStringList blackPresets() const;
     void setBlackPresets(const QStringList& names);
     bool isBlack(int index) const;
-    QString userPresetDir() const { return userDirectory; }
+    QString userPresetDirectory() const { return userDirectory; }
 
 Q_SIGNALS:
     void presetChanged(const QString& name, Ui::MilkdropWindow::PresetOrigin origin);
@@ -96,7 +96,7 @@ private:
     void wireView(Vis::MilkdropView* view);
     void placeView();
     void updateRendering();
-    void handleKey(int key, Qt::KeyboardModifiers mods);
+    void handleKey(int key, Qt::KeyboardModifiers modifiers);
     void showMenu(const QPoint& globalPos);
     int fps() const;
     int followingPreset() const;
@@ -106,7 +106,7 @@ private:
     QString userDirectory;
     Vis::MilkdropPresets presetList;
     Vis::MilkdropView* milkdropView = nullptr;
-    QString glProblem;
+    QString openGlProblem;
     bool viewTried = false;
     QWidget* container = nullptr;
     std::unique_ptr<Vis::MilkdropView> fullView;

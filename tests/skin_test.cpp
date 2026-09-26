@@ -22,8 +22,8 @@ private Q_SLOTS:
     }
     void allBuiltinSkinsLoad_data() {
         QTest::addColumn<QString>("path");
-        for (const QString& f : QDir(":/skins").entryList({"*.wsz"})) {
-            QTest::newRow(qPrintable(f)) << QStringLiteral(":/skins/") + f;
+        for (const QString& fileName : QDir(":/skins").entryList({"*.wsz"})) {
+            QTest::newRow(qPrintable(fileName)) << QStringLiteral(":/skins/") + fileName;
         }
     }
     void allBuiltinSkinsLoad() {

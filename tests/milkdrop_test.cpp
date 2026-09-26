@@ -172,21 +172,21 @@ private Q_SLOTS:
         QCOMPARE(window.currentPreset(), QStringLiteral("mine"));
 
         // Restored from the settings.
-        Ui::MilkdropWindow w2(&engine, builtIn.path(), user.path(), &skin);
-        w2.setBlackPresets({"c-third"});
-        QVERIFY(w2.isBlack(2));
-        QVERIFY(!w2.isBlack(0));
+        Ui::MilkdropWindow restoredWindow(&engine, builtIn.path(), user.path(), &skin);
+        restoredWindow.setBlackPresets({"c-third"});
+        QVERIFY(restoredWindow.isBlack(2));
+        QVERIFY(!restoredWindow.isBlack(0));
     }
 
     void manyBlackInARowStopsBlamingPresets() {
-        QTemporaryDir many;
+        QTemporaryDir manyPresets;
         for (int i = 0; i < 12; ++i) {
             WriteFile(
-                many.filePath(QStringLiteral("p%1.milk").arg(i, 2, 10, QChar('0'))),
+                manyPresets.filePath(QStringLiteral("p%1.milk").arg(i, 2, 10, QChar('0'))),
                 SimplePreset(1.0)
             );
         }
-        Ui::MilkdropWindow window(&engine, many.path(), {}, &skin);
+        Ui::MilkdropWindow window(&engine, manyPresets.path(), {}, &skin);
         window.setShuffle(false);
         window.selectPreset(0);
         for (int i = 0; i < 12; ++i) {
@@ -225,7 +225,7 @@ private Q_SLOTS:
         // A preset loaded onto a black canvas fills it in over a few seconds
         // (feedback), slower on a software renderer: keep looking for up to 20 s.
         QImage image;
-        int colourCount = 0, lit = 0, samples = 0;
+        int colourCount = 0, litSamples = 0, samples = 0;
         QElapsedTimer timer;
         timer.start();
         do {
@@ -234,23 +234,24 @@ private Q_SLOTS:
             QVERIFY(captured.wait(5000));
             image = captured.first().first().value<QImage>();
             QSet<QRgb> colours;
-            lit = samples = 0;
+            litSamples = samples = 0;
             for (int y = 0; y < image.height(); y += 4) {
                 for (int x = 0; x < image.width(); x += 4) {
-                    const QRgb p = image.pixel(x, y);
-                    colours.insert(p);
-                    lit += qRed(p) + qGreen(p) + qBlue(p) > 30;
+                    const QRgb pixel = image.pixel(x, y);
+                    colours.insert(pixel);
+                    litSamples += qRed(pixel) + qGreen(pixel) + qBlue(pixel) > 30;
                     ++samples;
                 }
             }
             colourCount = int(colours.size());
-            if (colourCount > 50 && lit > samples / 2) {
+            if (colourCount > 50 && litSamples > samples / 2) {
                 break;
             }
             QTest::qWait(500);
         } while (timer.elapsed() < 20'000);
         qInfo(
-            "after %lld ms: %d colours, %d of %d lit", timer.elapsed(), colourCount, lit, samples
+            "after %lld ms: %d colours, %d of %d lit", timer.elapsed(), colourCount, litSamples,
+            samples
         );
         QCOMPARE(image.size(), view->size() * view->devicePixelRatio());
         if (!qEnvironmentVariableIsEmpty("QIYAA_TEST_SHOTS")) {
@@ -258,7 +259,8 @@ private Q_SLOTS:
         }
         QVERIFY2(colourCount > 50, qPrintable(QString::number(colourCount)));
         QVERIFY2(
-            lit > samples / 2, qPrintable(QStringLiteral("%1 of %2 lit").arg(lit).arg(samples))
+            litSamples > samples / 2,
+            qPrintable(QStringLiteral("%1 of %2 lit").arg(litSamples).arg(samples))
         );
         QVERIFY(qAlpha(image.pixel(image.width() / 2, image.height() / 2)) == 255);
 
@@ -267,17 +269,17 @@ private Q_SLOTS:
     }
 
     void blackPictureIsNoticed() {
-        QTemporaryDir dir;
+        QTemporaryDir directory;
         WriteFile(
-            dir.filePath("black.milk"),
+            directory.filePath("black.milk"),
             "[preset00]\nfDecay=0\nfWaveAlpha=0\nnWaveMode=0\nfVideoEchoAlpha=0\nob_size=0\nob_a="
             "0\nib_size=0\nib_a=0\nmv_a=0\nzoom=1\n"
         );
         WriteFile(
-            dir.filePath("white.milk"),
+            directory.filePath("white.milk"),
             "[preset00]\nfDecay=0.9\nob_size=0.5\nob_r=1\nob_g=1\nob_b=1\nob_a=1\n"
         );
-        Ui::MilkdropWindow window(&engine, dir.path(), {}, &skin);
+        Ui::MilkdropWindow window(&engine, directory.path(), {}, &skin);
         window.show();
         QVERIFY(QTest::qWaitForWindowExposed(&window));
         Vis::MilkdropView* view = window.view();
@@ -304,7 +306,7 @@ private Q_SLOTS:
         QVERIFY(black.wait(5000));
     }
 
-    void fullScreenAndBack() {
+    void fullScreenTakesOverRenderingAndGivesItBack() {
         Ui::MilkdropWindow window(&engine, builtIn.path(), user.path(), &skin);
         window.show();
         QVERIFY(QTest::qWaitForWindowExposed(&window));

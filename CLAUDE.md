@@ -11,6 +11,13 @@ README is its file-level reference.
   methods, so they are `camelCase` like any method. Use `Q_SIGNALS`, `Q_SLOTS` and `Q_EMIT`,
   never the lowercase macros. D-Bus adaptor slots are named after the MPRIS methods they export
   (`PlayPause`), and Qt Test data functions end in `_data`.
+- **Names: the abbreviations QiYaa counts as established.** Besides `id` and `url`: `eq`/`Eq`
+  (equalizer), `vis`/`Vis` (visualization, also a module name), `db` (decibels), `hz`, `ms`,
+  `kbps`, `fps`, `pcm`, `fft`, `gl` (a `QOpenGLFunctions*`), Qt's `pos` and `event` in overrides,
+  Winamp's file names (`gen`, `pledit`, `viscolor`, `numbersEx` for `nums_ex.bmp`), and fields
+  that mirror a wire format (`DownloadInfo::ts`, `DownloadInfo::s`). Numeric kernels ported from a
+  named source keep that source's formula letters: the natural spline (webamp's `spline.js`), the
+  RBJ cookbook biquads and the FFT.
 - **Include root is `src/`.** Project headers are written from there (`"audio/audio_engine.h"`),
   tests from `tests/` (`"support/mock_http_server.h"`).
 - **Includes.** A `.cpp` may rely on what its own header includes, and an override does not
@@ -33,8 +40,9 @@ README is its file-level reference.
 - **Logging instead of output streams.** Nothing takes a `std::ostream&`: diagnostics go through
   `qInfo` and `qWarning`, and user-facing messages through signals to the windows. The one direct
   write to stderr is `main`'s internal-error line.
-- **No formats of our own.** Foreign ones (`.wsz`, `.bmp`, `.eqf`, mp3) are read with every size
-  bounded before anything is allocated.
+- **No formats of our own.** Foreign files (`.wsz` and the bitmaps in it, `.eqf`, `.milk`, the
+  token file) are read with every size bounded before anything is allocated. Downloads are not
+  capped: a track is held whole in memory as its bytes arrive, and a cover is read whole.
 - **clang-format is the authority on layout** (`.clang-format`, clang-format 18; CI fails on any
   difference). It keeps the opening brace of a constructor body on the line of the last
   initializer; an empty body is still `{ }`.

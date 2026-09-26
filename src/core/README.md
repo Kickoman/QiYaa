@@ -14,7 +14,7 @@ and it shows nothing on screen. Namespace `Core`, library `qiyaa_core`.
 
 | File | Contains |
 |---|---|
-| `player.h/.cpp` | `Player`: the queue and cursor, transport, shuffle and repeat, source-request tickets, the endless-source hook `TMoreFn`, track events `TEventFn`, link resolution, download streaming, the gapless preload, and the engine's poll timer |
+| `player.h/.cpp` | `Player`: the queue and cursor, transport, shuffle and repeat, source-request tickets, the endless-source hook `TLoadMoreCallback`, track events `TEventCallback`, link resolution, download streaming, the gapless preload, and the engine's poll timer |
 | `cover_cache.h/.cpp` | `CoverCache`: cover images by URL, with an LRU of 30 in memory, files in a cache directory and one download per URL at a time |
 
 ## Dependencies
@@ -43,9 +43,9 @@ grep -rn --include='*.h' --include='*.cpp' -e '->poll()' src/ | grep -v '^src/co
 ```cpp
 class Player : public QObject {
 public:
-    using TMoreFn = std::function<void(std::function<void(const QList<Yandex::Track>&)> done)>;
+    using TLoadMoreCallback = std::function<void(std::function<void(const QList<Yandex::Track>&)> done)>;
     enum class TrackEvent { Started, Finished, Skipped };
-    using TEventFn =
+    using TEventCallback =
         std::function<void(TrackEvent event, const Yandex::Track& track, double playedSeconds)>;
 
     Player(Yandex::Library* library, Audio::AudioEngine* engine, QObject* parent = nullptr);
@@ -57,8 +57,8 @@ public:
         const QList<Yandex::Track>& tracks,
         const QString& title,
         bool autoplay,                                // playIndex(0) right away
-        TMoreFn more = {},                            // set = endless source
-        TEventFn events = {}
+        TLoadMoreCallback more = {},                            // set = endless source
+        TEventCallback events = {}
     );
     void appendTracks(const QList<Yandex::Track>& tracks);
     void removeTracks(QList<int> indices);            // indices before removal, any order, duplicates ok
@@ -103,7 +103,8 @@ Q_SIGNALS:
 
 - Everything runs on the thread that owns the `Player`, which is the GUI thread in the app. There
   are no locks. Link, download and load-more results arrive as Qt signals or callbacks on that
-  thread. `TMoreFn` and `TEventFn` are called on it, and a `TMoreFn` must call `done` on it too.
+  thread. `TLoadMoreCallback` and `TEventCallback` are called on it, and a `TLoadMoreCallback` must
+  call `done` on it too.
 - The engine emits `trackFinished` and `trackAdvanced` only from `AudioEngine::poll()`. The only
   caller of `poll()` is `Player`'s own `QTimer` (100 ms interval). The timer runs whenever the
   engine state is not `Stopped` (it follows `AudioEngine::stateChanged`), so the end of a track
@@ -124,7 +125,7 @@ Q_SIGNALS:
   removed, playback stops (it does not skip), and the cursor moves to the track that followed it,
   or to the new last track.
 - `clearQueue()` takes a new ticket and calls `setQueue({}, {}, false)`. This also drops the
-  `TMoreFn` and the `TEventFn`.
+  `TLoadMoreCallback` and the `TEventCallback`.
 
 ### State machine
 
@@ -161,10 +162,10 @@ above.
 ### Inputs, in the order they act
 
 - **`setQueue(tracks, title, autoplay, more, events)`**
-  1. `stop()`: the open track gets `Skipped` from the old `TEventFn`, and the old link request,
-     download and preload are dropped.
-  2. The queue becomes the available tracks, and the title, `TMoreFn` and `TEventFn` are
-     replaced. The load-more and waiting flags are reset, and `queueGeneration` is bumped.
+  1. `stop()`: the open track gets `Skipped` from the old `TEventCallback`, and the old link
+     request, download and preload are dropped.
+  2. The queue becomes the available tracks, and the title, `TLoadMoreCallback` and `TEventCallback`
+     are replaced. The load-more and waiting flags are reset, and `queueGeneration` is bumped.
   3. The cursor goes to 0, or to -1 when the queue is empty.
   4. `queueReplaced`, then `playlistChanged`, then `currentTrackChanged`.
   5. If `autoplay` is set and the queue is not empty: `playIndex(0)`.
@@ -184,8 +185,8 @@ above.
      no skip. On success: the download starts into the stream begun above, then `trackStarted`.
 - **`trackStarted(track, bitrate)`** (private): stores the bitrate, sends
   `ApiClient::reportPlayStarted(account, track, <new UUID>)`, opens the track and remembers the
-  current `TEventFn` for its closing event. It resets the played seconds, sends `Started(track, 0)`,
-  emits `currentTrackChanged` and calls `maybePreload()`.
+  current `TEventCallback` for its closing event. It resets the played seconds, sends
+  `Started(track, 0)`, emits `currentTrackChanged` and calls `maybePreload()`.
 - **`next()`**: with an empty queue, nothing happens. If a preload exists in any phase:
   `playIndex(preload index)`. Else if `pickNext() >= 0`: `playIndex` of it. Else, if the source is
   endless: `stop()`, mark waiting, run the load-more check, then emit
@@ -199,18 +200,18 @@ above.
 - **`pause()`**: Paused resumes. Playing or Buffering pauses. Stopped does nothing.
 - **`stop()`**: sends `Skipped` for the open track, ends the wait for more, bumps `generation`,
   cancels the preload, aborts the download, stops the engine and sets the stream id to 0. It keeps
-  the queue, the cursor, the `TMoreFn` and the bitrate. It emits no `Player` signal; the engine
-  emits `stateChanged(Stopped)`, and that stops the timer.
+  the queue, the cursor, the `TLoadMoreCallback` and the bitrate. It emits no `Player` signal; the
+  engine emits `stateChanged(Stopped)`, and that stops the timer.
 - **Engine `trackFinished`**: the open track gets `Finished`, or `Skipped` if its download failed,
   with the played seconds. Then, if repeat is on and the queue has exactly one track,
   `playIndex(cursor)`; otherwise `next()`.
 - **Engine `trackAdvanced`** (the engine crossed into the queued stream with no gap): the open track
   gets `Finished` or `Skipped` as above. If there is no preload, or its stream is not the engine's
-  `currentStream()`, or its index is out of range, the player resyncs: `playIndex(sequentialNext())`,
-  or `stop()` when that is -1. A cancelled preload is always cleared from the engine, so this
-  branch is not expected to run. Otherwise the preload becomes the current track: `generation`
-  is bumped, the preload's reply, stream, index and download flags are taken over, the wait ends,
-  and then `currentTrackChanged`, the load-more check and `trackStarted`.
+  `currentStream()`, or its index is out of range, the player resyncs:
+  `playIndex(sequentialNext())`, or `stop()` when that is -1. A cancelled preload is always cleared
+  from the engine, so this branch is not expected to run. Otherwise the preload becomes the current
+  track: `generation` is bumped, the preload's reply, stream, index and download flags are taken
+  over, the wait ends, and then `currentTrackChanged`, the load-more check and `trackStarted`.
 - **Download finished**:
   - If it is the current stream and it failed: `statusMessage("Download failed: <Qt error>")` and
     `downloadFailed`.
@@ -227,8 +228,8 @@ above.
   `modesChanged`, then `refreshPreload()`.
 - **`seekTo(seconds)`**: clamps the target to `[0, durationSeconds()]`, or to `>= 0` when the
   duration is 0. It returns `false` and emits nothing when `AudioEngine::seek` refuses, which
-  happens while stopped and until the engine's decoder has opened the stream. On success it moves the
-  played-seconds baseline to the target and emits `seeked(target)`. `seekFraction(f)` is
+  happens while stopped and until the engine's decoder has opened the stream. On success it moves
+  the played-seconds baseline to the target and emits `seeked(target)`. `seekFraction(f)` is
   `seekTo(clamp(f, 0, 1) * durationSeconds())`, and returns `false` when the duration is 0.
 - **`shutDown()`**: takes a new ticket, so source loads still in flight become stale. Then
   `stop()`, which reports the open track as `Skipped`; for a wave that becomes the "skip"
@@ -241,18 +242,18 @@ Four counters, each bumped by different calls and each guarding one kind of late
 | Counter | Bumped by | Drops |
 |---|---|---|
 | `sourceRequest` (the ticket) | `newSourceRequest()`: callers before a source load, `clearQueue`, `shutDown` | a caller's source-load reply, when the caller checks `isLatestSourceRequest(ticket)`. `Player` never checks it itself |
-| `queueGeneration` | `setQueue` (and so `clearQueue`) | a `TMoreFn`'s `done` for a queue that has been replaced (a `QPointer` also covers a destroyed `Player`) |
+| `queueGeneration` | `setQueue` (and so `clearQueue`) | a `TLoadMoreCallback`'s `done` for a queue that has been replaced (a `QPointer` also covers a destroyed `Player`) |
 | `generation` | `stop`, `playIndex`, gapless advance | the link reply of a track that is no longer current |
 | `preloadGeneration` | every new preload | the link reply of a preload that was cancelled or replaced |
 
 Tickets start at 1, so 0 never matches. `ui/library_menu.cpp` uses 0 to mean "take one now".
 
-### Endless sources (`TMoreFn`)
+### Endless sources (`TLoadMoreCallback`)
 
-- A queue is endless when `setQueue` got a `TMoreFn`. At its end `sequentialNext()` returns -1
-  even with repeat on, so it never wraps. `next()` waits for more instead.
-- The load-more check (`maybeLoadMore`) calls the `TMoreFn` when all of these hold: the queue
-  has one, no request is in flight for it, and `playlist().size() - currentIndex() <=
+- A queue is endless when `setQueue` got a `TLoadMoreCallback`. At its end `sequentialNext()`
+  returns -1 even with repeat on, so it never wraps. `next()` waits for more instead.
+- The load-more check (`maybeLoadMore`) calls the `TLoadMoreCallback` when all of these hold: the
+  queue has one, no request is in flight for it, and `playlist().size() - currentIndex() <=
   kLoadMoreWhenLeft` (2). That means the current track is the last or the second to last.
 - The check runs when a track becomes current (`playIndex` in both branches, before the link is
   resolved, and the gapless advance) and when `next()` reaches the end. It does not run from
@@ -261,7 +262,7 @@ Tickets start at 1, so 0 never matches. `ui/library_menu.cpp` uses 0 to mean "ta
   request is no longer in flight, the wait ends, and `appendTracks(tracks)` runs. If `next()` was
   waiting and a track now follows the cursor, `playIndex(cursor + 1)` runs; this is the next index
   in order even when shuffle is on.
-- `done` may be called synchronously from inside the `TMoreFn`.
+- `done` may be called synchronously from inside the `TLoadMoreCallback`.
 
 ### Next, shuffle, repeat
 
@@ -280,7 +281,7 @@ Tickets start at 1, so 0 never matches. `ui/library_menu.cpp` uses 0 to mean "ta
 
 - The GET goes through `Library::api()->network()`, the `QNetworkAccessManager` that `ApiClient`
   uses. The signed link needs no auth header. Redirects use `NoLessSafeRedirectPolicy`, and
-  `setTransferTimeout(30000)` aborts the transfer after 30 s without data.
+  `setTransferTimeout(kDownloadTimeoutMs)` aborts the transfer after 30 s without data.
 - Every `readyRead` passes the bytes to `AudioEngine::appendData(stream, …)`, with the stream id
   captured at the start. At `finished`, success appends the rest and calls `finishData(stream)`;
   an error calls `failData(stream)`. The engine ignores data for streams it has dropped.
@@ -297,11 +298,11 @@ Tickets start at 1, so 0 never matches. `ui/library_menu.cpp` uses 0 to mean "ta
   shut down; the current download has finished without error; a track is open; the engine is not
   `Stopped` (Paused counts); and `pickNext() >= 0`. It is called at the end of `trackStarted`,
   when the current download finishes, and from `refreshPreload()`.
-- **Link reply** (ignored if the `Player` is gone or `preloadGeneration` has moved on): the preload asks
-  the engine for a queued stream. Its download then feeds that stream and `preloadedIndex()`
+- **Link reply** (ignored if the `Player` is gone or `preloadGeneration` has moved on): the preload
+  asks the engine for a queued stream. Its download then feeds that stream and `preloadedIndex()`
   becomes its index. On a link error, or when `queueStream()` returns 0 because the engine has
-  stopped on its own meanwhile, the preload is dropped without a message. That track then starts the ordinary way when
-  its turn comes.
+  stopped on its own meanwhile, the preload is dropped without a message. That track then starts the
+  ordinary way when its turn comes.
 - **Taken over** in one of two ways:
   1. The engine crosses the boundary (`trackAdvanced`), with no gap and no second link request.
   2. `playIndex` of a track with the preload's id while its stream is still the engine's queued
@@ -327,7 +328,7 @@ Tickets start at 1, so 0 never matches. `ui/library_menu.cpp` uses 0 to mean "ta
 ### Track events and play reports
 
 - Every track that opens gets `Started(track, 0)`, followed by exactly one `Finished` or
-  `Skipped` with its played seconds. The closing event goes to the `TEventFn` that received
+  `Skipped` with its played seconds. The closing event goes to the `TEventCallback` that received
   `Started`. It is always sent before the `Started` of the next track, because `playIndex` and
   both engine handlers close the open track first.
 - `Started` is sent:
@@ -348,7 +349,7 @@ Tickets start at 1, so 0 never matches. `ui/library_menu.cpp` uses 0 to mean "ta
   Normal steps are about 0.1 s. Seeks and other jumps of 1 s or more, backward moves, and paused
   or buffering time do not count. `seekTo` also moves the baseline to the target.
 - Each `Started` also sends a play report through `ApiClient::reportPlayStarted`, with a new UUID
-  as the play id, whether or not the queue has a `TEventFn`.
+  as the play id, whether or not the queue has a `TEventCallback`.
 
 ### Signals
 
@@ -370,13 +371,13 @@ Tickets start at 1, so 0 never matches. `ui/library_menu.cpp` uses 0 to mean "ta
   the request and drop the reply unless `isLatestSourceRequest(ticket)`. A direct `setQueue` does
   not invalidate loads in flight; only a new ticket does. That is why `clearQueue` and `shutDown`
   call `newSourceRequest()` and throw the ticket away. Do not remove those calls.
-- A `TMoreFn` must call `done` exactly once, on the `Player`'s thread, with an empty list on
-  failure. Until it does, that queue never asks again. After `done({})`, a waiting `next()` stays
-  stopped with "Загружаю ещё треки..." on the status line; the next `next()` asks again. If
-  `done` runs synchronously inside the `TMoreFn`, playback has already moved on when `next()`
+- A `TLoadMoreCallback` must call `done` exactly once, on the `Player`'s thread, with an empty list
+  on failure. Until it does, that queue never asks again. After `done({})`, a waiting `next()` stays
+  stopped with "Загружаю ещё треки..." on the status line; the next `next()` asks again. If `done`
+  runs synchronously inside the `TLoadMoreCallback`, playback has already moved on when `next()`
   emits that message.
-- `TMoreFn` and `TEventFn` run synchronously inside `Player` methods and the timer's handler. They
-  must not call `playIndex`, `stop` or `setQueue`, and they must not throw (see
+- `TLoadMoreCallback` and `TEventCallback` run synchronously inside `Player` methods and the timer's
+  handler. They must not call `playIndex`, `stop` or `setQueue`, and they must not throw (see
   [Errors](#errors)).
 - The link reply in `playIndex` captures a raw `this`, unlike the preload's, which uses a
   `QPointer`. Do not destroy a `Player` while its `ApiClient` lives on and a link request may still
@@ -394,7 +395,7 @@ Tickets start at 1, so 0 never matches. `ui/library_menu.cpp` uses 0 to mean "ta
 - A link failure or a decoding failure stops playback on that track. Neither skips to the next
   track.
 - `shutDown()` blocks playback only. `setQueue`, `appendTracks` and `removeTracks` still change
-  the list, and `next()` at the end of an endless queue still calls the `TMoreFn`.
+  the list, and `next()` at the end of an endless queue still calls the `TLoadMoreCallback`.
 - `Started` means "the download began", not "audio is audible". Without an output device it is
   still sent, together with the play report.
 - `stop()` and `setQueue` do not reset `currentBitrate()`.
@@ -406,8 +407,12 @@ Tickets start at 1, so 0 never matches. `ui/library_menu.cpp` uses 0 to mean "ta
 ```cpp
 class CoverCache : public QObject {
 public:
-    // cacheDir empty = QStandardPaths::writableLocation(CacheLocation) + "/covers"
-    CoverCache(QNetworkAccessManager* nam, const QString& cacheDir = {}, QObject* parent = nullptr);
+    // cacheDirectory empty = QStandardPaths::writableLocation(CacheLocation) + "/covers"
+    explicit CoverCache(
+        QNetworkAccessManager* networkAccessManager,
+        const QString& cacheDirectory = {},
+        QObject* parent = nullptr
+    );
 
     QImage get(const QUrl& url);               // null while it downloads; ready(url) follows on success
     QString localFile(const QUrl& url) const;  // empty until the file is on disk
@@ -429,12 +434,12 @@ Q_SIGNALS:
   - If `localFile(url)` exists and `QImage` decodes it, the image goes into memory and is
     returned.
   - Otherwise `get` returns a null image and starts a download, unless one for this URL is
-    already pending or `nam` is null.
-- The download is a GET through `nam` with `NoLessSafeRedirectPolicy` and
-  `setTransferTimeout(20000)`, which aborts it after 20 s without data. When it finishes, the URL
-  stops being pending. On an error, or bytes that `QImage::loadFromData` cannot decode, nothing
-  else happens. Otherwise the bytes are written to the file exactly as received, the image goes
-  into memory, and `ready(url)` is emitted.
+    already pending or `networkAccessManager` is null.
+- The download is a GET through `networkAccessManager` with `NoLessSafeRedirectPolicy` and
+  `setTransferTimeout(kTimeoutMs)`, which aborts it after 20 s without data. When it finishes, the
+  URL stops being pending. On an error, or bytes that `QImage::loadFromData` cannot decode, nothing
+  else happens. Otherwise the bytes are written to the file exactly as received, the image goes into
+  memory, and `ready(url)` is emitted.
 - `ready(url)` fires once for each successful download, after the file has been written and the
   image is in memory. A handler's `get(url)` is therefore a memory hit, and `localFile(url)` is set
   if the write worked. It never fires for memory or disk hits, and never on failure.
@@ -443,7 +448,8 @@ Q_SIGNALS:
   class never evicts or expires files on disk.
 - Everything runs on the owner's thread. `get` reads and decodes a disk file synchronously, on the
   caller's thread. The reply handler is guarded by a `QPointer`: if the cache is destroyed during a
-  download, the result is dropped and the reply is still deleted. The cache does not own `nam`.
+  download, the result is dropped and the reply is still deleted. The cache does not own
+  `networkAccessManager`.
 
 **Traps:**
 
@@ -458,8 +464,8 @@ Q_SIGNALS:
   memory and `ready` fires, but `localFile()` stays empty, and so the MPRIS `artUrl` is missing.
 - There is no byte limit on the downloaded body, which `readAll()` reads whole, and no size limit
   on the directory.
-- With `nam == nullptr` the cache serves only files already on disk. `tests/mpris_test.cpp` uses
-  this.
+- With `networkAccessManager == nullptr` the cache serves only files already on disk.
+  `tests/mpris_test.cpp` uses this.
 
 ## Cover files on disk
 
@@ -480,9 +486,9 @@ Q_SIGNALS:
 
 ## Errors
 
-The module has no `Error` class and nothing in it throws or catches. It calls nothing that
-throws: in `src/audio` only the EQ preset loaders throw `Audio::Error`, and the project's other
-exception tree is `Skins::Error`. Every failure is data:
+The module has no `Error` class and nothing in it throws or catches, and it calls none of the
+loaders that throw (the project's error policy is in
+[docs/architecture.md](../../docs/architecture.md#errors)). Every failure is data:
 
 | Where | Failure arrives as |
 |---|---|
@@ -491,13 +497,13 @@ exception tree is `Skins::Error`. Every failure is data:
 | download, current track | `statusMessage("Download failed: <QNetworkReply::errorString()>")`; the closing event is `Skipped` |
 | download, preload | nothing until it becomes current; then the closing event is `Skipped` |
 | audio engine | `statusMessage("Audio error: <message>")` |
-| endless source | the `TMoreFn` reports a failed load as `done({})`; a waiting `next()` stays stopped |
+| endless source | the `TLoadMoreCallback` reports a failed load as `done({})`; a waiting `next()` stays stopped |
 | seek | `seekTo` and `seekFraction` return `false` |
 | index out of range | `playIndex` does nothing; `removeTracks` skips it |
 | cover | a null `QImage` from `get`, an empty `QString` from `localFile`, and no `ready` |
 
-`TMoreFn`, `TEventFn` and the `done` callback run inside Qt slots. Per `CLAUDE.md`, no exception
-may cross the event loop, so they must not throw.
+`TLoadMoreCallback`, `TEventCallback` and the `done` callback run inside Qt slots. Per `CLAUDE.md`,
+no exception may cross the event loop, so they must not throw.
 
 ## Not here
 
@@ -507,9 +513,9 @@ may cross the event loop, so they must not throw.
 - `download-info` and the signed link, `Track` and `Track::coverUrl`, the `/play-audio` report,
   and wave sessions and feedback: [src/yandex](../yandex/README.md).
 - Choosing a source and taking the ticket (likes, playlists, albums, artists, search, waves); the
-  wave's `TMoreFn` and `TEventFn` (which batch a track came from, the ids sent for more, how a
-  `TrackEvent` maps to a `WaveEvent`); the status line; the playlist and "Now playing" windows:
-  [src/ui](../ui/README.md).
+  wave's `TLoadMoreCallback` and `TEventCallback` (which batch a track came from, the ids sent for
+  more, how a `TrackEvent` maps to a `WaveEvent`); the status line; the playlist and "Now playing"
+  windows: [src/ui](../ui/README.md).
 - Media keys, MPRIS and SMTC state, and the cover `artUrl` built from `localFile()`:
   [src/integrations](../integrations/README.md).
 - Creating the `Player` and the cache and choosing the cache directory, loading the likes without
@@ -519,5 +525,5 @@ may cross the event loop, so they must not throw.
   - `tests/library_test.cpp`: track events, the preload and the gapless advance, re-preloading
     after a queue change, the endless source, and a slow load against a newer choice.
   - `tests/audio_test.cpp`: `playerPollsTheEngine`.
-  - `tests/windows_test.cpp`: `noPlaybackAfterShutDown`.
+  - `tests/windows_test.cpp`: `nothingPlaysAfterShutDown`.
   - `tests/mpris_test.cpp`: the cache without a network manager.

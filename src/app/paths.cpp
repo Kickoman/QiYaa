@@ -5,40 +5,42 @@
 
 namespace App {
 
-QString ConfigDir() {
+QString ConfigDirectory() {
     const QString base = QStandardPaths::writableLocation(QStandardPaths::GenericConfigLocation);
-    const QString dir = base + QStringLiteral("/QiYaa");
-    QDir().mkpath(dir);
-    return dir;
+    const QString directory = base + QStringLiteral("/QiYaa");
+    QDir().mkpath(directory);
+    return directory;
 }
 
-QStringList YaampDataDirs() {
+QStringList YaampDataDirectories() {
     QStringList bases;
 #if defined(Q_OS_WIN)
     bases << qEnvironmentVariable("APPDATA");
 #elif defined(Q_OS_MACOS)
     bases << QDir::homePath() + QStringLiteral("/Library/Application Support");
 #else
-    const QString xdg = qEnvironmentVariable("XDG_CONFIG_HOME");
-    bases << (xdg.isEmpty() ? QDir::homePath() + QStringLiteral("/.config") : xdg);
+    const QString xdgConfigHome = qEnvironmentVariable("XDG_CONFIG_HOME");
+    bases
+        << (xdgConfigHome.isEmpty() ? QDir::homePath() + QStringLiteral("/.config") : xdgConfigHome
+           );
 #endif
     QStringList out;
-    for (const QString& b : bases) {
-        if (b.isEmpty()) {
+    for (const QString& base : bases) {
+        if (base.isEmpty()) {
             continue;
         }
-        out << b + QStringLiteral("/Yaamp") << b + QStringLiteral("/yaamp");
+        out << base + QStringLiteral("/Yaamp") << base + QStringLiteral("/yaamp");
     }
     return out;
 }
 
 QString TokenFile() {
-    return ConfigDir() + QStringLiteral("/token");
+    return ConfigDirectory() + QStringLiteral("/token");
 }
 
 QStringList YaampTokenFiles() {
     QStringList out;
-    for (const QString& directory : YaampDataDirs()) {
+    for (const QString& directory : YaampDataDirectories()) {
         out << directory + QStringLiteral("/token.json");
     }
     return out;

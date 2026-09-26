@@ -29,7 +29,7 @@ Sprite coordinates and window layouts for the main, equalizer and playlist windo
 the TEXT.BMP font map (`src/skins/skin.cpp`), `region.txt` and `pledit.txt` parsing rules, window snapping
 (`src/ui/snap.cpp`), the EQ graph spline (`src/ui/equalizer_window.cpp`, itself adapted from
 [morganherlocker/cubic-spline](https://github.com/morganherlocker/cubic-spline), MIT), the analyzer's bar/peak
-behaviour (`src/vis/visualizers.cpp`), Winamp's built-in EQ presets (`src/audio/eq_presets.h`), the windowshade sprites
+behaviour (`src/vis/visualizer.cpp`), Winamp's built-in EQ presets (`src/audio/eq_presets.h`), the windowshade sprites
 of `titlebar.bmp`/`eq_ex.bmp`/`pledit.bmp`, the `gen.bmp` frame and bitmap-font layout (`src/ui/gen_window.cpp`, `src/skins/skin.cpp`)
 and the `.eqf` file layout (`src/audio/eq_presets.cpp`, after webamp's `winamp-eqf` package) are ported from webamp.
 

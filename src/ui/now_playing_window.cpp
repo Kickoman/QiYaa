@@ -21,7 +21,7 @@
 namespace Ui {
 
 namespace {
-constexpr int kPad = 4;
+constexpr int kPadding = 4;
 constexpr int kCoverPixels = 400;
 }  // namespace
 
@@ -38,21 +38,22 @@ NowPlayingWindow::NowPlayingWindow(
     connect(corePlayer, &Core::Player::currentTrackChanged, this, [this] { update(); });
     connect(corePlayer->library(), &Yandex::Library::likesChanged, this, [this] { update(); });
     connect(coverCache, &Core::CoverCache::ready, this, [this](const QUrl& url) {
-        if (const auto* t = corePlayer->currentTrack(); t && t->coverUrl(kCoverPixels) == url) {
+        if (const auto* track = corePlayer->currentTrack();
+            track && track->coverUrl(kCoverPixels) == url) {
             update();
         }
     });
 }
 
 QRect NowPlayingWindow::coverRect() const {
-    const QRect a = contentRect().adjusted(kPad, kPad, -kPad, -kPad);
-    const int side = std::max(0, std::min(a.height(), a.width() / 2));
-    return {a.x(), a.y(), side, side};
+    const QRect inset = contentRect().adjusted(kPadding, kPadding, -kPadding, -kPadding);
+    const int side = std::max(0, std::min(inset.height(), inset.width() / 2));
+    return {inset.x(), inset.y(), side, side};
 }
 
 void NowPlayingWindow::paintContent(QPainter& painter, const QRect& area) {
     const Skins::Skin::PlaylistStyle& style = skin().playlistStyle();
-    painter.fillRect(area, style.normalBg);
+    painter.fillRect(area, style.normalBackground);
     const Yandex::Track* track = corePlayer->currentTrack();
 
     const QRect cover = coverRect();
@@ -67,8 +68,8 @@ void NowPlayingWindow::paintContent(QPainter& painter, const QRect& area) {
         painter.drawRect(cover.adjusted(0, 0, -1, -1));
     }
 
-    const QRect text(
-        cover.right() + 1 + kPad * 2, cover.y(), area.right() - cover.right() - kPad * 3,
+    const QRect textRect(
+        cover.right() + 1 + kPadding * 2, cover.y(), area.right() - cover.right() - kPadding * 3,
         cover.height()
     );
     QFont font(style.font);
@@ -76,22 +77,23 @@ void NowPlayingWindow::paintContent(QPainter& painter, const QRect& area) {
     QFont bold = font;
     bold.setBold(true);
     bold.setPixelSize(11);
-    int y = text.y();
-    auto line = [&](const QFont& f, const QColor& c, const QString& content) {
+    int y = textRect.y();
+    auto line = [&](const QFont& lineFont, const QColor& color, const QString& content) {
         if (content.isEmpty()) {
             return;
         }
-        const QFontMetrics fm(f);
-        if (y + fm.height() > text.bottom() + 1) {
+        const QFontMetrics metrics(lineFont);
+        if (y + metrics.height() > textRect.bottom() + 1) {
             return;
         }
-        painter.setFont(f);
-        painter.setPen(c);
+        painter.setFont(lineFont);
+        painter.setPen(color);
         painter.drawText(
-            QRect(text.x(), y, text.width(), fm.height()), Qt::AlignLeft | Qt::AlignVCenter,
-            fm.elidedText(content, Qt::ElideRight, text.width())
+            QRect(textRect.x(), y, textRect.width(), metrics.height()),
+            Qt::AlignLeft | Qt::AlignVCenter,
+            metrics.elidedText(content, Qt::ElideRight, textRect.width())
         );
-        y += fm.height() + 1;
+        y += metrics.height() + 1;
     };
     if (!track) {
         line(font, style.normal, QStringLiteral("Ничего не играет"));
@@ -106,10 +108,10 @@ void NowPlayingWindow::paintContent(QPainter& painter, const QRect& area) {
                                  : QStringLiteral(" (%1)").arg(track->year);
     }
     line(font, style.normal, album);
-    const int secs = int(track->durationMs / 1000);
+    const int seconds = int(track->durationMs / 1000);
     line(
         font, style.normal,
-        QStringLiteral("%1:%2").arg(secs / 60).arg(secs % 60, 2, 10, QLatin1Char('0'))
+        QStringLiteral("%1:%2").arg(seconds / 60).arg(seconds % 60, 2, 10, QLatin1Char('0'))
     );
     if (corePlayer->library()->isLiked(track->id)) {
         line(font, style.current, QStringLiteral("♥ В «Мне нравится»"));

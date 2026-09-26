@@ -9,23 +9,23 @@
 namespace Skins {
 namespace {
 
-QList<int> ParseInts(const QString& text) {
-    static const QRegularExpression sep(QStringLiteral("[\\s,]+"));
-    QList<int> out;
-    for (const QString& part : text.split(sep, Qt::SkipEmptyParts)) {
+QList<int> ParseIntegers(const QString& text) {
+    static const QRegularExpression separatorPattern(QStringLiteral("[\\s,]+"));
+    QList<int> numbers;
+    for (const QString& part : text.split(separatorPattern, Qt::SkipEmptyParts)) {
         bool ok = false;
-        const int v = part.toInt(&ok);
+        const int number = part.toInt(&ok);
         if (ok) {
-            out.append(v);
+            numbers.append(number);
         }
     }
-    return out;
+    return numbers;
 }
 
 }  // namespace
 
 TRegionData ParseRegionTxt(const QByteArray& text) {
-    QHash<QString, QHash<QString, QString>> ini;
+    QHash<QString, QHash<QString, QString>> sections;
     QString section;
     const QStringList lines =
         QString::fromLatin1(text).split(QRegularExpression(QStringLiteral("[\r\n]+")));
@@ -40,43 +40,43 @@ TRegionData ParseRegionTxt(const QByteArray& text) {
             section = line.mid(1, end > 0 ? end - 1 : -1).trimmed().toLower();
             continue;
         }
-        const int eq = line.indexOf(u'=');
-        if (eq <= 0 || section.isEmpty()) {
+        const int equalsPosition = line.indexOf(u'=');
+        if (equalsPosition <= 0 || section.isEmpty()) {
             continue;
         }
-        QString value = line.mid(eq + 1);
+        QString value = line.mid(equalsPosition + 1);
         const int comment = value.indexOf(u';');
         if (comment >= 0) {
             value.truncate(comment);
         }
-        ini[section][line.left(eq).trimmed().toLower()] = value.trimmed();
+        sections[section][line.left(equalsPosition).trimmed().toLower()] = value.trimmed();
     }
 
     TRegionData data;
-    for (auto it = ini.cbegin(); it != ini.cend(); ++it) {
-        const QList<int> counts = ParseInts(it->value(QStringLiteral("numpoints")));
-        const QList<int> coords = ParseInts(it->value(QStringLiteral("pointlist")));
-        if (counts.isEmpty() || coords.size() < 2) {
+    for (auto it = sections.cbegin(); it != sections.cend(); ++it) {
+        const QList<int> counts = ParseIntegers(it->value(QStringLiteral("numpoints")));
+        const QList<int> coordinates = ParseIntegers(it->value(QStringLiteral("pointlist")));
+        if (counts.isEmpty() || coordinates.size() < 2) {
             continue;
         }
 
         QList<QPolygon> polygons;
-        qsizetype point = 0;
-        const qsizetype totalPoints = coords.size() / 2;
-        for (int n : counts) {
-            if (n < 3) {
-                point += std::max(n, 0);
+        qsizetype pointIndex = 0;
+        const qsizetype totalPoints = coordinates.size() / 2;
+        for (int count : counts) {
+            if (count < 3) {
+                pointIndex += std::max(count, 0);
                 continue;
             }
-            if (point + n > totalPoints) {
+            if (pointIndex + count > totalPoints) {
                 break;
             }
-            QPolygon poly;
-            poly.reserve(n);
-            for (int i = 0; i < n; ++i, ++point) {
-                poly << QPoint(coords[point * 2], coords[point * 2 + 1]);
+            QPolygon polygon;
+            polygon.reserve(count);
+            for (int i = 0; i < count; ++i, ++pointIndex) {
+                polygon << QPoint(coordinates[pointIndex * 2], coordinates[pointIndex * 2 + 1]);
             }
-            polygons.append(poly);
+            polygons.append(polygon);
         }
         if (!polygons.isEmpty()) {
             data.insert(it.key(), polygons);
@@ -86,11 +86,11 @@ TRegionData ParseRegionTxt(const QByteArray& text) {
 }
 
 QRegion RegionFromPolygons(const QList<QPolygon>& polygons) {
-    QRegion r;
-    for (const QPolygon& p : polygons) {
-        r += QRegion(p, Qt::WindingFill);
+    QRegion region;
+    for (const QPolygon& polygon : polygons) {
+        region += QRegion(polygon, Qt::WindingFill);
     }
-    return r;
+    return region;
 }
 
 }  // namespace Skins

@@ -43,13 +43,13 @@ constexpr WinampPreset kWinampPresets[] = {
 constexpr char kHeader[] = "Winamp EQ library file v1.1";
 constexpr int kHeaderLength = sizeof(kHeader) - 1;
 constexpr int kNameLength = 257;
-constexpr int kValues = kEqBands + 1;
+constexpr int kValueCount = kEqBands + 1;
 
 QString DecodeName(const QByteArray& raw) {
-    QStringDecoder utf8(QStringConverter::Utf8, QStringConverter::Flag::Stateless);
-    const QString s = utf8.decode(raw);
-    if (!utf8.hasError()) {
-        return s;
+    QStringDecoder utf8Decoder(QStringConverter::Utf8, QStringConverter::Flag::Stateless);
+    const QString decoded = utf8Decoder.decode(raw);
+    if (!utf8Decoder.hasError()) {
+        return decoded;
     }
 #ifdef Q_OS_WIN
     return QString::fromLocal8Bit(raw);
@@ -59,27 +59,27 @@ QString DecodeName(const QByteArray& raw) {
 }
 
 QByteArray EncodeName(const QString& name) {
-    QByteArray out;
-    bool utf8 = true;
+    QByteArray encoded;
+    bool useUtf8 = true;
 #ifdef Q_OS_WIN
-    out = name.toLocal8Bit();
-    utf8 = QString::fromLocal8Bit(out) != name;
+    encoded = name.toLocal8Bit();
+    useUtf8 = QString::fromLocal8Bit(encoded) != name;
 #endif
-    if (utf8) {
-        out = name.toUtf8();
+    if (useUtf8) {
+        encoded = name.toUtf8();
     }
-    if (out.size() > kNameLength - 1) {
-        out.truncate(kNameLength - 1);
-        if (utf8) {  // don't cut a character in half
-            while (!out.isEmpty() && (quint8(out.back()) & 0xC0) == 0x80) {
-                out.chop(1);
+    if (encoded.size() > kNameLength - 1) {
+        encoded.truncate(kNameLength - 1);
+        if (useUtf8) {  // don't cut a character in half
+            while (!encoded.isEmpty() && (quint8(encoded.back()) & 0xC0) == 0x80) {
+                encoded.chop(1);
             }
-            if (!out.isEmpty() && quint8(out.back()) >= 0xC0) {
-                out.chop(1);
+            if (!encoded.isEmpty() && quint8(encoded.back()) >= 0xC0) {
+                encoded.chop(1);
             }
         }
     }
-    return out;
+    return encoded;
 }
 }  // namespace
 
@@ -90,26 +90,26 @@ QList<EqPreset> ParseEqf(const QByteArray& data) {
             + " bytes that do not start with \"" + kHeader + "\""
         );
     }
-    qsizetype i = kHeaderLength + 4;  // skip ^Z "!--"
+    qsizetype offset = kHeaderLength + 4;  // skip ^Z "!--"
     QList<EqPreset> presets;
-    while (i + kNameLength + kValues <= data.size()) {
-        const QByteArray rawName = data.mid(i, kNameLength);
-        const qsizetype nul = rawName.indexOf('\0');
+    while (offset + kNameLength + kValueCount <= data.size()) {
+        const QByteArray rawName = data.mid(offset, kNameLength);
+        const qsizetype nulIndex = rawName.indexOf('\0');
         EqPreset preset;
-        preset.name = DecodeName(nul >= 0 ? rawName.left(nul) : rawName);
-        i += kNameLength;
-        auto value = [&](int k) { return 64 - int(quint8(data[i + k])); };
+        preset.name = DecodeName(nulIndex >= 0 ? rawName.left(nulIndex) : rawName);
+        offset += kNameLength;
+        auto valueAt = [&](int index) { return 64 - int(quint8(data[offset + index])); };
         for (int band = 0; band < kEqBands; ++band) {
-            preset.settings.bandsDb[band] = std::round(EqfToDb(value(band)) * 10) / 10;
+            preset.settings.bandsDb[band] = std::round(EqfToDb(valueAt(band)) * 10) / 10;
         }
-        preset.settings.preampDb = std::round(EqfToDb(value(kEqBands)) * 10) / 10;
-        i += kValues;
+        preset.settings.preampDb = std::round(EqfToDb(valueAt(kEqBands)) * 10) / 10;
+        offset += kValueCount;
         presets << preset;
     }
     if (presets.isEmpty()) {
         throw Error(
             "Winamp EQ file of " + std::to_string(data.size())
-            + " bytes holds no preset (one takes " + std::to_string(kNameLength + kValues)
+            + " bytes holds no preset (one takes " + std::to_string(kNameLength + kValueCount)
             + " bytes after the " + std::to_string(kHeaderLength + 4) + "-byte header)"
         );
     }
@@ -117,19 +117,19 @@ QList<EqPreset> ParseEqf(const QByteArray& data) {
 }
 
 QByteArray WriteEqf(const QList<EqPreset>& presets) {
-    QByteArray out(kHeader);
-    out += char(26);
-    out += "!--";
+    QByteArray data(kHeader);
+    data += char(26);
+    data += "!--";
     for (const EqPreset& preset : presets) {
         QByteArray name = EncodeName(preset.name);
         name.append(QByteArray(kNameLength - name.size(), '\0'));
-        out += name;
+        data += name;
         for (int band = 0; band < kEqBands; ++band) {
-            out += char(64 - DbToEqf(preset.settings.bandsDb[band]));
+            data += char(64 - DbToEqf(preset.settings.bandsDb[band]));
         }
-        out += char(64 - DbToEqf(preset.settings.preampDb));
+        data += char(64 - DbToEqf(preset.settings.preampDb));
     }
-    return out;
+    return data;
 }
 
 // 33 is Winamp's centre notch (0 dB writes 33): exactly 0 dB, not the line's +0.19 dB.
@@ -143,7 +143,7 @@ int DbToEqf(double db) {
 }
 
 QList<EqPreset> BuiltinEqPresets() {
-    QList<EqPreset> out;
+    QList<EqPreset> presets;
     for (const WinampPreset& source : kWinampPresets) {
         EqPreset preset;
         preset.name = QString::fromLatin1(source.name);
@@ -151,9 +151,9 @@ QList<EqPreset> BuiltinEqPresets() {
         for (int i = 0; i < kEqBands; ++i) {
             preset.settings.bandsDb[i] = EqfToDb(source.bands[i]);
         }
-        out << preset;
+        presets << preset;
     }
-    return out;
+    return presets;
 }
 
 }  // namespace Audio

@@ -89,7 +89,7 @@ public:
 
     QString playbackStatus() const;
     QString loopStatus() const;
-    void setLoopStatus(const QString& text);
+    void setLoopStatus(const QString& status);
     double rate() const { return 1.0; }
     void setRate(double) { }
     bool shuffle() const;

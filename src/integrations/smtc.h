@@ -23,8 +23,8 @@ private:
     void updateMetadata();
     void handleButton(int button);
 
-    struct Impl;
-    std::unique_ptr<Impl> d;
+    struct Implementation;
+    std::unique_ptr<Implementation> implementation;
     MediaControls* mediaControls;
 };
 

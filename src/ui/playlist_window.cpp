@@ -30,7 +30,7 @@ using Skins::PlaylistSprites;
 
 namespace {
 
-constexpr int kListPadTop = 3;
+constexpr int kListPaddingTop = 3;
 
 bool RectContains(const QRect& rect, QPoint point) {
     return point.x() >= rect.x() && point.y() >= rect.y() && point.x() < rect.x() + rect.width()
@@ -48,10 +48,10 @@ QString FormatTime(qint64 seconds) {
     return QStringLiteral("%1:%2").arg(seconds / 60).arg(seconds % 60, 2, 10, QLatin1Char('0'));
 }
 
-constexpr int kMiniX[] = {3, 11, 20, 29, 37, 45};
-constexpr int kMiniWidth = 8;
-constexpr int kMiniY = 22;
-constexpr int kMiniHeight = 10;
+constexpr int kMiniButtonX[] = {3, 11, 20, 29, 37, 45};
+constexpr int kMiniButtonWidth = 8;
+constexpr int kMiniButtonY = 22;
+constexpr int kMiniButtonHeight = 10;
 
 }  // namespace
 
@@ -74,29 +74,29 @@ PlaylistWindow::PlaylistWindow(Core::Player* player, const Skins::Skin* skin, QW
         update();
     });
     connect(corePlayer, &Core::Player::playlistChanged, this, [this] {
-        const int n = int(corePlayer->playlist().size());
+        const int trackCount = int(corePlayer->playlist().size());
         QSet<int> valid;
-        for (int i : selectedRows) {
-            if (i < n) {
-                valid.insert(i);
+        for (int row : selectedRows) {
+            if (row < trackCount) {
+                valid.insert(row);
             }
         }
         selectedRows = valid;
-        if (anchor >= n) {
-            anchor = n - 1;
+        if (anchor >= trackCount) {
+            anchor = trackCount - 1;
         }
-        if (cursorRow >= n) {
-            cursorRow = n - 1;
+        if (cursorRow >= trackCount) {
+            cursorRow = trackCount - 1;
         }
         setScrollOffset(scrollRow);
         update();
     });
     connect(corePlayer, &Core::Player::positionTick, this, [this] {
-        const int sec = int(corePlayer->engine()->positionSeconds());
-        if (sec == shownSecond) {
+        const int second = int(corePlayer->engine()->positionSeconds());
+        if (second == shownSecond) {
             return;
         }
-        shownSecond = sec;
+        shownSecond = second;
         const QSize size = skinSize();
         updateSkinRect(QRect(
             size.width() - 150 + 66, size.height() - Skins::PlaylistSprites::kBottomHeight + 23, 25,
@@ -116,8 +116,8 @@ void PlaylistWindow::setSizeSteps(QSize steps) {
         return;
     }
     resizeSteps = steps;
-    const QSize full = fullSkinSize();
-    setSkinSize(isShaded() ? QSize(full.width(), 14) : full);
+    const QSize fullSize = fullSkinSize();
+    setSkinSize(isShaded() ? QSize(fullSize.width(), 14) : fullSize);
     setScrollOffset(scrollRow);
     Q_EMIT sizeStepsChanged(steps);
 }
@@ -159,28 +159,29 @@ void PlaylistWindow::ensureRowVisible(int row) {
     }
 }
 
-int PlaylistWindow::rowAt(QPoint point) const {
-    const QRect rect = listRect();
-    if (!RectContains(rect, point)) {
+int PlaylistWindow::rowAt(QPoint skinPos) const {
+    const QRect listArea = listRect();
+    if (!RectContains(listArea, skinPos)) {
         return -1;
     }
-    const int y = point.y() - rect.y() - kListPadTop;
+    const int y = skinPos.y() - listArea.y() - kListPaddingTop;
     if (y < 0) {
         return -1;
     }
-    const int visible = y / Skins::PlaylistSprites::kRowHeight;
-    if (visible >= visibleRows()) {
+    const int rowOnScreen = y / Skins::PlaylistSprites::kRowHeight;
+    if (rowOnScreen >= visibleRows()) {
         return -1;
     }
-    const int row = scrollRow + visible;
+    const int row = scrollRow + rowOnScreen;
     return row < corePlayer->playlist().size() ? row : -1;
 }
 
 QRect PlaylistWindow::scrollHandleRect() const {
-    const QRect list = listRect();
-    const int travel = std::max(0, list.height() - Skins::PlaylistSprites::kScrollHandle.height());
+    const QRect listArea = listRect();
+    const int travel =
+        std::max(0, listArea.height() - Skins::PlaylistSprites::kScrollHandle.height());
     const int max = maxScroll();
-    const int y = list.y() + (max > 0 ? int(std::lround(double(scrollRow) / max * travel)) : 0);
+    const int y = listArea.y() + (max > 0 ? int(std::lround(double(scrollRow) / max * travel)) : 0);
     return {
         skinSize().width() - 15, y, Skins::PlaylistSprites::kScrollHandle.width(),
         Skins::PlaylistSprites::kScrollHandle.height()
@@ -189,10 +190,10 @@ QRect PlaylistWindow::scrollHandleRect() const {
 
 void PlaylistWindow::drawTiles(QPainter& painter) const {
     const Skins::Skin& activeSkin = skin();
-    const int window = skinSize().width(), h = skinSize().height();
+    const int windowWidth = skinSize().width(), windowHeight = skinSize().height();
     const bool active = isActiveWindow();
 
-    for (int x = 25; x < window - 25; x += 25) {
+    for (int x = 25; x < windowWidth - 25; x += 25) {
         activeSkin.draw(
             painter, TSheet::PlEdit,
             active ? Skins::PlaylistSprites::kTopTileSelected : Skins::PlaylistSprites::kTopTile,
@@ -206,41 +207,42 @@ void PlaylistWindow::drawTiles(QPainter& painter) const {
     activeSkin.draw(
         painter, TSheet::PlEdit,
         active ? Skins::PlaylistSprites::kTitleSelected : Skins::PlaylistSprites::kTitle,
-        {(window - 100) / 2, 0}
+        {(windowWidth - 100) / 2, 0}
     );
     activeSkin.draw(
         painter, TSheet::PlEdit,
         active ? Skins::PlaylistSprites::kTopRightSelected : Skins::PlaylistSprites::kTopRight,
-        {window - 25, 0}
+        {windowWidth - 25, 0}
     );
 
-    for (int y = Skins::PlaylistSprites::kTopHeight; y < h - Skins::PlaylistSprites::kBottomHeight;
-         y += 29) {
-        const int tileH = std::min(29, h - Skins::PlaylistSprites::kBottomHeight - y);
+    for (int y = Skins::PlaylistSprites::kTopHeight;
+         y < windowHeight - Skins::PlaylistSprites::kBottomHeight; y += 29) {
+        const int tileHeight =
+            std::min(29, windowHeight - Skins::PlaylistSprites::kBottomHeight - y);
         activeSkin.draw(
             painter, TSheet::PlEdit,
-            Skins::PlaylistSprites::kLeftTile.adjusted(0, 0, 0, tileH - 29), {0, y}
+            Skins::PlaylistSprites::kLeftTile.adjusted(0, 0, 0, tileHeight - 29), {0, y}
         );
         activeSkin.draw(
             painter, TSheet::PlEdit,
-            Skins::PlaylistSprites::kRightTile.adjusted(0, 0, 0, tileH - 29),
-            {window - Skins::PlaylistSprites::kRightWidth, y}
+            Skins::PlaylistSprites::kRightTile.adjusted(0, 0, 0, tileHeight - 29),
+            {windowWidth - Skins::PlaylistSprites::kRightWidth, y}
         );
     }
 
-    for (int x = 125; x < window - 150; x += 25) {
+    for (int x = 125; x < windowWidth - 150; x += 25) {
         activeSkin.draw(
             painter, TSheet::PlEdit, Skins::PlaylistSprites::kBottomTile,
-            {x, h - Skins::PlaylistSprites::kBottomHeight}
+            {x, windowHeight - Skins::PlaylistSprites::kBottomHeight}
         );
     }
     activeSkin.draw(
         painter, TSheet::PlEdit, Skins::PlaylistSprites::kBottomLeft,
-        {0, h - Skins::PlaylistSprites::kBottomHeight}
+        {0, windowHeight - Skins::PlaylistSprites::kBottomHeight}
     );
     activeSkin.draw(
         painter, TSheet::PlEdit, Skins::PlaylistSprites::kBottomRight,
-        {window - 150, h - Skins::PlaylistSprites::kBottomHeight}
+        {windowWidth - 150, windowHeight - Skins::PlaylistSprites::kBottomHeight}
     );
 
     activeSkin.draw(
@@ -251,84 +253,90 @@ void PlaylistWindow::drawTiles(QPainter& painter) const {
     );
     if (activeDrag == Drag::Close) {
         activeSkin.draw(
-            painter, TSheet::PlEdit, Skins::PlaylistSprites::kCloseSelected, {window - 11, 3}
+            painter, TSheet::PlEdit, Skins::PlaylistSprites::kCloseSelected, {windowWidth - 11, 3}
         );
     }
     if (activeDrag == Drag::Shade) {
         activeSkin.draw(
-            painter, TSheet::PlEdit, Skins::PlaylistSprites::kCollapseSelected, {window - 21, 3}
+            painter, TSheet::PlEdit, Skins::PlaylistSprites::kCollapseSelected,
+            {windowWidth - 21, 3}
         );
     }
 }
 
 void PlaylistWindow::drawRows(QPainter& painter) const {
     const Skins::Skin::PlaylistStyle& style = skin().playlistStyle();
-    const QRect list = listRect();
-    painter.fillRect(list, style.normalBg);
+    const QRect listArea = listRect();
+    painter.fillRect(listArea, style.normalBackground);
 
     QFont font(style.font);
     font.setPixelSize(9);
     font.setLetterSpacing(QFont::AbsoluteSpacing, 0.5);
     painter.setFont(font);
-    const QFontMetrics fm(font);
+    const QFontMetrics metrics(font);
 
     const auto& tracks = corePlayer->playlist();
     const int current = corePlayer->currentIndex();
     painter.save();
-    painter.setClipRect(list);
+    painter.setClipRect(listArea);
     for (int i = 0; i < visibleRows(); ++i) {
         const int row = scrollRow + i;
         if (row >= tracks.size()) {
             break;
         }
-        const QRect rect(
-            list.x(), list.y() + kListPadTop + i * Skins::PlaylistSprites::kRowHeight, list.width(),
-            Skins::PlaylistSprites::kRowHeight
+        const QRect rowRect(
+            listArea.x(), listArea.y() + kListPaddingTop + i * Skins::PlaylistSprites::kRowHeight,
+            listArea.width(), Skins::PlaylistSprites::kRowHeight
         );
         if (selectedRows.contains(row)) {
-            painter.fillRect(rect, style.selectedBg);
+            painter.fillRect(rowRect, style.selectedBackground);
         }
         painter.setPen(row == current ? style.current : style.normal);
         const QString duration = FormatTime(tracks[row].durationMs / 1000);
-        const int durW = fm.horizontalAdvance(duration) + 3;
-        const QRect titleRect = rect.adjusted(2, 0, -durW - 4, 0);
+        const int durationWidth = metrics.horizontalAdvance(duration) + 3;
+        const QRect titleRect = rowRect.adjusted(2, 0, -durationWidth - 4, 0);
         const QString title = QStringLiteral("%1. %2").arg(row + 1).arg(tracks[row].displayTitle());
         painter.drawText(
             titleRect, Qt::AlignLeft | Qt::AlignVCenter,
-            fm.elidedText(title, Qt::ElideRight, titleRect.width())
+            metrics.elidedText(title, Qt::ElideRight, titleRect.width())
         );
-        painter.drawText(rect.adjusted(0, 0, -3, 0), Qt::AlignRight | Qt::AlignVCenter, duration);
+        painter.drawText(
+            rowRect.adjusted(0, 0, -3, 0), Qt::AlignRight | Qt::AlignVCenter, duration
+        );
     }
     painter.restore();
 
     if (tracks.isEmpty()) {
         painter.setPen(style.normal);
         painter.drawText(
-            list.adjusted(4, kListPadTop, -4, 0), Qt::AlignLeft | Qt::AlignTop | Qt::TextWordWrap,
+            listArea.adjusted(4, kListPaddingTop, -4, 0),
+            Qt::AlignLeft | Qt::AlignTop | Qt::TextWordWrap,
             QStringLiteral("Плейлист пуст.\nПравый клик или кнопка ADD — выбрать, что слушать.")
         );
     }
 }
 
 void PlaylistWindow::drawBottomInfo(QPainter& painter) const {
-    const int window = skinSize().width(), h = skinSize().height();
-    const QPoint base(window - 150, h - Skins::PlaylistSprites::kBottomHeight);
+    const int windowWidth = skinSize().width(), windowHeight = skinSize().height();
+    const QPoint base(windowWidth - 150, windowHeight - Skins::PlaylistSprites::kBottomHeight);
 
-    qint64 total = 0, selected = 0;
+    qint64 totalSeconds = 0, selectedSeconds = 0;
     const auto& tracks = corePlayer->playlist();
     for (int i = 0; i < tracks.size(); ++i) {
-        total += tracks[i].durationMs / 1000;
+        totalSeconds += tracks[i].durationMs / 1000;
         if (selectedRows.contains(i)) {
-            selected += tracks[i].durationMs / 1000;
+            selectedSeconds += tracks[i].durationMs / 1000;
         }
     }
     painter.save();
     painter.setClipRect(QRect(base + QPoint(7, 10), QSize(80, 6)));
-    skin().drawText(painter, base + QPoint(7, 10), FormatTime(selected) + u'/' + FormatTime(total));
+    skin().drawText(
+        painter, base + QPoint(7, 10), FormatTime(selectedSeconds) + u'/' + FormatTime(totalSeconds)
+    );
     painter.restore();
 
-    const auto st = corePlayer->engine()->state();
-    if (st != Audio::AudioEngine::State::Stopped) {
+    const auto state = corePlayer->engine()->state();
+    if (state != Audio::AudioEngine::State::Stopped) {
         painter.save();
         painter.setClipRect(QRect(base + QPoint(66, 23), QSize(25, 6)));
         skin().drawText(
@@ -352,16 +360,16 @@ void PlaylistWindow::setShaded(bool shaded) {
     if (shaded == isShaded()) {
         return;
     }
-    const QSize full = fullSkinSize();
-    applyShade(shaded, shaded ? QSize(full.width(), 14) : full);
+    const QSize fullSize = fullSkinSize();
+    applyShade(shaded, shaded ? QSize(fullSize.width(), 14) : fullSize);
     setScrollOffset(scrollRow);
     update();
 }
 
 void PlaylistWindow::paintShaded(QPainter& painter) {
     const Skins::Skin& activeSkin = skin();
-    const int window = skinSize().width();
-    for (int x = 25; x < window - 50; x += 25) {
+    const int windowWidth = skinSize().width();
+    for (int x = 25; x < windowWidth - 50; x += 25) {
         activeSkin.draw(painter, TSheet::PlEdit, Skins::PlaylistSprites::kShadeTile, {x, 0});
     }
     activeSkin.draw(painter, TSheet::PlEdit, Skins::PlaylistSprites::kShadeLeft, {0, 0});
@@ -369,36 +377,37 @@ void PlaylistWindow::paintShaded(QPainter& painter) {
         painter, TSheet::PlEdit,
         isActiveWindow() ? Skins::PlaylistSprites::kShadeRightSelected
                          : Skins::PlaylistSprites::kShadeRight,
-        {window - 50, 0}
+        {windowWidth - 50, 0}
     );
 
-    if (const auto* t = corePlayer->currentTrack()) {
-        const QString time = FormatTime(t->durationMs / 1000);
-        const int timeW = Skins::Skin::TextWidth(time);
-        const int timeX = window - 30 - timeW;
+    if (const auto* track = corePlayer->currentTrack()) {
+        const QString time = FormatTime(track->durationMs / 1000);
+        const int timeWidth = Skins::Skin::TextWidth(time);
+        const int timeX = windowWidth - 30 - timeWidth;
         activeSkin.drawText(painter, {timeX, 4}, time);
         painter.save();
         painter.setClipRect(QRect(5, 4, timeX - 5 - 5, 6));
         activeSkin.drawText(
             painter, {5, 4},
-            QStringLiteral("%1. %2").arg(corePlayer->currentIndex() + 1).arg(t->displayTitle()),
+            QStringLiteral("%1. %2").arg(corePlayer->currentIndex() + 1).arg(track->displayTitle()),
             timeX - 10
         );
         painter.restore();
     }
     if (activeDrag == Drag::Close) {
         activeSkin.draw(
-            painter, TSheet::PlEdit, Skins::PlaylistSprites::kCloseSelected, {window - 11, 3}
+            painter, TSheet::PlEdit, Skins::PlaylistSprites::kCloseSelected, {windowWidth - 11, 3}
         );
     }
     if (activeDrag == Drag::Shade) {
         activeSkin.draw(
-            painter, TSheet::PlEdit, Skins::PlaylistSprites::kCollapseSelected, {window - 21, 3}
+            painter, TSheet::PlEdit, Skins::PlaylistSprites::kCollapseSelected,
+            {windowWidth - 21, 3}
         );
     }
     if (activeDrag == Drag::Shade) {
         activeSkin.draw(
-            painter, TSheet::PlEdit, Skins::PlaylistSprites::kExpandSelected, {window - 21, 3}
+            painter, TSheet::PlEdit, Skins::PlaylistSprites::kExpandSelected, {windowWidth - 21, 3}
         );
     }
 }
@@ -421,7 +430,11 @@ PlaylistWindow::Button PlaylistWindow::buttonAt(QPoint point) const {
     const QPoint base(windowWidth - 150, windowHeight - Skins::PlaylistSprites::kBottomHeight);
     for (int i = 0; i < 6; ++i) {
         if (RectContains(
-                QRect(base + QPoint(kMiniX[i], kMiniY), QSize(kMiniWidth, kMiniHeight)), point
+                QRect(
+                    base + QPoint(kMiniButtonX[i], kMiniButtonY),
+                    QSize(kMiniButtonWidth, kMiniButtonHeight)
+                ),
+                point
             )) {
             return kMiniButtons[i];
         }
@@ -438,20 +451,20 @@ PlaylistWindow::Button PlaylistWindow::buttonAt(QPoint point) const {
     return Button::None;
 }
 
-bool PlaylistWindow::isDragArea(QPoint point) const {
-    return point.y() < Skins::PlaylistSprites::kTopHeight;
+bool PlaylistWindow::isDragArea(QPoint skinPos) const {
+    return skinPos.y() < Skins::PlaylistSprites::kTopHeight;
 }
 
-void PlaylistWindow::selectRow(int row, Qt::KeyboardModifiers mods) {
+void PlaylistWindow::selectRow(int row, Qt::KeyboardModifiers modifiers) {
     if (row < 0) {
         return;
     }
-    if (mods & Qt::ShiftModifier && anchor >= 0) {
+    if (modifiers & Qt::ShiftModifier && anchor >= 0) {
         selectedRows.clear();
         for (int i = std::min(anchor, row); i <= std::max(anchor, row); ++i) {
             selectedRows.insert(i);
         }
-    } else if (mods & Qt::ControlModifier) {
+    } else if (modifiers & Qt::ControlModifier) {
         if (!selectedRows.remove(row)) {
             selectedRows.insert(row);
         }
@@ -468,15 +481,15 @@ bool PlaylistWindow::skinMousePress(QPoint pos, Qt::MouseButton button) {
     if (button != Qt::LeftButton) {
         return false;
     }
-    const int window = skinSize().width(), h = skinSize().height();
+    const int windowWidth = skinSize().width(), windowHeight = skinSize().height();
     dragStart = pos;
 
-    if (RectContains(QRect(window - 11, 3, 9, 9), pos)) {
+    if (RectContains(QRect(windowWidth - 11, 3, 9, 9), pos)) {
         activeDrag = Drag::Close;
         update();
         return true;
     }
-    if (RectContains(QRect(window - 21, 3, 9, 9), pos)) {
+    if (RectContains(QRect(windowWidth - 21, 3, 9, 9), pos)) {
         activeDrag = Drag::Shade;
         update();
         return true;
@@ -484,16 +497,17 @@ bool PlaylistWindow::skinMousePress(QPoint pos, Qt::MouseButton button) {
     if (isShaded()) {
         return false;
     }
-    if (RectContains(QRect(window - 20, h - 20, 20, 20), pos)) {
+    if (RectContains(QRect(windowWidth - 20, windowHeight - 20, 20, 20), pos)) {
         activeDrag = Drag::Resize;
         dragStartSteps = resizeSteps;
         return true;
     }
     if (RectContains(
             QRect(
-                window - Skins::PlaylistSprites::kRightWidth, Skins::PlaylistSprites::kTopHeight,
-                Skins::PlaylistSprites::kRightWidth,
-                h - Skins::PlaylistSprites::kTopHeight - Skins::PlaylistSprites::kBottomHeight
+                windowWidth - Skins::PlaylistSprites::kRightWidth,
+                Skins::PlaylistSprites::kTopHeight, Skins::PlaylistSprites::kRightWidth,
+                windowHeight - Skins::PlaylistSprites::kTopHeight
+                    - Skins::PlaylistSprites::kBottomHeight
             ),
             pos
         )) {
@@ -501,10 +515,10 @@ bool PlaylistWindow::skinMousePress(QPoint pos, Qt::MouseButton button) {
         dragStartScroll = scrollRow;
         const QRect handle = scrollHandleRect();
         if (pos.y() < handle.y() || pos.y() >= handle.y() + handle.height()) {
-            const QRect list = listRect();
-            const double frac = double(pos.y() - list.y() - handle.height() / 2)
-                / std::max(1, list.height() - handle.height());
-            setScrollOffset(int(std::lround(std::clamp(frac, 0.0, 1.0) * maxScroll())));
+            const QRect listArea = listRect();
+            const double fraction = double(pos.y() - listArea.y() - handle.height() / 2)
+                / std::max(1, listArea.height() - handle.height());
+            setScrollOffset(int(std::lround(std::clamp(fraction, 0.0, 1.0) * maxScroll())));
             dragStartScroll = scrollRow;
         }
         update();
@@ -525,12 +539,12 @@ bool PlaylistWindow::skinMousePress(QPoint pos, Qt::MouseButton button) {
 void PlaylistWindow::skinMouseMove(QPoint pos) {
     switch (activeDrag) {
         case Drag::Resize: {
-            const QPoint d = pos - dragStart;
+            const QPoint delta = pos - dragStart;
             setSizeSteps(QSize(
                 dragStartSteps.width()
-                    + int(std::lround(double(d.x()) / Skins::PlaylistSprites::kStepWidth)),
+                    + int(std::lround(double(delta.x()) / Skins::PlaylistSprites::kStepWidth)),
                 dragStartSteps.height()
-                    + int(std::lround(double(d.y()) / Skins::PlaylistSprites::kStepHeight))
+                    + int(std::lround(double(delta.y()) / Skins::PlaylistSprites::kStepHeight))
             ));
             break;
         }
@@ -551,11 +565,11 @@ void PlaylistWindow::skinMouseRelease(QPoint pos, Qt::MouseButton button) {
     }
     const Drag drag = activeDrag;
     activeDrag = Drag::None;
-    const int window = skinSize().width();
-    if (drag == Drag::Close && RectContains(QRect(window - 11, 3, 9, 9), pos)) {
+    const int windowWidth = skinSize().width();
+    if (drag == Drag::Close && RectContains(QRect(windowWidth - 11, 3, 9, 9), pos)) {
         Q_EMIT closeRequested();
     }
-    if (drag == Drag::Shade && RectContains(QRect(window - 21, 3, 9, 9), pos)) {
+    if (drag == Drag::Shade && RectContains(QRect(windowWidth - 21, 3, 9, 9), pos)) {
         setShaded(!isShaded());
     }
     if (drag == Drag::Button && buttonAt(pos) == pressedButton) {
@@ -634,15 +648,15 @@ void PlaylistWindow::keyPressEvent(QKeyEvent* event) {
     if (count == 0) {
         return QWidget::keyPressEvent(event);
     }
-    int cur =
+    int targetRow =
         cursorRow >= 0 ? std::min(cursorRow, count - 1) : std::max(0, corePlayer->currentIndex());
     switch (event->key()) {
-        case Qt::Key_Up: cur = std::max(0, cur - 1); break;
-        case Qt::Key_Down: cur = std::min(count - 1, cur + 1); break;
-        case Qt::Key_PageUp: cur = std::max(0, cur - visibleRows()); break;
-        case Qt::Key_PageDown: cur = std::min(count - 1, cur + visibleRows()); break;
-        case Qt::Key_Home: cur = 0; break;
-        case Qt::Key_End: cur = count - 1; break;
+        case Qt::Key_Up: targetRow = std::max(0, targetRow - 1); break;
+        case Qt::Key_Down: targetRow = std::min(count - 1, targetRow + 1); break;
+        case Qt::Key_PageUp: targetRow = std::max(0, targetRow - visibleRows()); break;
+        case Qt::Key_PageDown: targetRow = std::min(count - 1, targetRow + visibleRows()); break;
+        case Qt::Key_Home: targetRow = 0; break;
+        case Qt::Key_End: targetRow = count - 1; break;
         case Qt::Key_Return:
         case Qt::Key_Enter:
             if (cursorRow >= 0) {
@@ -655,8 +669,8 @@ void PlaylistWindow::keyPressEvent(QKeyEvent* event) {
             return;
         default: return QWidget::keyPressEvent(event);
     }
-    selectRow(cur, event->modifiers() & Qt::ShiftModifier);
-    ensureRowVisible(cur);
+    selectRow(targetRow, event->modifiers() & Qt::ShiftModifier);
+    ensureRowVisible(targetRow);
 }
 
 void PlaylistWindow::popupAt(QMenu* menu, QPoint skinPos) {

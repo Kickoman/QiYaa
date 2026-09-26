@@ -33,7 +33,7 @@ public:
     int balance() const { return balancePercent; }
 
     void setEqButton(bool on);
-    void setPlButton(bool on);
+    void setPlaylistButton(bool on);
 
     VisMode visMode() const { return visualizationMode; }
     void setVisMode(VisMode mode);
@@ -46,7 +46,7 @@ public:
 
 Q_SIGNALS:
     void eqToggleRequested();
-    void plToggleRequested();
+    void playlistToggleRequested();
     void menuRequested(QPoint globalPos);
     void sourcesMenuRequested(QPoint globalPos);
     void closeRequested();
@@ -83,7 +83,7 @@ private:
         Shuffle,
         Repeat,
         EqToggle,
-        PlToggle,
+        PlaylistToggle,
         Volume,
         Balance,
         Position,
@@ -123,7 +123,7 @@ private:
     int balancePercent = 0;
     double seekPreview = -1;
     bool eqOn = false;
-    bool plOn = false;
+    bool playlistOn = false;
     bool remainingTimeShown = false;
 
     QString statusText;
@@ -134,7 +134,7 @@ private:
     VisMode visualizationMode = VisMode::Spectrum;
     std::unique_ptr<Vis::Visualizer> visualizer;
     Vis::Analyzer analyzer;
-    std::vector<float> visL, visR, visMono;
+    std::vector<float> visLeft, visRight, visMono;
     bool visActive = false;
 };
 

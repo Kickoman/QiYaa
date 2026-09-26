@@ -26,22 +26,22 @@
 namespace Ui {
 
 namespace {
-constexpr int kHistory = 100;
+constexpr int kHistoryLimit = 100;
 constexpr int kFpsPlaying = 60;
 constexpr int kFpsIdle = 20;
 }  // namespace
 
 MilkdropWindow::MilkdropWindow(
     Audio::AudioEngine* engine,
-    const QString& builtInDir,
-    const QString& userDir,
+    const QString& builtInPresetDirectory,
+    const QString& userPresetDirectory,
     const Skins::Skin* skin,
     QWidget* parent
 )
     : GenWindow(skin, QStringLiteral("MILKDROP"), parent)
     , audioEngine(engine)
-    , builtInDirectory(builtInDir)
-    , userDirectory(userDir) {
+    , builtInDirectory(builtInPresetDirectory)
+    , userDirectory(userPresetDirectory) {
     setWindowTitle(QStringLiteral("QiYaa: Milkdrop"));
     presetList.load(builtInDirectory, userDirectory);
 }
@@ -51,9 +51,9 @@ void MilkdropWindow::ensureView() {
         return;
     }
     viewTried = true;
-    glProblem = Vis::MilkdropView::OpenGlProblem();
-    if (!glProblem.isEmpty()) {
-        qWarning("Milkdrop unavailable: %s", qPrintable(glProblem));
+    openGlProblem = Vis::MilkdropView::OpenGlProblem();
+    if (!openGlProblem.isEmpty()) {
+        qWarning("Milkdrop unavailable: %s", qPrintable(openGlProblem));
         update();
         return;
     }
@@ -66,8 +66,8 @@ void MilkdropWindow::ensureView() {
 }
 
 QString MilkdropWindow::failure() const {
-    if (!glProblem.isEmpty()) {
-        return glProblem;
+    if (!openGlProblem.isEmpty()) {
+        return openGlProblem;
     }
     return milkdropView ? milkdropView->failure() : QString();
 }
@@ -125,34 +125,34 @@ void MilkdropWindow::selectPreset(
     if (index < 0 || index >= presetList.size()) {
         return;
     }
-    const QByteArray milk = presetList.data(index);
-    if (milk.isEmpty()) {
+    const QByteArray presetData = presetList.data(index);
+    if (presetData.isEmpty()) {
         return;
     }
     if (selectedIndex >= 0 && selectedIndex != index) {
         history.append(selectedIndex);
-        if (history.size() > kHistory) {
+        if (history.size() > kHistoryLimit) {
             history.removeFirst();
         }
     }
     selectedIndex = index;
     if (Vis::MilkdropView* view = fullView ? fullView.get() : milkdropView) {
-        view->loadPreset(milk, transition);
+        view->loadPreset(presetData, transition);
     }
     Q_EMIT presetChanged(currentPreset(), origin);
     Q_EMIT settingsChanged();
 }
 
 void MilkdropWindow::selectPreset(const QString& name) {
-    const int i = presetList.indexOf(name);
-    if (i < 0) {
+    const int index = presetList.indexOf(name);
+    if (index < 0) {
         return;
     }
     if (!milkdropView || !milkdropView->isReady()) {
-        selectedIndex = i;
+        selectedIndex = index;
         return;
     }
-    selectPreset(i, Vis::PresetTransition::Cut);
+    selectPreset(index, Vis::PresetTransition::Cut);
 }
 
 void MilkdropWindow::nextPreset() {
@@ -165,19 +165,19 @@ void MilkdropWindow::previousPreset() {
     int index = -1;
     if (shuffleEnabled && !history.isEmpty()) {
         index = history.takeLast();
-        const int keep = selectedIndex;
+        const int keptIndex = selectedIndex;
         selectedIndex = -1;  // going back: don't record where we came from
         selectPreset(index);
         if (selectedIndex != index) {
-            selectedIndex = keep;
+            selectedIndex = keptIndex;
         }
         return;
     }
-    int prev = presetList.previous(selectedIndex);
-    for (int n = 0; n < presetList.size() && isBlack(prev); ++n) {
-        prev = presetList.previous(prev);
+    int previous = presetList.previous(selectedIndex);
+    for (int step = 0; step < presetList.size() && isBlack(previous); ++step) {
+        previous = presetList.previous(previous);
     }
-    selectPreset(prev);
+    selectPreset(previous);
 }
 
 void MilkdropWindow::reloadPresets() {
@@ -301,8 +301,8 @@ int MilkdropWindow::followingPreset() const {
         }
     } else {
         int index = selectedIndex;
-        const int others = selectedIndex >= 0 ? presetList.size() - 1 : presetList.size();
-        for (int n = 0; n < others; ++n) {
+        const int otherCount = selectedIndex >= 0 ? presetList.size() - 1 : presetList.size();
+        for (int step = 0; step < otherCount; ++step) {
             index = presetList.next(index);
             if (!isBlack(index)) {
                 return index;
@@ -321,9 +321,9 @@ bool MilkdropWindow::isBlack(int index) const {
 }
 
 QStringList MilkdropWindow::blackPresets() const {
-    QStringList out(blackPresetNames.cbegin(), blackPresetNames.cend());
-    out.sort();
-    return out;
+    QStringList names(blackPresetNames.cbegin(), blackPresetNames.cend());
+    names.sort();
+    return names;
 }
 
 void MilkdropWindow::setBlackPresets(const QStringList& names) {
@@ -374,7 +374,7 @@ void MilkdropWindow::onPresetFailed(const QString& message) {
     selectPreset(followingPreset(), Vis::PresetTransition::Cut, PresetOrigin::Automatic);
 }
 
-void MilkdropWindow::handleKey(int key, Qt::KeyboardModifiers mods) {
+void MilkdropWindow::handleKey(int key, Qt::KeyboardModifiers modifiers) {
     switch (key) {
         case Qt::Key_Space:
         case Qt::Key_N: nextPreset(); break;
@@ -390,13 +390,13 @@ void MilkdropWindow::handleKey(int key, Qt::KeyboardModifiers mods) {
         case Qt::Key_F: setFullScreenMode(!isFullScreenMode()); break;
         case Qt::Key_Return:
         case Qt::Key_Enter:
-            if (mods & Qt::AltModifier) {
+            if (modifiers & Qt::AltModifier) {
                 setFullScreenMode(!isFullScreenMode());
             }
             break;
         case Qt::Key_Escape: setFullScreenMode(false); break;
         case Qt::Key_K:
-            if ((mods & Qt::ControlModifier) && (mods & Qt::ShiftModifier)) {
+            if ((modifiers & Qt::ControlModifier) && (modifiers & Qt::ShiftModifier)) {
                 setFullScreenMode(false);
                 Q_EMIT closeRequested();
             }
@@ -420,12 +420,12 @@ void MilkdropWindow::showMenu(const QPoint& globalPos) {
         QStringLiteral("Предыдущий пресет\tBackspace"), this, &MilkdropWindow::previousPreset
     );
     if (!presetList.isEmpty()) {
-        QMenu* list = menu->addMenu(QStringLiteral("Пресеты"));
+        QMenu* presetsMenu = menu->addMenu(QStringLiteral("Пресеты"));
         for (int i = 0; i < presetList.size(); ++i) {
             const QString label = isBlack(i)
                 ? presetList.at(i).name + QStringLiteral("  (здесь чёрный)")
                 : presetList.at(i).name;
-            QAction* action = list->addAction(label, this, [this, i] {
+            QAction* action = presetsMenu->addAction(label, this, [this, i] {
                 failuresInARow = 0;
                 selectPreset(i);
             });
@@ -445,23 +445,25 @@ void MilkdropWindow::showMenu(const QPoint& globalPos) {
     });
     lock->setCheckable(true);
     lock->setChecked(lockEnabled);
-    QMenu* every = menu->addMenu(QStringLiteral("Менять пресет каждые"));
-    auto* group = new QActionGroup(every);
-    for (int s : {15, 30, 60, 120, 300}) {
-        const QString label =
-            s < 60 ? QStringLiteral("%1 с").arg(s) : QStringLiteral("%1 мин").arg(s / 60);
-        QAction* action = every->addAction(label, this, [this, s] { setPresetSeconds(s); });
+    QMenu* intervalMenu = menu->addMenu(QStringLiteral("Менять пресет каждые"));
+    auto* group = new QActionGroup(intervalMenu);
+    for (int seconds : {15, 30, 60, 120, 300}) {
+        const QString label = seconds < 60 ? QStringLiteral("%1 с").arg(seconds)
+                                           : QStringLiteral("%1 мин").arg(seconds / 60);
+        QAction* action =
+            intervalMenu->addAction(label, this, [this, seconds] { setPresetSeconds(seconds); });
         action->setCheckable(true);
-        action->setChecked(s == switchIntervalSeconds);
+        action->setChecked(seconds == switchIntervalSeconds);
         group->addAction(action);
     }
     menu->addSeparator();
-    QAction* full = menu->addAction(QStringLiteral("Во весь экран\tF"), this, [this](bool on) {
-        setFullScreenMode(on);
-    });
-    full->setCheckable(true);
-    full->setChecked(isFullScreenMode());
-    full->setEnabled(failure().isEmpty());
+    QAction* fullScreen =
+        menu->addAction(QStringLiteral("Во весь экран\tF"), this, [this](bool on) {
+            setFullScreenMode(on);
+        });
+    fullScreen->setCheckable(true);
+    fullScreen->setChecked(isFullScreenMode());
+    fullScreen->setEnabled(failure().isEmpty());
     menu->addSeparator();
     menu->addAction(QStringLiteral("Открыть папку своих пресетов"), this, [this] {
         QDir().mkpath(userDirectory);
@@ -493,17 +495,17 @@ void MilkdropWindow::showMenu(const QPoint& globalPos) {
 
 void MilkdropWindow::paintContent(QPainter& painter, const QRect& area) {
     painter.fillRect(area, Qt::black);
-    const QString failure = this->failure();
-    if (failure.isEmpty()) {
+    const QString failureText = this->failure();
+    if (failureText.isEmpty()) {
         return;
     }
-    QFont f = painter.font();
-    f.setPixelSize(9);
-    painter.setFont(f);
+    QFont messageFont = painter.font();
+    messageFont.setPixelSize(9);
+    painter.setFont(messageFont);
     painter.setPen(QColor(0, 200, 0));
     painter.drawText(
         area.adjusted(4, 4, -4, -4), Qt::AlignCenter | Qt::TextWordWrap,
-        QStringLiteral("Milkdrop недоступен: %1").arg(failure)
+        QStringLiteral("Milkdrop недоступен: %1").arg(failureText)
     );
 }
 
@@ -520,9 +522,10 @@ void MilkdropWindow::placeView() {
         return;
     }
     const QRect rect = contentRect();
-    const double s = scale();
-    const int left = qRound(rect.left() * s), top = qRound(rect.top() * s);
-    const int right = qRound((rect.right() + 1) * s), bottom = qRound((rect.bottom() + 1) * s);
+    const double windowScale = scale();
+    const int left = qRound(rect.left() * windowScale), top = qRound(rect.top() * windowScale);
+    const int right = qRound((rect.right() + 1) * windowScale),
+              bottom = qRound((rect.bottom() + 1) * windowScale);
     container->setGeometry(left, top, right - left, bottom - top);
 }
 

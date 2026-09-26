@@ -14,28 +14,29 @@ namespace {
 
 constexpr qint64 kMaxPresetBytes = 1024 * 1024;
 
-QList<MilkdropPresets::Preset> ScanPresetDirectory(const QString& dir, bool builtIn) {
-    QList<MilkdropPresets::Preset> out;
-    if (dir.isEmpty()) {
-        return out;
+QList<MilkdropPresets::Preset> ScanPresetDirectory(const QString& directory, bool builtIn) {
+    QList<MilkdropPresets::Preset> presets;
+    if (directory.isEmpty()) {
+        return presets;
     }
     const QFileInfoList files =
-        QDir(dir).entryInfoList({QStringLiteral("*.milk")}, QDir::Files | QDir::Readable);
+        QDir(directory).entryInfoList({QStringLiteral("*.milk")}, QDir::Files | QDir::Readable);
     for (const QFileInfo& file : files) {
-        out.append({file.completeBaseName(), file.filePath(), builtIn});
+        presets.append({file.completeBaseName(), file.filePath(), builtIn});
     }
-    std::sort(out.begin(), out.end(), [](const auto& first, const auto& second) {
+    std::sort(presets.begin(), presets.end(), [](const auto& first, const auto& second) {
         if (const int byName = QString::compare(first.name, second.name, Qt::CaseInsensitive)) {
             return byName < 0;
         }
         return first.path < second.path;
     });
-    return out;
+    return presets;
 }
 }  // namespace
 
-void MilkdropPresets::load(const QString& builtInDir, const QString& userDir) {
-    presetList = ScanPresetDirectory(builtInDir, true) + ScanPresetDirectory(userDir, false);
+void MilkdropPresets::load(const QString& builtInDirectory, const QString& userDirectory) {
+    presetList =
+        ScanPresetDirectory(builtInDirectory, true) + ScanPresetDirectory(userDirectory, false);
 }
 
 int MilkdropPresets::indexOf(const QString& name) const {
@@ -73,11 +74,11 @@ int MilkdropPresets::random(int current) const {
     if (size() == 1) {
         return 0;
     }
-    int i;
+    int index;
     do {
-        i = int(QRandomGenerator::global()->bounded(size()));
-    } while (i == current);
-    return i;
+        index = int(QRandomGenerator::global()->bounded(size()));
+    } while (index == current);
+    return index;
 }
 
 }  // namespace Vis

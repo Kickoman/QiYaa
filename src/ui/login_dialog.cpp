@@ -25,33 +25,37 @@ namespace {
 constexpr int kDialogWidth = 460;
 }  // namespace
 
-LoginDialog::LoginDialog(QNetworkAccessManager* nam, QWidget* parent, const QString& oauthBase)
+LoginDialog::LoginDialog(
+    QNetworkAccessManager* networkManager,
+    QWidget* parent,
+    const QString& oauthBase
+)
     : QDialog(parent)
-    , device(new Yandex::DeviceLogin(nam, this)) {
+    , deviceLogin(new Yandex::DeviceLogin(networkManager, this)) {
     setWindowTitle(QStringLiteral("Вход в Яндекс Музыку"));
     setMinimumWidth(kDialogWidth);
     if (!oauthBase.isEmpty()) {
-        device->setBaseUrl(oauthBase);
+        deviceLogin->setBaseUrl(oauthBase);
     }
 
     auto* layout = new QVBoxLayout(this);
 
-    auto* h1 = new QLabel(
+    auto* deviceHeading = new QLabel(
         QStringLiteral("<b>Способ 1.</b> Откройте страницу подтверждения в любом браузере "
                        "(можно на телефоне) и введите код:")
     );
-    h1->setWordWrap(true);
-    layout->addWidget(h1);
+    deviceHeading->setWordWrap(true);
+    layout->addWidget(deviceHeading);
 
     codeLabel = new QLabel(QStringLiteral("…"));
-    QFont big = codeLabel->font();
-    big.setPointSizeF(big.pointSizeF() * 2.2);
-    big.setBold(true);
-    big.setLetterSpacing(QFont::AbsoluteSpacing, 4);
-    codeLabel->setFont(big);
+    QFont codeFont = codeLabel->font();
+    codeFont.setPointSizeF(codeFont.pointSizeF() * 2.2);
+    codeFont.setBold(true);
+    codeFont.setLetterSpacing(QFont::AbsoluteSpacing, 4);
+    codeLabel->setFont(codeFont);
     codeLabel->setAlignment(Qt::AlignCenter);
     codeLabel->setTextInteractionFlags(Qt::TextSelectableByMouse);
-    codeLabel->setMinimumHeight(QFontMetrics(big).height() + 8);
+    codeLabel->setMinimumHeight(QFontMetrics(codeFont).height() + 8);
     layout->addWidget(codeLabel);
 
     openDevice = new QPushButton(QStringLiteral("Открыть ya.ru/device"));
@@ -65,13 +69,13 @@ LoginDialog::LoginDialog(QNetworkAccessManager* nam, QWidget* parent, const QStr
     line->setFrameShape(QFrame::HLine);
     layout->addWidget(line);
 
-    auto* h2 = new QLabel(QStringLiteral(
+    auto* browserHeading = new QLabel(QStringLiteral(
         "<b>Способ 2.</b> Войдите через браузер. После входа Яндекс откроет страницу "
         "<i>music.yandex.ru/#access_token=…</i> — скопируйте её адрес целиком и вставьте сюда "
         "(или вставьте сам токен)."
     ));
-    h2->setWordWrap(true);
-    layout->addWidget(h2);
+    browserHeading->setWordWrap(true);
+    layout->addWidget(browserHeading);
     auto* openBrowser = new QPushButton(QStringLiteral("Открыть страницу входа"));
     layout->addWidget(openBrowser);
     pasteField = new QLineEdit;
@@ -81,8 +85,8 @@ LoginDialog::LoginDialog(QNetworkAccessManager* nam, QWidget* parent, const QStr
     pasteError->setStyleSheet(QStringLiteral("color: #c0392b"));
     pasteError->hide();
     layout->addWidget(pasteError);
-    auto* use = new QPushButton(QStringLiteral("Войти с этим токеном"));
-    layout->addWidget(use);
+    auto* useToken = new QPushButton(QStringLiteral("Войти с этим токеном"));
+    layout->addWidget(useToken);
 
     auto* cancel = new QPushButton(QStringLiteral("Отмена"));
     layout->addSpacing(8);
@@ -94,12 +98,12 @@ LoginDialog::LoginDialog(QNetworkAccessManager* nam, QWidget* parent, const QStr
     connect(openBrowser, &QPushButton::clicked, this, [] {
         QDesktopServices::openUrl(Yandex::DeviceLogin::BrowserLoginUrl());
     });
-    connect(use, &QPushButton::clicked, this, &LoginDialog::tryPasted);
+    connect(useToken, &QPushButton::clicked, this, &LoginDialog::tryPasted);
     connect(pasteField, &QLineEdit::returnPressed, this, &LoginDialog::tryPasted);
     connect(cancel, &QPushButton::clicked, this, &QDialog::reject);
 
     connect(
-        device, &Yandex::DeviceLogin::codeReady, this,
+        deviceLogin, &Yandex::DeviceLogin::codeReady, this,
         [this](const QString& code, const QUrl& url) {
             codeLabel->setText(code);
             verifyUrl = url;
@@ -112,8 +116,8 @@ LoginDialog::LoginDialog(QNetworkAccessManager* nam, QWidget* parent, const QStr
             fitToContents();
         }
     );
-    connect(device, &Yandex::DeviceLogin::succeeded, this, &LoginDialog::finishWith);
-    connect(device, &Yandex::DeviceLogin::failed, this, [this](const QString& error) {
+    connect(deviceLogin, &Yandex::DeviceLogin::succeeded, this, &LoginDialog::finishWith);
+    connect(deviceLogin, &Yandex::DeviceLogin::failed, this, [this](const QString& error) {
         codeLabel->setText(QStringLiteral("—"));
         openDevice->setEnabled(false);
         deviceStatus->setText(
@@ -124,17 +128,17 @@ LoginDialog::LoginDialog(QNetworkAccessManager* nam, QWidget* parent, const QStr
 
     resize(kDialogWidth, 0);
     fitToContents();
-    device->start();
+    deviceLogin->start();
 }
 
 void LoginDialog::fitToContents() {
-    QLayout* l = layout();
-    l->activate();
-    const int w = std::max(width(), minimumWidth());
-    const int h = l->totalHeightForWidth(w);
-    setMinimumHeight(h);
-    if (height() < h) {
-        resize(w, h);
+    QLayout* dialogLayout = layout();
+    dialogLayout->activate();
+    const int dialogWidth = std::max(width(), minimumWidth());
+    const int dialogHeight = dialogLayout->totalHeightForWidth(dialogWidth);
+    setMinimumHeight(dialogHeight);
+    if (height() < dialogHeight) {
+        resize(dialogWidth, dialogHeight);
     }
 }
 
@@ -152,7 +156,7 @@ void LoginDialog::tryPasted() {
 }
 
 void LoginDialog::finishWith(const QString& token) {
-    device->cancel();
+    deviceLogin->cancel();
     accessToken = token;
     accept();
 }

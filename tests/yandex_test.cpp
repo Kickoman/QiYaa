@@ -33,7 +33,7 @@ private Q_SLOTS:
         );
     }
     void picksBestFullMp3() {
-        const QJsonArray arr =
+        const QJsonArray variants =
             QJsonDocument::fromJson("[\n"
                                     "            "
                                     "{\"codec\":\"mp3\",\"bitrateInKbps\":320,\"preview\":true,"
@@ -50,7 +50,7 @@ private Q_SLOTS:
                                     "        ]")
                 .array();
         const std::optional<Yandex::DownloadVariant> best =
-            Yandex::PickBestVariant(Yandex::ParseDownloadVariants(arr));
+            Yandex::PickBestVariant(Yandex::ParseDownloadVariants(variants));
         QVERIFY(best);
         QCOMPARE(best->bitrateKbps, 320);
         QCOMPARE(best->downloadInfoUrl.path(), QStringLiteral("/d"));
@@ -87,12 +87,12 @@ private Q_SLOTS:
         QCOMPARE(Yandex::NormalizeToken("not a token at all"), QString());
     }
     void parsesTrack() {
-        const auto doc =
+        const auto document =
             QJsonDocument::fromJson("{\"id\":\"12345\",\"title\":\"Song\",\"version\":\"Live\",\n"
                                     "            "
                                     "\"artists\":[{\"name\":\"A\"},{\"name\":\"B\"}],\"albums\":[{"
                                     "\"id\":777}],\"durationMs\":201000,\"available\":true}");
-        const Yandex::Track track = Yandex::ApiClient::ParseTrack(doc.object());
+        const Yandex::Track track = Yandex::ApiClient::ParseTrack(document.object());
         QCOMPARE(track.id, QStringLiteral("12345"));
         QCOMPARE(track.albumId, QStringLiteral("777"));
         QCOMPARE(track.displayTitle(), QStringLiteral("A, B - Song (Live)"));
@@ -100,12 +100,12 @@ private Q_SLOTS:
         QVERIFY(track.coverUrl().isEmpty());
     }
     void parsesAlbumDetailsAndCover() {
-        const auto doc = QJsonDocument::fromJson(
+        const auto document = QJsonDocument::fromJson(
             "{\"id\":1,\"title\":\"T\",\"albums\":[{\"id\":2,\"title\":\"Звезда\","
             "\"year\":1989,\"genre\":\"rusrock\",\"coverUri\":\"avatars.yandex.net/"
             "get-music-content/1/a/%%\"}]}"
         );
-        const Yandex::Track track = Yandex::ApiClient::ParseTrack(doc.object());
+        const Yandex::Track track = Yandex::ApiClient::ParseTrack(document.object());
         QCOMPARE(track.albumTitle, QStringLiteral("Звезда"));
         QCOMPARE(track.year, 1989);
         QCOMPARE(

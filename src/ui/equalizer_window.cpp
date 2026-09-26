@@ -99,7 +99,7 @@ QList<double> NaturalSpline(const QList<double>& xs, const QList<double>& ys) {
         k[i] = (d[i] - c[i] * k[i + 1]) / b[i];
     }
 
-    QList<double> out;
+    QList<double> curve;
     int i = 1;
     for (int x = 0; x <= int(xs[n]); ++x) {
         while (i < n && xs[i] < x) {
@@ -109,9 +109,9 @@ QList<double> NaturalSpline(const QList<double>& xs, const QList<double>& ys) {
         const double t = (x - xs[i - 1]) / h;
         const double aa = k[i - 1] * h - (ys[i] - ys[i - 1]);
         const double bb = -k[i] * h + (ys[i] - ys[i - 1]);
-        out << (1 - t) * ys[i - 1] + t * ys[i] + t * (1 - t) * (aa * (1 - t) + bb * t);
+        curve << (1 - t) * ys[i - 1] + t * ys[i] + t * (1 - t) * (aa * (1 - t) + bb * t);
     }
-    return out;
+    return curve;
 }
 
 constexpr int kGraphHeight = 19;
@@ -235,13 +235,13 @@ void EqualizerWindow::paintShaded(QPainter& painter) {
         painter, TSheet::EqEx, Skins::EqualizerShadeSprites::kBalanceThumb[balanceThumb],
         {balanceX, Skins::EqualizerShadeSprites::kBalance.y()}
     );
-    if (pressed.kind == TControl::Shade && pressedInside) {
+    if (pressedControl.kind == TControl::Shade && pressedInside) {
         activeSkin.draw(
             painter, TSheet::EqEx, Skins::EqualizerShadeSprites::kShadeButtonShadedDown,
             kShadeButton
         );
     }
-    if (pressed.kind == TControl::Close && pressedInside) {
+    if (pressedControl.kind == TControl::Close && pressedInside) {
         activeSkin.draw(
             painter, TSheet::EqEx, Skins::EqualizerShadeSprites::kCloseButtonDown,
             Skins::EqualizerSprites::kClose
@@ -261,20 +261,20 @@ void EqualizerWindow::paintSkin(QPainter& painter) {
                          : Skins::EqualizerSprites::kTitleBar,
         {0, 0}
     );
-    if (pressed.kind == TControl::Close && pressedInside) {
+    if (pressedControl.kind == TControl::Close && pressedInside) {
         activeSkin.draw(
             painter, TSheet::EqMain, Skins::EqualizerSprites::kCloseButtonDown,
             Skins::EqualizerSprites::kClose
         );
     }
-    if (pressed.kind == TControl::Shade && pressedInside) {
+    if (pressedControl.kind == TControl::Shade && pressedInside) {
         activeSkin.draw(
             painter, TSheet::EqEx, Skins::EqualizerShadeSprites::kShadeButtonDown, kShadeButton
         );
     }
 
     auto toggle = [&](TControl kind, const Skins::ToggleSprite& sprite, bool on, QPoint at) {
-        const bool down = pressed.kind == kind && pressedInside;
+        const bool down = pressedControl.kind == kind && pressedInside;
         activeSkin.draw(
             painter, TSheet::EqMain,
             on ? (down ? sprite.onPressed : sprite.on) : (down ? sprite.offPressed : sprite.off), at
@@ -290,7 +290,7 @@ void EqualizerWindow::paintSkin(QPainter& painter) {
     );
     activeSkin.draw(
         painter, TSheet::EqMain,
-        pressed.kind == TControl::Presets && pressedInside
+        pressedControl.kind == TControl::Presets && pressedInside
             ? Skins::EqualizerSprites::kPresetsButtonSelected
             : Skins::EqualizerSprites::kPresetsButton,
         Skins::EqualizerSprites::kPresetsPosition
@@ -299,13 +299,13 @@ void EqualizerWindow::paintSkin(QPainter& painter) {
     drawGraph(painter);
     drawSlider(
         painter, SliderRect({TControl::Preamp}).topLeft(), equalizerSettings.preampDb,
-        pressed.kind == TControl::Preamp
+        pressedControl.kind == TControl::Preamp
     );
     for (int band = 0; band < Audio::kEqBands; ++band) {
         const EqualizerControl slider{TControl::Band, band};
         drawSlider(
             painter, SliderRect(slider).topLeft(), equalizerSettings.bandsDb[band],
-            pressed == slider
+            pressedControl == slider
         );
     }
 }
@@ -351,8 +351,8 @@ QString EqualizerWindow::regionSection() const {
     return isShaded() ? QStringLiteral("equalizerws") : QStringLiteral("equalizer");
 }
 
-bool EqualizerWindow::isDragArea(QPoint point) const {
-    return hitTest(point).kind == TControl::None;
+bool EqualizerWindow::isDragArea(QPoint skinPos) const {
+    return hitTest(skinPos).kind == TControl::None;
 }
 
 double* EqualizerWindow::valueFor(const EqualizerControl& control) {
@@ -420,7 +420,7 @@ bool EqualizerWindow::skinMousePress(QPoint pos, Qt::MouseButton button) {
     if (control.kind == TControl::None) {
         return false;
     }
-    pressed = control;
+    pressedControl = control;
     pressedInside = true;
     setFromMouse(control, pos);
     update();
@@ -428,25 +428,25 @@ bool EqualizerWindow::skinMousePress(QPoint pos, Qt::MouseButton button) {
 }
 
 void EqualizerWindow::skinMouseMove(QPoint pos) {
-    if (pressed.kind == TControl::None) {
+    if (pressedControl.kind == TControl::None) {
         return;
     }
-    if (valueFor(pressed) || pressed.kind == TControl::ShadeVolume
-        || pressed.kind == TControl::ShadeBalance) {
-        setFromMouse(pressed, pos);
+    if (valueFor(pressedControl) || pressedControl.kind == TControl::ShadeVolume
+        || pressedControl.kind == TControl::ShadeBalance) {
+        setFromMouse(pressedControl, pos);
     } else {
-        pressedInside = hitTest(pos) == pressed;
+        pressedInside = hitTest(pos) == pressedControl;
     }
     update();
 }
 
 void EqualizerWindow::skinMouseRelease(QPoint pos, Qt::MouseButton button) {
-    if (button != Qt::LeftButton || pressed.kind == TControl::None) {
+    if (button != Qt::LeftButton || pressedControl.kind == TControl::None) {
         return;
     }
-    const EqualizerControl released = pressed;
+    const EqualizerControl released = pressedControl;
     const bool inside = hitTest(pos) == released;
-    pressed = {};
+    pressedControl = {};
     update();
     if (!inside) {
         return;
@@ -537,8 +537,8 @@ void EqualizerWindow::loadEqf() {
         return applyPreset(presets.first());
     }
     QStringList names;
-    for (const auto& p : presets) {
-        names << p.name;
+    for (const auto& preset : presets) {
+        names << preset.name;
     }
     bool ok = false;
     const QString name = QInputDialog::getItem(

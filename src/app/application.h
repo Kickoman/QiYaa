@@ -83,14 +83,14 @@ public:
 private:
     void layoutWindows();
     void installShortcuts(QWidget* widget);
-    void showMainMenu(QPoint globalPos);
-    void showSourcesMenu(QPoint globalPos);
+    void showMainMenu(QPoint globalPosition);
+    void showSourcesMenu(QPoint globalPosition);
     void fillWindowActions(QMenu* menu);
     void transportKey(int key);
     QList<Ui::SkinnedWindow*> windows() const;
 
     Options startOptions;
-    std::unique_ptr<QTemporaryDir> tmpDir;
+    std::unique_ptr<QTemporaryDir> temporaryDirectory;
     QSettings settings;
     Skins::Skin baseSkin;
     std::unique_ptr<Skins::Skin> currentSkin;
