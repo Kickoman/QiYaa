@@ -19,6 +19,8 @@ qiyaa_add_test(test_library)
 target_compile_definitions(test_library PRIVATE QIYAA_TEST_DATA="${CMAKE_CURRENT_SOURCE_DIR}/data")
 qiyaa_add_test(test_dsp)
 qiyaa_add_test(test_windows)
+qiyaa_add_test(test_screenshots)
+target_compile_definitions(test_screenshots PRIVATE QIYAA_TEST_DATA="${CMAKE_CURRENT_SOURCE_DIR}/data")
 # A realistic 2560x1440 virtual screen (the offscreen default is 800x600).
 # Not on Windows: Qt splits platform arguments on ':', which breaks "C:/...".
 if(NOT WIN32)
