@@ -17,7 +17,6 @@ file(WRITE ${CMAKE_BINARY_DIR}/version.txt "${PROJECT_VERSION}")
 find_package(Qt6 6.4 REQUIRED COMPONENTS Core Gui Widgets Network)
 qt_standard_project_setup()
 
-# ---------------------------------------------------------------- third party
 add_library(qiyaa_miniz STATIC
     contrib/miniz/miniz.c
     contrib/miniz/miniz_tdef.c
@@ -43,7 +42,6 @@ elseif(UNIX)
     target_link_libraries(qiyaa_miniaudio PUBLIC m)
 endif()
 
-# ---------------------------------------------------------------- modules
 # One static library per folder of src/. Dependencies point one way:
 #   audio, yandex, skins  ->  vis, core  ->  ui, integrations  ->  app  ->  qiyaa (main)
 function(qiyaa_target_defaults target)
@@ -221,7 +219,6 @@ qt_add_resources(qiyaa_app "icons"
         resources/icons/qiyaa-128.png
         resources/icons/qiyaa-256.png)
 
-# ---------------------------------------------------------------- application
 set(QIYAA_APP_SOURCES src/app/main.cpp)
 if(WIN32)
     # Icon and version info for Explorer.
@@ -299,7 +296,6 @@ else()
     install(TARGETS qiyaa BUNDLE DESTINATION . RUNTIME DESTINATION bin)
 endif()
 
-# ---------------------------------------------------------------- tests
 if(QIYAA_BUILD_TESTS)
     find_package(Qt6 6.4 COMPONENTS Test)
     if(Qt6Test_FOUND)

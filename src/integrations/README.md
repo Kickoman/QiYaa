@@ -345,8 +345,9 @@ The module defines no exception type and lets none out of its API; there is no
 
 ## Not here
 
-- Whether media integration is on (`App::Options::mediaIntegration`, off for `--screenshot`), the
-  hook implementations, the `MainWindow::volumeChanged` connection and the choice of backend:
+- Whether media integration is on (`App::Application::Options::mediaIntegration`, off for
+  `--screenshot`), the hook implementations, the `MainWindow::volumeChanged` connection and the
+  choice of backend:
   [src/app](../app/README.md). So are Winamp's in-app transport keys (Z X C V B and the arrows).
 - What play, pause, next, previous, shuffle, repeat and seeking actually do, and the cover cache
   (`Core::CoverCache`, its directory and download rules): [src/core](../core/README.md).
