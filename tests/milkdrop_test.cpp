@@ -16,12 +16,12 @@
 
 namespace {
 // A tiny valid Milkdrop preset: a waveform and some zoom, no shaders.
-QByteArray simplePreset(double zoom) {
+QByteArray SimplePreset(double zoom) {
     return QByteArray("[preset00]\nfDecay=0.98\nzoom=") + QByteArray::number(zoom)
         + "\nwave_r=1\nwave_g=0.5\nwave_b=0.2\nnWaveMode=2\nfWaveScale=1.5\n"
           "per_frame_1=wave_r = 0.5 + 0.5*sin(time);\n";
 }
-void writeFile(const QString& path, const QByteArray& data) {
+void WriteFile(const QString& path, const QByteArray& data) {
     QFile f(path);
     QVERIFY(f.open(QIODevice::WriteOnly));
     f.write(data);
@@ -32,16 +32,16 @@ class TestMilkdrop : public QObject {
     Q_OBJECT
 private:
     QTemporaryDir builtIn, user;
-    Skins::Skin skin = Skins::Skin::builtinBase();
+    Skins::Skin skin = Skins::Skin::BuiltinBase();
     Audio::AudioEngine engine;  // not initialised: silence
 
 private Q_SLOTS:
     void initTestCase() {
-        writeFile(builtIn.filePath("b-second.milk"), simplePreset(1.02));
-        writeFile(builtIn.filePath("A-first.milk"), simplePreset(0.98));
-        writeFile(builtIn.filePath("c-third.milk"), simplePreset(1.05));
-        writeFile(builtIn.filePath("notes.txt"), "not a preset");
-        writeFile(user.filePath("mine.milk"), simplePreset(1.0));
+        WriteFile(builtIn.filePath("b-second.milk"), SimplePreset(1.02));
+        WriteFile(builtIn.filePath("A-first.milk"), SimplePreset(0.98));
+        WriteFile(builtIn.filePath("c-third.milk"), SimplePreset(1.05));
+        WriteFile(builtIn.filePath("notes.txt"), "not a preset");
+        WriteFile(user.filePath("mine.milk"), SimplePreset(1.0));
     }
 
     void presetsAreListedInOrder() {
@@ -156,9 +156,9 @@ private Q_SLOTS:
     void manyBlackInARowStopsBlamingPresets() {
         QTemporaryDir many;
         for (int i = 0; i < 12; ++i) {
-            writeFile(
+            WriteFile(
                 many.filePath(QStringLiteral("p%1.milk").arg(i, 2, 10, QChar('0'))),
-                simplePreset(1.0)
+                SimplePreset(1.0)
             );
         }
         Ui::MilkdropWindow w(&engine, many.path(), {}, &skin);
@@ -248,12 +248,12 @@ private Q_SLOTS:
         // The detector on real OpenGL: a preset that draws nothing is reported,
         // one that draws a big white border isn't.
         QTemporaryDir dir;
-        writeFile(
+        WriteFile(
             dir.filePath("black.milk"),
             "[preset00]\nfDecay=0\nfWaveAlpha=0\nnWaveMode=0\nfVideoEchoAlpha=0\nob_size=0\nob_a="
             "0\nib_size=0\nib_a=0\nmv_a=0\nzoom=1\n"
         );
-        writeFile(
+        WriteFile(
             dir.filePath("white.milk"),
             "[preset00]\nfDecay=0.9\nob_size=0.5\nob_r=1\nob_g=1\nob_b=1\nob_a=1\n"
         );

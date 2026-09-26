@@ -20,22 +20,22 @@ struct EqPreset {
 };
 
 // Winamp's centre notch is 33 (writing 0 dB gives 33 too), so 33 reads as exactly 0 dB.
-inline double eqfToDb(int v) {
+inline double EqfToDb(int v) {
     v = std::clamp(v, 1, 64);
     return v == 33 ? 0.0 : (double(v) - 1.0) / 63.0 * 24.0 - 12.0;
 }
 
-inline int dbToEqf(double db) {
+inline int DbToEqf(double db) {
     return std::clamp(int(std::lround((db + 12.0) / 24.0 * 63.0 + 1.0)), 1, 64);
 }
 
 // Winamp .eqf / .q1 files: "Winamp EQ library file v1.1" + ^Z + "!--", then
 // per preset a 257-byte zero-padded name and 11 bytes (10 bands + preamp),
 // each stored as 64 - value (value 1..64). Format as in webamp's winamp-eqf.
-bool parseEqf(const QByteArray& data, QList<EqPreset>* out);
-QByteArray writeEqf(const QList<EqPreset>& presets);
+bool ParseEqf(const QByteArray& data, QList<EqPreset>* out);
+QByteArray WriteEqf(const QList<EqPreset>& presets);
 
-inline QList<EqPreset> builtinEqPresets() {
+inline QList<EqPreset> BuiltinEqPresets() {
     struct Raw {
         const char* name;
         int preamp;
@@ -64,9 +64,9 @@ inline QList<EqPreset> builtinEqPresets() {
     for (const Raw& r : raw) {
         EqPreset p;
         p.name = QString::fromLatin1(r.name);
-        p.settings.preampDb = eqfToDb(r.preamp);
+        p.settings.preampDb = EqfToDb(r.preamp);
         for (int i = 0; i < kEqBands; ++i) {
-            p.settings.bandsDb[i] = eqfToDb(r.bands[i]);
+            p.settings.bandsDb[i] = EqfToDb(r.bands[i]);
         }
         out << p;
     }

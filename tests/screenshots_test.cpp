@@ -15,7 +15,7 @@ namespace {
 const QString kGoldenDir = QStringLiteral(QIYAA_TEST_DATA "/golden");
 
 // Differences as "n pixels differ, first at (x, y): actual #aarrggbb, expected #aarrggbb".
-QString describeDifference(const QImage& actual, const QImage& expected) {
+QString DescribeDifference(const QImage& actual, const QImage& expected) {
     if (actual.size() != expected.size()) {
         return QStringLiteral("size %1x%2, expected %3x%4")
             .arg(actual.width())
@@ -69,7 +69,7 @@ private:
         const QImage expected(path);
         QVERIFY2(!expected.isNull(), qPrintable(QStringLiteral("no golden image ") + path));
         const QString difference =
-            describeDifference(actual, expected.convertToFormat(QImage::Format_ARGB32));
+            DescribeDifference(actual, expected.convertToFormat(QImage::Format_ARGB32));
         if (!difference.isEmpty() && !qEnvironmentVariableIsEmpty("QIYAA_TEST_SHOTS")) {
             actual.save(
                 qEnvironmentVariable("QIYAA_TEST_SHOTS") + QLatin1Char('/') + name
@@ -81,7 +81,7 @@ private:
 
 private Q_SLOTS:
     void initTestCase() {
-        skin = Skins::Skin::builtinBase();
+        skin = Skins::Skin::BuiltinBase();
         QVERIFY(skin.isValid());
         api = std::make_unique<Yandex::ApiClient>(&nam);
         library = std::make_unique<Yandex::Library>(api.get());

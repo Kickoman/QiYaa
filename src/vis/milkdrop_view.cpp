@@ -20,7 +20,7 @@ constexpr uint32_t kMaxFramesPerFeed = 4096;
 constexpr int kProbeW = 32, kProbeH = 18;
 constexpr int kBlackLevel = 12;  // brightest channel below this (of 255) everywhere = black
 
-QSurfaceFormat viewFormat() {
+QSurfaceFormat ViewFormat() {
     // projectM 4 needs OpenGL 3.3 core. macOS only gives core profiles when asked.
     QSurfaceFormat f;
     f.setVersion(3, 3);
@@ -33,10 +33,10 @@ QSurfaceFormat viewFormat() {
 }
 }  // namespace
 
-QString MilkdropView::openGLProblem() {
+QString MilkdropView::OpenGlProblem() {
     static const QString problem = [] {
         QOpenGLContext probe;
-        probe.setFormat(viewFormat());
+        probe.setFormat(ViewFormat());
         if (!probe.create()) {
             return QStringLiteral("нет OpenGL");
         }
@@ -59,7 +59,7 @@ MilkdropView::MilkdropView(Audio::AudioEngine* engine)
     : QOpenGLWindow(QOpenGLWindow::NoPartialUpdate)
     , m_engine(engine)
     , m_pcm(kMaxFramesPerFeed * 2) {
-    setFormat(viewFormat());
+    setFormat(ViewFormat());
     m_timer.setTimerType(Qt::PreciseTimer);
     connect(&m_timer, &QTimer::timeout, this, [this] { update(); });
 }

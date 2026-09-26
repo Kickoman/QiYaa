@@ -9,7 +9,7 @@ namespace {
 constexpr char kSignSalt[] = "XGRlBW9FXlekgbPrRHuSiA";
 }
 
-QList<DownloadVariant> parseDownloadVariants(const QJsonArray& result) {
+QList<DownloadVariant> ParseDownloadVariants(const QJsonArray& result) {
     QList<DownloadVariant> out;
     for (const QJsonValue& v : result) {
         const QJsonObject o = v.toObject();
@@ -25,7 +25,7 @@ QList<DownloadVariant> parseDownloadVariants(const QJsonArray& result) {
     return out;
 }
 
-bool pickBestVariant(const QList<DownloadVariant>& variants, DownloadVariant* out) {
+bool PickBestVariant(const QList<DownloadVariant>& variants, DownloadVariant* out) {
     const DownloadVariant* best = nullptr;
     for (const DownloadVariant& v : variants) {
         if (v.codec != QLatin1String("mp3") || v.preview) {
@@ -45,7 +45,7 @@ bool pickBestVariant(const QList<DownloadVariant>& variants, DownloadVariant* ou
     return true;
 }
 
-bool parseDownloadInfo(const QByteArray& json, DownloadInfo* out) {
+bool ParseDownloadInfo(const QByteArray& json, DownloadInfo* out) {
     QJsonParseError err{};
     const QJsonDocument doc = QJsonDocument::fromJson(json, &err);
     if (err.error != QJsonParseError::NoError || !doc.isObject()) {
@@ -65,7 +65,7 @@ bool parseDownloadInfo(const QByteArray& json, DownloadInfo* out) {
     return !out->host.isEmpty() && out->path.startsWith(u'/') && !out->s.isEmpty();
 }
 
-QUrl buildTrackUrl(const DownloadInfo& info) {
+QUrl BuildTrackUrl(const DownloadInfo& info) {
     const QByteArray toSign = QByteArray(kSignSalt) + info.path.mid(1).toUtf8() + info.s.toUtf8();
     const QByteArray sign = QCryptographicHash::hash(toSign, QCryptographicHash::Md5).toHex();
     return QUrl(QStringLiteral("https://%1/get-mp3/%2/%3%4")

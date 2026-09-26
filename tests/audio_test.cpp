@@ -175,7 +175,7 @@ private Q_SLOTS:
 
     // ---- gapless chaining of a queued stream
 
-    Audio::AudioEngine::StreamId startNearEnd(double at = 2.2) {
+    Audio::AudioEngine::TStreamId startNearEnd(double at = 2.2) {
         const auto a = engine.beginStream();
         engine.appendData(a, mp3);
         engine.finishData(a);
@@ -184,7 +184,7 @@ private Q_SLOTS:
         pumpUntil([&] { return engine.positionSeconds() >= at; }, 2000);
         return a;
     }
-    Audio::AudioEngine::StreamId queueWhole(const QByteArray& data) {
+    Audio::AudioEngine::TStreamId queueWhole(const QByteArray& data) {
         const auto b = engine.queueStream();
         engine.appendData(b, data);
         engine.finishData(b);
@@ -204,7 +204,7 @@ private Q_SLOTS:
         QCOMPARE(finished.count(), 0);
         QVERIFY(states.isEmpty());  // no Stopped/Buffering in between
         QCOMPARE(engine.currentStream(), b);
-        QCOMPARE(engine.queuedStream(), Audio::AudioEngine::StreamId(0));
+        QCOMPARE(engine.queuedStream(), Audio::AudioEngine::TStreamId(0));
         QVERIFY2(
             engine.positionSeconds() < 0.3, qPrintable(QString::number(engine.positionSeconds()))
         );
@@ -261,7 +261,7 @@ private Q_SLOTS:
         QCOMPARE(engine.currentStream(), b);
         pumpUntil([&] { return engine.state() == Audio::AudioEngine::State::Playing; }, 3000);
         QVERIFY(engine.positionSeconds() < 0.5);
-        QCOMPARE(engine.queuedStream(), Audio::AudioEngine::StreamId(0));
+        QCOMPARE(engine.queuedStream(), Audio::AudioEngine::TStreamId(0));
         engine.stop();
     }
 
@@ -273,7 +273,7 @@ private Q_SLOTS:
         pumpUntil([&] { return finished.count() > 0 || advanced.count() > 0; }, 3000);
         QCOMPARE(finished.count(), 1);  // the player then starts the next track itself
         QCOMPARE(advanced.count(), 0);
-        QCOMPARE(engine.queuedStream(), Audio::AudioEngine::StreamId(0));
+        QCOMPARE(engine.queuedStream(), Audio::AudioEngine::TStreamId(0));
         engine.stop();
     }
 

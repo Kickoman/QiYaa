@@ -163,20 +163,20 @@ struct AudioEngine::Impl {
     std::atomic<bool> haltAtBoundary{false};  // the chained stream was cancelled: stop there
     std::atomic<int> nextRate{0};
     std::atomic<int> nextChannels{0};
-    std::atomic<StreamId> failedQueued{0};  // queued stream the decoder couldn't open
+    std::atomic<TStreamId> failedQueued{0};  // queued stream the decoder couldn't open
 
     // Handoff of the queued stream (guarded by queueMutex).
     std::mutex queueMutex;
     std::shared_ptr<StreamBuffer> queued;  // waiting for the current track to end
-    StreamId queuedId = 0;
-    StreamId chainingId = 0;  // being opened right now
+    TStreamId queuedId = 0;
+    TStreamId chainingId = 0;  // being opened right now
     bool dropChaining = false;
-    StreamId chainedId = 0;  // decoding, boundary not reached yet
+    TStreamId chainedId = 0;  // decoding, boundary not reached yet
     // Every buffer the decoder thread may be reading, so stopping it can
     // always wake it up (even for streams the UI has already dropped).
     std::vector<std::shared_ptr<StreamBuffer>> decoderHeld;
 
-    static void dataCallback(ma_device* dev, void* out, const void*, ma_uint32 frameCount) {
+    static void DataCallback(ma_device* dev, void* out, const void*, ma_uint32 frameCount) {
         auto* self = static_cast<Impl*>(dev->pUserData);
         auto* dst = static_cast<float*>(out);
         ma_uint32 written = 0;
@@ -223,10 +223,10 @@ struct AudioEngine::Impl {
         }
     }
 
-    static ma_result onRead(ma_decoder* dec, void* out, size_t n, size_t* got) {
+    static ma_result OnRead(ma_decoder* dec, void* out, size_t n, size_t* got) {
         return static_cast<StreamBuffer*>(dec->pUserData)->read(out, n, got);
     }
-    static ma_result onSeek(ma_decoder* dec, ma_int64 off, ma_seek_origin origin) {
+    static ma_result OnSeek(ma_decoder* dec, ma_int64 off, ma_seek_origin origin) {
         return static_cast<StreamBuffer*>(dec->pUserData)->seek(off, origin);
     }
 
@@ -249,11 +249,11 @@ struct AudioEngine::Impl {
         s->buf = std::move(buf);
         ma_decoder_config cfg = ma_decoder_config_init(ma_format_f32, kChannels, sampleRate);
         cfg.encodingFormat = ma_encoding_format_mp3;
-        ma_result r = ma_decoder_init(&Impl::onRead, &Impl::onSeek, s->buf.get(), &cfg, &s->dec);
+        ma_result r = ma_decoder_init(&Impl::OnRead, &Impl::OnSeek, s->buf.get(), &cfg, &s->dec);
         if (r != MA_SUCCESS && !stopDecoder) {
             s->buf->seek(0, ma_seek_origin_start);
             cfg.encodingFormat = ma_encoding_format_unknown;
-            r = ma_decoder_init(&Impl::onRead, &Impl::onSeek, s->buf.get(), &cfg, &s->dec);
+            r = ma_decoder_init(&Impl::OnRead, &Impl::OnSeek, s->buf.get(), &cfg, &s->dec);
         }
         if (r != MA_SUCCESS) {
             return nullptr;
@@ -311,7 +311,7 @@ struct AudioEngine::Impl {
         // end of the track is simply started by the player the usual way.
         auto tryChain = [&]() -> bool {
             std::shared_ptr<StreamBuffer> buf;
-            StreamId id = 0;
+            TStreamId id = 0;
             {
                 std::lock_guard lock(queueMutex);
                 if (!queued || !queued->finished() || finishedReported) {
@@ -437,7 +437,7 @@ struct AudioEngine::Impl {
     }
 
     // Stops the decoder thread; afterwards nothing reads any stream.
-    void stopDecoderThread(const QHash<StreamId, std::shared_ptr<StreamBuffer>>& streams) {
+    void stopDecoderThread(const QHash<TStreamId, std::shared_ptr<StreamBuffer>>& streams) {
         stopDecoder = true;
         std::vector<std::shared_ptr<StreamBuffer>> held;
         {
@@ -497,7 +497,7 @@ bool AudioEngine::init(QString* error) {
     cfg.playback.format = ma_format_f32;
     cfg.playback.channels = kChannels;
     cfg.sampleRate = 0;  // device native
-    cfg.dataCallback = &Impl::dataCallback;
+    cfg.dataCallback = &Impl::DataCallback;
     cfg.pUserData = d.get();
     cfg.performanceProfile = ma_performance_profile_conservative;  // bigger periods, less CPU
 #if defined(__linux__) || defined(__FreeBSD__)
@@ -612,7 +612,7 @@ void AudioEngine::startDecoder() {
     setState(State::Buffering);
 }
 
-AudioEngine::StreamId AudioEngine::beginStream() {
+AudioEngine::TStreamId AudioEngine::beginStream() {
     dropStreams();
     if (!d->ringReady) {  // no output device: nothing can play
         setState(State::Stopped);
@@ -625,7 +625,7 @@ AudioEngine::StreamId AudioEngine::beginStream() {
     return m_current;
 }
 
-AudioEngine::StreamId AudioEngine::queueStream() {
+AudioEngine::TStreamId AudioEngine::queueStream() {
     clearQueued();
     if (!d->decoderThread.joinable()) {
         return 0;
@@ -640,7 +640,7 @@ AudioEngine::StreamId AudioEngine::queueStream() {
 }
 
 void AudioEngine::clearQueued() {
-    const StreamId id = std::exchange(m_queued, 0);
+    const TStreamId id = std::exchange(m_queued, 0);
     if (!id) {
         return;
     }
@@ -662,12 +662,12 @@ void AudioEngine::clearQueued() {
     }
 }
 
-AudioEngine::StreamId AudioEngine::queuedStream() const {
+AudioEngine::TStreamId AudioEngine::queuedStream() const {
     return m_queued && d->failedQueued.load() != m_queued ? m_queued : 0;
 }
 
-AudioEngine::StreamId AudioEngine::playQueuedNow() {
-    const StreamId id = queuedStream();
+AudioEngine::TStreamId AudioEngine::playQueuedNow() {
+    const TStreamId id = queuedStream();
     if (!id) {
         return 0;
     }
@@ -683,19 +683,19 @@ AudioEngine::StreamId AudioEngine::playQueuedNow() {
     return id;
 }
 
-void AudioEngine::appendData(StreamId stream, const QByteArray& bytes) {
+void AudioEngine::appendData(TStreamId stream, const QByteArray& bytes) {
     if (const auto buf = m_streams.value(stream)) {
         buf->append(bytes.constData(), size_t(bytes.size()));
     }
 }
 
-void AudioEngine::finishData(StreamId stream) {
+void AudioEngine::finishData(TStreamId stream) {
     if (const auto buf = m_streams.value(stream)) {
         buf->finish(false);
     }
 }
 
-void AudioEngine::failData(StreamId stream) {
+void AudioEngine::failData(TStreamId stream) {
     if (const auto buf = m_streams.value(stream)) {
         buf->finish(true);
     }
@@ -806,7 +806,7 @@ void AudioEngine::poll() {
         return;
     }
     // The queued stream turned out undecodable: forget it (the UI starts the next track itself).
-    if (const StreamId bad = d->failedQueued.exchange(0); bad && bad == m_queued) {
+    if (const TStreamId bad = d->failedQueued.exchange(0); bad && bad == m_queued) {
         m_streams.remove(bad);
         m_queued = 0;
     }

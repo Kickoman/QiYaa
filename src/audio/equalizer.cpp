@@ -14,7 +14,7 @@ constexpr int kDirty = 4;
 }  // namespace
 
 EqualizerDsp::EqualizerDsp() {
-    m_slots[m_front] = compute(m_last, m_sampleRate);
+    m_slots[m_front] = ComputeCoefficients(m_last, m_sampleRate);
 }
 
 void EqualizerDsp::setSampleRate(uint32_t rate) {
@@ -27,7 +27,7 @@ void EqualizerDsp::setSampleRate(uint32_t rate) {
     }
 }
 
-EqualizerDsp::Coeffs EqualizerDsp::compute(const EqSettings& s, double sampleRate) {
+EqualizerDsp::Coeffs EqualizerDsp::ComputeCoefficients(const EqSettings& s, double sampleRate) {
     Coeffs c;
     c.enabled = s.enabled;
     c.preamp = float(std::pow(10.0, std::clamp(s.preampDb, -kEqMaxDb, kEqMaxDb) / 20.0));
@@ -56,7 +56,7 @@ EqualizerDsp::Coeffs EqualizerDsp::compute(const EqSettings& s, double sampleRat
 
 void EqualizerDsp::publish(const EqSettings& settings) {
     m_last = settings;
-    m_slots[m_back] = compute(settings, m_sampleRate);
+    m_slots[m_back] = ComputeCoefficients(settings, m_sampleRate);
     const int prev = m_middle.exchange(m_back | kDirty, std::memory_order_acq_rel);
     m_back = prev & 3;
 }
@@ -103,8 +103,8 @@ void EqualizerDsp::process(float* frames, uint32_t frameCount) {
     }
 }
 
-double EqualizerDsp::responseDb(const EqSettings& s, double hz, double sampleRate) {
-    const Coeffs c = compute(s, sampleRate);
+double EqualizerDsp::ResponseDb(const EqSettings& s, double hz, double sampleRate) {
+    const Coeffs c = ComputeCoefficients(s, sampleRate);
     if (!c.enabled) {
         return 0.0;
     }

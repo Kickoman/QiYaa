@@ -38,9 +38,9 @@ public:
 };
 
 // Winamp's classic 19-bar analyzer with falling peaks, colours from VISCOLOR.TXT.
-std::unique_ptr<Visualizer> makeSpectrum();
+std::unique_ptr<Visualizer> MakeSpectrum();
 // Winamp's oscilloscope ("lines" style).
-std::unique_ptr<Visualizer> makeOscilloscope();
+std::unique_ptr<Visualizer> MakeOscilloscope();
 
 // Computes the spectrum for a frame (Hann window + radix-2 FFT).
 class Analyzer {

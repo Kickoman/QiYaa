@@ -22,7 +22,7 @@ namespace WinFoundation = winrt::Windows::Foundation;
 namespace WinStreams = winrt::Windows::Storage::Streams;
 
 namespace {
-winrt::hstring toH(const QString& s) {
+winrt::hstring ToHstring(const QString& s) {
     return winrt::hstring(s.toStdWString());
 }
 }  // namespace
@@ -145,14 +145,14 @@ void Smtc::updateMetadata() {
         }
         updater.Type(WinMedia::MediaPlaybackType::Music);
         auto music = updater.MusicProperties();
-        music.Title(toH(t->title));
-        music.Artist(toH(t->artists.join(QStringLiteral(", "))));
-        music.AlbumTitle(toH(t->albumTitle));
+        music.Title(ToHstring(t->title));
+        music.Artist(ToHstring(t->artists.join(QStringLiteral(", "))));
+        music.AlbumTitle(ToHstring(t->albumTitle));
         // The https URL: SMTC fetches it itself, and file:// URIs aren't accepted here.
         const QUrl art = m_controls->remoteArtUrl();
         if (!art.isEmpty()) {
             updater.Thumbnail(WinStreams::RandomAccessStreamReference::CreateFromUri(
-                WinFoundation::Uri(toH(art.toString()))
+                WinFoundation::Uri(ToHstring(art.toString()))
             ));
         }
         updater.Update();

@@ -49,7 +49,7 @@ void MilkdropWindow::ensureView() {
         return;
     }
     m_viewTried = true;
-    m_glProblem = Vis::MilkdropView::openGLProblem();
+    m_glProblem = Vis::MilkdropView::OpenGlProblem();
     if (!m_glProblem.isEmpty()) {
         qWarning("Milkdrop unavailable: %s", qPrintable(m_glProblem));
         update();

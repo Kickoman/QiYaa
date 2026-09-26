@@ -11,7 +11,7 @@
 
 namespace Yandex {
 
-QString normalizeToken(const QByteArray& raw) {
+QString NormalizeToken(const QByteArray& raw) {
     QString s = QString::fromUtf8(raw).trimmed();
     if (s.isEmpty()) {
         return {};
@@ -43,40 +43,40 @@ QString normalizeToken(const QByteArray& raw) {
     return valid.match(s).hasMatch() ? s : QString();
 }
 
-TokenSource findToken() {
-    if (const QString env = normalizeToken(qgetenv("QIYAA_TOKEN")); !env.isEmpty()) {
+TokenSource FindToken() {
+    if (const QString env = NormalizeToken(qgetenv("QIYAA_TOKEN")); !env.isEmpty()) {
         return {env, QStringLiteral("environment variable QIYAA_TOKEN")};
     }
 
     // Our own file wins, even when empty (= the user logged out).
-    const QString own = App::configDir() + QStringLiteral("/token");
+    const QString own = App::ConfigDir() + QStringLiteral("/token");
     if (QFile f(own); f.open(QIODevice::ReadOnly)) {
-        const QString t = normalizeToken(f.read(64 * 1024));
+        const QString t = NormalizeToken(f.read(64 * 1024));
         return t.isEmpty() ? TokenSource{} : TokenSource{t, own};
     }
 
-    for (const QString& dir : App::yaampDataDirs()) {
+    for (const QString& dir : App::YaampDataDirs()) {
         const QString path = dir + QStringLiteral("/token.json");
         QFile f(path);
         if (!f.open(QIODevice::ReadOnly)) {
             continue;
         }
-        if (const QString t = normalizeToken(f.read(64 * 1024)); !t.isEmpty()) {
+        if (const QString t = NormalizeToken(f.read(64 * 1024)); !t.isEmpty()) {
             return {t, path};
         }
     }
     return {};
 }
 
-void forgetToken() {
-    QFile f(App::configDir() + QStringLiteral("/token"));
+void ForgetToken() {
+    QFile f(App::ConfigDir() + QStringLiteral("/token"));
     if (f.open(QIODevice::WriteOnly | QIODevice::Truncate)) {
         f.setPermissions(QFileDevice::ReadOwner | QFileDevice::WriteOwner);
     }
 }
 
-bool saveToken(const QString& token) {
-    QFile f(App::configDir() + QStringLiteral("/token"));
+bool SaveToken(const QString& token) {
+    QFile f(App::ConfigDir() + QStringLiteral("/token"));
     if (!f.open(QIODevice::WriteOnly | QIODevice::Truncate)) {
         return false;
     }

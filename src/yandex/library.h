@@ -58,36 +58,36 @@ class Library : public QObject {
     Q_OBJECT
 public:
     template <typename T>
-    using Callback = ApiClient::Callback<T>;
+    using TCallback = ApiClient::TCallback<T>;
 
     explicit Library(ApiClient* api, QObject* parent = nullptr);
 
     ApiClient* api() const { return m_api; }
 
     // Loads the account for the API client's current token.
-    void connectAccount(Callback<Account> cb);
+    void connectAccount(TCallback<Account> cb);
     void logout();
     bool isLoggedIn() const { return !m_account.uid.isEmpty(); }
     const Account& account() const { return m_account; }
 
-    void likedTracks(Callback<QList<Track>> cb);
-    void tracksByIds(const QStringList& ids, Callback<QList<Track>> cb);  // chunked, order kept
-    void userPlaylists(Callback<QList<PlaylistRef>> cb);
-    void playlistTracks(const PlaylistRef& playlist, Callback<QList<Track>> cb);
-    void likedArtists(Callback<QList<NamedRef>> cb);
-    void artistTopTracks(const QString& artistId, Callback<QList<Track>> cb);
-    void likedAlbums(Callback<QList<NamedRef>> cb);
-    void albumTracks(const QString& albumId, Callback<QList<Track>> cb);
-    void stations(Callback<QList<Station>> cb);
-    void startWave(const QStringList& seeds, Callback<WaveBatch> cb);
-    void moreWave(const QString& sessionId, const QStringList& queue, Callback<WaveBatch> cb);
-    void search(const QString& text, Callback<SearchResult> cb);
+    void likedTracks(TCallback<QList<Track>> cb);
+    void tracksByIds(const QStringList& ids, TCallback<QList<Track>> cb);  // chunked, order kept
+    void userPlaylists(TCallback<QList<PlaylistRef>> cb);
+    void playlistTracks(const PlaylistRef& playlist, TCallback<QList<Track>> cb);
+    void likedArtists(TCallback<QList<NamedRef>> cb);
+    void artistTopTracks(const QString& artistId, TCallback<QList<Track>> cb);
+    void likedAlbums(TCallback<QList<NamedRef>> cb);
+    void albumTracks(const QString& albumId, TCallback<QList<Track>> cb);
+    void stations(TCallback<QList<Station>> cb);
+    void startWave(const QStringList& seeds, TCallback<WaveBatch> cb);
+    void moreWave(const QString& sessionId, const QStringList& queue, TCallback<WaveBatch> cb);
+    void search(const QString& text, TCallback<SearchResult> cb);
 
     // "Для вас": Плейлист дня, Дежавю, Премьера, Тайник...
-    void personalPlaylists(Callback<QList<PlaylistRef>> cb);
-    void playlistRecommendations(const PlaylistRef& playlist, Callback<QList<Track>> cb);
+    void personalPlaylists(TCallback<QList<PlaylistRef>> cb);
+    void playlistRecommendations(const PlaylistRef& playlist, TCallback<QList<Track>> cb);
     // Waves suggested around `seeds` (e.g. the wave that is playing).
-    void wheelWaves(const QStringList& seeds, Callback<QList<Wave>> cb);
+    void wheelWaves(const QStringList& seeds, TCallback<QList<Wave>> cb);
 
     // Tells the wave what the user did so "Моя волна" learns. Tries the rotor
     // session endpoint first and falls back to the station endpoint for that
@@ -100,23 +100,23 @@ public:
         const Track* track = nullptr,
         double playedSeconds = 0
     );
-    static QString waveEventName(WaveEvent e);
+    static QString WaveEventName(WaveEvent e);
 
     bool isLiked(const QString& trackId) const { return m_likedIds.contains(trackId); }
-    void setLiked(const QString& trackId, bool liked, Callback<bool> cb);
-    void dislike(const QString& trackId, Callback<bool> cb);
+    void setLiked(const QString& trackId, bool liked, TCallback<bool> cb);
+    void dislike(const QString& trackId, TCallback<bool> cb);
 
-    static QList<Track> parseTrackArray(const QJsonArray& arr);
-    static WaveBatch parseWaveBatch(const QJsonValue& result);
+    static QList<Track> ParseTrackArray(const QJsonArray& arr);
+    static WaveBatch ParseWaveBatch(const QJsonValue& result);
 
 Q_SIGNALS:
     void accountChanged();
     void likesChanged();
 
 private:
-    void tracksChunk(QStringList remaining, QList<Track> acc, Callback<QList<Track>> cb);
+    void tracksChunk(QStringList remaining, QList<Track> acc, TCallback<QList<Track>> cb);
     // Items that embed track objects, or only ids (then fetched).
-    void tracksFromItems(const QJsonArray& items, Callback<QList<Track>> cb);
+    void tracksFromItems(const QJsonArray& items, TCallback<QList<Track>> cb);
     QString userPath(const QString& rest) const;
 
     ApiClient* m_api;

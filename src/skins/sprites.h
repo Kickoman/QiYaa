@@ -60,7 +60,7 @@ inline constexpr QRect kMonoSelected{29, 0, 27, 12};
 // ------------------------------------------------------------------ NUMBERS.BMP / NUMS_EX.BMP
 inline constexpr int kDigitW = 9;
 inline constexpr int kDigitH = 13;
-inline constexpr QRect digit(int d) {
+inline constexpr QRect DigitSprite(int d) {
     return {d * kDigitW, 0, kDigitW, kDigitH};
 }
 inline constexpr QRect kMinusSign{20, 6, 5, 1};  // numbers.bmp

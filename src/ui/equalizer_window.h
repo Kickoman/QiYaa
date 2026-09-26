@@ -24,7 +24,7 @@ public:
     }
 
     // Spline through the band values, as drawn in the little graph (for tests).
-    static QList<double> graphCurve(const Audio::EqSettings& s);
+    static QList<double> GraphCurve(const Audio::EqSettings& s);
 
 Q_SIGNALS:
     void settingsChanged(const Audio::EqSettings& settings);

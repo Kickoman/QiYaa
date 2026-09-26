@@ -30,7 +30,7 @@ public:
 
     // Why projectM can't run here (no OpenGL, or older than 3.3), or empty if it can.
     // Check before showing a view: QOpenGLWindow itself breaks without a context.
-    static QString openGLProblem();
+    static QString OpenGlProblem();
 
     // Switches to this preset at the next frame, blended over unless `smooth` is false.
     void loadPreset(const QByteArray& milk, bool smooth);

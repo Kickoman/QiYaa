@@ -15,7 +15,7 @@ namespace Yandex {
 namespace {
 constexpr int kTimeoutMs = 20000;
 
-QNetworkRequest makeRequest(const QUrl& url, const QString& token) {
+QNetworkRequest MakeRequest(const QUrl& url, const QString& token) {
     QNetworkRequest req(url);
     if (!token.isEmpty()) {
         req.setRawHeader("Authorization", "OAuth " + token.toUtf8());
@@ -55,22 +55,22 @@ ApiClient::ApiClient(QNetworkAccessManager* nam, QObject* parent)
     , m_nam(nam)
     , m_base(QStringLiteral("https://api.music.yandex.net")) { }
 
-QString ApiClient::idString(const QJsonValue& v) {
+QString ApiClient::IdString(const QJsonValue& v) {
     if (v.isDouble()) {
         return QString::number(qint64(v.toDouble()));
     }
     return v.toString();
 }
 
-void ApiClient::getJson(const QString& path, const QUrlQuery& query, JsonCallback cb) {
+void ApiClient::getJson(const QString& path, const QUrlQuery& query, TJsonCallback cb) {
     QUrl url(m_base + path);
     if (!query.isEmpty()) {
         url.setQuery(query);
     }
-    handleJson(m_nam->get(makeRequest(url, m_token)), std::move(cb));
+    handleJson(m_nam->get(MakeRequest(url, m_token)), std::move(cb));
 }
 
-void ApiClient::postForm(const QString& path, const Form& form, JsonCallback cb) {
+void ApiClient::postForm(const QString& path, const TForm& form, TJsonCallback cb) {
     QByteArray body;
     for (const auto& [k, v] : form) {
         if (!body.isEmpty()) {
@@ -78,7 +78,7 @@ void ApiClient::postForm(const QString& path, const Form& form, JsonCallback cb)
         }
         body += QUrl::toPercentEncoding(k) + '=' + QUrl::toPercentEncoding(v);
     }
-    QNetworkRequest req = makeRequest(QUrl(m_base + path), m_token);
+    QNetworkRequest req = MakeRequest(QUrl(m_base + path), m_token);
     req.setHeader(
         QNetworkRequest::ContentTypeHeader, QStringLiteral("application/x-www-form-urlencoded")
     );
@@ -87,8 +87,8 @@ void ApiClient::postForm(const QString& path, const Form& form, JsonCallback cb)
     trackPost(reply);
 }
 
-void ApiClient::postJson(const QString& path, const QJsonObject& body, JsonCallback cb) {
-    QNetworkRequest req = makeRequest(QUrl(m_base + path), m_token);
+void ApiClient::postJson(const QString& path, const QJsonObject& body, TJsonCallback cb) {
+    QNetworkRequest req = MakeRequest(QUrl(m_base + path), m_token);
     req.setHeader(QNetworkRequest::ContentTypeHeader, QStringLiteral("application/json"));
     QNetworkReply* reply = m_nam->post(req, QJsonDocument(body).toJson(QJsonDocument::Compact));
     handleJson(reply, std::move(cb));
@@ -105,7 +105,7 @@ void ApiClient::trackPost(QNetworkReply* reply) {
     });
 }
 
-void ApiClient::handleJson(QNetworkReply* reply, JsonCallback cb) {
+void ApiClient::handleJson(QNetworkReply* reply, TJsonCallback cb) {
     connect(reply, &QNetworkReply::finished, this, [reply, cb = std::move(cb)] {
         reply->deleteLater();
         const QByteArray body = reply->readAll();
@@ -138,14 +138,14 @@ void ApiClient::handleJson(QNetworkReply* reply, JsonCallback cb) {
     });
 }
 
-void ApiClient::accountStatus(Callback<Account> cb) {
+void ApiClient::accountStatus(TCallback<Account> cb) {
     getJson(QStringLiteral("/account/status"), {}, [cb](const QJsonValue& r, const QString& err) {
         if (!err.isEmpty()) {
             return cb({}, err);
         }
         const QJsonObject a = r.toObject().value(QStringLiteral("account")).toObject();
         Account acc;
-        acc.uid = idString(a.value(QStringLiteral("uid")));
+        acc.uid = IdString(a.value(QStringLiteral("uid")));
         acc.login = a.value(QStringLiteral("login")).toString();
         acc.displayName = a.value(QStringLiteral("displayName")).toString();
         if (acc.displayName.isEmpty()) {
@@ -158,10 +158,10 @@ void ApiClient::accountStatus(Callback<Account> cb) {
     });
 }
 
-Track ApiClient::parseTrack(const QJsonValue& v) {
+Track ApiClient::ParseTrack(const QJsonValue& v) {
     const QJsonObject o = v.toObject();
     Track t;
-    t.id = idString(o.value(QStringLiteral("id")));
+    t.id = IdString(o.value(QStringLiteral("id")));
     t.title = o.value(QStringLiteral("title")).toString();
     const QString version = o.value(QStringLiteral("version")).toString();
     if (!version.isEmpty()) {
@@ -173,7 +173,7 @@ Track ApiClient::parseTrack(const QJsonValue& v) {
     const QJsonArray albums = o.value(QStringLiteral("albums")).toArray();
     if (!albums.isEmpty()) {
         const QJsonObject album = albums.first().toObject();
-        t.albumId = idString(album.value(QStringLiteral("id")));
+        t.albumId = IdString(album.value(QStringLiteral("id")));
         t.albumTitle = album.value(QStringLiteral("title")).toString();
         t.year = album.value(QStringLiteral("year")).toInt();
         t.genre = album.value(QStringLiteral("genre")).toString();
@@ -190,7 +190,7 @@ Track ApiClient::parseTrack(const QJsonValue& v) {
     return t;
 }
 
-void ApiClient::tracks(const QStringList& ids, Callback<QList<Track>> cb) {
+void ApiClient::tracks(const QStringList& ids, TCallback<QList<Track>> cb) {
     postForm(
         QStringLiteral("/tracks/"),
         {{QStringLiteral("track-ids"), ids.join(u',')},
@@ -201,14 +201,14 @@ void ApiClient::tracks(const QStringList& ids, Callback<QList<Track>> cb) {
             }
             QList<Track> out;
             for (const QJsonValue& v : r.toArray()) {
-                out << parseTrack(v);
+                out << ParseTrack(v);
             }
             cb(out, {});
         }
     );
 }
 
-void ApiClient::resolveTrackUrl(const QString& trackId, Callback<ResolvedUrl> cb) {
+void ApiClient::resolveTrackUrl(const QString& trackId, TCallback<ResolvedUrl> cb) {
     const QString id = trackId.section(u':', 0, 0);
     QPointer<ApiClient> self(this);
     getJson(
@@ -221,7 +221,7 @@ void ApiClient::resolveTrackUrl(const QString& trackId, Callback<ResolvedUrl> cb
                 return cb({}, err);
             }
             DownloadVariant best;
-            if (!pickBestVariant(parseDownloadVariants(r.toArray()), &best)) {
+            if (!PickBestVariant(ParseDownloadVariants(r.toArray()), &best)) {
                 return cb({}, QStringLiteral("no download variants"));
             }
 
@@ -230,7 +230,7 @@ void ApiClient::resolveTrackUrl(const QString& trackId, Callback<ResolvedUrl> cb
             q.addQueryItem(QStringLiteral("format"), QStringLiteral("json"));
             infoUrl.setQuery(q);
 
-            QNetworkReply* reply = self->m_nam->get(makeRequest(infoUrl, self->m_token));
+            QNetworkReply* reply = self->m_nam->get(MakeRequest(infoUrl, self->m_token));
             const int bitrate = best.bitrateKbps;
             connect(reply, &QNetworkReply::finished, self, [reply, cb, bitrate] {
                 reply->deleteLater();
@@ -238,10 +238,10 @@ void ApiClient::resolveTrackUrl(const QString& trackId, Callback<ResolvedUrl> cb
                     return cb({}, QStringLiteral("download-info: ") + reply->errorString());
                 }
                 DownloadInfo info;
-                if (!parseDownloadInfo(reply->readAll(), &info)) {
+                if (!ParseDownloadInfo(reply->readAll(), &info)) {
                     return cb({}, QStringLiteral("download-info: unexpected response"));
                 }
-                cb(ResolvedUrl{buildTrackUrl(info), bitrate}, {});
+                cb(ResolvedUrl{BuildTrackUrl(info), bitrate}, {});
             });
         }
     );

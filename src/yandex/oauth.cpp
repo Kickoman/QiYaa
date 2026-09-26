@@ -17,7 +17,7 @@ namespace {
 constexpr char kClientId[] = "23cabbbdc6cd418abb4b39c32c41195d";
 constexpr char kClientSecret[] = "53bc75238f0c4d08a118e51fe9203300";
 
-QByteArray formBody(const QList<std::pair<QString, QString>>& form) {
+QByteArray FormBody(const QList<std::pair<QString, QString>>& form) {
     QByteArray body;
     for (const auto& [k, v] : form) {
         if (!body.isEmpty()) {
@@ -28,7 +28,7 @@ QByteArray formBody(const QList<std::pair<QString, QString>>& form) {
     return body;
 }
 
-QNetworkRequest formRequest(const QUrl& url) {
+QNetworkRequest FormRequest(const QUrl& url) {
     QNetworkRequest req(url);
     req.setHeader(
         QNetworkRequest::ContentTypeHeader, QStringLiteral("application/x-www-form-urlencoded")
@@ -50,7 +50,7 @@ DeviceLogin::~DeviceLogin() {
     cancel();
 }
 
-QUrl DeviceLogin::browserLoginUrl() {
+QUrl DeviceLogin::BrowserLoginUrl() {
     QUrl url(QStringLiteral("https://oauth.yandex.ru/authorize"));
     QUrlQuery q;
     q.addQueryItem(QStringLiteral("response_type"), QStringLiteral("token"));
@@ -69,13 +69,13 @@ void DeviceLogin::cancel() {
 
 void DeviceLogin::start() {
     cancel();
-    const QByteArray body = formBody(
+    const QByteArray body = FormBody(
         {{QStringLiteral("client_id"), QString::fromLatin1(kClientId)},
          {QStringLiteral("device_name"),
           QStringLiteral("QiYaa (%1)").arg(QSysInfo::machineHostName())}}
     );
     QNetworkReply* reply =
-        m_nam->post(formRequest(QUrl(m_base + QStringLiteral("/device/code"))), body);
+        m_nam->post(FormRequest(QUrl(m_base + QStringLiteral("/device/code"))), body);
     m_reply = reply;
     connect(reply, &QNetworkReply::finished, this, [this, reply] {
         reply->deleteLater();
@@ -117,13 +117,13 @@ void DeviceLogin::poll() {
         Q_EMIT failed(QStringLiteral("код устарел, начните заново"));
         return;
     }
-    const QByteArray body = formBody(
+    const QByteArray body = FormBody(
         {{QStringLiteral("grant_type"), QStringLiteral("device_code")},
          {QStringLiteral("code"), m_deviceCode},
          {QStringLiteral("client_id"), QString::fromLatin1(kClientId)},
          {QStringLiteral("client_secret"), QString::fromLatin1(kClientSecret)}}
     );
-    QNetworkReply* reply = m_nam->post(formRequest(QUrl(m_base + QStringLiteral("/token"))), body);
+    QNetworkReply* reply = m_nam->post(FormRequest(QUrl(m_base + QStringLiteral("/token"))), body);
     m_reply = reply;
     connect(reply, &QNetworkReply::finished, this, [this, reply] {
         reply->deleteLater();

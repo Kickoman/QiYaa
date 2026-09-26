@@ -10,7 +10,7 @@
 namespace Vis {
 
 namespace {
-QList<MilkdropPresets::Preset> scan(const QString& dir, bool builtIn) {
+QList<MilkdropPresets::Preset> ScanPresetDirectory(const QString& dir, bool builtIn) {
     QList<MilkdropPresets::Preset> out;
     if (dir.isEmpty()) {
         return out;
@@ -28,7 +28,7 @@ QList<MilkdropPresets::Preset> scan(const QString& dir, bool builtIn) {
 }  // namespace
 
 void MilkdropPresets::load(const QString& builtInDir, const QString& userDir) {
-    m_presets = scan(builtInDir, true) + scan(userDir, false);
+    m_presets = ScanPresetDirectory(builtInDir, true) + ScanPresetDirectory(userDir, false);
 }
 
 int MilkdropPresets::indexOf(const QString& name) const {

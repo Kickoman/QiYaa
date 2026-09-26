@@ -31,7 +31,7 @@ public:
     void cancel();
 
     // Login page for the fallback flow (implicit grant).
-    static QUrl browserLoginUrl();
+    static QUrl BrowserLoginUrl();
 
 Q_SIGNALS:
     void codeReady(const QString& userCode, const QUrl& verificationUrl);

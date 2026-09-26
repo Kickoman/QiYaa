@@ -14,7 +14,7 @@ namespace {
 // Wayland doesn't let apps position their own windows, which the Winamp layout
 // (several snapped windows) depends on. Unless the user explicitly chose a
 // platform, run through XWayland; fall back to native Wayland if xcb is missing.
-void choosePlatform() {
+void ChoosePlatform() {
 #if defined(Q_OS_LINUX) || defined(Q_OS_FREEBSD)
     if (qEnvironmentVariableIsSet("QT_QPA_PLATFORM")) {
         return;
@@ -31,7 +31,7 @@ void choosePlatform() {
 
 // Feeds a local file into the engine in small pieces, like a slow download.
 // Handy for testing audio without a Yandex account.
-void streamLocalFile(Audio::AudioEngine* engine, const QString& path) {
+void StreamLocalFile(Audio::AudioEngine* engine, const QString& path) {
     auto file = std::make_shared<QFile>(path);
     if (!file->open(QIODevice::ReadOnly)) {
         qWarning("Cannot open %s", qPrintable(path));
@@ -53,7 +53,7 @@ void streamLocalFile(Audio::AudioEngine* engine, const QString& path) {
 }
 
 // A few fake tracks, for screenshots and UI testing without an account.
-QList<Yandex::Track> demoTracks() {
+QList<Yandex::Track> DemoTracks() {
     const std::pair<const char*, int> raw[] = {
         {"Кино - Группа крови", 285},       {"Земфира - Искала", 237},
         {"Сплин - Выхода нет", 227},        {"Björk - Jóga", 305},
@@ -78,7 +78,7 @@ QList<Yandex::Track> demoTracks() {
 }  // namespace
 
 int main(int argc, char* argv[]) {
-    choosePlatform();
+    ChoosePlatform();
     QApplication app(argc, argv);
     QApplication::setApplicationName(QStringLiteral("QiYaa"));
     QGuiApplication::setDesktopFileName(QStringLiteral("qiyaa")
@@ -142,7 +142,7 @@ int main(int argc, char* argv[]) {
         qiyaa.setScale(cli.value(scaleOpt).toDouble(), /*persist=*/false);
     }
     if (cli.isSet(demoOpt)) {
-        qiyaa.player()->setQueue(demoTracks(), QStringLiteral("Demo"), false);
+        qiyaa.player()->setQueue(DemoTracks(), QStringLiteral("Demo"), false);
     }
     if (cli.isSet(textOpt)) {
         qiyaa.mainWindow()->setStatusText(cli.value(textOpt));
@@ -154,7 +154,7 @@ int main(int argc, char* argv[]) {
     }
 
     if (cli.isSet(fileOpt)) {
-        streamLocalFile(qiyaa.engine(), cli.value(fileOpt));
+        StreamLocalFile(qiyaa.engine(), cli.value(fileOpt));
     }
     if (screenshot) {
         QTimer::singleShot(1500, &app, [&] {

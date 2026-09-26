@@ -25,15 +25,15 @@ struct DownloadInfo {
     QString s;
 };
 
-QList<DownloadVariant> parseDownloadVariants(const QJsonArray& result);
+QList<DownloadVariant> ParseDownloadVariants(const QJsonArray& result);
 
 // Best full (non-preview) mp3; falls back to the first entry. Returns false if empty.
-bool pickBestVariant(const QList<DownloadVariant>& variants, DownloadVariant* out);
+bool PickBestVariant(const QList<DownloadVariant>& variants, DownloadVariant* out);
 
 // Parses the JSON body of the download-info XML/JSON endpoint.
-bool parseDownloadInfo(const QByteArray& json, DownloadInfo* out);
+bool ParseDownloadInfo(const QByteArray& json, DownloadInfo* out);
 
 // https://{host}/get-mp3/{md5(SALT + path[1:] + s)}/{ts}{path}
-QUrl buildTrackUrl(const DownloadInfo& info);
+QUrl BuildTrackUrl(const DownloadInfo& info);
 
 }  // namespace Yandex

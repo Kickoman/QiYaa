@@ -50,7 +50,7 @@ public:
     loadFromFile(const QString& path, const Skin* fallback = nullptr, QString* error = nullptr);
 
     // Built-in default skin from Qt resources.
-    static Skin builtinBase();
+    static Skin BuiltinBase();
 
     bool isValid() const { return !m_sheets.value(Sheet::Main).isNull(); }
 
@@ -67,17 +67,17 @@ public:
 
     // Draws text with the TEXT.BMP font. Returns the width in pixels.
     int drawText(QPainter& p, const QPoint& at, const QString& text, int maxWidth = -1) const;
-    static int textWidth(const QString& text);
+    static int TextWidth(const QString& text);
 
-    const RegionData& region() const { return m_region; }
+    const TRegionData& region() const { return m_region; }
     const QList<QColor>& visColors() const { return m_visColors; }  // 24 entries
     const PlaylistStyle& playlistStyle() const { return m_plStyle; }
 
-    static PlaylistStyle parsePlaylistStyle(const QByteArray& text);
+    static PlaylistStyle ParsePlaylistStyle(const QByteArray& text);
 
 private:
     QHash<Sheet, QImage> m_sheets;
-    RegionData m_region;
+    TRegionData m_region;
     QList<QColor> m_visColors;
     PlaylistStyle m_plStyle;
     // x offset and width of each gen.bmp letter A-Z (same for both rows in practice).

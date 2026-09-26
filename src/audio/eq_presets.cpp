@@ -12,7 +12,7 @@ constexpr int kValues = kEqBands + 1;
 
 // Winamp wrote names in the Windows ANSI code page; we write UTF-8 unless the
 // name fits the local 8-bit encoding (which is that code page on Windows).
-QString decodeName(const QByteArray& raw) {
+QString DecodeName(const QByteArray& raw) {
     QStringDecoder utf8(QStringConverter::Utf8, QStringConverter::Flag::Stateless);
     const QString s = utf8.decode(raw);
     if (!utf8.hasError()) {
@@ -25,7 +25,7 @@ QString decodeName(const QByteArray& raw) {
 #endif
 }
 
-QByteArray encodeName(const QString& name) {
+QByteArray EncodeName(const QString& name) {
     QByteArray out;
     bool utf8 = true;
 #ifdef Q_OS_WIN
@@ -50,7 +50,7 @@ QByteArray encodeName(const QString& name) {
 }
 }  // namespace
 
-bool parseEqf(const QByteArray& data, QList<EqPreset>* out) {
+bool ParseEqf(const QByteArray& data, QList<EqPreset>* out) {
     if (!data.startsWith(kHeader) || data.size() < kHeaderLen + 4) {
         return false;
     }
@@ -60,13 +60,13 @@ bool parseEqf(const QByteArray& data, QList<EqPreset>* out) {
         const QByteArray rawName = data.mid(i, kNameLen);
         const qsizetype nul = rawName.indexOf('\0');
         EqPreset p;
-        p.name = decodeName(nul >= 0 ? rawName.left(nul) : rawName);
+        p.name = DecodeName(nul >= 0 ? rawName.left(nul) : rawName);
         i += kNameLen;
         auto value = [&](int k) { return 64 - int(quint8(data[i + k])); };
         for (int b = 0; b < kEqBands; ++b) {
-            p.settings.bandsDb[b] = std::round(eqfToDb(value(b)) * 10) / 10;
+            p.settings.bandsDb[b] = std::round(EqfToDb(value(b)) * 10) / 10;
         }
-        p.settings.preampDb = std::round(eqfToDb(value(kEqBands)) * 10) / 10;
+        p.settings.preampDb = std::round(EqfToDb(value(kEqBands)) * 10) / 10;
         i += kValues;
         presets << p;
     }
@@ -77,18 +77,18 @@ bool parseEqf(const QByteArray& data, QList<EqPreset>* out) {
     return true;
 }
 
-QByteArray writeEqf(const QList<EqPreset>& presets) {
+QByteArray WriteEqf(const QList<EqPreset>& presets) {
     QByteArray out(kHeader);
     out += char(26);
     out += "!--";
     for (const EqPreset& p : presets) {
-        QByteArray name = encodeName(p.name);
+        QByteArray name = EncodeName(p.name);
         name.append(QByteArray(kNameLen - name.size(), '\0'));
         out += name;
         for (int b = 0; b < kEqBands; ++b) {
-            out += char(64 - dbToEqf(p.settings.bandsDb[b]));
+            out += char(64 - DbToEqf(p.settings.bandsDb[b]));
         }
-        out += char(64 - dbToEqf(p.settings.preampDb));
+        out += char(64 - DbToEqf(p.settings.preampDb));
     }
     return out;
 }

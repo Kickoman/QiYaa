@@ -14,8 +14,8 @@ namespace {
 constexpr int kTracksPerRequest = 250;
 constexpr int kArtistTopLimit = 100;
 
-QString str(const QJsonObject& o, const char* key) {
-    return ApiClient::idString(o.value(QLatin1String(key)));
+QString StringField(const QJsonObject& o, const char* key) {
+    return ApiClient::IdString(o.value(QLatin1String(key)));
 }
 }  // namespace
 
@@ -27,7 +27,7 @@ QString Library::userPath(const QString& rest) const {
     return QStringLiteral("/users/%1/%2").arg(m_account.uid, rest);
 }
 
-void Library::connectAccount(Callback<Account> cb) {
+void Library::connectAccount(TCallback<Account> cb) {
     QPointer<Library> self(this);
     m_api->accountStatus([self, cb](const Account& acc, const QString& err) {
         if (!self) {
@@ -49,31 +49,31 @@ void Library::logout() {
     Q_EMIT likesChanged();
 }
 
-QList<Track> Library::parseTrackArray(const QJsonArray& arr) {
+QList<Track> Library::ParseTrackArray(const QJsonArray& arr) {
     QList<Track> out;
     for (const QJsonValue& v : arr) {
         const QJsonObject o = v.toObject();
         // Some endpoints wrap tracks: {"track": {...}} or {"id":..., "track": {...}}.
         const QJsonValue inner = o.value(QStringLiteral("track"));
-        out << ApiClient::parseTrack(inner.isObject() ? inner : v);
+        out << ApiClient::ParseTrack(inner.isObject() ? inner : v);
     }
     return out;
 }
 
-WaveBatch Library::parseWaveBatch(const QJsonValue& result) {
+WaveBatch Library::ParseWaveBatch(const QJsonValue& result) {
     const QJsonObject r = result.toObject();
     WaveBatch b;
     b.sessionId = r.value(QStringLiteral("radioSessionId")).toString();
     b.batchId = r.value(QStringLiteral("batchId")).toString();
-    b.tracks = parseTrackArray(r.value(QStringLiteral("sequence")).toArray());
+    b.tracks = ParseTrackArray(r.value(QStringLiteral("sequence")).toArray());
     return b;
 }
 
-void Library::tracksByIds(const QStringList& ids, Callback<QList<Track>> cb) {
+void Library::tracksByIds(const QStringList& ids, TCallback<QList<Track>> cb) {
     tracksChunk(ids, {}, std::move(cb));
 }
 
-void Library::tracksChunk(QStringList remaining, QList<Track> acc, Callback<QList<Track>> cb) {
+void Library::tracksChunk(QStringList remaining, QList<Track> acc, TCallback<QList<Track>> cb) {
     if (remaining.isEmpty()) {
         return cb(acc, {});
     }
@@ -95,7 +95,7 @@ void Library::tracksChunk(QStringList remaining, QList<Track> acc, Callback<QLis
     );
 }
 
-void Library::likedTracks(Callback<QList<Track>> cb) {
+void Library::likedTracks(TCallback<QList<Track>> cb) {
     QPointer<Library> self(this);
     m_api->getJson(
         userPath(QStringLiteral("likes/tracks")), {},
@@ -114,7 +114,7 @@ void Library::likedTracks(Callback<QList<Track>> cb) {
                                        .value(QStringLiteral("tracks"))
                                        .toArray();
             for (const QJsonValue& v : arr) {
-                const QString id = str(v.toObject(), "id");
+                const QString id = StringField(v.toObject(), "id");
                 if (id.isEmpty()) {
                     continue;
                 }
@@ -127,7 +127,7 @@ void Library::likedTracks(Callback<QList<Track>> cb) {
     );
 }
 
-void Library::userPlaylists(Callback<QList<PlaylistRef>> cb) {
+void Library::userPlaylists(TCallback<QList<PlaylistRef>> cb) {
     m_api->getJson(
         userPath(QStringLiteral("playlists/list")), {},
         [cb](const QJsonValue& r, const QString& err) {
@@ -138,11 +138,11 @@ void Library::userPlaylists(Callback<QList<PlaylistRef>> cb) {
             for (const QJsonValue& v : r.toArray()) {
                 const QJsonObject o = v.toObject();
                 PlaylistRef p;
-                p.ownerUid = str(o, "uid");
+                p.ownerUid = StringField(o, "uid");
                 if (p.ownerUid.isEmpty()) {
-                    p.ownerUid = str(o.value(QStringLiteral("owner")).toObject(), "uid");
+                    p.ownerUid = StringField(o.value(QStringLiteral("owner")).toObject(), "uid");
                 }
-                p.kind = str(o, "kind");
+                p.kind = StringField(o, "kind");
                 p.title = o.value(QStringLiteral("title")).toString();
                 p.trackCount = o.value(QStringLiteral("trackCount")).toInt();
                 if (!p.kind.isEmpty()) {
@@ -154,9 +154,9 @@ void Library::userPlaylists(Callback<QList<PlaylistRef>> cb) {
     );
 }
 
-void Library::tracksFromItems(const QJsonArray& items, Callback<QList<Track>> cb) {
+void Library::tracksFromItems(const QJsonArray& items, TCallback<QList<Track>> cb) {
     // Items usually embed full track objects; fall back to fetching by id.
-    const QList<Track> embedded = parseTrackArray(items);
+    const QList<Track> embedded = ParseTrackArray(items);
     const bool complete = std::all_of(embedded.cbegin(), embedded.cend(), [](const Track& t) {
         return !t.title.isEmpty();
     });
@@ -165,12 +165,12 @@ void Library::tracksFromItems(const QJsonArray& items, Callback<QList<Track>> cb
     }
     QStringList ids;
     for (const QJsonValue& v : items) {
-        ids << (v.isObject() ? str(v.toObject(), "id") : ApiClient::idString(v));
+        ids << (v.isObject() ? StringField(v.toObject(), "id") : ApiClient::IdString(v));
     }
     tracksByIds(ids, cb);
 }
 
-void Library::playlistTracks(const PlaylistRef& playlist, Callback<QList<Track>> cb) {
+void Library::playlistTracks(const PlaylistRef& playlist, TCallback<QList<Track>> cb) {
     QPointer<Library> self(this);
     const QString path =
         QStringLiteral("/users/%1/playlists/%2").arg(playlist.ownerUid, playlist.kind);
@@ -185,7 +185,7 @@ void Library::playlistTracks(const PlaylistRef& playlist, Callback<QList<Track>>
     });
 }
 
-void Library::playlistRecommendations(const PlaylistRef& playlist, Callback<QList<Track>> cb) {
+void Library::playlistRecommendations(const PlaylistRef& playlist, TCallback<QList<Track>> cb) {
     QPointer<Library> self(this);
     const QString path = QStringLiteral("/users/%1/playlists/%2/recommendations")
                              .arg(playlist.ownerUid, playlist.kind);
@@ -200,7 +200,7 @@ void Library::playlistRecommendations(const PlaylistRef& playlist, Callback<QLis
     });
 }
 
-void Library::personalPlaylists(Callback<QList<PlaylistRef>> cb) {
+void Library::personalPlaylists(TCallback<QList<PlaylistRef>> cb) {
     QUrlQuery q;
     q.addQueryItem(QStringLiteral("blocks"), QStringLiteral("personalplaylists"));
     m_api->getJson(QStringLiteral("/landing3"), q, [cb](const QJsonValue& r, const QString& err) {
@@ -217,11 +217,11 @@ void Library::personalPlaylists(Callback<QList<PlaylistRef>> cb) {
                     pl = pl.value(QStringLiteral("data")).toObject();
                 }
                 PlaylistRef p;
-                p.ownerUid = str(pl, "uid");
+                p.ownerUid = StringField(pl, "uid");
                 if (p.ownerUid.isEmpty()) {
-                    p.ownerUid = str(pl.value(QStringLiteral("owner")).toObject(), "uid");
+                    p.ownerUid = StringField(pl.value(QStringLiteral("owner")).toObject(), "uid");
                 }
-                p.kind = str(pl, "kind");
+                p.kind = StringField(pl, "kind");
                 p.title = pl.value(QStringLiteral("title")).toString();
                 p.trackCount = pl.value(QStringLiteral("trackCount")).toInt();
                 if (!p.ownerUid.isEmpty() && !p.kind.isEmpty()) {
@@ -233,7 +233,7 @@ void Library::personalPlaylists(Callback<QList<PlaylistRef>> cb) {
     });
 }
 
-void Library::wheelWaves(const QStringList& seeds, Callback<QList<Wave>> cb) {
+void Library::wheelWaves(const QStringList& seeds, TCallback<QList<Wave>> cb) {
     const QJsonObject body{
         {QStringLiteral("context"),
          QJsonObject{
@@ -275,7 +275,7 @@ void Library::wheelWaves(const QStringList& seeds, Callback<QList<Wave>> cb) {
     );
 }
 
-QString Library::waveEventName(WaveEvent e) {
+QString Library::WaveEventName(WaveEvent e) {
     switch (e) {
         case WaveEvent::RadioStarted: return QStringLiteral("radioStarted");
         case WaveEvent::TrackStarted: return QStringLiteral("trackStarted");
@@ -294,7 +294,7 @@ void Library::waveFeedback(
     double playedSeconds
 ) {
     QJsonObject ev{
-        {QStringLiteral("type"), waveEventName(event)},
+        {QStringLiteral("type"), WaveEventName(event)},
         {QStringLiteral("timestamp"), QDateTime::currentDateTimeUtc().toString(Qt::ISODateWithMs)}
     };
     if (event == WaveEvent::RadioStarted) {
@@ -363,7 +363,7 @@ void Library::waveFeedback(
     );
 }
 
-void Library::likedArtists(Callback<QList<NamedRef>> cb) {
+void Library::likedArtists(TCallback<QList<NamedRef>> cb) {
     m_api->getJson(
         userPath(QStringLiteral("likes/artists")), {},
         [cb](const QJsonValue& r, const QString& err) {
@@ -376,7 +376,7 @@ void Library::likedArtists(Callback<QList<NamedRef>> cb) {
                 if (o.value(QStringLiteral("artist")).isObject()) {
                     o = o.value(QStringLiteral("artist")).toObject();
                 }
-                const NamedRef a{str(o, "id"), o.value(QStringLiteral("name")).toString()};
+                const NamedRef a{StringField(o, "id"), o.value(QStringLiteral("name")).toString()};
                 if (!a.id.isEmpty()) {
                     out << a;
                 }
@@ -386,7 +386,7 @@ void Library::likedArtists(Callback<QList<NamedRef>> cb) {
     );
 }
 
-void Library::artistTopTracks(const QString& artistId, Callback<QList<Track>> cb) {
+void Library::artistTopTracks(const QString& artistId, TCallback<QList<Track>> cb) {
     QPointer<Library> self(this);
     m_api->getJson(
         QStringLiteral("/artists/%1/track-ids-by-rating").arg(artistId), {},
@@ -399,14 +399,14 @@ void Library::artistTopTracks(const QString& artistId, Callback<QList<Track>> cb
             }
             QStringList ids;
             for (const QJsonValue& v : r.toObject().value(QStringLiteral("tracks")).toArray()) {
-                ids << ApiClient::idString(v);
+                ids << ApiClient::IdString(v);
             }
             self->tracksByIds(ids.mid(0, kArtistTopLimit), cb);
         }
     );
 }
 
-void Library::likedAlbums(Callback<QList<NamedRef>> cb) {
+void Library::likedAlbums(TCallback<QList<NamedRef>> cb) {
     QPointer<Library> self(this);
     m_api->getJson(
         userPath(QStringLiteral("likes/albums")), {},
@@ -423,7 +423,7 @@ void Library::likedAlbums(Callback<QList<NamedRef>> cb) {
                 if (o.value(QStringLiteral("album")).isObject()) {
                     o = o.value(QStringLiteral("album")).toObject();
                 }
-                const QString id = str(o, "id");
+                const QString id = StringField(o, "id");
                 if (!id.isEmpty()) {
                     ids << id;
                 }
@@ -451,7 +451,7 @@ void Library::likedAlbums(Callback<QList<NamedRef>> cb) {
                                 artists.first().toObject().value(QStringLiteral("name")).toString()
                                 + QStringLiteral(" - ") + name;
                         }
-                        out << NamedRef{str(o, "id"), name};
+                        out << NamedRef{StringField(o, "id"), name};
                     }
                     cb(out, {});
                 }
@@ -460,7 +460,7 @@ void Library::likedAlbums(Callback<QList<NamedRef>> cb) {
     );
 }
 
-void Library::albumTracks(const QString& albumId, Callback<QList<Track>> cb) {
+void Library::albumTracks(const QString& albumId, TCallback<QList<Track>> cb) {
     m_api->getJson(
         QStringLiteral("/albums/%1/with-tracks").arg(albumId), {},
         [cb, albumId](const QJsonValue& r, const QString& err) {
@@ -469,7 +469,7 @@ void Library::albumTracks(const QString& albumId, Callback<QList<Track>> cb) {
             }
             QList<Track> out;
             for (const QJsonValue& vol : r.toObject().value(QStringLiteral("volumes")).toArray()) {
-                for (Track t : parseTrackArray(vol.toArray())) {
+                for (Track t : ParseTrackArray(vol.toArray())) {
                     if (t.albumId.isEmpty()) {
                         t.albumId = albumId;
                     }
@@ -481,7 +481,7 @@ void Library::albumTracks(const QString& albumId, Callback<QList<Track>> cb) {
     );
 }
 
-void Library::stations(Callback<QList<Station>> cb) {
+void Library::stations(TCallback<QList<Station>> cb) {
     QUrlQuery q;
     q.addQueryItem(QStringLiteral("language"), QStringLiteral("ru"));
     m_api->getJson(
@@ -507,7 +507,7 @@ void Library::stations(Callback<QList<Station>> cb) {
     );
 }
 
-void Library::startWave(const QStringList& seeds, Callback<WaveBatch> cb) {
+void Library::startWave(const QStringList& seeds, TCallback<WaveBatch> cb) {
     QJsonObject body{
         {QStringLiteral("seeds"), QJsonArray::fromStringList(seeds)},
         {QStringLiteral("includeTracksInResponse"), true},
@@ -520,7 +520,7 @@ void Library::startWave(const QStringList& seeds, Callback<WaveBatch> cb) {
             if (!err.isEmpty()) {
                 return cb({}, err);
             }
-            const WaveBatch b = parseWaveBatch(r);
+            const WaveBatch b = ParseWaveBatch(r);
             if (b.sessionId.isEmpty()) {
                 return cb({}, QStringLiteral("no radio session"));
             }
@@ -529,7 +529,11 @@ void Library::startWave(const QStringList& seeds, Callback<WaveBatch> cb) {
     );
 }
 
-void Library::moreWave(const QString& sessionId, const QStringList& queue, Callback<WaveBatch> cb) {
+void Library::moreWave(
+    const QString& sessionId,
+    const QStringList& queue,
+    TCallback<WaveBatch> cb
+) {
     QJsonObject body{{QStringLiteral("queue"), QJsonArray::fromStringList(queue)}};
     m_api->postJson(
         QStringLiteral("/rotor/session/%1/tracks").arg(sessionId), body,
@@ -537,7 +541,7 @@ void Library::moreWave(const QString& sessionId, const QStringList& queue, Callb
             if (!err.isEmpty()) {
                 return cb({}, err);
             }
-            WaveBatch b = parseWaveBatch(r);
+            WaveBatch b = ParseWaveBatch(r);
             if (b.sessionId.isEmpty()) {
                 b.sessionId = sessionId;
             }
@@ -546,7 +550,7 @@ void Library::moreWave(const QString& sessionId, const QStringList& queue, Callb
     );
 }
 
-void Library::search(const QString& text, Callback<SearchResult> cb) {
+void Library::search(const QString& text, TCallback<SearchResult> cb) {
     QUrlQuery q;
     q.addQueryItem(QStringLiteral("text"), text);
     q.addQueryItem(QStringLiteral("type"), QStringLiteral("all"));
@@ -560,20 +564,20 @@ void Library::search(const QString& text, Callback<SearchResult> cb) {
         const QJsonObject best = o.value(QStringLiteral("best")).toObject();
         res.bestType = best.value(QStringLiteral("type")).toString();
         const QJsonObject item = best.value(QStringLiteral("result")).toObject();
-        res.bestId = str(item, "id");
+        res.bestId = StringField(item, "id");
         res.bestName = item.value(
                                item.contains(QStringLiteral("name")) ? QStringLiteral("name")
                                                                      : QStringLiteral("title")
         )
                            .toString();
-        res.tracks = parseTrackArray(
+        res.tracks = ParseTrackArray(
             o.value(QStringLiteral("tracks")).toObject().value(QStringLiteral("results")).toArray()
         );
         cb(res, {});
     });
 }
 
-void Library::setLiked(const QString& trackId, bool liked, Callback<bool> cb) {
+void Library::setLiked(const QString& trackId, bool liked, TCallback<bool> cb) {
     QPointer<Library> self(this);
     const QString path = userPath(
         liked ? QStringLiteral("likes/tracks/add-multiple") : QStringLiteral("likes/tracks/remove")
@@ -597,7 +601,7 @@ void Library::setLiked(const QString& trackId, bool liked, Callback<bool> cb) {
     );
 }
 
-void Library::dislike(const QString& trackId, Callback<bool> cb) {
+void Library::dislike(const QString& trackId, TCallback<bool> cb) {
     QPointer<Library> self(this);
     m_api->postForm(
         userPath(QStringLiteral("dislikes/tracks/add-multiple")),

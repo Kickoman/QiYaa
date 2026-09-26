@@ -7,7 +7,7 @@ class TestSkin : public QObject {
     Q_OBJECT
 private Q_SLOTS:
     void baseSkinLoads() {
-        const Skins::Skin s = Skins::Skin::builtinBase();
+        const Skins::Skin s = Skins::Skin::BuiltinBase();
         QVERIFY(s.isValid());
         QCOMPARE(s.sheet(Skins::Skin::Sheet::Main).size(), QSize(275, 116));
         QVERIFY(!s.sheet(Skins::Skin::Sheet::CButtons).isNull());
@@ -22,7 +22,7 @@ private Q_SLOTS:
     }
     void allBuiltinSkinsLoad() {
         QFETCH(QString, path);
-        const Skins::Skin base = Skins::Skin::builtinBase();
+        const Skins::Skin base = Skins::Skin::BuiltinBase();
         Skins::Skin s;
         QString err;
         QVERIFY2(s.loadFromFile(path, &base, &err), qPrintable(err));

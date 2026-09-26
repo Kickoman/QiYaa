@@ -19,19 +19,19 @@
 namespace Ui {
 
 using Audio::AudioEngine;
-using Sheet = Skins::Skin::Sheet;
+using TSheet = Skins::Skin::Sheet;
 using Skins::PlaylistSprites;
 
 namespace {
 
 constexpr int kListPadTop = 3;
 
-bool contains(const QRect& r, QPoint p) {
+bool RectContains(const QRect& r, QPoint p) {
     return p.x() >= r.x() && p.y() >= r.y() && p.x() < r.x() + r.width()
         && p.y() < r.y() + r.height();
 }
 
-QString formatTime(qint64 seconds) {
+QString FormatTime(qint64 seconds) {
     seconds = std::max<qint64>(0, seconds);
     if (seconds >= 3600) {
         return QStringLiteral("%1:%2:%3")
@@ -160,7 +160,7 @@ void PlaylistWindow::ensureRowVisible(int row) {
 
 int PlaylistWindow::rowAt(QPoint p) const {
     const QRect r = listRect();
-    if (!contains(r, p)) {
+    if (!RectContains(r, p)) {
         return -1;
     }
     const int y = p.y() - r.y() - kListPadTop;
@@ -196,22 +196,22 @@ void PlaylistWindow::drawTiles(QPainter& p) const {
     // Top: corners, tiles, centred title.
     for (int x = 25; x < w - 25; x += 25) {
         sk.draw(
-            p, Sheet::PlEdit,
+            p, TSheet::PlEdit,
             active ? Skins::PlaylistSprites::kTopTileSelected : Skins::PlaylistSprites::kTopTile,
             {x, 0}
         );
     }
     sk.draw(
-        p, Sheet::PlEdit,
+        p, TSheet::PlEdit,
         active ? Skins::PlaylistSprites::kTopLeftSelected : Skins::PlaylistSprites::kTopLeft, {0, 0}
     );
     sk.draw(
-        p, Sheet::PlEdit,
+        p, TSheet::PlEdit,
         active ? Skins::PlaylistSprites::kTitleSelected : Skins::PlaylistSprites::kTitle,
         {(w - 100) / 2, 0}
     );
     sk.draw(
-        p, Sheet::PlEdit,
+        p, TSheet::PlEdit,
         active ? Skins::PlaylistSprites::kTopRightSelected : Skins::PlaylistSprites::kTopRight,
         {w - 25, 0}
     );
@@ -220,11 +220,11 @@ void PlaylistWindow::drawTiles(QPainter& p) const {
     for (int y = Skins::PlaylistSprites::kTopH; y < h - Skins::PlaylistSprites::kBottomH; y += 29) {
         const int tileH = std::min(29, h - Skins::PlaylistSprites::kBottomH - y);
         sk.draw(
-            p, Sheet::PlEdit, Skins::PlaylistSprites::kLeftTile.adjusted(0, 0, 0, tileH - 29),
+            p, TSheet::PlEdit, Skins::PlaylistSprites::kLeftTile.adjusted(0, 0, 0, tileH - 29),
             {0, y}
         );
         sk.draw(
-            p, Sheet::PlEdit, Skins::PlaylistSprites::kRightTile.adjusted(0, 0, 0, tileH - 29),
+            p, TSheet::PlEdit, Skins::PlaylistSprites::kRightTile.adjusted(0, 0, 0, tileH - 29),
             {w - Skins::PlaylistSprites::kRightW, y}
         );
     }
@@ -232,30 +232,30 @@ void PlaylistWindow::drawTiles(QPainter& p) const {
     // Bottom.
     for (int x = 125; x < w - 150; x += 25) {
         sk.draw(
-            p, Sheet::PlEdit, Skins::PlaylistSprites::kBottomTile,
+            p, TSheet::PlEdit, Skins::PlaylistSprites::kBottomTile,
             {x, h - Skins::PlaylistSprites::kBottomH}
         );
     }
     sk.draw(
-        p, Sheet::PlEdit, Skins::PlaylistSprites::kBottomLeft,
+        p, TSheet::PlEdit, Skins::PlaylistSprites::kBottomLeft,
         {0, h - Skins::PlaylistSprites::kBottomH}
     );
     sk.draw(
-        p, Sheet::PlEdit, Skins::PlaylistSprites::kBottomRight,
+        p, TSheet::PlEdit, Skins::PlaylistSprites::kBottomRight,
         {w - 150, h - Skins::PlaylistSprites::kBottomH}
     );
 
     sk.draw(
-        p, Sheet::PlEdit,
+        p, TSheet::PlEdit,
         m_drag == Drag::Scroll ? Skins::PlaylistSprites::kScrollHandleSelected
                                : Skins::PlaylistSprites::kScrollHandle,
         scrollHandleRect().topLeft()
     );
     if (m_drag == Drag::Close) {
-        sk.draw(p, Sheet::PlEdit, Skins::PlaylistSprites::kCloseSelected, {w - 11, 3});
+        sk.draw(p, TSheet::PlEdit, Skins::PlaylistSprites::kCloseSelected, {w - 11, 3});
     }
     if (m_drag == Drag::Shade) {
-        sk.draw(p, Sheet::PlEdit, Skins::PlaylistSprites::kCollapseSelected, {w - 21, 3});
+        sk.draw(p, TSheet::PlEdit, Skins::PlaylistSprites::kCollapseSelected, {w - 21, 3});
     }
 }
 
@@ -287,7 +287,7 @@ void PlaylistWindow::drawRows(QPainter& p) const {
             p.fillRect(r, st.selectedBg);
         }
         p.setPen(row == current ? st.current : st.normal);
-        const QString duration = formatTime(tracks[row].durationMs / 1000);
+        const QString duration = FormatTime(tracks[row].durationMs / 1000);
         const int durW = fm.horizontalAdvance(duration) + 3;
         const QRect titleRect = r.adjusted(2, 0, -durW - 4, 0);
         const QString title = QStringLiteral("%1. %2").arg(row + 1).arg(tracks[row].displayTitle());
@@ -323,7 +323,7 @@ void PlaylistWindow::drawBottomInfo(QPainter& p) const {
     }
     p.save();
     p.setClipRect(QRect(base + QPoint(7, 10), QSize(80, 6)));
-    skin().drawText(p, base + QPoint(7, 10), formatTime(selected) + u'/' + formatTime(total));
+    skin().drawText(p, base + QPoint(7, 10), FormatTime(selected) + u'/' + FormatTime(total));
     p.restore();
 
     // Mini time: elapsed.
@@ -333,7 +333,7 @@ void PlaylistWindow::drawBottomInfo(QPainter& p) const {
         p.setClipRect(QRect(base + QPoint(66, 23), QSize(25, 6)));
         skin().drawText(
             p, base + QPoint(66, 23),
-            formatTime(qint64(m_player->engine()->positionSeconds())).rightJustified(5, u' ')
+            FormatTime(qint64(m_player->engine()->positionSeconds())).rightJustified(5, u' ')
         );
         p.restore();
     }
@@ -362,11 +362,11 @@ void PlaylistWindow::paintShaded(QPainter& p) {
     const Skins::Skin& sk = skin();
     const int w = skinSize().width();
     for (int x = 25; x < w - 50; x += 25) {
-        sk.draw(p, Sheet::PlEdit, Skins::PlaylistSprites::kShadeTile, {x, 0});
+        sk.draw(p, TSheet::PlEdit, Skins::PlaylistSprites::kShadeTile, {x, 0});
     }
-    sk.draw(p, Sheet::PlEdit, Skins::PlaylistSprites::kShadeLeft, {0, 0});
+    sk.draw(p, TSheet::PlEdit, Skins::PlaylistSprites::kShadeLeft, {0, 0});
     sk.draw(
-        p, Sheet::PlEdit,
+        p, TSheet::PlEdit,
         isActiveWindow() ? Skins::PlaylistSprites::kShadeRightSelected
                          : Skins::PlaylistSprites::kShadeRight,
         {w - 50, 0}
@@ -374,8 +374,8 @@ void PlaylistWindow::paintShaded(QPainter& p) {
 
     // Current track and its length, like Winamp's collapsed playlist.
     if (const auto* t = m_player->currentTrack()) {
-        const QString time = formatTime(t->durationMs / 1000);
-        const int timeW = Skins::Skin::textWidth(time);
+        const QString time = FormatTime(t->durationMs / 1000);
+        const int timeW = Skins::Skin::TextWidth(time);
         const int timeX = w - 30 - timeW;
         sk.drawText(p, {timeX, 4}, time);
         p.save();
@@ -388,13 +388,13 @@ void PlaylistWindow::paintShaded(QPainter& p) {
         p.restore();
     }
     if (m_drag == Drag::Close) {
-        sk.draw(p, Sheet::PlEdit, Skins::PlaylistSprites::kCloseSelected, {w - 11, 3});
+        sk.draw(p, TSheet::PlEdit, Skins::PlaylistSprites::kCloseSelected, {w - 11, 3});
     }
     if (m_drag == Drag::Shade) {
-        sk.draw(p, Sheet::PlEdit, Skins::PlaylistSprites::kCollapseSelected, {w - 21, 3});
+        sk.draw(p, TSheet::PlEdit, Skins::PlaylistSprites::kCollapseSelected, {w - 21, 3});
     }
     if (m_drag == Drag::Shade) {
-        sk.draw(p, Sheet::PlEdit, Skins::PlaylistSprites::kExpandSelected, {w - 21, 3});
+        sk.draw(p, TSheet::PlEdit, Skins::PlaylistSprites::kExpandSelected, {w - 21, 3});
     }
 }
 
@@ -413,18 +413,18 @@ int PlaylistWindow::miniButtonAt(QPoint p) const {
     const int w = skinSize().width(), h = skinSize().height();
     const QPoint base(w - 150, h - Skins::PlaylistSprites::kBottomH);
     for (int i = 0; i < 6; ++i) {
-        if (contains(QRect(base + QPoint(kMiniX[i], kMiniY), QSize(kMiniW, kMiniH)), p)) {
+        if (RectContains(QRect(base + QPoint(kMiniX[i], kMiniY), QSize(kMiniW, kMiniH)), p)) {
             return kBtnMini0 + i;
         }
     }
     const int y = h - 30;
     const int xs[] = {14, 43, 72, 101};
     for (int i = 0; i < 4; ++i) {
-        if (contains(QRect(xs[i], y, 22, 18), p)) {
+        if (RectContains(QRect(xs[i], y, 22, 18), p)) {
             return i;
         }
     }
-    if (contains(QRect(w - 44, y, 22, 18), p)) {
+    if (RectContains(QRect(w - 44, y, 22, 18), p)) {
         return kBtnList;
     }
     return -1;
@@ -463,12 +463,12 @@ bool PlaylistWindow::skinMousePress(QPoint pos, Qt::MouseButton button) {
     const int w = skinSize().width(), h = skinSize().height();
     m_dragStart = pos;
 
-    if (contains(QRect(w - 11, 3, 9, 9), pos)) {
+    if (RectContains(QRect(w - 11, 3, 9, 9), pos)) {
         m_drag = Drag::Close;
         update();
         return true;
     }
-    if (contains(QRect(w - 21, 3, 9, 9), pos)) {
+    if (RectContains(QRect(w - 21, 3, 9, 9), pos)) {
         m_drag = Drag::Shade;
         update();
         return true;
@@ -476,12 +476,12 @@ bool PlaylistWindow::skinMousePress(QPoint pos, Qt::MouseButton button) {
     if (isShaded()) {
         return false;  // the rest of the strip drags the window
     }
-    if (contains(QRect(w - 20, h - 20, 20, 20), pos)) {
+    if (RectContains(QRect(w - 20, h - 20, 20, 20), pos)) {
         m_drag = Drag::Resize;
         m_dragStartSteps = m_steps;
         return true;
     }
-    if (contains(
+    if (RectContains(
             QRect(
                 w - Skins::PlaylistSprites::kRightW, Skins::PlaylistSprites::kTopH,
                 Skins::PlaylistSprites::kRightW,
@@ -547,10 +547,10 @@ void PlaylistWindow::skinMouseRelease(QPoint pos, Qt::MouseButton button) {
     const Drag drag = m_drag;
     m_drag = Drag::None;
     const int w = skinSize().width();
-    if (drag == Drag::Close && contains(QRect(w - 11, 3, 9, 9), pos)) {
+    if (drag == Drag::Close && RectContains(QRect(w - 11, 3, 9, 9), pos)) {
         Q_EMIT closeRequested();
     }
-    if (drag == Drag::Shade && contains(QRect(w - 21, 3, 9, 9), pos)) {
+    if (drag == Drag::Shade && RectContains(QRect(w - 21, 3, 9, 9), pos)) {
         setShaded(!isShaded());
     }
     if (drag == Drag::Button && miniButtonAt(pos) == m_pressedButton) {

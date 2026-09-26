@@ -6,7 +6,7 @@
 namespace Skins {
 namespace {
 
-QList<int> parseInts(const QString& s) {
+QList<int> ParseInts(const QString& s) {
     static const QRegularExpression sep(QStringLiteral("[\\s,]+"));
     QList<int> out;
     for (const QString& part : s.split(sep, Qt::SkipEmptyParts)) {
@@ -21,7 +21,7 @@ QList<int> parseInts(const QString& s) {
 
 }  // namespace
 
-RegionData parseRegionTxt(const QByteArray& text) {
+TRegionData ParseRegionTxt(const QByteArray& text) {
     // Simple INI reader: sections, key=value, ';' / '#' / '//' comments, case-insensitive keys.
     QHash<QString, QHash<QString, QString>> ini;
     QString section;
@@ -50,10 +50,10 @@ RegionData parseRegionTxt(const QByteArray& text) {
         ini[section][line.left(eq).trimmed().toLower()] = value.trimmed();
     }
 
-    RegionData data;
+    TRegionData data;
     for (auto it = ini.cbegin(); it != ini.cend(); ++it) {
-        const QList<int> counts = parseInts(it->value(QStringLiteral("numpoints")));
-        const QList<int> coords = parseInts(it->value(QStringLiteral("pointlist")));
+        const QList<int> counts = ParseInts(it->value(QStringLiteral("numpoints")));
+        const QList<int> coords = ParseInts(it->value(QStringLiteral("pointlist")));
         if (counts.isEmpty() || coords.size() < 2) {
             continue;
         }
@@ -83,7 +83,7 @@ RegionData parseRegionTxt(const QByteArray& text) {
     return data;
 }
 
-QRegion regionFromPolygons(const QList<QPolygon>& polygons) {
+QRegion RegionFromPolygons(const QList<QPolygon>& polygons) {
     QRegion r;
     for (const QPolygon& p : polygons) {
         r += QRegion(p, Qt::WindingFill);

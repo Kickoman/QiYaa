@@ -5,7 +5,7 @@
 
 namespace App {
 
-QString configDir() {
+QString ConfigDir() {
     // GenericConfigLocation: ~/.config, %LOCALAPPDATA%, ~/Library/Preferences
     const QString base = QStandardPaths::writableLocation(QStandardPaths::GenericConfigLocation);
     const QString dir = base + QStringLiteral("/QiYaa");
@@ -13,7 +13,7 @@ QString configDir() {
     return dir;
 }
 
-QStringList yaampDataDirs() {
+QStringList YaampDataDirs() {
     // Electron's app.getPath('userData') = <appData>/<productName>.
     // appData: ~/.config (Linux), %APPDATA% (Windows), ~/Library/Application Support (macOS).
     QStringList bases;

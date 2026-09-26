@@ -11,11 +11,11 @@ namespace Skins {
 
 // Section name (lower-case: "normal", "windowshade", "equalizer", "equalizerws")
 // -> list of polygons.
-using RegionData = QHash<QString, QList<QPolygon>>;
+using TRegionData = QHash<QString, QList<QPolygon>>;
 
-RegionData parseRegionTxt(const QByteArray& text);
+TRegionData ParseRegionTxt(const QByteArray& text);
 
 // Builds a mask region from polygons. Empty list -> empty region (= no mask).
-QRegion regionFromPolygons(const QList<QPolygon>& polygons);
+QRegion RegionFromPolygons(const QList<QPolygon>& polygons);
 
 }  // namespace Skins

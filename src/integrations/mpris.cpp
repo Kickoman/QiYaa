@@ -17,7 +17,7 @@ namespace {
 const QString kObjectPath = QStringLiteral("/org/mpris/MediaPlayer2");
 const QString kPlayerIface = QStringLiteral("org.mpris.MediaPlayer2.Player");
 
-QDBusObjectPath trackPath(const QString& id) {
+QDBusObjectPath TrackPath(const QString& id) {
     // Object paths allow [A-Za-z0-9_] only.
     QString safe;
     for (QChar c : id) {
@@ -128,7 +128,7 @@ QVariantMap Mpris::metadata() const {
         };
     }
     QVariantMap m{
-        {QStringLiteral("mpris:trackid"), QVariant::fromValue(trackPath(t->id))},
+        {QStringLiteral("mpris:trackid"), QVariant::fromValue(TrackPath(t->id))},
         {QStringLiteral("mpris:length"), qlonglong(t->durationMs) * 1000},
         {QStringLiteral("xesam:title"), t->title},
         {QStringLiteral("xesam:artist"), t->artists},
@@ -260,7 +260,7 @@ void MprisPlayerAdaptor::Seek(qlonglong offsetUs) {
 
 void MprisPlayerAdaptor::SetPosition(const QDBusObjectPath& trackId, qlonglong positionUs) {
     const auto* t = m_mpris->controls()->player()->currentTrack();
-    if (!canSeek() || !t || trackId != trackPath(t->id)) {
+    if (!canSeek() || !t || trackId != TrackPath(t->id)) {
         return;  // stale request
     }
     if (positionUs < 0 || positionUs > qlonglong(t->durationMs) * 1000) {

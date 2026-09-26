@@ -31,7 +31,7 @@ public:
     // Clamped to [1, 4] and rounded to 0.05.
     void setScale(double scale);
     double scale() const { return m_scale; }
-    static bool isIntegerScale(double s) { return std::abs(s - std::round(s)) < 1e-6; }
+    static bool IsIntegerScale(double s) { return std::abs(s - std::round(s)) < 1e-6; }
 
     // Size in skin pixels (before scaling). Resizable windows (playlist) change it.
     QSize skinSize() const { return m_skinSize; }
@@ -57,10 +57,10 @@ public:
     virtual void setShaded(bool shaded) { Q_UNUSED(shaded); }
 
     // true when the platform lets us position windows (X11, Windows, macOS, XWayland).
-    static bool canPositionWindows();
+    static bool CanPositionWindows();
 
     // All live skinned windows (used for snapping them to each other).
-    static const QList<SkinnedWindow*>& allWindows();
+    static const QList<SkinnedWindow*>& AllWindows();
 
 Q_SIGNALS:
     void moveFinished();

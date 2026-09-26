@@ -17,13 +17,13 @@ class Player;
 namespace Ui {
 
 // Loads a source into the player and starts playing. Status goes to Player::statusMessage.
-void playMyWave(Core::Player* player);
-void playWave(Core::Player* player, const QStringList& seeds, const QString& title);
-void playLikes(Core::Player* player, bool autoplay);
-void playSearchResults(Core::Player* player, const QString& text);
+void PlayMyWave(Core::Player* player);
+void PlayWave(Core::Player* player, const QStringList& seeds, const QString& title);
+void PlayLikes(Core::Player* player, bool autoplay);
+void PlaySearchResults(Core::Player* player, const QString& text);
 
 // Adds the Yandex items to `menu`. `loginRequested` opens the login dialog.
-void addLibraryActions(
+void AddLibraryActions(
     QMenu* menu,
     Core::Player* player,
     QWidget* dialogParent,

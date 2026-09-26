@@ -22,7 +22,7 @@ namespace {
 
 // Reads all files of a zip into memory, keyed by lower-case base name
 // ("main.bmp"). Skins often put files in a sub-folder and use random case.
-QHash<QString, QByteArray> readZip(const QByteArray& zip, QString* error) {
+QHash<QString, QByteArray> ReadZip(const QByteArray& zip, QString* error) {
     QHash<QString, QByteArray> files;
     mz_zip_archive archive{};
     if (!mz_zip_reader_init_mem(&archive, zip.constData(), size_t(zip.size()), 0)) {
@@ -59,7 +59,7 @@ QHash<QString, QByteArray> readZip(const QByteArray& zip, QString* error) {
     return files;
 }
 
-QImage decodeImage(const QByteArray& bytes) {
+QImage DecodeImage(const QByteArray& bytes) {
     QBuffer buf;
     buf.setData(bytes);
     buf.open(QIODevice::ReadOnly);
@@ -72,7 +72,7 @@ QImage decodeImage(const QByteArray& bytes) {
     return img.convertToFormat(QImage::Format_ARGB32_Premultiplied);
 }
 
-QList<QColor> parseVisColors(const QByteArray& text) {
+QList<QColor> ParseVisColors(const QByteArray& text) {
     static const QRegularExpression rgb(QStringLiteral("^\\s*(\\d+)\\s*,\\s*(\\d+)\\s*,\\s*(\\d+)")
     );
     QList<QColor> colors;
@@ -90,7 +90,7 @@ QList<QColor> parseVisColors(const QByteArray& text) {
 }
 
 // Position of a character in TEXT.BMP (row, column), per webamp's FONT_LOOKUP.
-bool fontCell(QChar c, int* row, int* col) {
+bool FontCell(QChar c, int* row, int* col) {
     static const QHash<char16_t, std::pair<int, int>> table = [] {
         QHash<char16_t, std::pair<int, int>> t;
         for (int i = 0; i < 26; ++i) {
@@ -160,7 +160,7 @@ constexpr PixelGlyph kCyrillicGlyphs[] = {
 };
 
 // Cyrillic -> Latin/digit glyph that looks the same in the Winamp font.
-char16_t cyrillicLookalike(char16_t upper) {
+char16_t CyrillicLookalike(char16_t upper) {
     switch (upper) {
         case u'А': return u'a';  // А
         case u'В': return u'b';  // В
@@ -183,7 +183,7 @@ char16_t cyrillicLookalike(char16_t upper) {
     }
 }
 
-const PixelGlyph* pixelGlyph(char16_t upper) {
+const PixelGlyph* FindPixelGlyph(char16_t upper) {
     for (const PixelGlyph& g : kCyrillicGlyphs) {
         if (g.ch == upper) {
             return &g;
@@ -201,7 +201,7 @@ struct CharRender {
 };
 
 // Font for characters that TEXT.BMP doesn't have (Cyrillic etc.).
-const QFont& fallbackFont() {
+const QFont& FallbackFont() {
     static const QFont f = [] {
         QFont font(QStringLiteral("Sans Serif"));
         font.setPixelSize(7);
@@ -214,7 +214,7 @@ const QFont& fallbackFont() {
 
 // The "ink" colour of TEXT.BMP: the most common colour that is not the
 // background (pixel 0,0 is the background in practice).
-QColor textInkColor(const QImage& text) {
+QColor TextInkColor(const QImage& text) {
     if (text.isNull()) {
         return Qt::green;
     }
@@ -244,7 +244,7 @@ QColor textInkColor(const QImage& text) {
 }  // namespace
 
 bool Skin::loadFromWsz(const QByteArray& zip, const Skin* fallback, QString* error) {
-    const QHash<QString, QByteArray> files = readZip(zip, error);
+    const QHash<QString, QByteArray> files = ReadZip(zip, error);
     if (files.isEmpty()) {
         if (error && error->isEmpty()) {
             *error = QStringLiteral("empty archive");
@@ -258,7 +258,7 @@ bool Skin::loadFromWsz(const QByteArray& zip, const Skin* fallback, QString* err
             if (it == files.cend()) {
                 continue;
             }
-            QImage img = decodeImage(*it);
+            QImage img = DecodeImage(*it);
             if (!img.isNull()) {
                 m_sheets.insert(s, img);
                 return true;
@@ -297,13 +297,13 @@ bool Skin::loadFromWsz(const QByteArray& zip, const Skin* fallback, QString* err
         m_numbersEx = fallback ? fallback->m_numbersEx : false;
     }
 
-    m_region = parseRegionTxt(files.value(QStringLiteral("region.txt")));
+    m_region = ParseRegionTxt(files.value(QStringLiteral("region.txt")));
     if (files.contains(QStringLiteral("pledit.txt"))) {
-        m_plStyle = parsePlaylistStyle(files.value(QStringLiteral("pledit.txt")));
+        m_plStyle = ParsePlaylistStyle(files.value(QStringLiteral("pledit.txt")));
     } else if (fallback) {
         m_plStyle = fallback->m_plStyle;
     }
-    m_visColors = parseVisColors(files.value(QStringLiteral("viscolor.txt")));
+    m_visColors = ParseVisColors(files.value(QStringLiteral("viscolor.txt")));
     if (m_visColors.size() < 24 && fallback) {
         m_visColors = fallback->m_visColors;
     }
@@ -376,7 +376,7 @@ int Skin::drawGenText(QPainter& p, const QPoint& at, const QString& text, bool s
     return x - at.x();
 }
 
-Skin::PlaylistStyle Skin::parsePlaylistStyle(const QByteArray& text) {
+Skin::PlaylistStyle Skin::ParsePlaylistStyle(const QByteArray& text) {
     PlaylistStyle st;
     static const QRegularExpression line(QStringLiteral("^\\s*([A-Za-z]+)\\s*=\\s*(.*?)\\s*$"));
     for (const QByteArray& raw : text.split('\n')) {
@@ -423,7 +423,7 @@ bool Skin::loadFromFile(const QString& path, const Skin* fallback, QString* erro
     return loadFromWsz(f.readAll(), fallback, error);
 }
 
-Skin Skin::builtinBase() {
+Skin Skin::BuiltinBase() {
     Skin s;
     QString err;
     if (!s.loadFromFile(QStringLiteral(":/skins/base-2.91.wsz"), nullptr, &err)) {
@@ -448,20 +448,20 @@ void Skin::draw(QPainter& p, Sheet s, const QRect& src, const QPoint& dst) const
 
 namespace {
 
-CharRender resolveChar(QChar ch) {
+CharRender ResolveChar(QChar ch) {
     CharRender r;
     r.advance = Skins::kCharW;
-    if (fontCell(ch, &r.row, &r.col)) {
+    if (FontCell(ch, &r.row, &r.col)) {
         r.kind = CharRender::Cell;
         return r;
     }
     const char16_t upper = ch.toUpper().unicode();
-    if (const char16_t alike = cyrillicLookalike(upper);
-        alike && fontCell(QChar(alike), &r.row, &r.col)) {
+    if (const char16_t alike = CyrillicLookalike(upper);
+        alike && FontCell(QChar(alike), &r.row, &r.col)) {
         r.kind = CharRender::Cell;
         return r;
     }
-    if (const PixelGlyph* g = pixelGlyph(upper)) {
+    if (const PixelGlyph* g = FindPixelGlyph(upper)) {
         r.kind = CharRender::Pixel;
         r.glyph = g;
         r.advance = g->width + 1;
@@ -469,21 +469,21 @@ CharRender resolveChar(QChar ch) {
     }
     // Accented Latin (é, ñ, ü...): drop the accent like webamp's deburr().
     const QString base = QString(ch).normalized(QString::NormalizationForm_D);
-    if (!base.isEmpty() && base.at(0) != ch && fontCell(base.at(0), &r.row, &r.col)) {
+    if (!base.isEmpty() && base.at(0) != ch && FontCell(base.at(0), &r.row, &r.col)) {
         r.kind = CharRender::Cell;
         return r;
     }
     r.kind = CharRender::SystemFont;
-    r.advance = QFontMetrics(fallbackFont()).horizontalAdvance(ch);
+    r.advance = QFontMetrics(FallbackFont()).horizontalAdvance(ch);
     return r;
 }
 
 }  // namespace
 
-int Skin::textWidth(const QString& text) {
+int Skin::TextWidth(const QString& text) {
     int w = 0;
     for (QChar ch : text) {
-        w += resolveChar(ch).advance;
+        w += ResolveChar(ch).advance;
     }
     return w;
 }
@@ -494,12 +494,12 @@ int Skin::drawText(QPainter& p, const QPoint& at, const QString& text, int maxWi
     QColor ink;
     int x = at.x();
     for (QChar ch : text) {
-        const CharRender r = resolveChar(ch);
+        const CharRender r = ResolveChar(ch);
         if (maxWidth >= 0 && x + r.advance > at.x() + maxWidth) {
             break;
         }
         if ((r.kind == CharRender::Pixel || r.kind == CharRender::SystemFont) && !ink.isValid()) {
-            ink = textInkColor(font);
+            ink = TextInkColor(font);
         }
 
         switch (r.kind) {
@@ -528,7 +528,7 @@ int Skin::drawText(QPainter& p, const QPoint& at, const QString& text, int maxWi
                 }
                 break;
             case CharRender::SystemFont:
-                p.setFont(fallbackFont());
+                p.setFont(FallbackFont());
                 p.setPen(ink);
                 p.drawText(
                     QRect(x, at.y() - 1, r.advance, Skins::kCharH + 2),

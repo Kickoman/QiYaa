@@ -13,16 +13,16 @@ struct TokenSource {
 
 // Normalises whatever is stored in a token file: raw token, a JSON string,
 // {"access_token": "..."}, or a redirect URL fragment "#access_token=...&...".
-QString normalizeToken(const QByteArray& raw);
+QString NormalizeToken(const QByteArray& raw);
 
 // Looks in order: $QIYAA_TOKEN, <configDir>/token, old Yaamp's token.json.
-TokenSource findToken();
+TokenSource FindToken();
 
 // Saves the token to <configDir>/token (owner-only permissions).
-bool saveToken(const QString& token);
+bool SaveToken(const QString& token);
 
 // Logout: leaves an empty token file, which also stops findToken() from
 // re-importing the old Yaamp token.
-void forgetToken();
+void ForgetToken();
 
 }  // namespace Yandex

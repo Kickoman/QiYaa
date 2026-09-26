@@ -47,15 +47,15 @@ struct ResolvedUrl {
     int bitrateKbps = 0;
 };
 
-using Form = QList<std::pair<QString, QString>>;
+using TForm = QList<std::pair<QString, QString>>;
 
 class ApiClient : public QObject {
     Q_OBJECT
 public:
     template <typename T>
-    using Callback = std::function<void(const T& value, const QString& error)>;
+    using TCallback = std::function<void(const T& value, const QString& error)>;
     // `result` is the "result" member of the response envelope.
-    using JsonCallback = std::function<void(const QJsonValue& result, const QString& error)>;
+    using TJsonCallback = std::function<void(const QJsonValue& result, const QString& error)>;
 
     explicit ApiClient(QNetworkAccessManager* nam, QObject* parent = nullptr);
 
@@ -68,28 +68,28 @@ public:
     void setBaseUrl(const QString& base) { m_base = base; }
 
     // Generic requests.
-    void getJson(const QString& path, const QUrlQuery& query, JsonCallback cb);
-    void postForm(const QString& path, const Form& form, JsonCallback cb);
-    void postJson(const QString& path, const QJsonObject& body, JsonCallback cb);
+    void getJson(const QString& path, const QUrlQuery& query, TJsonCallback cb);
+    void postForm(const QString& path, const TForm& form, TJsonCallback cb);
+    void postJson(const QString& path, const QJsonObject& body, TJsonCallback cb);
 
     // Typed calls used by the player.
-    void accountStatus(Callback<Account> cb);
-    void tracks(const QStringList& ids, Callback<QList<Track>> cb);
-    void resolveTrackUrl(const QString& trackId, Callback<ResolvedUrl> cb);
+    void accountStatus(TCallback<Account> cb);
+    void tracks(const QStringList& ids, TCallback<QList<Track>> cb);
+    void resolveTrackUrl(const QString& trackId, TCallback<ResolvedUrl> cb);
     void reportPlayStarted(const Account& account, const Track& track, const QString& playId);
 
     // POSTs (play reports, wave feedback) still on their way; see postsSettled().
     int pendingPosts() const { return m_pendingPosts; }
 
-    static Track parseTrack(const QJsonValue& v);
-    static QString idString(const QJsonValue& v);  // ids come as numbers or strings
+    static Track ParseTrack(const QJsonValue& v);
+    static QString IdString(const QJsonValue& v);  // ids come as numbers or strings
 
 Q_SIGNALS:
     // pendingPosts() dropped to 0 (after the callbacks, which may send more).
     void postsSettled();
 
 private:
-    void handleJson(QNetworkReply* reply, JsonCallback cb);
+    void handleJson(QNetworkReply* reply, TJsonCallback cb);
     void trackPost(QNetworkReply* reply);
 
     QNetworkAccessManager* m_nam;

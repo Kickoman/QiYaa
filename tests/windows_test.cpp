@@ -22,7 +22,7 @@ using Yandex::Track;
 
 namespace {
 
-void mouse(
+void SendMouseEvent(
     QWidget* w,
     QEvent::Type type,
     QPoint local,
@@ -35,22 +35,24 @@ void mouse(
 }
 
 // Press at `local` (window pixels) and move the cursor by `delta`.
-void drag(QWidget* w, QPoint local, QPoint delta) {
+void Drag(QWidget* w, QPoint local, QPoint delta) {
     const QPoint g = w->mapToGlobal(local);
-    mouse(w, QEvent::MouseButtonPress, local, g, Qt::LeftButton, Qt::LeftButton);
+    SendMouseEvent(w, QEvent::MouseButtonPress, local, g, Qt::LeftButton, Qt::LeftButton);
     // Local coordinates are relative to the window's position at press time,
     // which is what Qt reports while the window follows the cursor.
-    mouse(w, QEvent::MouseMove, local + delta, g + delta, Qt::NoButton, Qt::LeftButton);
-    mouse(w, QEvent::MouseButtonRelease, local + delta, g + delta, Qt::LeftButton, Qt::NoButton);
+    SendMouseEvent(w, QEvent::MouseMove, local + delta, g + delta, Qt::NoButton, Qt::LeftButton);
+    SendMouseEvent(
+        w, QEvent::MouseButtonRelease, local + delta, g + delta, Qt::LeftButton, Qt::NoButton
+    );
 }
 
-void click(QWidget* w, QPoint local) {
+void Click(QWidget* w, QPoint local) {
     const QPoint g = w->mapToGlobal(local);
-    mouse(w, QEvent::MouseButtonPress, local, g, Qt::LeftButton, Qt::LeftButton);
-    mouse(w, QEvent::MouseButtonRelease, local, g, Qt::LeftButton, Qt::NoButton);
+    SendMouseEvent(w, QEvent::MouseButtonPress, local, g, Qt::LeftButton, Qt::LeftButton);
+    SendMouseEvent(w, QEvent::MouseButtonRelease, local, g, Qt::LeftButton, Qt::NoButton);
 }
 
-QList<Yandex::Track> tracks(int n) {
+QList<Yandex::Track> MakeTracks(int n) {
     QList<Yandex::Track> out;
     for (int i = 0; i < n; ++i) {
         Yandex::Track t;
@@ -106,17 +108,17 @@ private Q_SLOTS:
     void mainDragsDockedWindows() {
         const QPoint eqOffset = eq->pos() - main->pos();
         const QPoint plOffset = pl->pos() - main->pos();
-        drag(main, {100, 5}, {40, 20});
+        Drag(main, {100, 5}, {40, 20});
         QCOMPARE(eq->pos() - main->pos(), eqOffset);
         QCOMPARE(pl->pos() - main->pos(), plOffset);
     }
 
     void equalizerDetachesAndSnapsBack() {
         const QPoint start = eq->pos();
-        drag(eq, {100, 5}, {300, 0});  // pull it away to the right
+        Drag(eq, {100, 5}, {300, 0});  // pull it away to the right
         QCOMPARE(eq->pos(), start + QPoint(300, 0));
         QVERIFY(!main->dockedWindows().contains(eq));
-        drag(eq, {100, 5}, {-292, 0});  // within 15 px of the old spot: snaps
+        Drag(eq, {100, 5}, {-292, 0});  // within 15 px of the old spot: snaps
         QCOMPARE(eq->pos(), start);
     }
 
@@ -161,10 +163,10 @@ private Q_SLOTS:
     }
 
     void newQueueClearsSelection() {
-        app->player()->setQueue(tracks(10), "A", false);
-        click(pl, {60, 20 + 3 + 6});
+        app->player()->setQueue(MakeTracks(10), "A", false);
+        Click(pl, {60, 20 + 3 + 6});
         QCOMPARE(pl->selection().size(), 1);
-        app->player()->setQueue(tracks(10), "B", false);
+        app->player()->setQueue(MakeTracks(10), "B", false);
         QVERIFY(pl->selection().isEmpty());
         QKeyEvent del(QEvent::KeyPress, Qt::Key_Delete, Qt::NoModifier);
         QCoreApplication::sendEvent(pl, &del);
@@ -172,8 +174,8 @@ private Q_SLOTS:
     }
 
     void shiftArrowsGrowTheRange() {
-        app->player()->setQueue(tracks(10), "A", false);
-        click(pl, {60, 20 + 3 + 6});  // row 0
+        app->player()->setQueue(MakeTracks(10), "A", false);
+        Click(pl, {60, 20 + 3 + 6});  // row 0
         for (int i = 0; i < 3; ++i) {
             QKeyEvent down(QEvent::KeyPress, Qt::Key_Down, Qt::ShiftModifier);
             QCoreApplication::sendEvent(pl, &down);
@@ -194,14 +196,14 @@ private Q_SLOTS:
     }
 
     void eqButtonTogglesWindow() {
-        click(main, {219 + 10, 58 + 5});
+        Click(main, {219 + 10, 58 + 5});
         QVERIFY(!eq->isVisible());
-        click(main, {219 + 10, 58 + 5});
+        Click(main, {219 + 10, 58 + 5});
         QVERIFY(eq->isVisible());
     }
 
     void playlistShowsQueueAndPlaysOnDoubleClick() {
-        app->player()->setQueue(tracks(50), "Test", false);
+        app->player()->setQueue(MakeTracks(50), "Test", false);
         QCOMPARE(pl->visibleRows(), 13);  // default height 232: (232-58)/13
         const QPoint row3(60, 20 + 3 + 2 * 13 + 6);
         QCOMPARE(pl->rowAt(row3), 2);
@@ -215,7 +217,7 @@ private Q_SLOTS:
     }
 
     void playlistScrollsAndResizes() {
-        app->player()->setQueue(tracks(50), "Test", false);
+        app->player()->setQueue(MakeTracks(50), "Test", false);
         QWheelEvent wheel(
             QPointF(60, 60), pl->mapToGlobal(QPointF(60, 60)), QPoint(), QPoint(0, -120),
             Qt::NoButton, Qt::NoModifier, Qt::NoScrollPhase, false
@@ -224,14 +226,14 @@ private Q_SLOTS:
         QCOMPARE(pl->scrollOffset(), 3);
         // Drag the resize grip by one step to the right and two down.
         const QPoint grip(pl->width() - 5, pl->height() - 5);
-        drag(pl, grip, {25, 58});
+        Drag(pl, grip, {25, 58});
         QCOMPARE(pl->sizeSteps(), QSize(1, 6));
         QCOMPARE(pl->size(), QSize(300, 290));
     }
 
     void playlistSelectionAndDelete() {
-        app->player()->setQueue(tracks(5), "Test", false);
-        click(pl, {60, 20 + 3 + 6});  // row 0
+        app->player()->setQueue(MakeTracks(5), "Test", false);
+        Click(pl, {60, 20 + 3 + 6});  // row 0
         QKeyEvent shiftDown(QEvent::KeyPress, Qt::Key_Down, Qt::ShiftModifier);
         QCoreApplication::sendEvent(pl, &shiftDown);
         QCOMPARE(pl->selection().size(), 2);
@@ -245,25 +247,25 @@ private Q_SLOTS:
         QSignalSpy changed(eq, &Ui::EqualizerWindow::settingsChanged);
         // Band 60 Hz at x=78, slider top y=38, 51 px travel: top = +12 dB.
         const QPoint top(78 + 7, 38 + 5);
-        mouse(
+        SendMouseEvent(
             eq, QEvent::MouseButtonPress, top, eq->mapToGlobal(top), Qt::LeftButton, Qt::LeftButton
         );
-        mouse(
+        SendMouseEvent(
             eq, QEvent::MouseButtonRelease, top, eq->mapToGlobal(top), Qt::LeftButton, Qt::NoButton
         );
         QVERIFY(changed.count() >= 1);
         QCOMPARE(eq->settings().bandsDb[0], 12.0);
         // ON button turns the EQ off.
-        click(eq, {14 + 5, 18 + 5});
+        Click(eq, {14 + 5, 18 + 5});
         QVERIFY(!eq->settings().enabled);
     }
 
     void visualizerAndTimeModesToggle() {
         const auto before = main->visMode();
-        click(main, {24 + 10, 43 + 5});
+        Click(main, {24 + 10, 43 + 5});
         QVERIFY(main->visMode() != before);
         const bool remaining = main->showsRemainingTime();
-        click(main, {39 + 20, 26 + 5});
+        Click(main, {39 + 20, 26 + 5});
         QCOMPARE(main->showsRemainingTime(), !remaining);
     }
 
@@ -312,7 +314,7 @@ private Q_SLOTS:
     }
 
     void shadeModesKeepTheStack() {
-        app->player()->setQueue(tracks(3), "A", false);
+        app->player()->setQueue(MakeTracks(3), "A", false);
         const QPoint mainPos = main->pos();
         main->setShaded(true);
         QCOMPARE(main->size(), QSize(275, 14));
@@ -363,7 +365,7 @@ private Q_SLOTS:
     }
 
     void playlistScrollIsValidAfterUnshade() {
-        app->player()->setQueue(tracks(40), "A", false);
+        app->player()->setQueue(MakeTracks(40), "A", false);
         pl->setShaded(true);
         app->player()->playIndex(39);  // scrolls the one-row shaded view to row 39
         pl->setShaded(false);
@@ -389,7 +391,7 @@ private Q_SLOTS:
     }
 
     void noPlaybackAfterShutDown() {
-        app->player()->setQueue(tracks(3), "A", false);
+        app->player()->setQueue(MakeTracks(3), "A", false);
         app->player()->shutDown();
         app->player()->playIndex(2);
         QCOMPARE(app->player()->currentIndex(), 0);
@@ -431,29 +433,29 @@ private Q_SLOTS:
     void eqShadeSlidersDriveMainVolume() {
         eq->setShaded(true);
         const QPoint vol(61 + 96, 7);  // right end of the mini volume slider
-        mouse(
+        SendMouseEvent(
             eq, QEvent::MouseButtonPress, vol, eq->mapToGlobal(vol), Qt::LeftButton, Qt::LeftButton
         );
-        mouse(
+        SendMouseEvent(
             eq, QEvent::MouseButtonRelease, vol, eq->mapToGlobal(vol), Qt::LeftButton, Qt::NoButton
         );
         QCOMPARE(main->volume(), 100);
         const QPoint bal(164, 7);  // left end of the mini balance slider
-        mouse(
+        SendMouseEvent(
             eq, QEvent::MouseButtonPress, bal, eq->mapToGlobal(bal), Qt::LeftButton, Qt::LeftButton
         );
-        mouse(
+        SendMouseEvent(
             eq, QEvent::MouseButtonRelease, bal, eq->mapToGlobal(bal), Qt::LeftButton, Qt::NoButton
         );
         QCOMPARE(main->balance(), -100);
     }
 
     void mainShadeTransportWorks() {
-        app->player()->setQueue(tracks(3), "A", false);
+        app->player()->setQueue(MakeTracks(3), "A", false);
         main->setShaded(true);
-        click(main, {204 + 4, 6});  // mini "next"
+        Click(main, {204 + 4, 6});  // mini "next"
         QCOMPARE(app->player()->currentIndex(), 1);
-        click(main, {169 + 3, 6});  // mini "previous"
+        Click(main, {169 + 3, 6});  // mini "previous"
         QCOMPARE(app->player()->currentIndex(), 0);
     }
 
@@ -469,7 +471,7 @@ private Q_SLOTS:
             return Tests::MockResponse{200, png};
         });
 
-        QList<Yandex::Track> list = tracks(1);
+        QList<Yandex::Track> list = MakeTracks(1);
         list[0].title = QStringLiteral("Группа крови");
         list[0].artists = {QStringLiteral("Кино")};
         list[0].albumTitle = QStringLiteral("Группа крови");

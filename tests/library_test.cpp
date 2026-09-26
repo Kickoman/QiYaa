@@ -21,7 +21,7 @@ QByteArray J(const char* s) {
     return QByteArray(s).replace('\'', '"');
 }
 
-QByteArray trackJson(int id, const char* title, int album = 0) {
+QByteArray TrackJson(int id, const char* title, int album = 0) {
     QByteArray s = "{\"id\":" + QByteArray::number(id) + ",\"title\":\"" + title
         + "\",\"artists\":[{\"name\":\"Artist\"}],\"durationMs\":180000";
     if (album) {
@@ -103,7 +103,7 @@ private Q_SLOTS:
               "}")
         );
         server.result(
-            "POST", "/tracks/", "[" + trackJson(1, "One", 10) + "," + trackJson(2, "Two", 20) + "]"
+            "POST", "/tracks/", "[" + TrackJson(1, "One", 10) + "," + TrackJson(2, "Two", 20) + "]"
         );
         Result<QList<Yandex::Track>> r;
         lib.likedTracks(r.cb());
@@ -130,7 +130,7 @@ private Q_SLOTS:
         // Embedded track objects are used directly.
         server.result(
             "GET", "/users/42/playlists/1003",
-            "{\"tracks\":[{\"id\":5,\"track\":" + trackJson(5, "Five") + "}]}"
+            "{\"tracks\":[{\"id\":5,\"track\":" + TrackJson(5, "Five") + "}]}"
         );
         Result<QList<Yandex::Track>> tracks;
         lib.playlistTracks(lists.value[0], tracks.cb());
@@ -184,7 +184,7 @@ private Q_SLOTS:
 
         server.result(
             "GET", "/albums/100/with-tracks",
-            "{\"id\":100,\"volumes\":[[" + trackJson(1, "A") + "],[" + trackJson(2, "B") + "]]}"
+            "{\"id\":100,\"volumes\":[[" + TrackJson(1, "A") + "],[" + TrackJson(2, "B") + "]]}"
         );
         Result<QList<Yandex::Track>> tracks;
         lib.albumTracks("100", tracks.cb());
@@ -214,7 +214,7 @@ private Q_SLOTS:
             "POST", "/rotor/session/new",
             "{\"radioSessionId\":\"S1\",\"batchId\":\"B1\",\"sequence\":[{\"type\":\"track\","
             "\"track\":"
-                + trackJson(1, "W1") + "}]}"
+                + TrackJson(1, "W1") + "}]}"
         );
         Result<Yandex::WaveBatch> first;
         lib.startWave({"user:onyourwave"}, first.cb());
@@ -230,7 +230,7 @@ private Q_SLOTS:
 
         server.result(
             "POST", "/rotor/session/S1/tracks",
-            "{\"batchId\":\"B2\",\"sequence\":[{\"track\":" + trackJson(2, "W2") + "}]}"
+            "{\"batchId\":\"B2\",\"sequence\":[{\"track\":" + TrackJson(2, "W2") + "}]}"
         );
         Result<Yandex::WaveBatch> more;
         lib.moreWave("S1", {"1"}, more.cb());
@@ -247,7 +247,7 @@ private Q_SLOTS:
             "GET", "/search",
             "{\"best\":{\"type\":\"artist\",\"result\":{\"id\":9,\"name\":\"Кино\"}},"
             "\"tracks\":{\"results\":["
-                + trackJson(3, "Кукушка") + "]}}"
+                + TrackJson(3, "Кукушка") + "]}}"
         );
         Result<Yandex::SearchResult> r;
         lib.search("кино", r.cb());
@@ -347,13 +347,13 @@ private Q_SLOTS:
                 200, J("{'result':{'library':{'tracks':[{'id':'1'}]}}}"), 300
             };
         });
-        server.result("POST", "/tracks/", "[" + trackJson(1, "Liked") + "]");
+        server.result("POST", "/tracks/", "[" + TrackJson(1, "Liked") + "]");
         server.result(
             "POST", "/rotor/session/new",
-            "{\"radioSessionId\":\"S9\",\"sequence\":[{\"track\":" + trackJson(7, "Wave") + "}]}"
+            "{\"radioSessionId\":\"S9\",\"sequence\":[{\"track\":" + TrackJson(7, "Wave") + "}]}"
         );
-        Ui::playLikes(&player, false);
-        Ui::playMyWave(&player);
+        Ui::PlayLikes(&player, false);
+        Ui::PlayMyWave(&player);
         QVERIFY(QTest::qWaitFor(
             [&] { return player.queueTitle() == QStringLiteral("Моя волна"); }, 3000
         ));
@@ -385,7 +385,7 @@ private Q_SLOTS:
 
         server.result(
             "GET", "/users/503646255/playlists/123/recommendations",
-            "{\"batchId\":\"b\",\"tracks\":[" + trackJson(8, "Rec", 80) + "]}"
+            "{\"batchId\":\"b\",\"tracks\":[" + TrackJson(8, "Rec", 80) + "]}"
         );
         Result<QList<Yandex::Track>> recs;
         lib.playlistRecommendations(r.value[0], recs.cb());
@@ -414,7 +414,7 @@ private Q_SLOTS:
 
     void waveFeedbackFallsBackToStationEndpoint() {
         Yandex::Track t =
-            Yandex::ApiClient::parseTrack(QJsonDocument::fromJson(trackJson(5, "T", 50)).object());
+            Yandex::ApiClient::ParseTrack(QJsonDocument::fromJson(TrackJson(5, "T", 50)).object());
         // Session endpoint works: only it is used.
         server.result("POST", "/rotor/session/OK1/feedback", "\"ok\"");
         lib.waveFeedback("OK1", "user:onyourwave", "B1", Yandex::WaveEvent::TrackStarted, &t);
@@ -460,7 +460,7 @@ private Q_SLOTS:
 
     void waveFeedbackDoesNotResendAfterServerError() {
         Yandex::Track t =
-            Yandex::ApiClient::parseTrack(QJsonDocument::fromJson(trackJson(5, "T", 50)).object());
+            Yandex::ApiClient::ParseTrack(QJsonDocument::fromJson(TrackJson(5, "T", 50)).object());
         server.json("POST", "/rotor/session/S500/feedback", J("{'error':'oops'}"), 503);
         const auto before = server.requests().size();
         bool settled = false;
@@ -479,7 +479,7 @@ private Q_SLOTS:
     void postsSettleOnlyAfterTheFallback() {
         // Quitting waits for postsSettled; it must cover the station re-send.
         Yandex::Track t =
-            Yandex::ApiClient::parseTrack(QJsonDocument::fromJson(trackJson(5, "T", 50)).object());
+            Yandex::ApiClient::ParseTrack(QJsonDocument::fromJson(TrackJson(5, "T", 50)).object());
         server.json(
             "POST", "/rotor/session/S404/feedback", J("{'error':{'message':'not found'}}"), 404
         );
@@ -520,8 +520,8 @@ private Q_SLOTS:
         server.result("POST", "/play-audio", "\"ok\"");
         QList<Yandex::Track> tracks;
         for (int i = 1; i <= 2; ++i) {
-            tracks << Yandex::ApiClient::parseTrack(
-                QJsonDocument::fromJson(trackJson(i, "t")).object()
+            tracks << Yandex::ApiClient::ParseTrack(
+                QJsonDocument::fromJson(TrackJson(i, "t")).object()
             );
         }
         QStringList log;
@@ -582,11 +582,11 @@ private:
         }
         return n;
     }
-    static QList<Yandex::Track> numbered(const QList<int>& ids) {
+    static QList<Yandex::Track> NumberedTracks(const QList<int>& ids) {
         QList<Yandex::Track> out;
         for (int id : ids) {
-            out << Yandex::ApiClient::parseTrack(
-                QJsonDocument::fromJson(trackJson(id, "t")).object()
+            out << Yandex::ApiClient::ParseTrack(
+                QJsonDocument::fromJson(TrackJson(id, "t")).object()
             );
         }
         return out;
@@ -600,7 +600,7 @@ private Q_SLOTS:
         }
         QStringList log;
         rig.player.setQueue(
-            numbered({11, 12, 13}), "A", false, {},
+            NumberedTracks({11, 12, 13}), "A", false, {},
             [&](Core::Player::TrackEvent e, const Yandex::Track& t, double) {
                 log << QStringLiteral("%1:%2").arg(int(e)).arg(t.id);
             }
@@ -636,7 +636,7 @@ private Q_SLOTS:
         if (!setUpAudio(rig, {21, 22, 23})) {
             QSKIP("no audio output");
         }
-        rig.player.setQueue(numbered({21, 22, 23}), "A", false);
+        rig.player.setQueue(NumberedTracks({21, 22, 23}), "A", false);
         rig.player.playIndex(0);
         QVERIFY(QTest::qWaitFor([&] { return rig.player.preloadedIndex() == 1; }, 5000));
         rig.player.removeTracks({1});  // the preloaded track is gone: 23 follows now
@@ -660,8 +660,8 @@ private Q_SLOTS:
         Core::Player player(&lib, &engine);
         QList<Yandex::Track> batch;
         for (int i = 0; i < 3; ++i) {
-            batch << Yandex::ApiClient::parseTrack(
-                QJsonDocument::fromJson(trackJson(i + 1, "t")).object()
+            batch << Yandex::ApiClient::ParseTrack(
+                QJsonDocument::fromJson(TrackJson(i + 1, "t")).object()
             );
         }
         int asked = 0;
@@ -669,8 +669,8 @@ private Q_SLOTS:
             batch, "Wave", false,
             [&](std::function<void(const QList<Yandex::Track>&)> done) {
                 ++asked;
-                done({Yandex::ApiClient::parseTrack(
-                    QJsonDocument::fromJson(trackJson(99, "more")).object()
+                done({Yandex::ApiClient::ParseTrack(
+                    QJsonDocument::fromJson(TrackJson(99, "more")).object()
                 )});
             }
         );

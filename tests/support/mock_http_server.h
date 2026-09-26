@@ -37,7 +37,7 @@ struct MockResponse {
 
 class MockHttpServer : public QObject {
 public:
-    using Handler = std::function<MockResponse(const MockRequest&)>;
+    using THandler = std::function<MockResponse(const MockRequest&)>;
 
     MockHttpServer() {
         m_server.listen(QHostAddress::LocalHost);
@@ -58,11 +58,11 @@ public:
     }
 
     // Exact "METHOD /path" match.
-    void on(const QByteArray& method, const QString& path, Handler h) {
+    void on(const QByteArray& method, const QString& path, THandler h) {
         m_routes[method + ' ' + path.toUtf8()] = std::move(h);
     }
     // Any path starting with `prefix` (when no exact route matches).
-    void onPrefix(const QByteArray& method, const QString& prefix, Handler h) {
+    void onPrefix(const QByteArray& method, const QString& prefix, THandler h) {
         m_prefixRoutes.append({method, prefix, std::move(h)});
     }
     void
@@ -145,10 +145,10 @@ private:
     struct PrefixRoute {
         QByteArray method;
         QString prefix;
-        Handler handler;
+        THandler handler;
     };
     QTcpServer m_server;
-    QHash<QByteArray, Handler> m_routes;
+    QHash<QByteArray, THandler> m_routes;
     QList<PrefixRoute> m_prefixRoutes;
     QList<MockRequest> m_requests;
 };

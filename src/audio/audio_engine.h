@@ -42,31 +42,31 @@ public:
     bool init(QString* error = nullptr);
     QString backendName() const;
 
-    using StreamId = quint64;  // 0 = none
+    using TStreamId = quint64;  // 0 = none
 
     // Begin a new stream (drops the current and the queued one). Feed it with
     // appendData(), then finishData() once the download completes (or failData()).
-    StreamId beginStream();
+    TStreamId beginStream();
     // The stream to continue with when the current one ends (replaces a queued
     // one). Only while something plays; returns 0 otherwise.
-    StreamId queueStream();
+    TStreamId queueStream();
     // Forget the queued stream. If playback is already committed to it (the
     // last ~2 s of the current track), it stops at the boundary instead and
     // trackFinished() follows as usual.
     void clearQueued();
-    StreamId queuedStream() const;  // 0 if none (or it couldn't be decoded)
+    TStreamId queuedStream() const;  // 0 if none (or it couldn't be decoded)
     // Start the queued stream now, from its beginning; returns its id (0 if none).
-    StreamId playQueuedNow();
+    TStreamId playQueuedNow();
 
     // Feeding a stream that was dropped meanwhile is a no-op.
-    void appendData(StreamId stream, const QByteArray& bytes);
-    void finishData(StreamId stream);
-    void failData(StreamId stream);
+    void appendData(TStreamId stream, const QByteArray& bytes);
+    void finishData(TStreamId stream);
+    void failData(TStreamId stream);
     // The same for the current stream.
     void appendData(const QByteArray& bytes) { appendData(m_current, bytes); }
     void finishData() { finishData(m_current); }
     void failData() { failData(m_current); }
-    StreamId currentStream() const { return m_current; }
+    TStreamId currentStream() const { return m_current; }
 
     void pause();
     void resume();
@@ -109,10 +109,10 @@ private:
     void dropStreams();
 
     // Streams that can still be fed, by id (UI thread only).
-    QHash<StreamId, std::shared_ptr<StreamBuffer>> m_streams;
-    StreamId m_lastId = 0;
-    StreamId m_current = 0;
-    StreamId m_queued = 0;
+    QHash<TStreamId, std::shared_ptr<StreamBuffer>> m_streams;
+    TStreamId m_lastId = 0;
+    TStreamId m_current = 0;
+    TStreamId m_queued = 0;
 
     std::unique_ptr<Impl> d;
     State m_state = State::Stopped;

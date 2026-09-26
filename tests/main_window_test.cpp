@@ -34,7 +34,7 @@ private:
 
 private Q_SLOTS:
     void initTestCase() {
-        skin = Skins::Skin::builtinBase();
+        skin = Skins::Skin::BuiltinBase();
         QVERIFY(skin.isValid());
         api = std::make_unique<Yandex::ApiClient>(&nam);
         library = std::make_unique<Yandex::Library>(api.get());

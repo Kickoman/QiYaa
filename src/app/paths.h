@@ -6,9 +6,9 @@
 namespace App {
 
 // Our own config directory (created on demand), e.g. ~/.config/QiYaa.
-QString configDir();
+QString ConfigDir();
 
 // Candidate locations of the old Electron Yaamp data folder (userData).
-QStringList yaampDataDirs();
+QStringList YaampDataDirs();
 
 }  // namespace App

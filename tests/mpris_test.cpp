@@ -19,7 +19,7 @@ namespace {
 const QString kService = QStringLiteral("org.mpris.MediaPlayer2.qiyaatest");
 const QString kPath = QStringLiteral("/org/mpris/MediaPlayer2");
 
-QList<Yandex::Track> tracks(int n) {
+QList<Yandex::Track> MakeTracks(int n) {
     QList<Yandex::Track> out;
     for (int i = 0; i < n; ++i) {
         Yandex::Track t;
@@ -104,7 +104,7 @@ private Q_SLOTS:
         mpris = std::make_unique<Integrations::Mpris>(controls.get(), QStringLiteral("qiyaatest"));
         QVERIFY(mpris->isRegistered());
         QCOMPARE(mpris->serviceName(), kService);
-        player->setQueue(tracks(3), QStringLiteral("T"), false);
+        player->setQueue(MakeTracks(3), QStringLiteral("T"), false);
     }
 
     void rootInterface() {

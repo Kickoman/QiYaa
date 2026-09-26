@@ -40,15 +40,15 @@ using Audio::EqSettings;
 
 namespace {
 
-QString settingsPath(const Application::Options& o, QTemporaryDir* tmp) {
+QString SettingsPath(const Application::Options& o, QTemporaryDir* tmp) {
     if (tmp) {
         return tmp->filePath(QStringLiteral("settings.ini"));
     }
-    return o.settingsFile.isEmpty() ? App::configDir() + QStringLiteral("/settings.ini")
+    return o.settingsFile.isEmpty() ? App::ConfigDir() + QStringLiteral("/settings.ini")
                                     : o.settingsFile;
 }
 
-Audio::EqSettings readEq(const QSettings& s) {
+Audio::EqSettings ReadEq(const QSettings& s) {
     Audio::EqSettings eq;
     eq.enabled = s.value(QStringLiteral("equalizer/enabled"), true).toBool();
     eq.preampDb = s.value(QStringLiteral("equalizer/preamp"), 0.0).toDouble();
@@ -59,7 +59,7 @@ Audio::EqSettings readEq(const QSettings& s) {
     return eq;
 }
 
-void writeEq(QSettings& s, const Audio::EqSettings& eq) {
+void WriteEq(QSettings& s, const Audio::EqSettings& eq) {
     s.setValue(QStringLiteral("equalizer/enabled"), eq.enabled);
     s.setValue(QStringLiteral("equalizer/preamp"), eq.preampDb);
     QStringList bands;
@@ -75,8 +75,8 @@ Application::Application(const Options& options, QObject* parent)
     : QObject(parent)
     , m_options(options)
     , m_tmpDir(options.readOnlySettings ? std::make_unique<QTemporaryDir>() : nullptr)
-    , m_settings(settingsPath(options, m_tmpDir.get()), QSettings::IniFormat)
-    , m_baseSkin(Skins::Skin::builtinBase())
+    , m_settings(SettingsPath(options, m_tmpDir.get()), QSettings::IniFormat)
+    , m_baseSkin(Skins::Skin::BuiltinBase())
     , m_skin(std::make_unique<Skins::Skin>(m_baseSkin))
     , m_api(&m_nam)
     , m_library(&m_api)
@@ -124,7 +124,7 @@ Application::Application(const Options& options, QObject* parent)
 #if defined(QIYAA_HAVE_MILKDROP)
     {
         const QString userPresets =
-            (m_tmpDir ? m_tmpDir->path() : App::configDir()) + QStringLiteral("/milkdrop");
+            (m_tmpDir ? m_tmpDir->path() : App::ConfigDir()) + QStringLiteral("/milkdrop");
         m_md = std::make_unique<Ui::MilkdropWindow>(
             &m_engine, QStringLiteral(":/milkdrop"), userPresets, m_skin.get()
         );
@@ -214,7 +214,7 @@ Application::Application(const Options& options, QObject* parent)
     });
 
     // Equalizer.
-    const Audio::EqSettings eq = readEq(m_settings);
+    const Audio::EqSettings eq = ReadEq(m_settings);
     m_eq->setSettings(eq);
     m_eq->setAutoOn(m_settings.value(QStringLiteral("equalizer/auto"), false).toBool());
     m_engine.setEqualizer(eq);
@@ -222,7 +222,7 @@ Application::Application(const Options& options, QObject* parent)
         m_eq.get(), &Ui::EqualizerWindow::settingsChanged, this,
         [this](const Audio::EqSettings& s) {
             m_engine.setEqualizer(s);
-            writeEq(m_settings, s);
+            WriteEq(m_settings, s);
         }
     );
     connect(
@@ -375,7 +375,7 @@ void Application::start() {
     if (m_options.offline) {
         return;
     }
-    const Yandex::TokenSource token = Yandex::findToken();
+    const Yandex::TokenSource token = Yandex::FindToken();
     if (token.token.isEmpty()) {
         m_main->setStatusText(QStringLiteral("Войдите: правый клик → Войти"));
         QTimer::singleShot(0, this, &Application::login);
@@ -383,7 +383,7 @@ void Application::start() {
     }
     qInfo("Using Yandex token from %s", qPrintable(token.origin));
     // A token imported from the old Yaamp gets copied into our own config.
-    const bool imported = !token.origin.startsWith(App::configDir())
+    const bool imported = !token.origin.startsWith(App::ConfigDir())
         && !token.origin.startsWith(QLatin1String("environment"));
     applyToken(token.token, imported);
 }
@@ -397,11 +397,11 @@ void Application::applyToken(const QString& token, bool save) {
             return;
         }
         if (save) {
-            Yandex::saveToken(token);
+            Yandex::SaveToken(token);
         }
         m_main->setStatusText(QStringLiteral("Привет, %1!").arg(acc.displayName));
         if (m_player.playlist().isEmpty()) {
-            Ui::playLikes(&m_player, false);
+            Ui::PlayLikes(&m_player, false);
         }
     });
 }
@@ -417,7 +417,7 @@ void Application::login() {
 void Application::logout() {
     m_player.clearQueue();
     m_library.logout();
-    Yandex::forgetToken();
+    Yandex::ForgetToken();
     m_main->setStatusText(QStringLiteral("Вы вышли из аккаунта"));
 }
 
@@ -447,7 +447,7 @@ void Application::setScale(double scale, bool persist) {
         rects << w->frameGeometry();
     }
     QList<std::pair<Ui::SkinnedWindow*, QPoint>> docked;  // offsets in skin pixels
-    for (int i : Ui::connectedGroup(0, rects)) {
+    for (int i : Ui::ConnectedGroup(0, rects)) {
         const QPointF off = QPointF(all[i]->pos() - m_main->pos()) / old;
         docked.append({all[i], QPoint(qRound(off.x()), qRound(off.y()))});
     }
@@ -463,7 +463,7 @@ void Application::setScale(double scale, bool persist) {
     QList<QRect> placed{m_main->frameGeometry()};
     for (const auto& [w, off] : docked) {
         QRect r(mainPos + QPoint(qRound(off.x() * s), qRound(off.y() * s)), w->size());
-        r.moveTopLeft(Ui::snapToOthers(r, placed, 4));
+        r.moveTopLeft(Ui::SnapToOthers(r, placed, 4));
         w->move(r.topLeft());
         placed << r;
     }
@@ -478,8 +478,8 @@ void Application::setScale(double scale, bool persist) {
     for (QScreen* sc : QGuiApplication::screens()) {
         screens << sc->availableGeometry();
     }
-    const QRect screen = Ui::pickScreen(bounds, screens);
-    const QPoint shift = Ui::clampInside(bounds, screen) - bounds.topLeft();
+    const QRect screen = Ui::PickScreen(bounds, screens);
+    const QPoint shift = Ui::ClampInside(bounds, screen) - bounds.topLeft();
     if (!shift.isNull()) {
         m_main->move(m_main->pos() + shift);
         for (const auto& [w, off] : docked) {
@@ -576,7 +576,7 @@ void Application::saveState() {
     m_settings.setValue(QStringLiteral("vis/mode"), int(m_main->visMode()));
     m_settings.setValue(QStringLiteral("time/remaining"), m_main->showsRemainingTime());
     m_settings.setValue(QStringLiteral("equalizer/auto"), m_eq->autoOn());
-    if (!Ui::SkinnedWindow::canPositionWindows() || !m_main->isVisible() || m_transientScale) {
+    if (!Ui::SkinnedWindow::CanPositionWindows() || !m_main->isVisible() || m_transientScale) {
         return;
     }
     m_settings.setValue(QStringLiteral("mainWindow/pos"), m_main->pos());
@@ -712,14 +712,14 @@ void Application::fillWindowActions(QMenu* menu) {
 void Application::showSourcesMenu(QPoint globalPos) {
     auto* menu = new QMenu(m_main.get());
     menu->setAttribute(Qt::WA_DeleteOnClose);
-    Ui::addLibraryActions(menu, &m_player, m_main.get(), [this] { login(); });
+    Ui::AddLibraryActions(menu, &m_player, m_main.get(), [this] { login(); });
     menu->popup(globalPos);
 }
 
 void Application::showMainMenu(QPoint globalPos) {
     auto* menu = new QMenu(m_main.get());
     menu->setAttribute(Qt::WA_DeleteOnClose);
-    Ui::addLibraryActions(menu, &m_player, m_main.get(), [this] { login(); });
+    Ui::AddLibraryActions(menu, &m_player, m_main.get(), [this] { login(); });
     menu->addSeparator();
     fillWindowActions(menu);
     menu->addSeparator();

@@ -88,8 +88,8 @@ void Player::setQueue(
     const QList<Yandex::Track>& tracks,
     const QString& title,
     bool autoplay,
-    MoreFn more,
-    EventFn events
+    TMoreFn more,
+    TEventFn events
 ) {
     stop();
     m_events = std::move(events);
@@ -399,7 +399,7 @@ void Player::trackStarted(const Yandex::Track& track, int bitrate) {
     maybePreload();
 }
 
-QNetworkReply* Player::startDownload(const QUrl& url, StreamId stream) {
+QNetworkReply* Player::startDownload(const QUrl& url, TStreamId stream) {
     QNetworkRequest req(url);
     req.setAttribute(
         QNetworkRequest::RedirectPolicyAttribute, QNetworkRequest::NoLessSafeRedirectPolicy
@@ -424,7 +424,7 @@ QNetworkReply* Player::startDownload(const QUrl& url, StreamId stream) {
     return reply;
 }
 
-void Player::downloadFinished(StreamId stream, bool failed, const QString& error) {
+void Player::downloadFinished(TStreamId stream, bool failed, const QString& error) {
     if (stream && stream == m_stream) {
         if (failed) {
             Q_EMIT statusMessage(QStringLiteral("Download failed: ") + error);
@@ -469,7 +469,7 @@ void Player::maybePreload() {
             if (!self || !self->m_preload || self->m_preload->gen != gen) {
                 return;
             }
-            const StreamId stream = err.isEmpty() ? self->m_engine->queueStream() : 0;
+            const TStreamId stream = err.isEmpty() ? self->m_engine->queueStream() : 0;
             if (!stream) {  // no link (or nothing plays any more): the track starts the usual way
                             // when it's time
                 self->m_preload.reset();

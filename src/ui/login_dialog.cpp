@@ -90,7 +90,7 @@ LoginDialog::LoginDialog(QNetworkAccessManager* nam, QWidget* parent, const QStr
         QDesktopServices::openUrl(m_verifyUrl);
     });
     connect(openBrowser, &QPushButton::clicked, this, [] {
-        QDesktopServices::openUrl(Yandex::DeviceLogin::browserLoginUrl());
+        QDesktopServices::openUrl(Yandex::DeviceLogin::BrowserLoginUrl());
     });
     connect(use, &QPushButton::clicked, this, &LoginDialog::tryPasted);
     connect(m_paste, &QLineEdit::returnPressed, this, &LoginDialog::tryPasted);
@@ -137,7 +137,7 @@ void LoginDialog::fitToContents() {
 }
 
 void LoginDialog::tryPasted() {
-    const QString token = Yandex::normalizeToken(m_paste->text().toUtf8());
+    const QString token = Yandex::NormalizeToken(m_paste->text().toUtf8());
     if (token.isEmpty()) {
         m_pasteError->setText(
             QStringLiteral("Не вижу здесь токена. Нужен адрес с «#access_token=…» или сам токен.")

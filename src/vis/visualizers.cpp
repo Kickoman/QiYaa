@@ -71,7 +71,7 @@ const std::vector<float>& Analyzer::analyze(std::span<const float> mono) {
 
 namespace {
 
-QColor visColor(const Skins::Skin& skin, int i) {
+QColor VisColor(const Skins::Skin& skin, int i) {
     const auto& c = skin.visColors();
     return i < c.size() ? c[i] : QColor(Qt::green);
 }
@@ -126,11 +126,11 @@ public:
             for (int i = 0; i < barH; ++i) {
                 // Colours 2..17: analyzer gradient from top to bottom.
                 const int colorIndex = 2 + (h - 1 - i) * 16 / h;
-                p.fillRect(x, area.y() + h - 1 - i, 3, 1, visColor(skin, colorIndex));
+                p.fillRect(x, area.y() + h - 1 - i, 3, 1, VisColor(skin, colorIndex));
             }
             const int peakY = int(std::ceil(m_peaks[b] * h));
             if (peakY > 0) {
-                p.fillRect(x, area.y() + h - peakY, 3, 1, visColor(skin, 23));
+                p.fillRect(x, area.y() + h - peakY, 3, 1, VisColor(skin, 23));
             }
         }
     }
@@ -172,7 +172,7 @@ public:
                 // Colours 18..22: from the centre line outwards.
                 const int dist = int(std::abs(yy - 7.5f));
                 p.fillRect(
-                    area.x() + x, area.y() + yy, 1, 1, visColor(skin, 18 + std::min(4, dist / 2))
+                    area.x() + x, area.y() + yy, 1, 1, VisColor(skin, 18 + std::min(4, dist / 2))
                 );
             }
             last = y;
@@ -190,10 +190,10 @@ private:
 
 }  // namespace
 
-std::unique_ptr<Visualizer> makeSpectrum() {
+std::unique_ptr<Visualizer> MakeSpectrum() {
     return std::make_unique<Spectrum>();
 }
-std::unique_ptr<Visualizer> makeOscilloscope() {
+std::unique_ptr<Visualizer> MakeOscilloscope() {
     return std::make_unique<Oscilloscope>();
 }
 
