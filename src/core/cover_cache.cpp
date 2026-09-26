@@ -5,8 +5,10 @@
 #include <QFile>
 #include <QNetworkAccessManager>
 #include <QNetworkReply>
+#include <QNetworkRequest>
 #include <QPointer>
 #include <QStandardPaths>
+#include <QString>
 
 namespace Core {
 

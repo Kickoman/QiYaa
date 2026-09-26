@@ -1,11 +1,14 @@
 #include "yandex/token.h"
 
+#include <QByteArray>
 #include <QFile>
+#include <QFileDevice>
+#include <QIODevice>
 #include <QJsonArray>
 #include <QJsonDocument>
 #include <QJsonObject>
+#include <QJsonValue>
 #include <QRegularExpression>
-#include <QUrlQuery>
 
 namespace Yandex {
 

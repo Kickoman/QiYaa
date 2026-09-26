@@ -1,15 +1,26 @@
 #include "app/application.h"
+#include "audio/audio_engine.h"
 #include "ui/main_window.h"
+#include "yandex/api_client.h"
 
 #include <QApplication>
+#include <QByteArray>
+#include <QCommandLineOption>
 #include <QCommandLineParser>
 #include <QFile>
+#include <QGuiApplication>
+#include <QIODevice>
 #include <QIcon>
+#include <QLatin1String>
+#include <QList>
+#include <QObject>
+#include <QString>
 #include <QTimer>
 
 #include <cstdio>
 #include <exception>
 #include <memory>
+#include <utility>
 
 namespace {
 
@@ -79,8 +90,7 @@ int Run(int& argc, char* argv[]) {
     ChoosePlatform();
     QApplication app(argc, argv);
     QApplication::setApplicationName(QStringLiteral("QiYaa"));
-    QGuiApplication::setDesktopFileName(QStringLiteral("qiyaa")
-    );  // matches qiyaa.desktop (taskbar icon, MPRIS)
+    QGuiApplication::setDesktopFileName(QStringLiteral("qiyaa"));
     {
         QIcon icon;
         for (int size : {16, 24, 32, 48, 64, 128, 256}) {

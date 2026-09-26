@@ -3,10 +3,18 @@
 #include "core/cover_cache.h"
 #include "core/player.h"
 #include "skins/skin.h"
+#include "yandex/library.h"
 
+#include <QColor>
 #include <QDesktopServices>
+#include <QFont>
 #include <QFontMetrics>
+#include <QImage>
+#include <QLatin1Char>
 #include <QPainter>
+#include <QPoint>
+#include <QString>
+#include <QWidget>
 
 #include <algorithm>
 

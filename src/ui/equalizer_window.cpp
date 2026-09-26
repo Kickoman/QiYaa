@@ -6,14 +6,22 @@
 #include "skins/sprites.h"
 
 #include <QCloseEvent>
+#include <QColor>
 #include <QDir>
 #include <QFile>
 #include <QFileDialog>
+#include <QImage>
 #include <QInputDialog>
 #include <QLineEdit>
+#include <QList>
 #include <QMenu>
 #include <QPainter>
+#include <QPoint>
+#include <QRect>
+#include <QString>
+#include <QStringList>
 #include <QWheelEvent>
+#include <QWidget>
 
 #include <algorithm>
 #include <cmath>

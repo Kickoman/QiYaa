@@ -502,3 +502,17 @@ private Q_SLOTS:
 
 QTEST_MAIN(TestWindows)
 #include "windows_test.moc"
+#include "yandex/api_client.h"
+
+#include <QColor>
+#include <QCoreApplication>
+#include <QEvent>
+#include <QGuiApplication>
+#include <QList>
+#include <QPoint>
+#include <QPointF>
+#include <QSet>
+#include <QString>
+#include <QWidget>
+
+#include <memory>

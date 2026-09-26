@@ -40,3 +40,7 @@ private Q_SLOTS:
 
 QTEST_GUILESS_MAIN(TestRegion)
 #include "region_test.moc"
+
+#include <QByteArray>
+#include <QObject>
+#include <QRegion>

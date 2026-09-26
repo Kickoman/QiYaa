@@ -2,6 +2,14 @@
 
 #include "ui/skinned_window.h"
 
+#include <QPoint>
+#include <QRect>
+#include <QSize>
+#include <QString>
+#include <QWidget>
+
+class QPainter;
+
 namespace Ui {
 
 class GenWindow : public SkinnedWindow {

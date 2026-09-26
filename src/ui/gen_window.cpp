@@ -5,6 +5,11 @@
 
 #include <QCloseEvent>
 #include <QPainter>
+#include <QPoint>
+#include <QRect>
+#include <QSize>
+#include <QString>
+#include <QWidget>
 
 #include <algorithm>
 #include <cmath>

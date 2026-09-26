@@ -10,6 +10,9 @@
 #include <QNetworkRequest>
 #include <QPointer>
 
+#include <optional>
+#include <utility>
+
 namespace Yandex {
 
 namespace {

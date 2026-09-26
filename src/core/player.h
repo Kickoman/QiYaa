@@ -1,6 +1,7 @@
 #pragma once
 
 #include "audio/audio_engine.h"
+#include "yandex/api_client.h"
 #include "yandex/library.h"
 
 #include <QList>
@@ -78,7 +79,7 @@ private:
     struct Preload {
         int index = -1;
         QString trackId;
-        quint64 gen = 0;
+        quint64 generation = 0;
         TStreamId stream = 0;
         int bitrate = 0;
         QPointer<QNetworkReply> reply;
@@ -125,7 +126,7 @@ private:
     TStreamId streamId = 0;
     bool currentDownloaded = false;
     std::optional<Preload> preload;
-    quint64 preloadGen = 0;
+    quint64 preloadGeneration = 0;
 };
 
 }  // namespace Core

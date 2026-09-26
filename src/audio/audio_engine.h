@@ -8,6 +8,7 @@
 #include <QString>
 
 #include <atomic>
+#include <cstdint>
 #include <memory>
 
 namespace Audio {

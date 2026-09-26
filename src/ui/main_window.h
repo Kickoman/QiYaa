@@ -4,7 +4,11 @@
 #include "vis/visualizer.h"
 
 #include <QElapsedTimer>
+#include <QPoint>
+#include <QRect>
+#include <QString>
 #include <QTimer>
+#include <QWidget>
 
 #include <memory>
 #include <vector>

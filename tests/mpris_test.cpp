@@ -246,4 +246,13 @@ private Q_SLOTS:
 };
 
 QTEST_GUILESS_MAIN(TestMpris)
+#include "audio/audio_engine.h"
 #include "mpris_test.moc"
+#include "yandex/api_client.h"
+#include "yandex/library.h"
+
+#include <QList>
+#include <QString>
+#include <QVariantMap>
+
+#include <memory>

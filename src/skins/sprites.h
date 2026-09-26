@@ -3,6 +3,7 @@
 
 #include <QPoint>
 #include <QRect>
+#include <QSize>
 
 namespace Skins {
 

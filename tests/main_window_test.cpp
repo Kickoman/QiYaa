@@ -140,3 +140,13 @@ private Q_SLOTS:
 
 QTEST_MAIN(TestMainWindow)
 #include "main_window_test.moc"
+#include "yandex/library.h"
+
+#include <QCoreApplication>
+#include <QEvent>
+#include <QImage>
+#include <QObject>
+#include <QPoint>
+#include <QPointF>
+
+#include <memory>

@@ -3,10 +3,13 @@
 #include <QDateTime>
 #include <QJsonArray>
 #include <QJsonObject>
+#include <QJsonValue>
 #include <QPointer>
+#include <QUrl>
 
 #include <algorithm>
 #include <cmath>
+#include <utility>
 
 namespace Yandex {
 

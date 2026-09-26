@@ -88,3 +88,6 @@ private Q_SLOTS:
 
 QTEST_GUILESS_MAIN(TestSnap)
 #include "snap_test.moc"
+
+#include <QList>
+#include <QObject>

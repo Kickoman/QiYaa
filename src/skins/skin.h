@@ -8,7 +8,12 @@
 #include <QImage>
 #include <QList>
 #include <QPainter>
+#include <QPoint>
+#include <QRect>
 #include <QString>
+
+#include <cstddef>
+#include <utility>
 
 namespace Skins {
 

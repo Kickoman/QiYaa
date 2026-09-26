@@ -673,4 +673,15 @@ private Q_SLOTS:
 };
 
 QTEST_GUILESS_MAIN(TestLibrary)
+#include "audio/audio_engine.h"
 #include "library_test.moc"
+#include "yandex/api_client.h"
+
+#include <QLatin1String>
+#include <QList>
+#include <QNetworkRequest>
+#include <QObject>
+#include <QString>
+#include <QUrl>
+
+#include <functional>

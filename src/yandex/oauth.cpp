@@ -3,11 +3,15 @@
 #include <QDateTime>
 #include <QJsonDocument>
 #include <QJsonObject>
+#include <QList>
 #include <QNetworkAccessManager>
 #include <QNetworkReply>
 #include <QNetworkRequest>
 #include <QSysInfo>
 #include <QUrlQuery>
+
+#include <algorithm>
+#include <utility>
 
 namespace Yandex {
 

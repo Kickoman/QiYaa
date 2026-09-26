@@ -4,10 +4,19 @@
 #include "vis/milkdrop_presets.h"
 
 #include <QList>
+#include <QPoint>
+#include <QRect>
 #include <QSet>
 #include <QStringList>
+#include <QWidget>
 
 #include <memory>
+
+class QPainter;
+
+namespace Skins {
+class Skin;
+}  // namespace Skins
 
 namespace Audio {
 class AudioEngine;

@@ -1,7 +1,10 @@
 #include "skins/region.h"
 
+#include <QByteArray>
 #include <QRegularExpression>
 #include <QStringList>
+
+#include <algorithm>
 
 namespace Skins {
 namespace {

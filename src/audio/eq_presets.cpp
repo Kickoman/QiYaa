@@ -2,6 +2,7 @@
 
 #include "audio/error.h"
 
+#include <QStringConverter>
 #include <QStringDecoder>
 
 #include <algorithm>

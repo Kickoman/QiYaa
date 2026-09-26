@@ -3,15 +3,18 @@
 #include "audio/equalizer.h"
 #include "audio/vis_tap.h"
 
+#include <QStringList>
 #include <miniaudio.h>
 
 #include <algorithm>
 #include <chrono>
 #include <cmath>
 #include <condition_variable>
+#include <cstdint>
 #include <cstring>
 #include <mutex>
 #include <thread>
+#include <utility>
 #include <vector>
 
 namespace Audio {

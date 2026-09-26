@@ -1,5 +1,6 @@
 #include "ui/main_window.h"
 
+#include "audio/audio_engine.h"
 #include "core/player.h"
 #include "skins/skin.h"
 #include "skins/sprites.h"
@@ -7,8 +8,14 @@
 #include <QApplication>
 #include <QCloseEvent>
 #include <QContextMenuEvent>
+#include <QEvent>
+#include <QLatin1Char>
 #include <QPainter>
+#include <QPoint>
+#include <QRect>
+#include <QString>
 #include <QWheelEvent>
+#include <QWidget>
 
 #include <algorithm>
 #include <cmath>

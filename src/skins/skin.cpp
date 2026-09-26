@@ -10,10 +10,16 @@
 #include <QFontMetrics>
 #include <QHash>
 #include <QImageReader>
+#include <QPoint>
 #include <QRegularExpression>
+#include <QRgb>
 #include <miniz.h>
 
+#include <algorithm>
+#include <cstddef>
+#include <initializer_list>
 #include <string>
+#include <utility>
 
 namespace Skins {
 

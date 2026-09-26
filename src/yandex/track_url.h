@@ -2,7 +2,7 @@
 
 #include <QByteArray>
 #include <QJsonArray>
-#include <QJsonObject>
+#include <QList>
 #include <QString>
 #include <QUrl>
 

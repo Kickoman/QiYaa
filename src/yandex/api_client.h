@@ -10,6 +10,7 @@
 #include <QUrlQuery>
 
 #include <functional>
+#include <utility>
 
 class QNetworkAccessManager;
 class QNetworkReply;

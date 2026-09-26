@@ -1,7 +1,10 @@
 #include "core/player.h"
 
+#include "yandex/api_client.h"
+
 #include <QNetworkAccessManager>
 #include <QNetworkReply>
+#include <QNetworkRequest>
 #include <QRandomGenerator>
 #include <QUuid>
 
@@ -314,10 +317,10 @@ void Player::maybeLoadMore() {
         return;
     }
     loadingMore = true;
-    const quint64 gen = queueGeneration;
+    const quint64 requestGeneration = queueGeneration;
     QPointer<Player> self(this);
-    loadMore([self, gen](const QList<Yandex::Track>& tracks) {
-        if (!self || gen != self->queueGeneration) {
+    loadMore([self, requestGeneration](const QList<Yandex::Track>& tracks) {
+        if (!self || requestGeneration != self->queueGeneration) {
             return;
         }
         self->loadingMore = false;
@@ -342,7 +345,7 @@ void Player::playIndex(int index) {
     }
     waitingForMore = false;
     closeOpenTrack();
-    const quint64 gen = ++generation;
+    const quint64 requestGeneration = ++generation;
     abortDownload();
     playingIndex = index;
     bitrateKbps = 0;
@@ -369,8 +372,8 @@ void Player::playIndex(int index) {
 
     yandexLibrary->api()->resolveTrackUrl(
         track.id,
-        [this, gen, track](const Yandex::ResolvedUrl& url, const QString& error) {
-            if (gen != generation) {
+        [this, requestGeneration, track](const Yandex::ResolvedUrl& url, const QString& error) {
+            if (requestGeneration != generation) {
                 return;
             }
             if (!error.isEmpty()) {
@@ -461,13 +464,15 @@ void Player::maybePreload() {
     Preload upcoming;
     upcoming.index = index;
     upcoming.trackId = queuedTracks[index].id;
-    upcoming.gen = ++preloadGen;
+    upcoming.generation = ++preloadGeneration;
     preload = upcoming;
     QPointer<Player> self(this);
     yandexLibrary->api()->resolveTrackUrl(
         upcoming.trackId,
-        [self, gen = upcoming.gen](const Yandex::ResolvedUrl& url, const QString& error) {
-            if (!self || !self->preload || self->preload->gen != gen) {
+        [self,
+         requestGeneration =
+             upcoming.generation](const Yandex::ResolvedUrl& url, const QString& error) {
+            if (!self || !self->preload || self->preload->generation != requestGeneration) {
                 return;
             }
             const TStreamId stream = error.isEmpty() ? self->audioEngine->queueStream() : 0;

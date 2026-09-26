@@ -7,10 +7,15 @@
 #include <QOpenGLContext>
 #include <QOpenGLExtraFunctions>
 #include <QOpenGLFunctions>
+#include <QSize>
+#include <QStringList>
+#include <QSurfaceFormat>
 #include <projectM-4/projectM.h>
 
 #include <algorithm>
 #include <array>
+#include <cstddef>
+#include <cstdint>
 #include <utility>
 
 namespace Vis {

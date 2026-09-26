@@ -4,10 +4,15 @@
 #include <QList>
 #include <QPoint>
 #include <QPointer>
+#include <QRect>
 #include <QSize>
+#include <QString>
 #include <QWidget>
 
 #include <cmath>
+#include <utility>
+
+class QPainter;
 
 namespace Skins {
 class Skin;

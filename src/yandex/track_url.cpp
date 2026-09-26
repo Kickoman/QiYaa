@@ -2,6 +2,8 @@
 
 #include <QCryptographicHash>
 #include <QJsonDocument>
+#include <QJsonObject>
+#include <QJsonValue>
 
 namespace Yandex {
 

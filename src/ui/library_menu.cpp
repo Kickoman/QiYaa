@@ -1,14 +1,19 @@
 #include "ui/library_menu.h"
 
 #include "core/player.h"
+#include "yandex/api_client.h"
+#include "yandex/library.h"
 
+#include <QAction>
 #include <QDesktopServices>
 #include <QHash>
 #include <QInputDialog>
+#include <QLineEdit>
 #include <QMap>
 #include <QMenu>
 #include <QPointer>
 
+#include <algorithm>
 #include <memory>
 
 namespace Ui {

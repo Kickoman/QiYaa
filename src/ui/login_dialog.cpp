@@ -5,13 +5,17 @@
 
 #include <QClipboard>
 #include <QDesktopServices>
+#include <QFont>
 #include <QFontMetrics>
 #include <QFrame>
 #include <QGuiApplication>
 #include <QLabel>
+#include <QLayout>
 #include <QLineEdit>
 #include <QPushButton>
+#include <QString>
 #include <QVBoxLayout>
+#include <QWidget>
 
 #include <algorithm>
 

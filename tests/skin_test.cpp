@@ -63,3 +63,7 @@ private Q_SLOTS:
 
 QTEST_MAIN(TestSkin)
 #include "skin_test.moc"
+
+#include <QIODevice>
+#include <QObject>
+#include <QString>

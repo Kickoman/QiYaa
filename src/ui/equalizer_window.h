@@ -4,6 +4,13 @@
 #include "audio/equalizer.h"
 #include "ui/skinned_window.h"
 
+#include <QList>
+#include <QPoint>
+#include <QString>
+#include <QWidget>
+
+class QPainter;
+
 namespace Ui {
 
 class EqualizerWindow : public SkinnedWindow {

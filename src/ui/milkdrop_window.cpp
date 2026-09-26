@@ -5,17 +5,21 @@
 #include "vis/milkdrop_view.h"
 
 #include <QActionGroup>
+#include <QByteArray>
 #include <QClipboard>
 #include <QCursor>
 #include <QDesktopServices>
 #include <QDir>
+#include <QFont>
 #include <QGuiApplication>
 #include <QMenu>
 #include <QPainter>
+#include <QPoint>
 #include <QRandomGenerator>
 #include <QResizeEvent>
 #include <QScreen>
 #include <QUrl>
+#include <QWidget>
 
 #include <algorithm>
 

@@ -1,11 +1,14 @@
 #include "integrations/media_controls.h"
 
+#include "audio/audio_engine.h"
 #include "core/cover_cache.h"
 #include "core/player.h"
 
-namespace Integrations {
+#include <QString>
 
-using Audio::AudioEngine;
+#include <utility>
+
+namespace Integrations {
 
 namespace {
 constexpr int kCoverPixels = 400;

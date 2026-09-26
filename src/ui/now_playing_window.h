@@ -2,6 +2,16 @@
 
 #include "ui/gen_window.h"
 
+#include <QPoint>
+#include <QRect>
+#include <QWidget>
+
+class QPainter;
+
+namespace Skins {
+class Skin;
+}  // namespace Skins
+
 namespace Core {
 class CoverCache;
 class Player;

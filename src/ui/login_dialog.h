@@ -1,7 +1,9 @@
 #pragma once
 
 #include <QDialog>
+#include <QString>
 #include <QUrl>
+#include <QWidget>
 
 class QLabel;
 class QLineEdit;

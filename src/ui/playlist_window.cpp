@@ -1,5 +1,6 @@
 #include "ui/playlist_window.h"
 
+#include "audio/audio_engine.h"
 #include "core/player.h"
 #include "skins/skin.h"
 #include "skins/sprites.h"
@@ -7,11 +8,16 @@
 #include <QApplication>
 #include <QCloseEvent>
 #include <QContextMenuEvent>
+#include <QFont>
 #include <QFontMetrics>
 #include <QKeyEvent>
+#include <QLatin1Char>
 #include <QMenu>
 #include <QPainter>
+#include <QPoint>
+#include <QString>
 #include <QWheelEvent>
+#include <QWidget>
 
 #include <algorithm>
 #include <cmath>

@@ -152,7 +152,7 @@ The preload's phase:
 | Phase | `preloadedIndex()` | Meaning |
 |---|---|---|
 | none | -1 | |
-| resolving | -1 | `preload` holds the index, the track id and a fresh `preloadGen`, and its link request is in flight |
+| resolving | -1 | `preload` holds the index, the track id and a fresh `preloadGeneration`, and its link request is in flight |
 | queued | its index | `AudioEngine::queueStream()` gave it a stream (`preload->stream != 0`). Its download runs, or has ended (`downloadDone`, `failed`) |
 
 The load-more request: idle, or in flight (`loadingMore`). It is independent of both phases
@@ -243,7 +243,7 @@ Four counters, each bumped by different calls and each guarding one kind of late
 | `sourceRequest` (the ticket) | `newSourceRequest()`: callers before a source load, `clearQueue`, `shutDown` | a caller's source-load reply, when the caller checks `isLatestSourceRequest(ticket)`. `Player` never checks it itself |
 | `queueGeneration` | `setQueue` (and so `clearQueue`) | a `TMoreFn`'s `done` for a queue that has been replaced (a `QPointer` also covers a destroyed `Player`) |
 | `generation` | `stop`, `playIndex`, gapless advance | the link reply of a track that is no longer current |
-| `preloadGen` | every new preload | the link reply of a preload that was cancelled or replaced |
+| `preloadGeneration` | every new preload | the link reply of a preload that was cancelled or replaced |
 
 Tickets start at 1, so 0 never matches. `ui/library_menu.cpp` uses 0 to mean "take one now".
 
@@ -297,7 +297,7 @@ Tickets start at 1, so 0 never matches. `ui/library_menu.cpp` uses 0 to mean "ta
   shut down; the current download has finished without error; a track is open; the engine is not
   `Stopped` (Paused counts); and `pickNext() >= 0`. It is called at the end of `trackStarted`,
   when the current download finishes, and from `refreshPreload()`.
-- **Link reply** (ignored if the `Player` is gone or `preloadGen` has moved on): the preload asks
+- **Link reply** (ignored if the `Player` is gone or `preloadGeneration` has moved on): the preload asks
   the engine for a queued stream. Its download then feeds that stream and `preloadedIndex()`
   becomes its index. On a link error, or when `queueStream()` returns 0 because the engine has
   stopped on its own meanwhile, the preload is dropped without a message. That track then starts the ordinary way when

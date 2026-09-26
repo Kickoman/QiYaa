@@ -2,11 +2,13 @@
 
 #include "core/player.h"
 #include "integrations/media_controls.h"
+#include "yandex/api_client.h"
 
 #include <QCoreApplication>
 #include <QDBusConnection>
 #include <QDBusConnectionInterface>
 #include <QDBusMessage>
+#include <QVariant>
 
 #include <algorithm>
 #include <cmath>

@@ -35,6 +35,20 @@
 #include "ui/snap.h"
 #include "yandex/token.h"
 
+#include <QDialog>
+#include <QGuiApplication>
+#include <QImage>
+#include <QKeySequence>
+#include <QLatin1String>
+#include <QList>
+#include <QPoint>
+#include <QPointF>
+#include <QString>
+#include <QStringList>
+
+#include <initializer_list>
+#include <utility>
+
 namespace App {
 
 using Audio::EqSettings;

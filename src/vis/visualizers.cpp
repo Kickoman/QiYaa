@@ -1,12 +1,18 @@
 #include "skins/skin.h"
 #include "vis/visualizer.h"
 
+#include <QColor>
 #include <QPainter>
+#include <QRect>
+#include <QString>
 
 #include <algorithm>
 #include <array>
 #include <cmath>
+#include <memory>
 #include <numbers>
+#include <span>
+#include <vector>
 
 namespace Vis {
 

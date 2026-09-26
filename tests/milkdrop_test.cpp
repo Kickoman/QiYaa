@@ -323,3 +323,11 @@ private Q_SLOTS:
 
 QTEST_MAIN(TestMilkdrop)
 #include "milkdrop_test.moc"
+
+#include <QChar>
+#include <QIODevice>
+#include <QImage>
+#include <QObject>
+#include <QRgb>
+#include <QSet>
+#include <QString>

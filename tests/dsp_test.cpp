@@ -235,3 +235,11 @@ private Q_SLOTS:
 
 QTEST_MAIN(TestDsp)
 #include "dsp_test.moc"
+
+#include <QList>
+#include <QObject>
+#include <QRgb>
+#include <QString>
+
+#include <algorithm>
+#include <cstddef>

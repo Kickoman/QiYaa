@@ -1,11 +1,16 @@
 #include "ui/skinned_window.h"
 
+#include "skins/region.h"
 #include "skins/skin.h"
 #include "ui/snap.h"
 
+#include <QEvent>
 #include <QGuiApplication>
+#include <QLatin1String>
 #include <QMouseEvent>
 #include <QPainter>
+#include <QPointF>
+#include <QRectF>
 #include <QScreen>
 #include <QTransform>
 #include <QWheelEvent>

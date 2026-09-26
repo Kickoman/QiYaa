@@ -330,3 +330,10 @@ private Q_SLOTS:
 
 QTEST_GUILESS_MAIN(TestAudio)
 #include "audio_test.moc"
+#include "yandex/api_client.h"
+#include "yandex/library.h"
+
+#include <QIODevice>
+#include <QLatin1String>
+#include <QObject>
+#include <QString>

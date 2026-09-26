@@ -2,7 +2,8 @@
 
 #include "yandex/api_client.h"
 
-#include <QHash>
+#include <QJsonArray>
+#include <QJsonValue>
 #include <QList>
 #include <QObject>
 #include <QSet>

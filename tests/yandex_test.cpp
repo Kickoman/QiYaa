@@ -112,3 +112,9 @@ private Q_SLOTS:
 
 QTEST_GUILESS_MAIN(TestYandex)
 #include "yandex_test.moc"
+
+#include <QByteArray>
+#include <QObject>
+#include <QString>
+
+#include <optional>

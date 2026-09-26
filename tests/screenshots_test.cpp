@@ -130,3 +130,14 @@ private Q_SLOTS:
 
 QTEST_MAIN(TestScreenshots)
 #include "screenshots_test.moc"
+
+#include <QChar>
+#include <QImage>
+#include <QLatin1Char>
+#include <QLatin1String>
+#include <QObject>
+#include <QPoint>
+#include <QString>
+#include <QWidget>
+
+#include <memory>

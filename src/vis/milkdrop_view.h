@@ -4,10 +4,15 @@
 #include <QElapsedTimer>
 #include <QImage>
 #include <QOpenGLWindow>
+#include <QPoint>
+#include <QSize>
 #include <QString>
+#include <QStringList>
 #include <QTimer>
 
+#include <cstdint>
 #include <optional>
+#include <utility>
 #include <vector>
 
 struct projectm;

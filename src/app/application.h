@@ -6,6 +6,7 @@
 #include "yandex/api_client.h"
 #include "yandex/library.h"
 
+#include <QList>
 #include <QNetworkAccessManager>
 #include <QObject>
 #include <QSettings>

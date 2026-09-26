@@ -2,7 +2,14 @@
 
 #include "ui/skinned_window.h"
 
+#include <QPoint>
+#include <QRect>
 #include <QSet>
+#include <QSize>
+#include <QWidget>
+
+class QMenu;
+class QPainter;
 
 namespace Core {
 class Player;

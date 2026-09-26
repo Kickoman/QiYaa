@@ -7,6 +7,7 @@
 #include <QUrl>
 
 #include <memory>
+#include <utility>
 
 namespace Tests {
 
