@@ -36,6 +36,10 @@ QList<QRect> ScreenRects() {
 }
 }  // namespace
 
+bool SkinnedWindow::IsIntegerScale(double scale) {
+    return std::abs(scale - std::round(scale)) < 1e-6;
+}
+
 SkinnedWindow::SkinnedWindow(const Skins::Skin* skin, QSize skinSize, QWidget* parent)
     : QWidget(parent, Qt::Window | Qt::FramelessWindowHint)
     , currentSkin(skin)

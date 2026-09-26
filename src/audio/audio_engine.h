@@ -1,6 +1,7 @@
 #pragma once
 
 #include "audio/equalizer.h"
+#include "audio/vis_tap.h"
 
 #include <QByteArray>
 #include <QHash>
@@ -10,6 +11,7 @@
 #include <atomic>
 #include <cstdint>
 #include <memory>
+#include <span>
 
 namespace Audio {
 
@@ -60,8 +62,8 @@ public:
     void setVolume(int percent);
     void setEqualizer(const EqSettings& settings);
 
-    void readVisSamples(float* left, float* right, uint32_t count) const;
-    uint32_t readNewVisSamples(uint32_t* cursor, float* stereo, uint32_t maxFrames) const;
+    void readVisSamples(std::span<float> left, std::span<float> right) const;
+    VisReadResult readNewVisSamples(uint32_t cursor, std::span<float> stereo) const;
     uint32_t visCursor() const;
     int outputSampleRate() const;
     void setBalance(int balance);

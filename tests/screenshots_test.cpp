@@ -6,9 +6,19 @@
 #include "yandex/api_client.h"
 #include "yandex/library.h"
 
+#include <QChar>
 #include <QDir>
+#include <QImage>
+#include <QLatin1Char>
+#include <QLatin1String>
 #include <QNetworkAccessManager>
+#include <QObject>
+#include <QPoint>
+#include <QString>
 #include <QTest>
+#include <QWidget>
+
+#include <memory>
 
 namespace {
 
@@ -130,14 +140,3 @@ private Q_SLOTS:
 
 QTEST_MAIN(TestScreenshots)
 #include "screenshots_test.moc"
-
-#include <QChar>
-#include <QImage>
-#include <QLatin1Char>
-#include <QLatin1String>
-#include <QObject>
-#include <QPoint>
-#include <QString>
-#include <QWidget>
-
-#include <memory>

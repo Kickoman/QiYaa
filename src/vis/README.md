@@ -13,7 +13,7 @@ colours from [src/skins](../skins/README.md).
 | File | Contains |
 |---|---|
 | `visualizer.h` | `VisFrame`, the `Visualizer` interface, `MakeSpectrum`, `MakeOscilloscope`, `Analyzer` |
-| `visualizers.cpp` | `Analyzer` (Hann window + radix-2 FFT), the file-local `Spectrum` and `Oscilloscope` |
+| `visualizer.cpp` | `Analyzer` (Hann window + radix-2 FFT), the file-local `Spectrum` and `Oscilloscope` |
 | `milkdrop_presets.h/.cpp` | `MilkdropPresets` — built-in and user `.milk` files in a fixed order, read with a 1 MiB bound |
 | `milkdrop_view.h/.cpp` | `MilkdropView` — projectM 4 in a `QOpenGLWindow`: OpenGL 3.3 probe, PCM feed, deferred preset loads, black-picture watch, frame capture. Built only with Milkdrop |
 
@@ -24,7 +24,7 @@ Module order: `audio`, `yandex`, `skins` → **`vis`**, `core` → `ui`, `integr
 - `qiyaa_vis` links PUBLIC `Qt6::Gui`, PRIVATE `qiyaa_audio` and `qiyaa_skins`. Those two stay
   private because the headers only forward-declare `Audio::AudioEngine` and `Skins::Skin`:
   `audio/audio_engine.h` is included by `milkdrop_view.cpp` alone, `skins/skin.h` by
-  `visualizers.cpp` alone.
+  `visualizer.cpp` alone.
 - With Milkdrop (CMake finds `Qt6::OpenGL` and projectM 4.1 or newer, or downloads projectM v4.1.7
   when `QIYAA_FETCH_PROJECTM=ON`): PUBLIC `Qt6::OpenGL`, PRIVATE `libprojectM::projectM` (LGPL-2.1,
   linked dynamically, see [THIRD_PARTY.md](../../THIRD_PARTY.md)), PUBLIC define

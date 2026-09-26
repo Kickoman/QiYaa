@@ -1,5 +1,7 @@
 #pragma once
 
+#include "vis/milkdrop_presets.h"
+
 #include <QByteArray>
 #include <QElapsedTimer>
 #include <QImage>
@@ -31,7 +33,7 @@ public:
 
     static QString OpenGlProblem();
 
-    void loadPreset(const QByteArray& milk, bool smooth);
+    void loadPreset(const QByteArray& milk, PresetTransition transition);
     void setPresetDuration(double seconds);
     void setLocked(bool locked);
     void setTextureSearchPaths(const QStringList& paths);
@@ -51,7 +53,7 @@ public:
 Q_SIGNALS:
     void ready();
     void failed(const QString& reason);
-    void switchRequested(bool hardCut);
+    void switchRequested(Vis::PresetTransition transition);
     void presetFailed(const QString& message);
     void staysBlack();
     void drawsPicture();
@@ -83,7 +85,7 @@ private:
     QTimer timer;
     uint32_t visReadCursor = 0;
     std::vector<float> pcm;
-    std::optional<std::pair<QByteArray, bool>> pending;
+    std::optional<std::pair<QByteArray, PresetTransition>> pending;
     double duration = 30;
     bool lockEnabled = false;
     QStringList texturePaths;

@@ -24,8 +24,8 @@ and it shows nothing on screen. Namespace `Core`, library `qiyaa_core`.
   PRIVATE.
 - It deliberately does not link `Qt6::Widgets`, `qiyaa_skins`, `qiyaa_vis`, or anything above it
   in the order `audio`, `yandex`, `skins` → `vis`, `core` → `ui`, `integrations` → `app`. It
-  reaches miniaudio only through `qiyaa_audio`, which links it PRIVATE. `qiyaa_ui` and
-  `qiyaa_integrations` link `qiyaa_core` PRIVATE, and `qiyaa_app` links it PUBLIC.
+  reaches miniaudio only through `qiyaa_audio`, which links it PRIVATE. Which modules link
+  `qiyaa_core` is in [docs/architecture.md](../../docs/architecture.md#modules).
 - `player` and `cover_cache` do not include each other.
 - `Player` is the only caller of `AudioEngine::poll()` in `src/`. Everything the engine reports
   asynchronously therefore arrives through `Player`'s timer (see [Threads and
@@ -382,9 +382,9 @@ Tickets start at 1, so 0 never matches. `ui/library_menu.cpp` uses 0 to mean "ta
   `QPointer`. Do not destroy a `Player` while its `ApiClient` lives on and a link request may still
   be pending. In the app the `Player` is destroyed before the `ApiClient`, and no event loop runs
   in between.
-- `playedSeconds()` looks like a getter, but it accumulates. The timer calls it for that side
-  effect, and dropping the call loses the played time. A stall of the GUI thread longer than
-  1 s between two ticks also loses that stretch.
+- The poll timer calls `accumulatePlayedSeconds()` for its side effect; dropping the call loses
+  the played time. A stall of the GUI thread longer than 1 s between two ticks also loses that
+  stretch.
 - `durationSeconds()` is the metadata duration, not the decoded length. `seekTo` clamps to it.
 - Removing a track before the current one changes `currentIndex()` without
   `currentTrackChanged`. The same is true when `appendTracks` moves the cursor from -1 to 0. UI

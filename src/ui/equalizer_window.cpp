@@ -10,6 +10,7 @@
 #include <QDir>
 #include <QFile>
 #include <QFileDialog>
+#include <QFileInfo>
 #include <QImage>
 #include <QInputDialog>
 #include <QLineEdit>
@@ -40,9 +41,8 @@ namespace {
 // A preset library of a thousand presets is 268 KB.
 constexpr qint64 kMaxEqfBytes = 1024 * 1024;
 
-constexpr int kElNone = 0, kElClose = 1, kElOn = 2, kElAuto = 3, kElPresets = 4, kElPreamp = 5,
-              kElBand0 = 6;
-constexpr int kElShade = 20, kElShadeVolume = 21, kElShadeBalance = 22;
+using TControl = EqualizerControl::Kind;
+
 constexpr QPoint kShadeButton{254, 3};
 using Skins::EqualizerShadeSprites;
 
@@ -51,10 +51,10 @@ bool Contains(const QRect& rect, QPoint point) {
         && point.y() < rect.y() + rect.height();
 }
 
-QRect SliderRect(int element) {
-    const int x = element == kElPreamp ? Skins::EqualizerSprites::kPreampPosition.x()
-                                       : Skins::EqualizerSprites::kBandsX
-            + (element - kElBand0) * Skins::EqualizerSprites::kBandStep;
+QRect SliderRect(const EqualizerControl& control) {
+    const int x = control.kind == TControl::Preamp
+        ? Skins::EqualizerSprites::kPreampPosition.x()
+        : Skins::EqualizerSprites::kBandsX + control.band * Skins::EqualizerSprites::kBandStep;
     return {
         x, Skins::EqualizerSprites::kSlidersY, Skins::EqualizerSprites::kSliderSize.width(),
         Skins::EqualizerSprites::kSliderSize.height()
@@ -148,12 +148,12 @@ QList<double> EqualizerWindow::GraphCurve(const Audio::EqSettings& settings) {
 
 void EqualizerWindow::drawSlider(QPainter& painter, QPoint at, double db, bool active) const {
     const int frame = int(std::lround((db + Audio::kEqMaxDb) / (2 * Audio::kEqMaxDb) * 27));
-    const QRect src(
+    const QRect source(
         Skins::EqualizerSprites::kSliderFrames.x() + (frame % 14) * 15,
         Skins::EqualizerSprites::kSliderFrames.y() + (frame / 14) * 65,
         Skins::EqualizerSprites::kSliderSize.width(), Skins::EqualizerSprites::kSliderSize.height()
     );
-    skin().draw(painter, TSheet::EqMain, src, at);
+    skin().draw(painter, TSheet::EqMain, source, at);
     const int thumbY = int(std::lround(
         (1.0 - (db + Audio::kEqMaxDb) / (2 * Audio::kEqMaxDb))
         * Skins::EqualizerSprites::kSliderTravel
@@ -179,13 +179,14 @@ void EqualizerWindow::drawGraph(QPainter& painter) const {
     for (int x = 0; x < ys.size(); ++x) {
         const int y = std::clamp(int(std::lround(ys[x])), 0, kGraphHeight - 1);
         const int top = std::min(y, lastY), bottom = std::max(y, lastY);
-        for (int yy = top; yy <= bottom; ++yy) {
-            const QColor c = sheet.isNull() ? QColor(Qt::green)
-                                            : QColor::fromRgb(sheet.pixel(
-                                                  Skins::EqualizerSprites::kGraphLineColors.x(),
-                                                  Skins::EqualizerSprites::kGraphLineColors.y() + yy
-                                              ));
-            painter.fillRect(origin.x() + 2 + x, origin.y() + yy, 1, 1, c);
+        for (int row = top; row <= bottom; ++row) {
+            const QColor color = sheet.isNull()
+                ? QColor(Qt::green)
+                : QColor::fromRgb(sheet.pixel(
+                      Skins::EqualizerSprites::kGraphLineColors.x(),
+                      Skins::EqualizerSprites::kGraphLineColors.y() + row
+                  ));
+            painter.fillRect(origin.x() + 2 + x, origin.y() + row, 1, 1, color);
         }
         lastY = y;
     }
@@ -215,32 +216,32 @@ void EqualizerWindow::paintShaded(QPainter& painter) {
                          : Skins::EqualizerShadeSprites::kShadeBackground,
         {0, 0}
     );
-    const int vThird = std::clamp(volumePercent * 3 / 101, 0, 2);
-    const int vx =
+    const int volumeThumb = std::clamp(volumePercent * 3 / 101, 0, 2);
+    const int volumeX =
         Skins::EqualizerShadeSprites::kVolume.x()
         + int(
             std::lround(volumePercent / 100.0 * (Skins::EqualizerShadeSprites::kVolume.width() - 3))
         );
     activeSkin.draw(
-        painter, TSheet::EqEx, Skins::EqualizerShadeSprites::kVolumeThumb[vThird],
-        {vx, Skins::EqualizerShadeSprites::kVolume.y()}
+        painter, TSheet::EqEx, Skins::EqualizerShadeSprites::kVolumeThumb[volumeThumb],
+        {volumeX, Skins::EqualizerShadeSprites::kVolume.y()}
     );
-    const int bThird = std::clamp((balancePercent + 100) * 3 / 201, 0, 2);
-    const int bx = Skins::EqualizerShadeSprites::kBalance.x()
+    const int balanceThumb = std::clamp((balancePercent + 100) * 3 / 201, 0, 2);
+    const int balanceX = Skins::EqualizerShadeSprites::kBalance.x()
         + int(std::lround(
             (balancePercent + 100) / 200.0 * (Skins::EqualizerShadeSprites::kBalance.width() - 3)
         ));
     activeSkin.draw(
-        painter, TSheet::EqEx, Skins::EqualizerShadeSprites::kBalanceThumb[bThird],
-        {bx, Skins::EqualizerShadeSprites::kBalance.y()}
+        painter, TSheet::EqEx, Skins::EqualizerShadeSprites::kBalanceThumb[balanceThumb],
+        {balanceX, Skins::EqualizerShadeSprites::kBalance.y()}
     );
-    if (pressedElement == kElShade && pressedInside) {
+    if (pressed.kind == TControl::Shade && pressedInside) {
         activeSkin.draw(
             painter, TSheet::EqEx, Skins::EqualizerShadeSprites::kShadeButtonShadedDown,
             kShadeButton
         );
     }
-    if (pressedElement == kElClose && pressedInside) {
+    if (pressed.kind == TControl::Close && pressedInside) {
         activeSkin.draw(
             painter, TSheet::EqEx, Skins::EqualizerShadeSprites::kCloseButtonDown,
             Skins::EqualizerSprites::kClose
@@ -260,35 +261,36 @@ void EqualizerWindow::paintSkin(QPainter& painter) {
                          : Skins::EqualizerSprites::kTitleBar,
         {0, 0}
     );
-    if (pressedElement == kElClose && pressedInside) {
+    if (pressed.kind == TControl::Close && pressedInside) {
         activeSkin.draw(
             painter, TSheet::EqMain, Skins::EqualizerSprites::kCloseButtonDown,
             Skins::EqualizerSprites::kClose
         );
     }
-    if (pressedElement == kElShade && pressedInside) {
+    if (pressed.kind == TControl::Shade && pressedInside) {
         activeSkin.draw(
             painter, TSheet::EqEx, Skins::EqualizerShadeSprites::kShadeButtonDown, kShadeButton
         );
     }
 
-    auto toggle = [&](int element, const Skins::ToggleSprite& spr, bool on, QPoint at) {
-        const bool down = pressedElement == element && pressedInside;
+    auto toggle = [&](TControl kind, const Skins::ToggleSprite& sprite, bool on, QPoint at) {
+        const bool down = pressed.kind == kind && pressedInside;
         activeSkin.draw(
             painter, TSheet::EqMain,
-            on ? (down ? spr.onPressed : spr.on) : (down ? spr.offPressed : spr.off), at
+            on ? (down ? sprite.onPressed : sprite.on) : (down ? sprite.offPressed : sprite.off), at
         );
     };
     toggle(
-        kElOn, Skins::EqualizerSprites::kOn, equalizerSettings.enabled,
+        TControl::On, Skins::EqualizerSprites::kOn, equalizerSettings.enabled,
         Skins::EqualizerSprites::kOnPosition
     );
     toggle(
-        kElAuto, Skins::EqualizerSprites::kAuto, autoEnabled, Skins::EqualizerSprites::kAutoPosition
+        TControl::Auto, Skins::EqualizerSprites::kAuto, autoEnabled,
+        Skins::EqualizerSprites::kAutoPosition
     );
     activeSkin.draw(
         painter, TSheet::EqMain,
-        pressedElement == kElPresets && pressedInside
+        pressed.kind == TControl::Presets && pressedInside
             ? Skins::EqualizerSprites::kPresetsButtonSelected
             : Skins::EqualizerSprites::kPresetsButton,
         Skins::EqualizerSprites::kPresetsPosition
@@ -296,96 +298,104 @@ void EqualizerWindow::paintSkin(QPainter& painter) {
 
     drawGraph(painter);
     drawSlider(
-        painter, SliderRect(kElPreamp).topLeft(), equalizerSettings.preampDb,
-        pressedElement == kElPreamp
+        painter, SliderRect({TControl::Preamp}).topLeft(), equalizerSettings.preampDb,
+        pressed.kind == TControl::Preamp
     );
-    for (int i = 0; i < Audio::kEqBands; ++i) {
+    for (int band = 0; band < Audio::kEqBands; ++band) {
+        const EqualizerControl slider{TControl::Band, band};
         drawSlider(
-            painter, SliderRect(kElBand0 + i).topLeft(), equalizerSettings.bandsDb[i],
-            pressedElement == kElBand0 + i
+            painter, SliderRect(slider).topLeft(), equalizerSettings.bandsDb[band],
+            pressed == slider
         );
     }
 }
 
-int EqualizerWindow::hitTest(QPoint point) const {
+EqualizerControl EqualizerWindow::hitTest(QPoint point) const {
     if (Contains({Skins::EqualizerSprites::kClose, QSize(9, 9)}, point)) {
-        return kElClose;
+        return {TControl::Close};
     }
     if (Contains({kShadeButton, QSize(9, 9)}, point)) {
-        return kElShade;
+        return {TControl::Shade};
     }
     if (isShaded()) {
         if (Contains(Skins::EqualizerShadeSprites::kVolume, point)) {
-            return kElShadeVolume;
+            return {TControl::ShadeVolume};
         }
         if (Contains(Skins::EqualizerShadeSprites::kBalance, point)) {
-            return kElShadeBalance;
+            return {TControl::ShadeBalance};
         }
-        return kElNone;
+        return {};
     }
     if (Contains({Skins::EqualizerSprites::kOnPosition, QSize(26, 12)}, point)) {
-        return kElOn;
+        return {TControl::On};
     }
     if (Contains({Skins::EqualizerSprites::kAutoPosition, QSize(32, 12)}, point)) {
-        return kElAuto;
+        return {TControl::Auto};
     }
     if (Contains({Skins::EqualizerSprites::kPresetsPosition, QSize(44, 12)}, point)) {
-        return kElPresets;
+        return {TControl::Presets};
     }
-    if (Contains(SliderRect(kElPreamp), point)) {
-        return kElPreamp;
+    if (Contains(SliderRect({TControl::Preamp}), point)) {
+        return {TControl::Preamp};
     }
-    for (int i = 0; i < Audio::kEqBands; ++i) {
-        if (Contains(SliderRect(kElBand0 + i), point)) {
-            return kElBand0 + i;
+    for (int band = 0; band < Audio::kEqBands; ++band) {
+        const EqualizerControl slider{TControl::Band, band};
+        if (Contains(SliderRect(slider), point)) {
+            return slider;
         }
     }
-    return kElNone;
+    return {};
+}
+
+QString EqualizerWindow::regionSection() const {
+    return isShaded() ? QStringLiteral("equalizerws") : QStringLiteral("equalizer");
 }
 
 bool EqualizerWindow::isDragArea(QPoint point) const {
-    return hitTest(point) == kElNone;
+    return hitTest(point).kind == TControl::None;
 }
 
-double* EqualizerWindow::valueFor(int element) {
-    if (element == kElPreamp) {
+double* EqualizerWindow::valueFor(const EqualizerControl& control) {
+    if (control.kind == TControl::Preamp) {
         return &equalizerSettings.preampDb;
     }
-    if (element >= kElBand0 && element < kElBand0 + Audio::kEqBands) {
-        return &equalizerSettings.bandsDb[element - kElBand0];
+    if (control.kind == TControl::Band && control.band >= 0 && control.band < Audio::kEqBands) {
+        return &equalizerSettings.bandsDb[control.band];
     }
     return nullptr;
 }
 
-void EqualizerWindow::changed(int element) {
+void EqualizerWindow::changed(const EqualizerControl& control) {
     Q_EMIT settingsChanged(equalizerSettings);
-    if (const double* v = valueFor(element)) {
+    if (const double* value = valueFor(control)) {
         const QString name =
-            element == kElPreamp ? QStringLiteral("PREAMP") : BandName(element - kElBand0);
+            control.kind == TControl::Preamp ? QStringLiteral("PREAMP") : BandName(control.band);
         Q_EMIT statusText(QStringLiteral("EQ: %1 %2%3 DB")
-                              .arg(name, *v >= 0 ? QStringLiteral("+") : QString())
-                              .arg(*v, 0, 'f', 1));
+                              .arg(name, *value >= 0 ? QStringLiteral("+") : QString())
+                              .arg(*value, 0, 'f', 1));
     }
     update();
 }
 
-void EqualizerWindow::setFromMouse(int element, QPoint point) {
-    if (element == kElShadeVolume || element == kElShadeBalance) {
-        const QRect rect = element == kElShadeVolume ? Skins::EqualizerShadeSprites::kVolume
-                                                     : Skins::EqualizerShadeSprites::kBalance;
-        const double frac = std::clamp((point.x() - rect.x() - 1.5) / (rect.width() - 3), 0.0, 1.0);
-        if (element == kElShadeVolume) {
-            Q_EMIT volumeRequested(int(std::lround(frac * 100)));
+void EqualizerWindow::setFromMouse(const EqualizerControl& control, QPoint point) {
+    if (control.kind == TControl::ShadeVolume || control.kind == TControl::ShadeBalance) {
+        const QRect rect = control.kind == TControl::ShadeVolume
+            ? Skins::EqualizerShadeSprites::kVolume
+            : Skins::EqualizerShadeSprites::kBalance;
+        const double fraction =
+            std::clamp((point.x() - rect.x() - 1.5) / (rect.width() - 3), 0.0, 1.0);
+        if (control.kind == TControl::ShadeVolume) {
+            Q_EMIT volumeRequested(int(std::lround(fraction * 100)));
         } else {
-            Q_EMIT balanceRequested(int(std::lround(frac * 200 - 100)));
+            Q_EMIT balanceRequested(int(std::lround(fraction * 200 - 100)));
         }
         return;
     }
-    double* v = valueFor(element);
-    if (!v) {
+    double* value = valueFor(control);
+    if (!value) {
         return;
     }
-    const QRect rect = SliderRect(element);
+    const QRect rect = SliderRect(control);
     const double top = std::clamp(
         double(point.y() - rect.y()) - 5.5, 0.0, double(Skins::EqualizerSprites::kSliderTravel)
     );
@@ -395,92 +405,93 @@ void EqualizerWindow::setFromMouse(int element, QPoint point) {
     if (std::abs(db) < 0.6) {
         db = 0;
     }
-    if (db == *v) {
+    if (db == *value) {
         return;
     }
-    *v = db;
-    changed(element);
+    *value = db;
+    changed(control);
 }
 
 bool EqualizerWindow::skinMousePress(QPoint pos, Qt::MouseButton button) {
     if (button != Qt::LeftButton) {
         return false;
     }
-    const int el = hitTest(pos);
-    if (el == kElNone) {
+    const EqualizerControl control = hitTest(pos);
+    if (control.kind == TControl::None) {
         return false;
     }
-    pressedElement = el;
+    pressed = control;
     pressedInside = true;
-    setFromMouse(el, pos);
+    setFromMouse(control, pos);
     update();
     return true;
 }
 
 void EqualizerWindow::skinMouseMove(QPoint pos) {
-    if (pressedElement == kElNone) {
+    if (pressed.kind == TControl::None) {
         return;
     }
-    if (valueFor(pressedElement) || pressedElement == kElShadeVolume
-        || pressedElement == kElShadeBalance) {
-        setFromMouse(pressedElement, pos);
+    if (valueFor(pressed) || pressed.kind == TControl::ShadeVolume
+        || pressed.kind == TControl::ShadeBalance) {
+        setFromMouse(pressed, pos);
     } else {
-        pressedInside = hitTest(pos) == pressedElement;
+        pressedInside = hitTest(pos) == pressed;
     }
     update();
 }
 
 void EqualizerWindow::skinMouseRelease(QPoint pos, Qt::MouseButton button) {
-    if (button != Qt::LeftButton || pressedElement == kElNone) {
+    if (button != Qt::LeftButton || pressed.kind == TControl::None) {
         return;
     }
-    const int el = pressedElement;
-    const bool inside = hitTest(pos) == el;
-    pressedElement = kElNone;
+    const EqualizerControl released = pressed;
+    const bool inside = hitTest(pos) == released;
+    pressed = {};
     update();
     if (!inside) {
         return;
     }
-    switch (el) {
-        case kElClose: Q_EMIT closeRequested(); break;
-        case kElShade: setShaded(!isShaded()); break;
-        case kElOn:
+    switch (released.kind) {
+        case TControl::Close: Q_EMIT closeRequested(); break;
+        case TControl::Shade: setShaded(!isShaded()); break;
+        case TControl::On:
             equalizerSettings.enabled = !equalizerSettings.enabled;
             Q_EMIT settingsChanged(equalizerSettings);
             Q_EMIT statusText(
                 equalizerSettings.enabled ? QStringLiteral("EQ: ON") : QStringLiteral("EQ: OFF")
             );
             break;
-        case kElAuto: autoEnabled = !autoEnabled; break;
-        case kElPresets: showPresets(); break;
+        case TControl::Auto: autoEnabled = !autoEnabled; break;
+        case TControl::Presets: showPresets(); break;
         default: break;
     }
 }
 
 bool EqualizerWindow::skinMouseDoubleClick(QPoint pos, Qt::MouseButton button) {
-    if (button == Qt::LeftButton && pos.y() < 14 && hitTest(pos) == kElNone) {
+    const EqualizerControl control = hitTest(pos);
+    if (button == Qt::LeftButton && pos.y() < 14 && control.kind == TControl::None) {
         setShaded(!isShaded());
         return true;
     }
-    const int el = hitTest(pos);
-    double* v = valueFor(el);
-    if (button != Qt::LeftButton || !v) {
+    double* value = valueFor(control);
+    if (button != Qt::LeftButton || !value) {
         return false;
     }
-    *v = 0;
-    changed(el);
+    *value = 0;
+    changed(control);
     return true;
 }
 
 void EqualizerWindow::wheelEvent(QWheelEvent* event) {
-    const int el = hitTest(toSkin(event->position()));
-    double* v = valueFor(el);
+    const EqualizerControl control = hitTest(toSkin(event->position()));
+    double* value = valueFor(control);
     const int steps = wheelSteps(event);
-    if (!v || steps == 0) {
+    if (!value || steps == 0) {
         return;
     }
-    *v = std::clamp(std::round((*v + steps * 0.5) * 10) / 10, -Audio::kEqMaxDb, Audio::kEqMaxDb);
-    changed(el);
+    *value =
+        std::clamp(std::round((*value + steps * 0.5) * 10) / 10, -Audio::kEqMaxDb, Audio::kEqMaxDb);
+    changed(control);
 }
 
 void EqualizerWindow::applyPreset(const Audio::EqPreset& preset) {
@@ -500,22 +511,26 @@ void EqualizerWindow::loadEqf() {
     if (path.isEmpty()) {
         return;
     }
+    const QString fileName = QFileInfo(path).fileName();
     QFile file(path);
     if (!file.open(QIODevice::ReadOnly)) {
-        Q_EMIT statusText(QStringLiteral("EQ: не удалось открыть файл: ") + file.errorString());
+        Q_EMIT statusText(QStringLiteral("EQ: %1: %2").arg(fileName, file.errorString()));
         return;
     }
     if (file.size() > kMaxEqfBytes) {
-        Q_EMIT statusText(
-            QStringLiteral("EQ: файл больше %1 КБ — это не пресет").arg(kMaxEqfBytes / 1024)
-        );
+        Q_EMIT statusText(QStringLiteral("EQ: %1 — %2 КБ, а пресеты не больше %3 КБ")
+                              .arg(fileName)
+                              .arg(file.size() / 1024)
+                              .arg(kMaxEqfBytes / 1024));
         return;
     }
     QList<Audio::EqPreset> presets;
     try {
         presets = Audio::ParseEqf(file.readAll());
     } catch (const Audio::Error& error) {
-        Q_EMIT statusText(QStringLiteral("EQ: ") + QString::fromUtf8(error.what()));
+        Q_EMIT statusText(
+            QStringLiteral("EQ: %1: %2").arg(fileName, QString::fromUtf8(error.what()))
+        );
         return;
     }
     if (presets.size() == 1) {
@@ -551,12 +566,14 @@ void EqualizerWindow::saveEqf() {
     if (path.isEmpty()) {
         return;
     }
+    const QString fileName = QFileInfo(path).fileName();
     QFile file(path);
     if (file.open(QIODevice::WriteOnly)
         && file.write(Audio::WriteEqf({{name, equalizerSettings}})) > 0) {
-        Q_EMIT statusText(QStringLiteral("EQ: сохранено"));
+        Q_EMIT statusText(QStringLiteral("EQ: сохранено в %1").arg(fileName));
     } else {
-        Q_EMIT statusText(QStringLiteral("EQ: не удалось сохранить"));
+        Q_EMIT statusText(QStringLiteral("EQ: %1 не сохранён: %2").arg(fileName, file.errorString())
+        );
     }
 }
 

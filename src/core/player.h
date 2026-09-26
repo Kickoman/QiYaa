@@ -63,7 +63,7 @@ public:
     double durationSeconds() const;
     Audio::AudioEngine* engine() const { return audioEngine; }
     Yandex::Library* library() const { return yandexLibrary; }
-    int preloadedIndex() const { return preload && preload->stream ? preload->index : -1; }
+    int preloadedIndex() const;
 
 Q_SIGNALS:
     void statusMessage(const QString& text);
@@ -98,7 +98,7 @@ private:
     void refreshPreload();
     void maybeLoadMore();
     void closeOpenTrack();
-    double playedSeconds();
+    double accumulatePlayedSeconds();
 
     Yandex::Library* yandexLibrary;
     Audio::AudioEngine* audioEngine;

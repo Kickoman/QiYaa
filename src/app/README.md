@@ -6,7 +6,8 @@ media controls and the windows: main, equalizer, playlist, now-playing and, in a
 Milkdrop), connects their signals, places and re-stacks the windows,
 builds the context menus and keyboard shortcuts, keeps `settings.ini`, finds and saves the Yandex
 token, swaps skins and shuts down in order. `paths.*` says where QiYaa's own files and the old
-Yaamp's files live. `main.cpp` belongs to the `qiyaa` executable, not to the library: it picks the
+Yaamp's files live. `offline_sources.*` holds what `--play-file` and `--demo` play without
+Yandex. `main.cpp` belongs to the `qiyaa` executable, not to the library: it picks the
 Qt platform, parses the command line and runs the application. The folder only wires things
 together. Drawing, dragging, snapping, shading and resizing a window are in
 [src/ui](../ui/README.md); the queue, playback and wave reports in [src/core](../core/README.md);
@@ -17,11 +18,12 @@ HTTP, OAuth and the token file format in [src/yandex](../yandex/README.md); `.ws
 |---|---|
 | `application.h/.cpp` | `App::Application` and its `Options`: ownership, wiring, layout, menus, shortcuts, settings, login, skins, quit, `snapshot()` |
 | `paths.h/.cpp` | `ConfigDir`, `YaampDataDirs`, `TokenFile`, `YaampTokenFiles`: where settings and tokens live |
-| `main.cpp` | `main()` of the `qiyaa` executable: platform choice, command-line options, demo tracks, `--play-file`, `--screenshot`, exit codes |
+| `offline_sources.h/.cpp` | `StreamLocalFile` (a local file fed to the engine like a download) and `DemoTracks` (nine sample entries) |
+| `main.cpp` | `main()` of the `qiyaa` executable: platform choice, command-line options, `--screenshot`, exit codes |
 
 ## Dependencies
 
-`qiyaa_app` is built from `application.*` and `paths.*`:
+`qiyaa_app` is built from `application.*`, `offline_sources.*` and `paths.*`:
 
 - PUBLIC `qiyaa_audio`, `qiyaa_core`, `qiyaa_skins`, `qiyaa_yandex`: `application.h` holds
   `Audio::AudioEngine`, `Core::Player`, `Skins::Skin`, `Yandex::ApiClient` and `Yandex::Library`
@@ -81,7 +83,8 @@ public:
     Yandex::Library* library();
 
     bool loadSkin(const QString& path);                // false: message in the marquee
-    void setScale(double scale, bool persist = true);  // persist = false for --scale
+    enum class ScaleScope { Saved, ThisRun };
+    void setScale(double scale, ScaleScope scope = ScaleScope::Saved);  // ThisRun for --scale
     void setAlwaysOnTop(bool on);
     void setEqualizerVisible(bool on);
     void setPlaylistVisible(bool on);
@@ -158,7 +161,7 @@ below the equalizer, now-playing to the right of the main window, Milkdrop at ma
 after shade and scale. `SkinnedWindow::placeAt` clamps every position to the screens that exist
 now.
 
-**`setScale(scale, persist)`**:
+**`setScale(scale, scope)`**:
 
 1. Collects the windows docked to the main window through a chain of touching windows
    (`Ui::ConnectedGroup`, breadth-first, so nearest first). Hidden windows are included, so they
@@ -173,7 +176,7 @@ now.
 4. Moves the visible group as a whole into the screen it is on (`Ui::PickScreen`,
    `Ui::ClampInside`). If the group is wider or taller than that screen, it calls
    `ensureVisible()` on every window so each one can still be reached.
-5. With `persist`, stores `scale` (the factor the main window ended up with) and calls
+5. With `ScaleScope::Saved`, stores `scale` (the factor the main window ended up with) and calls
    `saveState()`. Without it (`--scale`), it sets `transientScale`, which stops `saveState()` from
    writing positions.
 
@@ -190,7 +193,7 @@ window, then shows again those that were visible, because changing window flags 
 `equalizer/auto`. It writes the five `*/pos` keys only when all three hold: the platform lets the
 app place windows (`SkinnedWindow::CanPositionWindows()`, false on native Wayland), the main window
 is visible, and no `--scale` override is active. It runs when any window finishes a move
-(`moveFinished`), on a shade change, on a persisted `setScale`, on a choice in the Visualization
+(`moveFinished`), on a shade change, on a `setScale` with `ScaleScope::Saved`, on a choice in the Visualization
 submenu, in `quit()` and on `aboutToQuit`. The other settings are written the moment they change
 (see the table).
 
@@ -219,7 +222,7 @@ default offscreen screen, where the scale tests skip themselves).
   such a run writes the real `<ConfigDir>/token`.
 - `Options::settingsFile` is not set by anyone now, neither `main.cpp` nor the tests.
 - After `--scale`, window positions are not saved for the rest of the run, unless the user picks a
-  size from the menu (a persisted `setScale` clears `transientScale`).
+  size from the menu (a `setScale` with `ScaleScope::Saved` clears `transientScale`).
 - `saveState()` skips positions while the main window is hidden, which is why `quit()` saves before
   hiding the windows. The `saveState()` on `aboutToQuit` that follows only writes the other keys.
 - Only `quit()` waits for pending POSTs. Any other way out (the session ends,
@@ -307,7 +310,7 @@ default context is the window, so the keys work while any of the player's window
 | Left, Right | seek 5 s back or forward from `AudioEngine::positionSeconds()` |
 | Alt+G | show or hide the equalizer |
 | Alt+E | show or hide the playlist |
-| Ctrl+D | scale 2.0, or 1.0 when it is already 2.0 (persisted) |
+| Ctrl+D | scale 2.0, or 1.0 when it is already 2.0 (saved) |
 | Ctrl+W | shade or unshade the main window |
 | Ctrl+Shift+K | show or hide Milkdrop (nothing without Milkdrop) |
 
@@ -319,7 +322,7 @@ constructor; "setter" is the matching `set*Visible`.
 | Key | Type | Default | Read | Written |
 |---|---|---|---|---|
 | `skin` | QString: a file path or `:/skins/<file>.wsz` | empty = built-in `base-2.91.wsz` | ctor, unless `--skin` | `loadSkin()` on success |
-| `scale` | double | 1.0 | ctor | `setScale(…, true)` |
+| `scale` | double | 1.0 | ctor | `setScale(…, ScaleScope::Saved)` |
 | `alwaysOnTop` | bool | false | ctor | `setAlwaysOnTop()` |
 | `volume` | int, 0..100 | 75 | ctor | `saveState()` |
 | `balance` | int, −100..100 | 0 | ctor | `saveState()` |
@@ -417,6 +420,29 @@ place.
 - On case-insensitive file systems (Windows, macOS by default) `Yaamp` and `yaamp` are the same
   folder, so the same `token.json` may be read twice; `FindToken` stops at the first usable one.
 
+## `offline_sources.h/.cpp`
+
+```cpp
+namespace App {
+void StreamLocalFile(Audio::AudioEngine* engine, const QString& path);
+QList<Yandex::Track> DemoTracks();
+}
+```
+
+`StreamLocalFile` imitates a download: it opens the file (on failure it logs `Cannot open <path>`
+and the app keeps running with nothing playing), calls `AudioEngine::beginStream()`, then a 20 ms
+timer, parented to the engine, appends 64 KiB per tick until the end of the file, calls
+`finishData()` and deletes itself. It bypasses `Core::Player`: the playlist does not show the
+file.
+
+`DemoTracks()` returns nine fixed "Artist - Title" entries with ids `1`..`9` and durations from
+164 to 395 s. They have no cover and no audio.
+
+**Traps:**
+- `StreamLocalFile` feeds the engine's *current* stream (the `appendData`/`finishData` overloads
+  without a stream id). If something starts another stream meanwhile (a demo track played with
+  `--demo`), the rest of the file goes into that stream.
+
 ## `main.cpp`
 
 ```cpp
@@ -452,7 +478,7 @@ int main(int argc, char* argv[]);  // Run() inside try/catch
 | `--offline` | `Options::offline` |
 | `--text <text>` | `MainWindow::setStatusText(text)` |
 | `--demo` | `Player::setQueue(DemoTracks(), "Demo", false)` |
-| `--scale <factor>` | `Application::setScale(value.toDouble(), false)`: this run only |
+| `--scale <factor>` | `Application::setScale(value.toDouble(), ScaleScope::ThisRun)`: this run only |
 
 Qt's own arguments (`-platform`, `-style`, …) are taken out by `QApplication` before the parser
 runs. The mapping to `Options` is `offline = --screenshot || --offline || --play-file`,
@@ -483,15 +509,6 @@ loop, then `QApplication::exit(kSuccess or kFailure)`, so the visualizer is movi
 CI runs `QiYaa --screenshot <png> --offline` on the offscreen platform as a start-up check of every
 build and package.
 
-**`StreamLocalFile(engine, path)`** imitates a download: it opens the file (on failure it logs
-`Cannot open <path>` and the app keeps running with nothing playing), calls
-`AudioEngine::beginStream()`, then a 20 ms timer, parented to the engine, appends 64 KiB per tick
-until the end of the file, calls `finishData()` and deletes itself. It bypasses `Core::Player`: the
-playlist does not show the file.
-
-**`DemoTracks()`** returns nine fixed "Artist - Title" entries with ids `1`..`9` and durations
-from 164 to 395 s. They have no cover and no audio.
-
 **Exit codes:**
 
 | Code | Name | When |
@@ -505,9 +522,6 @@ from 164 to 395 s. They have no cover and no audio.
 - The `try`/`catch` in `main` covers what runs outside Qt's event loop: construction, `start()`,
   the options and the screenshot without `--play-file`. Exceptions are never thrown inside the
   event loop (see `CLAUDE.md`), and one thrown there would not arrive here intact.
-- `StreamLocalFile` feeds the engine's *current* stream (the `appendData`/`finishData` overloads
-  without a stream id). If something starts another stream meanwhile (a demo track played with
-  `--demo`), the rest of the file goes into that stream.
 - `--scale` goes through `QString::toDouble`: a non-number gives 0.0, which the windows clamp to
   1.0.
 - `--text` is only the latest status text. Without `--offline`, the login messages replace it.

@@ -20,6 +20,25 @@ constexpr int kArtistTopLimit = 100;
 QString StringField(const QJsonObject& o, const char* key) {
     return ApiClient::IdString(o.value(QLatin1String(key)));
 }
+SearchResult::Kind ParseSearchKind(const QString& type) {
+    if (type.isEmpty()) {
+        return SearchResult::Kind::None;
+    }
+    if (type == QLatin1String("artist")) {
+        return SearchResult::Kind::Artist;
+    }
+    if (type == QLatin1String("album")) {
+        return SearchResult::Kind::Album;
+    }
+    if (type == QLatin1String("track")) {
+        return SearchResult::Kind::Track;
+    }
+    if (type == QLatin1String("playlist")) {
+        return SearchResult::Kind::Playlist;
+    }
+    return SearchResult::Kind::Other;
+}
+
 }  // namespace
 
 Library::Library(ApiClient* api, QObject* parent)
@@ -589,7 +608,7 @@ void Library::search(const QString& text, TCallback<SearchResult> callback) {
             const QJsonObject object = result.toObject();
             SearchResult res;
             const QJsonObject best = object.value(QStringLiteral("best")).toObject();
-            res.bestType = best.value(QStringLiteral("type")).toString();
+            res.bestKind = ParseSearchKind(best.value(QStringLiteral("type")).toString());
             const QJsonObject item = best.value(QStringLiteral("result")).toObject();
             res.bestId = StringField(item, "id");
             res.bestName = item.value(

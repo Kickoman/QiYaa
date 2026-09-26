@@ -5,25 +5,6 @@
 #include "core/cover_cache.h"
 #include "integrations/media_controls.h"
 #include "skins/error.h"
-
-#include <QAction>
-#include <QActionGroup>
-#include <QApplication>
-#include <QDir>
-#include <QFileDialog>
-#include <QMenu>
-#include <QPainter>
-#include <QScreen>
-#include <QTimer>
-
-#include <algorithm>
-#include <cmath>
-#ifdef QIYAA_HAVE_MPRIS
-#include "integrations/mpris.h"
-#endif
-#ifdef QIYAA_HAVE_SMTC
-#include "integrations/smtc.h"
-#endif
 #include "ui/equalizer_window.h"
 #include "ui/gen_window.h"
 #include "ui/library_menu.h"
@@ -34,18 +15,35 @@
 #include "ui/playlist_window.h"
 #include "ui/snap.h"
 #include "yandex/token.h"
+#ifdef QIYAA_HAVE_MPRIS
+#include "integrations/mpris.h"
+#endif
+#ifdef QIYAA_HAVE_SMTC
+#include "integrations/smtc.h"
+#endif
 
+#include <QAction>
+#include <QActionGroup>
+#include <QApplication>
 #include <QDialog>
+#include <QDir>
+#include <QFileDialog>
 #include <QGuiApplication>
 #include <QImage>
 #include <QKeySequence>
 #include <QLatin1String>
 #include <QList>
+#include <QMenu>
+#include <QPainter>
 #include <QPoint>
 #include <QPointF>
+#include <QScreen>
 #include <QString>
 #include <QStringList>
+#include <QTimer>
 
+#include <algorithm>
+#include <cmath>
 #include <initializer_list>
 #include <utility>
 
@@ -193,8 +191,8 @@ Application::Application(const Options& options, QObject* parent)
         });
         connect(
             milkdropWindowInstance.get(), &Ui::MilkdropWindow::presetChanged, this,
-            [this](const QString& name, bool byUser) {
-                if (byUser) {
+            [this](const QString& name, Ui::MilkdropWindow::PresetOrigin origin) {
+                if (origin == Ui::MilkdropWindow::PresetOrigin::User) {
                     mainWindowInstance->setStatusText(QStringLiteral("Milkdrop: ") + name);
                 }
             }
@@ -505,7 +503,7 @@ bool Application::loadSkin(const QString& path) {
     return true;
 }
 
-void Application::setScale(double scale, bool persist) {
+void Application::setScale(double scale, ScaleScope scope) {
     const double old = mainWindowInstance->scale();
     const QList<Ui::SkinnedWindow*> all = windows();
     QList<QRect> rects;
@@ -556,8 +554,8 @@ void Application::setScale(double scale, bool persist) {
         }
     }
 
-    transientScale = !persist;
-    if (persist) {
+    transientScale = scope == ScaleScope::ThisRun;
+    if (scope == ScaleScope::Saved) {
         settings.setValue(QStringLiteral("scale"), s);
         saveState();
     }

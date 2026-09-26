@@ -53,8 +53,6 @@ constexpr int kMiniWidth = 8;
 constexpr int kMiniY = 22;
 constexpr int kMiniHeight = 10;
 
-constexpr int kBtnAdd = 0, kBtnRem = 1, kBtnSel = 2, kBtnMisc = 3, kBtnList = 4, kBtnMini0 = 10;
-
 }  // namespace
 
 PlaylistWindow::PlaylistWindow(Core::Player* player, const Skins::Skin* skin, QWidget* parent)
@@ -414,27 +412,30 @@ void PlaylistWindow::paintSkin(QPainter& painter) {
     drawBottomInfo(painter);
 }
 
-int PlaylistWindow::miniButtonAt(QPoint point) const {
-    const int window = skinSize().width(), h = skinSize().height();
-    const QPoint base(window - 150, h - Skins::PlaylistSprites::kBottomHeight);
+PlaylistWindow::Button PlaylistWindow::buttonAt(QPoint point) const {
+    constexpr Button kMiniButtons[] = {Button::Previous, Button::Play, Button::Pause,
+                                       Button::Stop,     Button::Next, Button::Eject};
+    constexpr Button kBottomButtons[] = {Button::Add, Button::Remove, Button::Select, Button::Misc};
+    constexpr int kBottomButtonX[] = {14, 43, 72, 101};
+    const int windowWidth = skinSize().width(), windowHeight = skinSize().height();
+    const QPoint base(windowWidth - 150, windowHeight - Skins::PlaylistSprites::kBottomHeight);
     for (int i = 0; i < 6; ++i) {
         if (RectContains(
                 QRect(base + QPoint(kMiniX[i], kMiniY), QSize(kMiniWidth, kMiniHeight)), point
             )) {
-            return kBtnMini0 + i;
+            return kMiniButtons[i];
         }
     }
-    const int y = h - 30;
-    const int xs[] = {14, 43, 72, 101};
+    const int y = windowHeight - 30;
     for (int i = 0; i < 4; ++i) {
-        if (RectContains(QRect(xs[i], y, 22, 18), point)) {
-            return i;
+        if (RectContains(QRect(kBottomButtonX[i], y, 22, 18), point)) {
+            return kBottomButtons[i];
         }
     }
-    if (RectContains(QRect(window - 44, y, 22, 18), point)) {
-        return kBtnList;
+    if (RectContains(QRect(windowWidth - 44, y, 22, 18), point)) {
+        return Button::List;
     }
-    return -1;
+    return Button::None;
 }
 
 bool PlaylistWindow::isDragArea(QPoint point) const {
@@ -509,9 +510,9 @@ bool PlaylistWindow::skinMousePress(QPoint pos, Qt::MouseButton button) {
         update();
         return true;
     }
-    if (const int b = miniButtonAt(pos); b >= 0) {
+    if (const Button target = buttonAt(pos); target != Button::None) {
         activeDrag = Drag::Button;
-        pressedButton = b;
+        pressedButton = target;
         return true;
     }
     if (const int row = rowAt(pos); row >= 0) {
@@ -557,14 +558,14 @@ void PlaylistWindow::skinMouseRelease(QPoint pos, Qt::MouseButton button) {
     if (drag == Drag::Shade && RectContains(QRect(window - 21, 3, 9, 9), pos)) {
         setShaded(!isShaded());
     }
-    if (drag == Drag::Button && miniButtonAt(pos) == pressedButton) {
+    if (drag == Drag::Button && buttonAt(pos) == pressedButton) {
         switch (pressedButton) {
-            case kBtnAdd:
+            case Button::Add:
                 Q_EMIT sourcesMenuRequested(mapToGlobal(
                     QPoint(qRound(14 * scale()), qRound((skinSize().height() - 30) * scale()))
                 ));
                 break;
-            case kBtnRem: {
+            case Button::Remove: {
                 auto* menu = new QMenu(this);
                 menu->addAction(
                         QStringLiteral("Удалить выбранные"), this,
@@ -579,7 +580,7 @@ void PlaylistWindow::skinMouseRelease(QPoint pos, Qt::MouseButton button) {
                 popupAt(menu, {43, skinSize().height() - 30});
                 break;
             }
-            case kBtnSel: {
+            case Button::Select: {
                 auto* menu = new QMenu(this);
                 menu->addAction(QStringLiteral("Выбрать все"), this, [this] {
                     selectedRows.clear();
@@ -595,16 +596,15 @@ void PlaylistWindow::skinMouseRelease(QPoint pos, Qt::MouseButton button) {
                 popupAt(menu, {72, skinSize().height() - 30});
                 break;
             }
-            case kBtnMisc: break;
-            case kBtnMini0 + 0: corePlayer->previous(); break;
-            case kBtnMini0 + 1: corePlayer->play(); break;
-            case kBtnMini0 + 2: corePlayer->pause(); break;
-            case kBtnMini0 + 3: corePlayer->stop(); break;
-            case kBtnMini0 + 4: corePlayer->next(); break;
+            case Button::Previous: corePlayer->previous(); break;
+            case Button::Play: corePlayer->play(); break;
+            case Button::Pause: corePlayer->pause(); break;
+            case Button::Stop: corePlayer->stop(); break;
+            case Button::Next: corePlayer->next(); break;
             default: break;
         }
     }
-    pressedButton = -1;
+    pressedButton = Button::None;
     update();
 }
 

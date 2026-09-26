@@ -16,7 +16,7 @@
 namespace Yandex {
 
 namespace {
-constexpr int kTimeoutMs = 20000;
+constexpr int kTimeoutMs = 20'000;
 
 QNetworkRequest MakeRequest(const QUrl& url, const QString& token) {
     QNetworkRequest req(url);

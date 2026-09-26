@@ -4,10 +4,17 @@
 #include "vis/milkdrop_presets.h"
 #include "vis/milkdrop_view.h"
 
+#include <QChar>
 #include <QDir>
 #include <QElapsedTimer>
 #include <QFile>
+#include <QIODevice>
+#include <QImage>
+#include <QObject>
+#include <QRgb>
+#include <QSet>
 #include <QSignalSpy>
+#include <QString>
 #include <QTemporaryDir>
 #include <QTest>
 
@@ -102,11 +109,11 @@ private Q_SLOTS:
         window.previousPreset();
         QCOMPARE(window.currentPreset(), QStringLiteral("A-first"));
         // projectM asking for the next one (time is up)...
-        window.onSwitchRequested(false);
+        window.onSwitchRequested(Vis::PresetTransition::Blend);
         QCOMPARE(window.currentPreset(), QStringLiteral("b-second"));
         // ...is ignored while locked.
         window.setLocked(true);
-        window.onSwitchRequested(false);
+        window.onSwitchRequested(Vis::PresetTransition::Blend);
         QCOMPARE(window.currentPreset(), QStringLiteral("b-second"));
         window.setLocked(false);
         // Shuffle: "previous" walks back through what was shown.
@@ -132,7 +139,7 @@ private Q_SLOTS:
         QCOMPARE(window.currentPreset(), QStringLiteral("b-second"));
         // Never chosen automatically again, in order...
         for (int i = 0; i < 8; ++i) {
-            window.onSwitchRequested(false);
+            window.onSwitchRequested(Vis::PresetTransition::Blend);
             QVERIFY(window.currentPreset() != QStringLiteral("A-first"));
         }
         window.selectPreset(1);
@@ -213,7 +220,7 @@ private Q_SLOTS:
         }
         qInfo("OpenGL: %s", qPrintable(view->glInfo()));
         QVERIFY(view->isRendering());
-        QVERIFY(QTest::qWaitFor([&] { return view->framesRendered() > 10; }, 15000));
+        QVERIFY(QTest::qWaitFor([&] { return view->framesRendered() > 10; }, 15'000));
 
         // A preset loaded onto a black canvas fills it in over a few seconds
         // (feedback), slower on a software renderer: keep looking for up to 20 s.
@@ -241,7 +248,7 @@ private Q_SLOTS:
                 break;
             }
             QTest::qWait(500);
-        } while (timer.elapsed() < 20000);
+        } while (timer.elapsed() < 20'000);
         qInfo(
             "after %lld ms: %d colours, %d of %d lit", timer.elapsed(), colourCount, lit, samples
         );
@@ -289,11 +296,11 @@ private Q_SLOTS:
         QSignalSpy black(view, &Vis::MilkdropView::staysBlack);
         QSignalSpy picture(view, &Vis::MilkdropView::drawsPicture);
         window.setLocked(true);
-        window.selectPreset(window.presets().indexOf("white"), false);
+        window.selectPreset(window.presets().indexOf("white"), Vis::PresetTransition::Cut);
         view->setBlackWatch(true);
         QVERIFY(picture.wait(5000));
         QCOMPARE(black.count(), 0);
-        window.selectPreset(window.presets().indexOf("black"), false);
+        window.selectPreset(window.presets().indexOf("black"), Vis::PresetTransition::Cut);
         QVERIFY(black.wait(5000));
     }
 
@@ -323,11 +330,3 @@ private Q_SLOTS:
 
 QTEST_MAIN(TestMilkdrop)
 #include "milkdrop_test.moc"
-
-#include <QChar>
-#include <QIODevice>
-#include <QImage>
-#include <QObject>
-#include <QRgb>
-#include <QSet>
-#include <QString>

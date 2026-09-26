@@ -9,7 +9,6 @@
 #include <QString>
 #include <QWidget>
 
-#include <cmath>
 #include <utility>
 
 class QPainter;
@@ -31,7 +30,7 @@ public:
 
     void setScale(double scale);
     double scale() const { return scaleFactor; }
-    static bool IsIntegerScale(double s) { return std::abs(s - std::round(s)) < 1e-6; }
+    static bool IsIntegerScale(double scale);
 
     QSize skinSize() const { return skinPixelSize; }
     void setSkinSize(QSize size);

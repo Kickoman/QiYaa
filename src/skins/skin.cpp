@@ -10,6 +10,7 @@
 #include <QFontMetrics>
 #include <QHash>
 #include <QImageReader>
+#include <QPainter>
 #include <QPoint>
 #include <QRegularExpression>
 #include <QRgb>
@@ -18,14 +19,12 @@
 #include <algorithm>
 #include <cstddef>
 #include <initializer_list>
+#include <map>
+#include <optional>
 #include <string>
 #include <utility>
 
 namespace Skins {
-
-size_t qHash(Skin::Sheet sheet, size_t seed) noexcept {
-    return ::qHash(static_cast<int>(sheet), seed);
-}
 
 namespace {
 
@@ -108,8 +107,13 @@ QList<QColor> ParseVisColors(const QByteArray& text) {
     return colors;
 }
 
+struct FontCellPosition {
+    int row = 0;
+    int column = 0;
+};
+
 // Port of webamp's FONT_LOOKUP.
-bool FontCell(QChar c, int* row, int* col) {
+std::optional<FontCellPosition> FontCell(QChar character) {
     static const QHash<char16_t, std::pair<int, int>> table = [] {
         QHash<char16_t, std::pair<int, int>> t;
         for (int i = 0; i < 26; ++i) {
@@ -132,16 +136,14 @@ bool FontCell(QChar c, int* row, int* col) {
         }
         return t;
     }();
-    auto it = table.constFind(c.toLower().unicode());
+    auto it = table.constFind(character.toLower().unicode());
     if (it == table.cend()) {
-        it = table.constFind(c.unicode());
+        it = table.constFind(character.unicode());
         if (it == table.cend()) {
-            return false;
+            return std::nullopt;
         }
     }
-    *row = it->first;
-    *col = it->second;
-    return true;
+    return FontCellPosition{it->first, it->second};
 }
 
 struct PixelGlyph {
@@ -207,8 +209,10 @@ const PixelGlyph* FindPixelGlyph(char16_t upper) {
 }
 
 struct CharRender {
-    enum Kind { Cell, Pixel, SystemFont } kind = SystemFont;
-    int row = 0, col = 0;
+    enum class Kind { Cell, Pixel, SystemFont };
+
+    Kind kind = Kind::SystemFont;
+    FontCellPosition cell;
     const PixelGlyph* glyph = nullptr;
     int advance = 0;
 };
@@ -228,30 +232,70 @@ QColor TextInkColor(const QImage& text) {
     if (text.isNull()) {
         return Qt::green;
     }
-    const QRgb bg = text.pixel(text.width() - 1, 0);
-    QHash<QRgb, int> counts;
-    const int h = std::min(text.height(), 6);
-    const int w = std::min(text.width(), 26 * Skins::kCharWidth);
-    for (int y = 0; y < h; ++y) {
-        for (int x = 0; x < w; ++x) {
-            const QRgb px = text.pixel(x, y);
-            if (px != bg) {
-                ++counts[px];
+    const QRgb background = text.pixel(text.width() - 1, 0);
+    std::map<QRgb, int> counts;
+    const int rows = std::min(text.height(), 6);
+    const int columns = std::min(text.width(), 26 * Skins::kCharWidth);
+    for (int y = 0; y < rows; ++y) {
+        for (int x = 0; x < columns; ++x) {
+            const QRgb pixel = text.pixel(x, y);
+            if (pixel != background) {
+                ++counts[pixel];
             }
         }
     }
     QRgb best = qRgb(0, 255, 0);
     int bestCount = 0;
-    for (auto it = counts.cbegin(); it != counts.cend(); ++it) {
-        if (it.value() > bestCount) {
-            bestCount = it.value();
-            best = it.key();
+    for (const auto& [color, count] : counts) {
+        if (count > bestCount) {
+            bestCount = count;
+            best = color;
         }
     }
     return QColor::fromRgb(best);
 }
 
+CharRender ResolveChar(QChar character) {
+    CharRender render;
+    render.advance = Skins::kCharWidth;
+    if (const std::optional<FontCellPosition> cell = FontCell(character)) {
+        render.kind = CharRender::Kind::Cell;
+        render.cell = *cell;
+        return render;
+    }
+    const char16_t upper = character.toUpper().unicode();
+    if (const char16_t alike = CyrillicLookalike(upper)) {
+        if (const std::optional<FontCellPosition> cell = FontCell(QChar(alike))) {
+            render.kind = CharRender::Kind::Cell;
+            render.cell = *cell;
+            return render;
+        }
+    }
+    if (const PixelGlyph* glyph = FindPixelGlyph(upper)) {
+        render.kind = CharRender::Kind::Pixel;
+        render.glyph = glyph;
+        render.advance = glyph->width + 1;
+        return render;
+    }
+    // Accented Latin: drop the accent, like webamp's deburr().
+    const QString base = QString(character).normalized(QString::NormalizationForm_D);
+    if (!base.isEmpty() && base.at(0) != character) {
+        if (const std::optional<FontCellPosition> cell = FontCell(base.at(0))) {
+            render.kind = CharRender::Kind::Cell;
+            render.cell = *cell;
+            return render;
+        }
+    }
+    render.kind = CharRender::Kind::SystemFont;
+    render.advance = QFontMetrics(FallbackFont()).horizontalAdvance(character);
+    return render;
+}
+
 }  // namespace
+
+size_t qHash(Skin::Sheet sheet, size_t seed) noexcept {
+    return ::qHash(static_cast<int>(sheet), seed);
+}
 
 Skin Skin::LoadWsz(const QByteArray& archive, const Skin* fallback) {
     Skin skin;
@@ -460,40 +504,6 @@ void Skin::draw(QPainter& painter, Sheet bitmap, const QRect& src, const QPoint&
     painter.drawImage(dst, image, src);
 }
 
-namespace {
-
-CharRender ResolveChar(QChar ch) {
-    CharRender r;
-    r.advance = Skins::kCharWidth;
-    if (FontCell(ch, &r.row, &r.col)) {
-        r.kind = CharRender::Cell;
-        return r;
-    }
-    const char16_t upper = ch.toUpper().unicode();
-    if (const char16_t alike = CyrillicLookalike(upper);
-        alike && FontCell(QChar(alike), &r.row, &r.col)) {
-        r.kind = CharRender::Cell;
-        return r;
-    }
-    if (const PixelGlyph* g = FindPixelGlyph(upper)) {
-        r.kind = CharRender::Pixel;
-        r.glyph = g;
-        r.advance = g->width + 1;
-        return r;
-    }
-    // Accented Latin: drop the accent, like webamp's deburr().
-    const QString base = QString(ch).normalized(QString::NormalizationForm_D);
-    if (!base.isEmpty() && base.at(0) != ch && FontCell(base.at(0), &r.row, &r.col)) {
-        r.kind = CharRender::Cell;
-        return r;
-    }
-    r.kind = CharRender::SystemFont;
-    r.advance = QFontMetrics(FallbackFont()).horizontalAdvance(ch);
-    return r;
-}
-
-}  // namespace
-
 int Skin::TextWidth(const QString& text) {
     int w = 0;
     for (QChar ch : text) {
@@ -512,21 +522,22 @@ int Skin::drawText(QPainter& painter, const QPoint& at, const QString& text, int
         if (maxWidth >= 0 && x + r.advance > at.x() + maxWidth) {
             break;
         }
-        if ((r.kind == CharRender::Pixel || r.kind == CharRender::SystemFont) && !ink.isValid()) {
+        if ((r.kind == CharRender::Kind::Pixel || r.kind == CharRender::Kind::SystemFont)
+            && !ink.isValid()) {
             ink = TextInkColor(font);
         }
 
         switch (r.kind) {
-            case CharRender::Cell:
+            case CharRender::Kind::Cell:
                 painter.drawImage(
                     QPoint(x, at.y()), font,
                     QRect(
-                        r.col * Skins::kCharWidth, r.row * Skins::kCharHeight, Skins::kCharWidth,
-                        Skins::kCharHeight
+                        r.cell.column * Skins::kCharWidth, r.cell.row * Skins::kCharHeight,
+                        Skins::kCharWidth, Skins::kCharHeight
                     )
                 );
                 break;
-            case CharRender::Pixel:
+            case CharRender::Kind::Pixel:
                 for (int bx = 0; bx < r.advance; bx += Skins::kCharWidth) {
                     painter.drawImage(
                         QPoint(x + bx, at.y()), font,
@@ -541,7 +552,7 @@ int Skin::drawText(QPainter& painter, const QPoint& at, const QString& text, int
                     }
                 }
                 break;
-            case CharRender::SystemFont:
+            case CharRender::Kind::SystemFont:
                 painter.setFont(FallbackFont());
                 painter.setPen(ink);
                 painter.drawText(

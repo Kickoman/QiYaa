@@ -93,8 +93,8 @@ void MilkdropView::destroyProjectM() {
     }
 }
 
-void MilkdropView::loadPreset(const QByteArray& milk, bool smooth) {
-    pending = std::make_pair(milk, smooth);
+void MilkdropView::loadPreset(const QByteArray& milk, PresetTransition transition) {
+    pending = std::make_pair(milk, transition);
     update();
 }
 
@@ -212,8 +212,10 @@ void MilkdropView::initializeGL() {
         projectM,
         [](bool hardCut, void* self) {
             auto* view = static_cast<MilkdropView*>(self);
+            const PresetTransition transition =
+                hardCut ? PresetTransition::Cut : PresetTransition::Blend;
             QMetaObject::invokeMethod(
-                view, [view, hardCut] { Q_EMIT view->switchRequested(hardCut); },
+                view, [view, transition] { Q_EMIT view->switchRequested(transition); },
                 Qt::QueuedConnection
             );
         },
@@ -265,16 +267,18 @@ void MilkdropView::paintGL() {
         applyTexturePaths();
     }
     if (pending) {
-        const auto [milk, smooth] = *std::exchange(pending, std::nullopt);
-        projectm_load_preset_data(projectM, milk.constData(), smooth);
+        const auto [milk, transition] = *std::exchange(pending, std::nullopt);
+        projectm_load_preset_data(
+            projectM, milk.constData(), transition == PresetTransition::Blend
+        );
         sinceLoad.start();
         blackChecks = 0;
         sawPicture = false;
     }
-    const uint32_t n =
-        audioEngine->readNewVisSamples(&visReadCursor, pcm.data(), kMaxFramesPerFeed);
-    if (n > 0) {
-        projectm_pcm_add_float(projectM, pcm.data(), n, PROJECTM_STEREO);
+    const Audio::VisReadResult fed = audioEngine->readNewVisSamples(visReadCursor, pcm);
+    visReadCursor = fed.cursor;
+    if (fed.frames > 0) {
+        projectm_pcm_add_float(projectM, pcm.data(), fed.frames, PROJECTM_STEREO);
     }
     projectm_opengl_render_frame(projectM);
     makeOpaque();

@@ -14,7 +14,11 @@ namespace Core {
 class CoverCache : public QObject {
     Q_OBJECT
 public:
-    CoverCache(QNetworkAccessManager* nam, const QString& cacheDir = {}, QObject* parent = nullptr);
+    explicit CoverCache(
+        QNetworkAccessManager* nam,
+        const QString& cacheDir = {},
+        QObject* parent = nullptr
+    );
 
     QImage get(const QUrl& url);
     QString localFile(const QUrl& url) const;

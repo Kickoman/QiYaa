@@ -1,41 +1,43 @@
 #include "audio/vis_tap.h"
 
 #include <algorithm>
+#include <cstddef>
 
 namespace Audio {
 
-void VisTap::write(const float* frames, uint32_t frameCount) {
-    uint32_t pos = writePosition.load(std::memory_order_relaxed);
-    for (uint32_t i = 0; i < frameCount; ++i, ++pos) {
-        const uint32_t k = pos & (kSize - 1);
-        leftSamples[k] = frames[i * 2];
-        rightSamples[k] = frames[i * 2 + 1];
+void VisTap::write(std::span<const float> stereoFrames) {
+    const size_t frameCount = stereoFrames.size() / 2;
+    uint32_t position = writePosition.load(std::memory_order_relaxed);
+    for (size_t i = 0; i < frameCount; ++i, ++position) {
+        const uint32_t index = position & (kSize - 1);
+        leftSamples[index] = stereoFrames[i * 2];
+        rightSamples[index] = stereoFrames[i * 2 + 1];
     }
-    writePosition.store(pos, std::memory_order_release);
+    writePosition.store(position, std::memory_order_release);
 }
 
-void VisTap::read(float* left, float* right, uint32_t count) const {
+void VisTap::read(std::span<float> left, std::span<float> right) const {
+    const auto count = uint32_t(std::min({left.size(), right.size(), size_t(kSize)}));
     const uint32_t end = writePosition.load(std::memory_order_acquire);
     const uint32_t start = end - count;
     for (uint32_t i = 0; i < count; ++i) {
-        const uint32_t k = (start + i) & (kSize - 1);
-        left[i] = leftSamples[k];
-        right[i] = rightSamples[k];
+        const uint32_t index = (start + i) & (kSize - 1);
+        left[i] = leftSamples[index];
+        right[i] = rightSamples[index];
     }
 }
 
-uint32_t VisTap::readNew(uint32_t* cursor, float* stereo, uint32_t maxFrames) const {
+VisReadResult VisTap::readNew(uint32_t cursor, std::span<float> stereo) const {
     const uint32_t end = writePosition.load(std::memory_order_acquire);
-    uint32_t n = std::min(end - *cursor, kSize);  // unsigned difference survives wrap-around
-    n = std::min(n, maxFrames);
-    const uint32_t start = end - n;
-    for (uint32_t i = 0; i < n; ++i) {
-        const uint32_t k = (start + i) & (kSize - 1);
-        stereo[i * 2] = leftSamples[k];
-        stereo[i * 2 + 1] = rightSamples[k];
+    uint32_t count = std::min(end - cursor, kSize);  // unsigned difference survives wrap-around
+    count = std::min(count, uint32_t(stereo.size() / 2));
+    const uint32_t start = end - count;
+    for (uint32_t i = 0; i < count; ++i) {
+        const uint32_t index = (start + i) & (kSize - 1);
+        stereo[i * 2] = leftSamples[index];
+        stereo[i * 2 + 1] = rightSamples[index];
     }
-    *cursor = end;
-    return n;
+    return {count, end};
 }
 
 void VisTap::clear() {

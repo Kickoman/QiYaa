@@ -19,6 +19,7 @@ namespace {
 // Yandex Music's public OAuth client, the one Yaamp and yandex-music-api use.
 constexpr char kClientId[] = "23cabbbdc6cd418abb4b39c32c41195d";
 constexpr char kClientSecret[] = "53bc75238f0c4d08a118e51fe9203300";
+constexpr int kTimeoutMs = 20'000;
 
 QByteArray FormBody(const QList<std::pair<QString, QString>>& form) {
     QByteArray body;
@@ -36,7 +37,7 @@ QNetworkRequest FormRequest(const QUrl& url) {
     req.setHeader(
         QNetworkRequest::ContentTypeHeader, QStringLiteral("application/x-www-form-urlencoded")
     );
-    req.setTransferTimeout(20000);
+    req.setTransferTimeout(kTimeoutMs);
     return req;
 }
 }  // namespace

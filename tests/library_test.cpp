@@ -1,6 +1,8 @@
+#include "audio/audio_engine.h"
 #include "core/player.h"
 #include "support/mock_http_server.h"
 #include "ui/library_menu.h"
+#include "yandex/api_client.h"
 #include "yandex/library.h"
 #include "yandex/oauth.h"
 
@@ -8,9 +10,17 @@
 #include <QJsonArray>
 #include <QJsonDocument>
 #include <QJsonObject>
+#include <QLatin1String>
+#include <QList>
 #include <QNetworkAccessManager>
+#include <QNetworkRequest>
+#include <QObject>
 #include <QSignalSpy>
+#include <QString>
 #include <QTest>
+#include <QUrl>
+
+#include <functional>
 
 namespace {
 
@@ -248,7 +258,7 @@ private Q_SLOTS:
         Result<Yandex::SearchResult> r;
         lib.search("кино", r.cb());
         QVERIFY(r.wait());
-        QCOMPARE(r.value.bestType, QStringLiteral("artist"));
+        QCOMPARE(r.value.bestKind, Yandex::SearchResult::Kind::Artist);
         QCOMPARE(r.value.bestId, QStringLiteral("9"));
         QCOMPARE(r.value.bestName, QStringLiteral("Кино"));
         QCOMPARE(r.value.tracks.size(), 1);
@@ -673,15 +683,4 @@ private Q_SLOTS:
 };
 
 QTEST_GUILESS_MAIN(TestLibrary)
-#include "audio/audio_engine.h"
 #include "library_test.moc"
-#include "yandex/api_client.h"
-
-#include <QLatin1String>
-#include <QList>
-#include <QNetworkRequest>
-#include <QObject>
-#include <QString>
-#include <QUrl>
-
-#include <functional>

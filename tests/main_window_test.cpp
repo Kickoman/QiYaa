@@ -3,12 +3,21 @@
 #include "skins/skin.h"
 #include "ui/main_window.h"
 #include "yandex/api_client.h"
+#include "yandex/library.h"
 
+#include <QCoreApplication>
+#include <QEvent>
 #include <QGuiApplication>
+#include <QImage>
 #include <QMouseEvent>
 #include <QNetworkAccessManager>
+#include <QObject>
+#include <QPoint>
+#include <QPointF>
 #include <QScreen>
 #include <QTest>
+
+#include <memory>
 
 class TestMainWindow : public QObject {
     Q_OBJECT
@@ -140,13 +149,3 @@ private Q_SLOTS:
 
 QTEST_MAIN(TestMainWindow)
 #include "main_window_test.moc"
-#include "yandex/library.h"
-
-#include <QCoreApplication>
-#include <QEvent>
-#include <QImage>
-#include <QObject>
-#include <QPoint>
-#include <QPointF>
-
-#include <memory>

@@ -3,12 +3,13 @@
 #include <array>
 #include <atomic>
 #include <cstdint>
+#include <span>
 
 namespace Audio {
 
 inline constexpr int kEqBands = 10;
-inline constexpr std::array<double, kEqBands> kEqBandHz = {60,   170,  310,   600,   1000,
-                                                           3000, 6000, 12000, 14000, 16000};
+inline constexpr std::array<double, kEqBands> kEqBandHz = {60,   170,  310,    600,    1000,
+                                                           3000, 6000, 12'000, 14'000, 16'000};
 inline constexpr double kEqMaxDb = 12.0;
 
 struct EqSettings {
@@ -30,7 +31,7 @@ public:
     void publish(const EqSettings& settings);
 
     // Audio thread: interleaved stereo, in place.
-    void process(float* frames, uint32_t frameCount);
+    void process(std::span<float> stereoFrames);
 
     static double ResponseDb(const EqSettings& settings, double hz, double sampleRate);
 
@@ -47,7 +48,7 @@ private:
 
     static Coeffs ComputeCoefficients(const EqSettings& settings, double sampleRate);
 
-    double sampleRate = 44100;
+    double sampleRate = 44'100;
     EqSettings lastSettings;
 
     // Triple buffer: writer owns `back`, reader owns `front`, `middle` is exchanged.

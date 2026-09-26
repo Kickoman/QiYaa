@@ -179,7 +179,7 @@ void MainWindow::refreshTimer() {
 
 void MainWindow::updateVis() {
     auto* engine = corePlayer->engine();
-    engine->readVisSamples(visL.data(), visR.data(), kVisSamples);
+    engine->readVisSamples(visL, visR);
     for (int i = 0; i < kVisSamples; ++i) {
         visMono[i] = 0.5f * (visL[i] + visR[i]);
     }
@@ -749,6 +749,10 @@ void MainWindow::wheelEvent(QWheelEvent* event) {
         setVolume(volumePercent + steps * 4);
         setStatusText(QStringLiteral("VOLUME: %1%").arg(volumePercent));
     }
+}
+
+QString MainWindow::regionSection() const {
+    return isShaded() ? QStringLiteral("windowshade") : QStringLiteral("normal");
 }
 
 bool MainWindow::skinMouseDoubleClick(QPoint pos, Qt::MouseButton button) {

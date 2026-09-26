@@ -18,7 +18,7 @@ namespace Vis {
 struct VisFrame {
     std::span<const float> left, right;
     std::span<const float> spectrum;
-    int sampleRate = 44100;
+    int sampleRate = 44'100;
     int fftSize = 1024;
 };
 

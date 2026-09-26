@@ -23,8 +23,8 @@ cover images or decide what plays next: that is [src/core](../core/README.md) (`
 
 - `qiyaa_yandex` links PUBLIC `Qt6::Core` and `Qt6::Network`, nothing PRIVATE.
 - It deliberately links no other project module and neither `Qt6::Gui` nor `Qt6::Widgets`. It sits
-  at the bottom of the order `audio`, `yandex`, `skins` → `vis`, `core` → `ui`, `integrations` →
-  `app`. `qiyaa_core` and `qiyaa_app` link it PUBLIC, `qiyaa_ui` PRIVATE.
+  at the bottom of the module order; which modules link it is in
+  [docs/architecture.md](../../docs/architecture.md#modules).
 - Inside the module: `library.h` includes `api_client.h`, and `api_client.cpp` includes
   `track_url.h`. `oauth` and `token` include only their own headers.
 
@@ -175,7 +175,8 @@ struct Wave {       // an entry of the wheel of waves: a preset with seeds
 enum class WaveEvent { RadioStarted, TrackStarted, TrackFinished, Skip };
 
 struct SearchResult {
-    QString bestType;   // "artist", "album", "track", "playlist" or empty
+    enum class Kind { None, Artist, Album, Track, Playlist, Other };
+    Kind bestKind = Kind::None;  // the "type" of "best": None when absent, Other when unknown
     QString bestId;
     QString bestName;
     QList<Track> tracks;

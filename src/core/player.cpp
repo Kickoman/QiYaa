@@ -19,6 +19,7 @@ using Yandex::Track;
 
 namespace {
 constexpr int kLoadMoreWhenLeft = 2;
+constexpr int kDownloadTimeoutMs = 30'000;
 }  // namespace
 
 Player::Player(Yandex::Library* library, Audio::AudioEngine* engine, QObject* parent)
@@ -29,7 +30,7 @@ Player::Player(Yandex::Library* library, Audio::AudioEngine* engine, QObject* pa
         if (openTrack && openTrackEvents) {
             openTrackEvents(
                 downloadFailed ? TrackEvent::Skipped : TrackEvent::Finished, *openTrack,
-                playedSeconds()
+                accumulatePlayedSeconds()
             );
         }
         openTrack.reset();
@@ -42,7 +43,7 @@ Player::Player(Yandex::Library* library, Audio::AudioEngine* engine, QObject* pa
         if (openTrack && openTrackEvents) {
             openTrackEvents(
                 downloadFailed ? TrackEvent::Skipped : TrackEvent::Finished, *openTrack,
-                playedSeconds()
+                accumulatePlayedSeconds()
             );
         }
         openTrack.reset();
@@ -70,7 +71,7 @@ Player::Player(Yandex::Library* library, Audio::AudioEngine* engine, QObject* pa
     pollTimer.setInterval(100);
     connect(&pollTimer, &QTimer::timeout, this, [this] {
         audioEngine->poll();
-        playedSeconds();  // accumulate while it plays
+        accumulatePlayedSeconds();
         Q_EMIT positionTick();
     });
     connect(
@@ -197,12 +198,12 @@ void Player::pause() {
 
 void Player::closeOpenTrack() {
     if (openTrack && openTrackEvents) {
-        openTrackEvents(TrackEvent::Skipped, *openTrack, playedSeconds());
+        openTrackEvents(TrackEvent::Skipped, *openTrack, accumulatePlayedSeconds());
     }
     openTrack.reset();
 }
 
-double Player::playedSeconds() {
+double Player::accumulatePlayedSeconds() {
     const double pos = audioEngine->positionSeconds();
     const double step = pos - lastPosition;
     // Normal progress between two polls is ~0.1 s; bigger jumps are seeks.
@@ -408,7 +409,7 @@ QNetworkReply* Player::startDownload(const QUrl& url, TStreamId stream) {
     req.setAttribute(
         QNetworkRequest::RedirectPolicyAttribute, QNetworkRequest::NoLessSafeRedirectPolicy
     );
-    req.setTransferTimeout(30000);
+    req.setTransferTimeout(kDownloadTimeoutMs);
     QNetworkReply* reply = yandexLibrary->api()->network()->get(req);
     // The engine ignores data for streams it has dropped meanwhile.
     connect(reply, &QNetworkReply::readyRead, this, [this, reply, stream] {
@@ -450,6 +451,10 @@ void Player::abortDownload() {
         reply->abort();
         reply->deleteLater();
     }
+}
+
+int Player::preloadedIndex() const {
+    return preload && preload->stream ? preload->index : -1;
 }
 
 void Player::maybePreload() {

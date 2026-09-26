@@ -31,6 +31,9 @@ namespace Ui {
 class MilkdropWindow : public GenWindow {
     Q_OBJECT
 public:
+    enum class PresetOrigin { User, Automatic };
+    Q_ENUM(PresetOrigin)
+
     MilkdropWindow(
         Audio::AudioEngine* engine,
         const QString& builtInDir,
@@ -43,7 +46,11 @@ public:
     const Vis::MilkdropPresets& presets() const { return presetList; }
     int currentIndex() const { return selectedIndex; }
     QString currentPreset() const;
-    void selectPreset(int index, bool smooth = true, bool byUser = true);
+    void selectPreset(
+        int index,
+        Vis::PresetTransition transition = Vis::PresetTransition::Blend,
+        PresetOrigin origin = PresetOrigin::User
+    );
     void selectPreset(const QString& name);
     void nextPreset();
     void previousPreset();
@@ -63,7 +70,7 @@ public:
     Vis::MilkdropView* view() const { return milkdropView; }
     QString failure() const;
 
-    void onSwitchRequested(bool hardCut);
+    void onSwitchRequested(Vis::PresetTransition transition);
     void onPresetFailed(const QString& message);
     void onStaysBlack();
 
@@ -73,7 +80,7 @@ public:
     QString userPresetDir() const { return userDirectory; }
 
 Q_SIGNALS:
-    void presetChanged(const QString& name, bool byUser);
+    void presetChanged(const QString& name, Ui::MilkdropWindow::PresetOrigin origin);
     void settingsChanged();
     void transportKey(int key);
 

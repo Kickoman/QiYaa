@@ -1,10 +1,16 @@
 #include "audio/audio_engine.h"
 #include "core/player.h"
+#include "yandex/api_client.h"
+#include "yandex/library.h"
 
 #include <QElapsedTimer>
 #include <QFile>
+#include <QIODevice>
+#include <QLatin1String>
 #include <QMetaEnum>
+#include <QObject>
 #include <QSignalSpy>
+#include <QString>
 #include <QTest>
 
 #include <functional>
@@ -64,7 +70,7 @@ private Q_SLOTS:
 
         pumpUntil([&] { return engine.state() == Audio::AudioEngine::State::Playing; }, 3000);
         QCOMPARE(engine.state(), Audio::AudioEngine::State::Playing);
-        QCOMPARE(engine.sourceSampleRate(), 44100);
+        QCOMPARE(engine.sourceSampleRate(), 44'100);
         QCOMPARE(engine.sourceChannels(), 2);
 
         const double p0 = engine.positionSeconds();
@@ -96,7 +102,7 @@ private Q_SLOTS:
     void garbageReportsError() {
         QSignalSpy errors(&engine, &Audio::AudioEngine::errorOccurred);
         engine.beginStream();
-        engine.appendData(QByteArray(20000, 'x'));
+        engine.appendData(QByteArray(20'000, 'x'));
         engine.finishData();
         pumpUntil([&] { return errors.count() > 0; }, 3000);
         QCOMPARE(errors.count(), 1);
@@ -257,7 +263,7 @@ private Q_SLOTS:
         QSignalSpy finished(&engine, &Audio::AudioEngine::trackFinished);
         QSignalSpy advanced(&engine, &Audio::AudioEngine::trackAdvanced);
         startNearEnd(2.3);
-        queueWhole(QByteArray(100000, 'x'));
+        queueWhole(QByteArray(100'000, 'x'));
         pumpUntil([&] { return finished.count() > 0 || advanced.count() > 0; }, 3000);
         QCOMPARE(finished.count(), 1);
         QCOMPARE(advanced.count(), 0);
@@ -318,7 +324,7 @@ private Q_SLOTS:
     void stopWhileQueuedDataIsMissing() {
         startNearEnd(2.9);
         const auto b = engine.queueStream();
-        engine.appendData(b, mp3.left(70000 < mp3.size() ? 70000 : mp3.size() / 2));
+        engine.appendData(b, mp3.left(70'000 < mp3.size() ? 70'000 : mp3.size() / 2));
         QTest::qWait(300);
         QElapsedTimer timer;
         timer.start();
@@ -330,10 +336,3 @@ private Q_SLOTS:
 
 QTEST_GUILESS_MAIN(TestAudio)
 #include "audio_test.moc"
-#include "yandex/api_client.h"
-#include "yandex/library.h"
-
-#include <QIODevice>
-#include <QLatin1String>
-#include <QObject>
-#include <QString>

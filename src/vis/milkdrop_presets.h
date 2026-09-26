@@ -6,6 +6,8 @@
 
 namespace Vis {
 
+enum class PresetTransition { Cut, Blend };
+
 class MilkdropPresets {
 public:
     struct Preset {

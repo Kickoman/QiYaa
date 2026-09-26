@@ -1,17 +1,25 @@
+#include "audio/audio_engine.h"
 #include "core/cover_cache.h"
 #include "core/player.h"
 #include "integrations/media_controls.h"
 #include "integrations/mpris.h"
+#include "yandex/api_client.h"
+#include "yandex/library.h"
 
 #include <QDBusConnection>
 #include <QDBusInterface>
 #include <QDBusReply>
+#include <QList>
 #include <QNetworkAccessManager>
 #include <QProcess>
 #include <QSignalSpy>
 #include <QStandardPaths>
+#include <QString>
 #include <QTemporaryDir>
 #include <QTest>
+#include <QVariantMap>
+
+#include <memory>
 
 namespace {
 const QString kService = QStringLiteral("org.mpris.MediaPlayer2.qiyaatest");
@@ -26,12 +34,11 @@ QList<Yandex::Track> MakeTracks(int n) {
         track.title = QStringLiteral("Песня %1").arg(i + 1);
         track.artists = {QStringLiteral("Кино")};
         track.albumTitle = QStringLiteral("Альбом");
-        track.durationMs = 200000;
+        track.durationMs = 200'000;
         out << track;
     }
     return out;
 }
-}  // namespace
 
 class ChangeSink : public QObject {
     Q_OBJECT
@@ -42,6 +49,8 @@ public Q_SLOTS:
         changes << changed;
     }
 };
+
+}  // namespace
 
 class TestMpris : public QObject {
     Q_OBJECT
@@ -122,7 +131,7 @@ private Q_SLOTS:
         const QVariantMap md = playerInterface.property("Metadata").toMap();
         QCOMPARE(md.value("xesam:title").toString(), QStringLiteral("Песня 1"));
         QCOMPARE(md.value("xesam:artist").toStringList(), QStringList{QStringLiteral("Кино")});
-        QCOMPARE(md.value("mpris:length").toLongLong(), 200000000LL);
+        QCOMPARE(md.value("mpris:length").toLongLong(), 200'000'000LL);
         QCOMPARE(playerInterface.property("PlaybackStatus").toString(), QStringLiteral("Stopped"));
     }
 
@@ -246,13 +255,4 @@ private Q_SLOTS:
 };
 
 QTEST_GUILESS_MAIN(TestMpris)
-#include "audio/audio_engine.h"
 #include "mpris_test.moc"
-#include "yandex/api_client.h"
-#include "yandex/library.h"
-
-#include <QList>
-#include <QString>
-#include <QVariantMap>
-
-#include <memory>

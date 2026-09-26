@@ -64,7 +64,8 @@ public:
     Yandex::Library* library() { return &yandexLibrary; }
 
     bool loadSkin(const QString& path);
-    void setScale(double scale, bool persist = true);
+    enum class ScaleScope { Saved, ThisRun };
+    void setScale(double scale, ScaleScope scope = ScaleScope::Saved);
     void setAlwaysOnTop(bool on);
     void setEqualizerVisible(bool on);
     void setPlaylistVisible(bool on);

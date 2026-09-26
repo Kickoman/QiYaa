@@ -19,8 +19,9 @@ macOS backend.
 
 ## Dependencies
 
-`qiyaa_integrations` links PUBLIC `Qt6::Gui` and PRIVATE `qiyaa_core` (which brings
-`qiyaa_audio` and `qiyaa_yandex` with it). In the module order it sits beside `ui`, above `core`
+`qiyaa_integrations` links PUBLIC `Qt6::Gui` and PRIVATE `qiyaa_audio`, `qiyaa_core` and
+`qiyaa_yandex` (the sources include `audio/audio_engine.h` and `yandex/api_client.h` besides the
+`core` headers). In the module order it sits beside `ui`, above `core`
 and below `app`. The top-level `CMakeLists.txt` adds at most one backend:
 
 | Backend | Built when | Adds |
@@ -35,7 +36,7 @@ still constructs a `MediaControls` there, with no backend attached. On Linux/BSD
 Deliberately not linked: `qiyaa_ui`, `qiyaa_vis`, `qiyaa_skins` and `qiyaa_app`. The windows are
 reached only through `Hooks`, plus one bare `QWidget*` for SMTC; `Qt6::Widgets` is linked for
 SMTC alone, for `QWidget::winId()`. The headers include no project header (they forward-declare
-`Core::Player` and `Core::CoverCache`), which is what keeps `qiyaa_core` PRIVATE.
+`Core::Player` and `Core::CoverCache`), which is what keeps these three PRIVATE.
 
 ```bash
 grep -n '#include "\(app\|ui\|vis\|skins\)/' src/integrations/*.h src/integrations/*.cpp   # must print nothing

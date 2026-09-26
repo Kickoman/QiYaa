@@ -1,5 +1,8 @@
 #include "skins/region.h"
 
+#include <QByteArray>
+#include <QObject>
+#include <QRegion>
 #include <QTest>
 
 class TestRegion : public QObject {
@@ -40,7 +43,3 @@ private Q_SLOTS:
 
 QTEST_GUILESS_MAIN(TestRegion)
 #include "region_test.moc"
-
-#include <QByteArray>
-#include <QObject>
-#include <QRegion>

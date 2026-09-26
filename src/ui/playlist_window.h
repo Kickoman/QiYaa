@@ -52,6 +52,21 @@ protected:
 
 private:
     enum class Drag { None, Scroll, Resize, Close, Shade, Button };
+    enum class Button {
+        None,
+        Add,
+        Remove,
+        Select,
+        Misc,
+        List,
+        Previous,
+        Play,
+        Pause,
+        Stop,
+        Next,
+        Eject
+    };
+
     QSize fullSkinSize() const;
     void paintShaded(QPainter& painter);
     QRect listRect() const;
@@ -61,7 +76,7 @@ private:
     void drawRows(QPainter& painter) const;
     void drawBottomInfo(QPainter& painter) const;
     void popupAt(QMenu* menu, QPoint skinPos);
-    int miniButtonAt(QPoint point) const;
+    Button buttonAt(QPoint point) const;
     void selectRow(int row, Qt::KeyboardModifiers mods);
 
     Core::Player* corePlayer;
@@ -76,7 +91,7 @@ private:
     QPoint dragStart;
     QSize dragStartSteps;
     int dragStartScroll = 0;
-    int pressedButton = -1;
+    Button pressedButton = Button::None;
 };
 
 }  // namespace Ui

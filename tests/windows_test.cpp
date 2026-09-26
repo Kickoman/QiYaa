@@ -7,15 +7,28 @@
 #include "ui/milkdrop_window.h"
 #include "ui/now_playing_window.h"
 #include "ui/playlist_window.h"
+#include "yandex/api_client.h"
 
 #include <QApplication>
 #include <QBuffer>
+#include <QColor>
+#include <QCoreApplication>
+#include <QEvent>
+#include <QGuiApplication>
 #include <QLabel>
+#include <QList>
 #include <QMouseEvent>
 #include <QNetworkAccessManager>
+#include <QPoint>
+#include <QPointF>
 #include <QScreen>
+#include <QSet>
 #include <QSignalSpy>
+#include <QString>
 #include <QTest>
+#include <QWidget>
+
+#include <memory>
 
 using Yandex::Track;
 
@@ -59,7 +72,7 @@ QList<Yandex::Track> MakeTracks(int n) {
         track.id = QString::number(i + 1);
         track.title = QStringLiteral("Track %1").arg(i + 1);
         track.artists << QStringLiteral("Artist");
-        track.durationMs = 60000 + i * 1000;
+        track.durationMs = 60'000 + i * 1000;
         out << track;
     }
     return out;
@@ -502,17 +515,3 @@ private Q_SLOTS:
 
 QTEST_MAIN(TestWindows)
 #include "windows_test.moc"
-#include "yandex/api_client.h"
-
-#include <QColor>
-#include <QCoreApplication>
-#include <QEvent>
-#include <QGuiApplication>
-#include <QList>
-#include <QPoint>
-#include <QPointF>
-#include <QSet>
-#include <QString>
-#include <QWidget>
-
-#include <memory>

@@ -3,6 +3,9 @@
 
 #include <QDir>
 #include <QFile>
+#include <QIODevice>
+#include <QObject>
+#include <QString>
 #include <QTemporaryDir>
 #include <QTest>
 
@@ -63,7 +66,3 @@ private Q_SLOTS:
 
 QTEST_MAIN(TestSkin)
 #include "skin_test.moc"
-
-#include <QIODevice>
-#include <QObject>
-#include <QString>

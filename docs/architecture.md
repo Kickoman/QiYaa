@@ -22,7 +22,7 @@ audio, yandex, skins  →  vis, core  →  ui, integrations  →  app  →  qiya
 | [src/vis](../src/vis/README.md) | `Vis` | Spectrum, oscilloscope, FFT; Milkdrop through projectM in a `QOpenGLWindow` | Qt Gui (+ OpenGL) | audio, skins (+ projectM) |
 | [src/core](../src/core/README.md) | `Core` | `Player` (queue, transport, downloads, preload, track events) and `CoverCache` | audio, yandex, Qt Gui, Network | |
 | [src/ui](../src/ui/README.md) | `Ui` | The skinned windows, snapping and docking, the Yandex menus, the login dialog | audio, vis, Qt Widgets | core, skins, yandex |
-| [src/integrations](../src/integrations/README.md) | `Integrations` | Media keys and system media panels: MPRIS (Linux) or SMTC (Windows) | Qt Gui (+ DBus) | core |
+| [src/integrations](../src/integrations/README.md) | `Integrations` | Media keys and system media panels: MPRIS (Linux) or SMTC (Windows) | Qt Gui (+ DBus) | audio, core, yandex |
 | [src/app](../src/app/README.md) | `App` | `Application`: owns and wires everything, menus, shortcuts, settings, login; `main()` | audio, core, skins, yandex | integrations, ui, vis |
 
 Vendored code lives in `contrib/` (miniaudio, miniz) and is not changed. Milkdrop

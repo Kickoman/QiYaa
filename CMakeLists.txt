@@ -96,7 +96,7 @@ qt_add_resources(qiyaa_skins "skins"
 
 qiyaa_add_module(vis
     src/vis/milkdrop_presets.cpp src/vis/milkdrop_presets.h
-    src/vis/visualizer.h        src/vis/visualizers.cpp)
+    src/vis/visualizer.h        src/vis/visualizer.cpp)
 target_link_libraries(qiyaa_vis PUBLIC Qt6::Gui PRIVATE qiyaa_audio qiyaa_skins)
 
 qiyaa_add_module(core
@@ -120,7 +120,7 @@ target_link_libraries(qiyaa_ui
 
 qiyaa_add_module(integrations
     src/integrations/media_controls.cpp src/integrations/media_controls.h)
-target_link_libraries(qiyaa_integrations PUBLIC Qt6::Gui PRIVATE qiyaa_core)
+target_link_libraries(qiyaa_integrations PUBLIC Qt6::Gui PRIVATE qiyaa_audio qiyaa_core qiyaa_yandex)
 
 # System media integration: MPRIS on Linux/BSD (needs Qt D-Bus), SMTC on Windows.
 if(UNIX AND NOT APPLE)
@@ -203,6 +203,7 @@ endif()
 
 qiyaa_add_module(app
     src/app/application.cpp     src/app/application.h
+    src/app/offline_sources.cpp src/app/offline_sources.h
     src/app/paths.cpp           src/app/paths.h)
 target_link_libraries(qiyaa_app
     PUBLIC qiyaa_audio qiyaa_core qiyaa_skins qiyaa_yandex

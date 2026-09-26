@@ -101,7 +101,7 @@ public:
 
     void setScale(double scale);                     // clamped to [1, 4], rounded to 0.05
     double scale() const;
-    static bool IsIntegerScale(double s);            // within 1e-6 of an integer
+    static bool IsIntegerScale(double scale);        // within 1e-6 of an integer
 
     QSize skinSize() const;                          // skin pixels, before scaling
     void setSkinSize(QSize size);
@@ -751,7 +751,7 @@ Nothing in `src/ui` throws. The only `catch` is `EqualizerWindow`'s around `Audi
 
 | Failure | Reported as |
 |---|---|
-| `.eqf` cannot be opened, is above 1 MiB, cannot be saved | `EqualizerWindow::statusText` (`EQ: не удалось открыть файл: …`, `EQ: файл больше 1024 КБ — это не пресет`, `EQ: не удалось сохранить`) |
+| `.eqf` cannot be opened, is above 1 MiB, cannot be saved | `EqualizerWindow::statusText` (`EQ: <file>: <reason>`, `EQ: <file> — <n> КБ, а пресеты не больше 1024 КБ`, `EQ: <file> не сохранён: <reason>`); a `ParseEqf` error arrives as `EQ: <file>: <what>` |
 | Yandex request fails | error string from the `Library` callback → `Player::statusMessage`, or a disabled `Ошибка: …` item in a submenu; `moreWave` errors go to `qWarning` only |
 | Device login fails, pasted text holds no token | labels in `LoginDialog` |
 | No usable OpenGL, projectM fails | `MilkdropWindow::failure()`, painted in the frame; `qWarning` |

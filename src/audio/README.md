@@ -30,9 +30,8 @@ equalizer window ([src/ui](../ui/README.md)). Namespace `Audio`, library `qiyaa_
   CoreAudio and AudioToolbox, on other Unix systems `m`. It does not get the project's warning
   flags (`qiyaa_target_defaults` is not applied to it).
 - It deliberately links no other project module and neither `Qt6::Gui`, `Qt6::Widgets` nor
-  `Qt6::Network`. It sits at the bottom of the order `audio`, `yandex`, `skins` → `vis`, `core` →
-  `ui`, `integrations` → `app`. `qiyaa_core`, `qiyaa_ui` and `qiyaa_app` link it PUBLIC,
-  `qiyaa_vis` PRIVATE.
+  `Qt6::Network`. It sits at the bottom of the module order; which modules link it is in
+  [docs/architecture.md](../../docs/architecture.md#modules).
 - miniaudio stays private: no header includes `miniaudio.h`. `AudioEngine` holds everything
   miniaudio-typed through `std::unique_ptr<Impl>` and a forward-declared `StreamBuffer`.
 - Inside the module: `audio_engine.h` and `eq_presets.h` include `equalizer.h`,

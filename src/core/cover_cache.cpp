@@ -14,6 +14,7 @@ namespace Core {
 
 namespace {
 constexpr int kMemoryItems = 30;
+constexpr int kTimeoutMs = 20'000;
 }  // namespace
 
 CoverCache::CoverCache(QNetworkAccessManager* nam, const QString& cacheDir, QObject* parent)
@@ -71,13 +72,13 @@ QImage CoverCache::get(const QUrl& url) {
     }
     pending.insert(url);
     QNetworkRequest req(url);
-    req.setTransferTimeout(20000);
+    req.setTransferTimeout(kTimeoutMs);
     req.setAttribute(
         QNetworkRequest::RedirectPolicyAttribute, QNetworkRequest::NoLessSafeRedirectPolicy
     );
     QNetworkReply* reply = networkManager->get(req);
     QPointer<CoverCache> self(this);
-    connect(reply, &QNetworkReply::finished, this, [self, reply, url] {
+    connect(reply, &QNetworkReply::finished, reply, [self, reply, url] {
         reply->deleteLater();
         if (!self) {
             return;

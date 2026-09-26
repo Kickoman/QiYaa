@@ -2,10 +2,15 @@
 #include "yandex/token.h"
 #include "yandex/track_url.h"
 
+#include <QByteArray>
 #include <QCryptographicHash>
 #include <QJsonArray>
 #include <QJsonDocument>
+#include <QObject>
+#include <QString>
 #include <QTest>
+
+#include <optional>
 
 class TestYandex : public QObject {
     Q_OBJECT
@@ -91,7 +96,7 @@ private Q_SLOTS:
         QCOMPARE(track.id, QStringLiteral("12345"));
         QCOMPARE(track.albumId, QStringLiteral("777"));
         QCOMPARE(track.displayTitle(), QStringLiteral("A, B - Song (Live)"));
-        QCOMPARE(track.durationMs, 201000);
+        QCOMPARE(track.durationMs, 201'000);
         QVERIFY(track.coverUrl().isEmpty());
     }
     void parsesAlbumDetailsAndCover() {
@@ -112,9 +117,3 @@ private Q_SLOTS:
 
 QTEST_GUILESS_MAIN(TestYandex)
 #include "yandex_test.moc"
-
-#include <QByteArray>
-#include <QObject>
-#include <QString>
-
-#include <optional>

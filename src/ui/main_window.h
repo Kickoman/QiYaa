@@ -61,9 +61,7 @@ protected:
     bool skinMousePress(QPoint pos, Qt::MouseButton button) override;
     void skinMouseMove(QPoint pos) override;
     void skinMouseRelease(QPoint pos, Qt::MouseButton button) override;
-    QString regionSection() const override {
-        return isShaded() ? QStringLiteral("windowshade") : QStringLiteral("normal");
-    }
+    QString regionSection() const override;
     bool skinMouseDoubleClick(QPoint pos, Qt::MouseButton button) override;
     void contextMenuEvent(QContextMenuEvent* event) override;
     void wheelEvent(QWheelEvent* event) override;

@@ -1,5 +1,7 @@
 #include "ui/snap.h"
 
+#include <QList>
+#include <QObject>
 #include <QTest>
 
 class TestSnap : public QObject {
@@ -88,6 +90,3 @@ private Q_SLOTS:
 
 QTEST_GUILESS_MAIN(TestSnap)
 #include "snap_test.moc"
-
-#include <QList>
-#include <QObject>

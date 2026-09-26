@@ -45,7 +45,9 @@ struct Wave {
 enum class WaveEvent { RadioStarted, TrackStarted, TrackFinished, Skip };
 
 struct SearchResult {
-    QString bestType;
+    enum class Kind { None, Artist, Album, Track, Playlist, Other };
+
+    Kind bestKind = Kind::None;
     QString bestId;
     QString bestName;
     QList<Track> tracks;

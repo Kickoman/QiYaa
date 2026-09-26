@@ -89,10 +89,10 @@ void MilkdropWindow::wireView(Vis::MilkdropView* view) {
             selectedIndex = followingPreset();
         }
         if (selectedIndex >= 0) {
-            view->loadPreset(presetList.data(selectedIndex), false);
+            view->loadPreset(presetList.data(selectedIndex), Vis::PresetTransition::Cut);
         }
         if (selectedIndex >= 0) {
-            Q_EMIT presetChanged(currentPreset(), false);
+            Q_EMIT presetChanged(currentPreset(), PresetOrigin::Automatic);
         }
     });
     connect(view, &Vis::MilkdropView::failed, this, [this, view](const QString& reason) {
@@ -117,7 +117,11 @@ void MilkdropWindow::wireView(Vis::MilkdropView* view) {
     connect(view, &Vis::MilkdropView::keyPressed, this, &MilkdropWindow::handleKey);
 }
 
-void MilkdropWindow::selectPreset(int index, bool smooth, bool byUser) {
+void MilkdropWindow::selectPreset(
+    int index,
+    Vis::PresetTransition transition,
+    PresetOrigin origin
+) {
     if (index < 0 || index >= presetList.size()) {
         return;
     }
@@ -133,9 +137,9 @@ void MilkdropWindow::selectPreset(int index, bool smooth, bool byUser) {
     }
     selectedIndex = index;
     if (Vis::MilkdropView* view = fullView ? fullView.get() : milkdropView) {
-        view->loadPreset(milk, smooth);
+        view->loadPreset(milk, transition);
     }
-    Q_EMIT presetChanged(currentPreset(), byUser);
+    Q_EMIT presetChanged(currentPreset(), origin);
     Q_EMIT settingsChanged();
 }
 
@@ -148,7 +152,7 @@ void MilkdropWindow::selectPreset(const QString& name) {
         selectedIndex = i;
         return;
     }
-    selectPreset(i, false);
+    selectPreset(i, Vis::PresetTransition::Cut);
 }
 
 void MilkdropWindow::nextPreset() {
@@ -275,7 +279,7 @@ void MilkdropWindow::setFullScreenMode(bool on) {
         view->hide();
         view->deleteLater();
         if (selectedIndex >= 0 && milkdropView) {
-            milkdropView->loadPreset(presetList.data(selectedIndex), false);
+            milkdropView->loadPreset(presetList.data(selectedIndex), Vis::PresetTransition::Cut);
         }
     }
     updateRendering();
@@ -350,16 +354,16 @@ void MilkdropWindow::onStaysBlack() {
     blackPresetNames.insert(name);
     Q_EMIT settingsChanged();
     failuresInARow = 0;
-    selectPreset(followingPreset(), false, false);
+    selectPreset(followingPreset(), Vis::PresetTransition::Cut, PresetOrigin::Automatic);
 }
 
-void MilkdropWindow::onSwitchRequested(bool hardCut) {
+void MilkdropWindow::onSwitchRequested(Vis::PresetTransition transition) {
     if (lockEnabled || presetList.isEmpty()) {
         return;
     }
     failuresInARow = 0;
     blackInARow = 0;
-    selectPreset(followingPreset(), !hardCut, false);
+    selectPreset(followingPreset(), transition, PresetOrigin::Automatic);
 }
 
 void MilkdropWindow::onPresetFailed(const QString& message) {
@@ -367,7 +371,7 @@ void MilkdropWindow::onPresetFailed(const QString& message) {
     if (++failuresInARow >= std::min(10, presetList.size())) {
         return;
     }
-    selectPreset(followingPreset(), false, false);
+    selectPreset(followingPreset(), Vis::PresetTransition::Cut, PresetOrigin::Automatic);
 }
 
 void MilkdropWindow::handleKey(int key, Qt::KeyboardModifiers mods) {
@@ -378,7 +382,7 @@ void MilkdropWindow::handleKey(int key, Qt::KeyboardModifiers mods) {
         case Qt::Key_P: previousPreset(); break;
         case Qt::Key_H:
             failuresInARow = 0;
-            selectPreset(followingPreset(), false);
+            selectPreset(followingPreset(), Vis::PresetTransition::Cut);
             break;
         case Qt::Key_R: setShuffle(!shuffleEnabled); break;
         case Qt::Key_L:

@@ -6,11 +6,18 @@
 #include "vis/visualizer.h"
 
 #include <QImage>
+#include <QList>
+#include <QObject>
 #include <QPainter>
+#include <QRgb>
+#include <QString>
 #include <QTest>
 
+#include <algorithm>
 #include <cmath>
+#include <cstddef>
 #include <numbers>
+#include <span>
 #include <vector>
 
 namespace {
@@ -38,41 +45,41 @@ class TestDsp : public QObject {
 private Q_SLOTS:
     void flatIsTransparent() {
         Audio::EqSettings settings;
-        for (double hz : {30.0, 60.0, 1000.0, 10000.0, 18000.0}) {
-            QVERIFY(std::abs(Audio::EqualizerDsp::ResponseDb(settings, hz, 44100)) < 0.01);
+        for (double hz : {30.0, 60.0, 1000.0, 10'000.0, 18'000.0}) {
+            QVERIFY(std::abs(Audio::EqualizerDsp::ResponseDb(settings, hz, 44'100)) < 0.01);
         }
     }
 
     void bandBoostHitsItsFrequency() {
         Audio::EqSettings settings;
         settings.bandsDb[4] = 12;  // 1 kHz
-        QVERIFY(std::abs(Audio::EqualizerDsp::ResponseDb(settings, 1000, 44100) - 12) < 0.1);
-        QVERIFY(std::abs(Audio::EqualizerDsp::ResponseDb(settings, 60, 44100)) < 0.5);
-        QVERIFY(std::abs(Audio::EqualizerDsp::ResponseDb(settings, 16000, 44100)) < 0.5);
+        QVERIFY(std::abs(Audio::EqualizerDsp::ResponseDb(settings, 1000, 44'100) - 12) < 0.1);
+        QVERIFY(std::abs(Audio::EqualizerDsp::ResponseDb(settings, 60, 44'100)) < 0.5);
+        QVERIFY(std::abs(Audio::EqualizerDsp::ResponseDb(settings, 16'000, 44'100)) < 0.5);
     }
 
     void preampAndDisable() {
         Audio::EqSettings settings;
         settings.preampDb = -6;
-        QVERIFY(std::abs(Audio::EqualizerDsp::ResponseDb(settings, 1000, 48000) + 6) < 0.01);
+        QVERIFY(std::abs(Audio::EqualizerDsp::ResponseDb(settings, 1000, 48'000) + 6) < 0.01);
         settings.enabled = false;
-        QCOMPARE(Audio::EqualizerDsp::ResponseDb(settings, 1000, 48000), 0.0);
+        QCOMPARE(Audio::EqualizerDsp::ResponseDb(settings, 1000, 48'000), 0.0);
     }
 
     void processingMatchesResponse() {
         Audio::EqualizerDsp eq;
-        eq.setSampleRate(44100);
+        eq.setSampleRate(44'100);
         Audio::EqSettings settings;
         settings.bandsDb[0] = -12;  // 60 Hz cut
         eq.publish(settings);
-        auto low = StereoSine(60, 44100, 44100);
-        auto mid = StereoSine(3000, 44100, 44100);
+        auto low = StereoSine(60, 44'100, 44'100);
+        auto mid = StereoSine(3000, 44'100, 44'100);
         const double lowIn = Rms(low, 4410), midIn = Rms(mid, 4410);
-        eq.process(low.data(), 44100);
+        eq.process(low);
         Audio::EqualizerDsp eq2;
-        eq2.setSampleRate(44100);
+        eq2.setSampleRate(44'100);
         eq2.publish(settings);
-        eq2.process(mid.data(), 44100);
+        eq2.process(mid);
         const double lowDb = 20 * std::log10(Rms(low, 4410) / lowIn);
         const double midDb = 20 * std::log10(Rms(mid, 4410) / midIn);
         QVERIFY2(std::abs(lowDb + 12) < 0.5, qPrintable(QString::number(lowDb)));
@@ -81,13 +88,13 @@ private Q_SLOTS:
 
     void settingsChangeWhileProcessing() {
         Audio::EqualizerDsp eq;
-        eq.setSampleRate(48000);
-        auto buf = StereoSine(440, 48000, 48000);
+        eq.setSampleRate(48'000);
+        auto buf = StereoSine(440, 48'000, 48'000);
         for (int block = 0; block < 100; ++block) {
             Audio::EqSettings settings;
             settings.bandsDb[block % 10] = (block % 2 ? 12 : -12);
             eq.publish(settings);
-            eq.process(buf.data() + (block * 480) * 2, 480);
+            eq.process(std::span(buf).subspan(block * 480 * 2, 480 * 2));
         }
         for (float v : buf) {
             QVERIFY(std::isfinite(v) && std::abs(v) < 4.0f);
@@ -168,7 +175,7 @@ private Q_SLOTS:
 
     void analyzerFindsTheTone() {
         Vis::Analyzer an(1024);
-        const double rate = 44100, hz = 1000;
+        const double rate = 44'100, hz = 1000;
         std::vector<float> mono(1024);
         for (int i = 0; i < 1024; ++i) {
             mono[i] = float(std::sin(2 * std::numbers::pi * hz * i / rate));
@@ -187,10 +194,10 @@ private Q_SLOTS:
         std::vector<float> l(1024), r(1024), mono(1024);
         for (int i = 0; i < 1024; ++i) {
             l[i] = r[i] = mono[i] =
-                0.8f * float(std::sin(2 * std::numbers::pi * 200 * i / 44100.0));
+                0.8f * float(std::sin(2 * std::numbers::pi * 200 * i / 44'100.0));
         }
         const auto& db = an.analyze(mono);
-        Vis::VisFrame f{l, r, db, 44100, 1024};
+        Vis::VisFrame f{l, r, db, 44'100, 1024};
 
         for (auto make : {Vis::MakeSpectrum, Vis::MakeOscilloscope}) {
             auto v = make();
@@ -235,11 +242,3 @@ private Q_SLOTS:
 
 QTEST_MAIN(TestDsp)
 #include "dsp_test.moc"
-
-#include <QList>
-#include <QObject>
-#include <QRgb>
-#include <QString>
-
-#include <algorithm>
-#include <cstddef>

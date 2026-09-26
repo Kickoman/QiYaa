@@ -13,6 +13,26 @@ class QPainter;
 
 namespace Ui {
 
+struct EqualizerControl {
+    enum class Kind {
+        None,
+        Close,
+        Shade,
+        ShadeVolume,
+        ShadeBalance,
+        On,
+        Auto,
+        Presets,
+        Preamp,
+        Band
+    };
+
+    Kind kind = Kind::None;
+    int band = 0;
+
+    bool operator==(const EqualizerControl&) const = default;
+};
+
 class EqualizerWindow : public SkinnedWindow {
     Q_OBJECT
 public:
@@ -42,16 +62,14 @@ protected:
     void skinMouseMove(QPoint pos) override;
     void skinMouseRelease(QPoint pos, Qt::MouseButton button) override;
     bool skinMouseDoubleClick(QPoint pos, Qt::MouseButton button) override;
-    QString regionSection() const override {
-        return isShaded() ? QStringLiteral("equalizerws") : QStringLiteral("equalizer");
-    }
+    QString regionSection() const override;
     void wheelEvent(QWheelEvent* event) override;
 
 private:
-    int hitTest(QPoint point) const;
-    double* valueFor(int element);
-    void setFromMouse(int element, QPoint point);
-    void changed(int element);
+    EqualizerControl hitTest(QPoint point) const;
+    double* valueFor(const EqualizerControl& control);
+    void setFromMouse(const EqualizerControl& control, QPoint point);
+    void changed(const EqualizerControl& control);
     void drawSlider(QPainter& painter, QPoint at, double db, bool active) const;
     void drawGraph(QPainter& painter) const;
     void showPresets();
@@ -62,7 +80,7 @@ private:
 
     Audio::EqSettings equalizerSettings;
     bool autoEnabled = false;
-    int pressedElement = 0;
+    EqualizerControl pressed;
     bool pressedInside = false;
     int volumePercent = 75;
     int balancePercent = 0;

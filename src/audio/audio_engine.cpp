@@ -130,7 +130,7 @@ struct AudioEngine::Impl {
     bool contextReady = false;
     ma_device device{};
     bool deviceReady = false;
-    ma_uint32 sampleRate = 44100;
+    ma_uint32 sampleRate = 44'100;
     ma_pcm_rb ring{};
     bool ringReady = false;
 
@@ -196,8 +196,8 @@ struct AudioEngine::Impl {
                 ma_pcm_rb_commit_read(&self->ring, n);
                 written += n;
             }
-            self->eq.process(dst, written);
-            self->vis.write(dst, written);
+            self->eq.process({dst, written * kChannels});
+            self->vis.write({dst, written * kChannels});
             const float gl = self->gainL.load(std::memory_order_relaxed);
             const float gr = self->gainR.load(std::memory_order_relaxed);
             for (ma_uint32 i = 0; i < written; ++i) {
@@ -227,6 +227,10 @@ struct AudioEngine::Impl {
         int rate = 0;
         int channels = 0;
         bool initialised = false;
+
+        Source() = default;
+        Source(const Source&) = delete;
+        Source& operator=(const Source&) = delete;
         ~Source() {
             if (initialised) {
                 ma_decoder_uninit(&dec);
@@ -741,12 +745,12 @@ void AudioEngine::setEqualizer(const EqSettings& settings) {
     d->eq.publish(settings);
 }
 
-void AudioEngine::readVisSamples(float* left, float* right, uint32_t count) const {
-    d->vis.read(left, right, std::min<uint32_t>(count, VisTap::kSize));
+void AudioEngine::readVisSamples(std::span<float> left, std::span<float> right) const {
+    d->vis.read(left, right);
 }
 
-uint32_t AudioEngine::readNewVisSamples(uint32_t* cursor, float* stereo, uint32_t maxFrames) const {
-    return d->vis.readNew(cursor, stereo, maxFrames);
+VisReadResult AudioEngine::readNewVisSamples(uint32_t cursor, std::span<float> stereo) const {
+    return d->vis.readNew(cursor, stereo);
 }
 
 uint32_t AudioEngine::visCursor() const {

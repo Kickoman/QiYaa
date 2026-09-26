@@ -1,5 +1,6 @@
-#include "skins/skin.h"
 #include "vis/visualizer.h"
+
+#include "skins/skin.h"
 
 #include <QColor>
 #include <QPainter>
@@ -15,63 +16,6 @@
 #include <vector>
 
 namespace Vis {
-
-Analyzer::Analyzer(int fftSize)
-    : fftLength(fftSize)
-    , windowFunction(fftSize)
-    , real(fftSize)
-    , imaginary(fftSize)
-    , decibels(fftSize / 2 + 1) {
-    for (int i = 0; i < fftSize; ++i) {
-        windowFunction[i] =
-            0.5f - 0.5f * std::cos(2.0f * std::numbers::pi_v<float> * i / (fftSize - 1));
-    }
-}
-
-const std::vector<float>& Analyzer::analyze(std::span<const float> mono) {
-    const int n = fftLength;
-    for (int i = 0; i < n; ++i) {
-        real[i] = i < int(mono.size()) ? mono[i] * windowFunction[i] : 0.0f;
-        imaginary[i] = 0.0f;
-    }
-    for (int i = 1, j = 0; i < n; ++i) {
-        int bit = n >> 1;
-        for (; j & bit; bit >>= 1) {
-            j ^= bit;
-        }
-        j ^= bit;
-        if (i < j) {
-            std::swap(real[i], real[j]);
-            std::swap(imaginary[i], imaginary[j]);
-        }
-    }
-    for (int len = 2; len <= n; len <<= 1) {
-        const float ang = -2.0f * std::numbers::pi_v<float> / len;
-        const float wr = std::cos(ang), wi = std::sin(ang);
-        for (int i = 0; i < n; i += len) {
-            float cr = 1.0f, ci = 0.0f;
-            for (int k = 0; k < len / 2; ++k) {
-                const int a = i + k, b = i + k + len / 2;
-                const float tr = real[b] * cr - imaginary[b] * ci;
-                const float ti = real[b] * ci + imaginary[b] * cr;
-                real[b] = real[a] - tr;
-                imaginary[b] = imaginary[a] - ti;
-                real[a] += tr;
-                imaginary[a] += ti;
-                const float ncr = cr * wr - ci * wi;
-                ci = cr * wi + ci * wr;
-                cr = ncr;
-            }
-        }
-    }
-    // A full-scale sine gives magnitude n/4 with a Hann window -> 0 dBFS.
-    const float norm = 4.0f / n;
-    for (int i = 0; i <= n / 2; ++i) {
-        const float mag = std::sqrt(real[i] * real[i] + imaginary[i] * imaginary[i]) * norm;
-        decibels[i] = 20.0f * std::log10(std::max(mag, 1e-9f));
-    }
-    return decibels;
-}
 
 namespace {
 
@@ -95,7 +39,7 @@ public:
 
     void update(const VisFrame& frame) override {
         const double binHz = double(frame.sampleRate) / frame.fftSize;
-        const double lo = 60.0, hi = std::min(16000.0, frame.sampleRate / 2.0);
+        const double lo = 60.0, hi = std::min(16'000.0, frame.sampleRate / 2.0);
         for (int value = 0; value < kBars; ++value) {
             const double f0 = lo * std::pow(hi / lo, double(value) / kBars);
             const double f1 = lo * std::pow(hi / lo, double(value + 1) / kBars);
@@ -185,6 +129,63 @@ private:
 };
 
 }  // namespace
+
+Analyzer::Analyzer(int fftSize)
+    : fftLength(fftSize)
+    , windowFunction(fftSize)
+    , real(fftSize)
+    , imaginary(fftSize)
+    , decibels(fftSize / 2 + 1) {
+    for (int i = 0; i < fftSize; ++i) {
+        windowFunction[i] =
+            0.5f - 0.5f * std::cos(2.0f * std::numbers::pi_v<float> * i / (fftSize - 1));
+    }
+}
+
+const std::vector<float>& Analyzer::analyze(std::span<const float> mono) {
+    const int n = fftLength;
+    for (int i = 0; i < n; ++i) {
+        real[i] = i < int(mono.size()) ? mono[i] * windowFunction[i] : 0.0f;
+        imaginary[i] = 0.0f;
+    }
+    for (int i = 1, j = 0; i < n; ++i) {
+        int bit = n >> 1;
+        for (; j & bit; bit >>= 1) {
+            j ^= bit;
+        }
+        j ^= bit;
+        if (i < j) {
+            std::swap(real[i], real[j]);
+            std::swap(imaginary[i], imaginary[j]);
+        }
+    }
+    for (int len = 2; len <= n; len <<= 1) {
+        const float ang = -2.0f * std::numbers::pi_v<float> / len;
+        const float wr = std::cos(ang), wi = std::sin(ang);
+        for (int i = 0; i < n; i += len) {
+            float cr = 1.0f, ci = 0.0f;
+            for (int k = 0; k < len / 2; ++k) {
+                const int a = i + k, b = i + k + len / 2;
+                const float tr = real[b] * cr - imaginary[b] * ci;
+                const float ti = real[b] * ci + imaginary[b] * cr;
+                real[b] = real[a] - tr;
+                imaginary[b] = imaginary[a] - ti;
+                real[a] += tr;
+                imaginary[a] += ti;
+                const float ncr = cr * wr - ci * wi;
+                ci = cr * wi + ci * wr;
+                cr = ncr;
+            }
+        }
+    }
+    // A full-scale sine gives magnitude n/4 with a Hann window -> 0 dBFS.
+    const float norm = 4.0f / n;
+    for (int i = 0; i <= n / 2; ++i) {
+        const float mag = std::sqrt(real[i] * real[i] + imaginary[i] * imaginary[i]) * norm;
+        decibels[i] = 20.0f * std::log10(std::max(mag, 1e-9f));
+    }
+    return decibels;
+}
 
 std::unique_ptr<Visualizer> MakeSpectrum() {
     return std::make_unique<Spectrum>();

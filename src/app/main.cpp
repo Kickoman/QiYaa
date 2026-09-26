@@ -1,26 +1,18 @@
 #include "app/application.h"
-#include "audio/audio_engine.h"
+#include "app/offline_sources.h"
 #include "ui/main_window.h"
-#include "yandex/api_client.h"
 
 #include <QApplication>
-#include <QByteArray>
 #include <QCommandLineOption>
 #include <QCommandLineParser>
-#include <QFile>
 #include <QGuiApplication>
-#include <QIODevice>
 #include <QIcon>
 #include <QLatin1String>
-#include <QList>
-#include <QObject>
 #include <QString>
 #include <QTimer>
 
 #include <cstdio>
 #include <exception>
-#include <memory>
-#include <utility>
 
 namespace {
 
@@ -41,49 +33,6 @@ void ChoosePlatform() {
         qputenv("QT_QPA_PLATFORM", "xcb;wayland");
     }
 #endif
-}
-
-void StreamLocalFile(Audio::AudioEngine* engine, const QString& path) {
-    auto file = std::make_shared<QFile>(path);
-    if (!file->open(QIODevice::ReadOnly)) {
-        qWarning("Cannot open %s", qPrintable(path));
-        return;
-    }
-    engine->beginStream();
-    auto* timer = new QTimer(engine);
-    QObject::connect(timer, &QTimer::timeout, engine, [engine, file, timer] {
-        const QByteArray chunk = file->read(64 * 1024);
-        if (!chunk.isEmpty()) {
-            engine->appendData(chunk);
-        }
-        if (file->atEnd()) {
-            engine->finishData();
-            timer->deleteLater();
-        }
-    });
-    timer->start(20);
-}
-
-QList<Yandex::Track> DemoTracks() {
-    const std::pair<const char*, int> samples[] = {
-        {"Кино - Группа крови", 285},       {"Земфира - Искала", 237},
-        {"Сплин - Выхода нет", 227},        {"Björk - Jóga", 305},
-        {"Daft Punk - Digital Love", 301},  {"Мумий Тролль - Владивосток 2000", 164},
-        {"Radiohead - Karma Police", 264},  {"Кино - Кукушка", 395},
-        {"Nirvana - Come As You Are", 219},
-    };
-    QList<Yandex::Track> out;
-    int id = 1;
-    for (const auto& [name, seconds] : samples) {
-        Yandex::Track track;
-        const QString text = QString::fromUtf8(name);
-        track.id = QString::number(id++);
-        track.artists << text.section(QStringLiteral(" - "), 0, 0);
-        track.title = text.section(QStringLiteral(" - "), 1);
-        track.durationMs = seconds * 1000;
-        out << track;
-    }
-    return out;
 }
 
 int Run(int& argc, char* argv[]) {
@@ -150,10 +99,12 @@ int Run(int& argc, char* argv[]) {
 
     application.start();
     if (commandLine.isSet(scaleOption)) {
-        application.setScale(commandLine.value(scaleOption).toDouble(), /*persist=*/false);
+        application.setScale(
+            commandLine.value(scaleOption).toDouble(), App::Application::ScaleScope::ThisRun
+        );
     }
     if (commandLine.isSet(demoOption)) {
-        application.player()->setQueue(DemoTracks(), QStringLiteral("Demo"), false);
+        application.player()->setQueue(App::DemoTracks(), QStringLiteral("Demo"), false);
     }
     if (commandLine.isSet(textOption)) {
         application.mainWindow()->setStatusText(commandLine.value(textOption));
@@ -166,7 +117,7 @@ int Run(int& argc, char* argv[]) {
     }
 
     if (commandLine.isSet(fileOption)) {
-        StreamLocalFile(application.engine(), commandLine.value(fileOption));
+        App::StreamLocalFile(application.engine(), commandLine.value(fileOption));
     }
     if (screenshot) {
         QTimer::singleShot(1500, &app, [&] {

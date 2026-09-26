@@ -219,12 +219,12 @@ void PlaySearchResults(Core::Player* player, const QString& text) {
             if (!error.isEmpty()) {
                 return ShowStatus(guardedPlayer, QStringLiteral("Ошибка поиска: ") + error);
             }
-            if (r.bestType == QLatin1String("artist") && !r.bestId.isEmpty()) {
+            if (r.bestKind == Yandex::SearchResult::Kind::Artist && !r.bestId.isEmpty()) {
                 return lib->artistTopTracks(
                     r.bestId, QueueLoader(guardedPlayer, r.bestName, ticket)
                 );
             }
-            if (r.bestType == QLatin1String("album") && !r.bestId.isEmpty()) {
+            if (r.bestKind == Yandex::SearchResult::Kind::Album && !r.bestId.isEmpty()) {
                 return lib->albumTracks(r.bestId, QueueLoader(guardedPlayer, r.bestName, ticket));
             }
             if (r.tracks.isEmpty()) {

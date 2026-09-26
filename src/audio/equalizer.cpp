@@ -17,7 +17,7 @@ EqualizerDsp::EqualizerDsp() {
 }
 
 void EqualizerDsp::setSampleRate(uint32_t rate) {
-    sampleRate = rate > 0 ? rate : 44100;
+    sampleRate = rate > 0 ? rate : 44'100;
     publish(lastSettings);
     // No audio thread yet: make it current now.
     const int prev = middle.exchange(front);
@@ -61,7 +61,9 @@ void EqualizerDsp::publish(const EqSettings& settings) {
     back = prev & 3;
 }
 
-void EqualizerDsp::process(float* frames, uint32_t frameCount) {
+void EqualizerDsp::process(std::span<float> stereoFrames) {
+    const size_t frameCount = stereoFrames.size() / 2;
+    float* frames = stereoFrames.data();
     if (middle.load(std::memory_order_relaxed) & kDirty) {
         const int prev = middle.exchange(front, std::memory_order_acq_rel);
         front = prev & 3;
@@ -72,7 +74,7 @@ void EqualizerDsp::process(float* frames, uint32_t frameCount) {
     }
 
     if (c.preamp != 1.0f) {
-        for (uint32_t i = 0; i < frameCount * 2; ++i) {
+        for (size_t i = 0; i < frameCount * 2; ++i) {
             frames[i] *= c.preamp;
         }
     }
@@ -87,7 +89,7 @@ void EqualizerDsp::process(float* frames, uint32_t frameCount) {
         for (int ch = 0; ch < 2; ++ch) {
             float z1 = filterState1[band][ch], z2 = filterState2[band][ch];
             float* p = frames + ch;
-            for (uint32_t i = 0; i < frameCount; ++i, p += 2) {
+            for (size_t i = 0; i < frameCount; ++i, p += 2) {
                 // Transposed direct form II.
                 const float x = *p;
                 const float y = filter.b0 * x + z1;
