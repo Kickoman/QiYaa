@@ -19,7 +19,11 @@ class LoginDialog : public QDialog {
     Q_OBJECT
 public:
     // `oauthBase` overrides https://oauth.yandex.ru (tests).
-    explicit LoginDialog(QNetworkAccessManager* nam, QWidget* parent = nullptr, const QString& oauthBase = {});
+    explicit LoginDialog(
+        QNetworkAccessManager* nam,
+        QWidget* parent = nullptr,
+        const QString& oauthBase = {}
+    );
 
     QString token() const { return m_token; }
 

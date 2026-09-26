@@ -18,7 +18,10 @@ public:
     void setShaded(bool shaded) override;
     // Volume/balance shown in shade mode (they belong to the main window).
     void setMixer(int volume, int balance);
-    void setAutoOn(bool on) { m_auto = on; update(); }
+    void setAutoOn(bool on) {
+        m_auto = on;
+        update();
+    }
 
     // Spline through the band values, as drawn in the little graph (for tests).
     static QList<double> graphCurve(const audio::EqSettings& s);
@@ -38,7 +41,9 @@ protected:
     void skinMouseMove(QPoint pos) override;
     void skinMouseRelease(QPoint pos, Qt::MouseButton button) override;
     bool skinMouseDoubleClick(QPoint pos, Qt::MouseButton button) override;
-    QString regionSection() const override { return isShaded() ? QStringLiteral("equalizerws") : QStringLiteral("equalizer"); }
+    QString regionSection() const override {
+        return isShaded() ? QStringLiteral("equalizerws") : QStringLiteral("equalizer");
+    }
     void wheelEvent(QWheelEvent* e) override;
 
 private:

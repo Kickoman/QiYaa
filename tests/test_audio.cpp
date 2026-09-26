@@ -1,14 +1,15 @@
 // Streams a small mp3 through the real engine. On machines without a sound card
 // miniaudio falls back to its "Null" backend, which still runs in real time.
+#include "audio/AudioEngine.h"
+#include "core/Player.h"
+
 #include <QElapsedTimer>
 #include <QFile>
 #include <QMetaEnum>
-#include <functional>
 #include <QSignalSpy>
 #include <QTest>
 
-#include "audio/AudioEngine.h"
-#include "core/Player.h"
+#include <functional>
 
 using qiyaa::audio::AudioEngine;
 
@@ -24,7 +25,9 @@ private:
             .arg(advanced)
             .arg(finished)
             .arg(engine.positionSeconds(), 0, 'f', 2)
-            .arg(QLatin1String(QMetaEnum::fromType<AudioEngine::State>().valueToKey(int(engine.state()))))
+            .arg(QLatin1String(
+                QMetaEnum::fromType<AudioEngine::State>().valueToKey(int(engine.state()))
+            ))
             .arg(engine.currentStream())
             .arg(engine.queuedStream());
     }
@@ -41,7 +44,9 @@ private:
 private Q_SLOTS:
     void initTestCase() {
         QString err;
-        if (!engine.init(&err)) QSKIP(qPrintable("no audio output: " + err));
+        if (!engine.init(&err)) {
+            QSKIP(qPrintable("no audio output: " + err));
+        }
         engine.setVolume(0);  // silence, in case this runs on a real device
         QFile f(QStringLiteral(QIYAA_TEST_DATA "/sine440_3s.mp3"));
         QVERIFY(f.open(QIODevice::ReadOnly));
@@ -108,7 +113,9 @@ private Q_SLOTS:
         // ~39 s stream (the 3 s file repeated; MP3 frames concatenate), fed slowly,
         // with seeks both inside and ahead of what's downloaded.
         QByteArray longMp3;
-        for (int i = 0; i < 13; ++i) longMp3 += mp3;
+        for (int i = 0; i < 13; ++i) {
+            longMp3 += mp3;
+        }
         engine.beginStream();
         qsizetype fed = 0;
         auto feed = [&](qsizetype n) {
@@ -119,13 +126,16 @@ private Q_SLOTS:
         pumpUntil([&] { return engine.state() == AudioEngine::State::Playing; }, 3000);
         QCOMPARE(engine.state(), AudioEngine::State::Playing);
         const double targets[] = {1.0, 30.0, 2.0, 35.0, 0.5, 20.0, 3.0, 10.0};
-        for (int round = 0; round < 3; ++round)
+        for (int round = 0; round < 3; ++round) {
             for (double t : targets) {
                 QVERIFY(engine.seek(t));
                 QTest::qWait(5);
-                if (fed < longMp3.size()) feed(16 * 1024);
+                if (fed < longMp3.size()) {
+                    feed(16 * 1024);
+                }
                 engine.poll();
             }
+        }
         feed(longMp3.size() - fed);
         engine.finishData();
         QVERIFY(engine.seek(12.0));
@@ -145,7 +155,8 @@ private Q_SLOTS:
         engine.beginStream();
         engine.appendData(mp3);
         engine.finishData();
-        QVERIFY(QTest::qWaitFor([&] { return engine.state() == AudioEngine::State::Playing; }, 3000));
+        QVERIFY(QTest::qWaitFor([&] { return engine.state() == AudioEngine::State::Playing; }, 3000)
+        );
         QVERIFY(engine.seek(2.7));
         QVERIFY(finished.wait(4000));
     }
@@ -193,7 +204,9 @@ private Q_SLOTS:
         QVERIFY(states.isEmpty());  // no Stopped/Buffering in between
         QCOMPARE(engine.currentStream(), b);
         QCOMPARE(engine.queuedStream(), AudioEngine::StreamId(0));
-        QVERIFY2(engine.positionSeconds() < 0.3, qPrintable(QString::number(engine.positionSeconds())));
+        QVERIFY2(
+            engine.positionSeconds() < 0.3, qPrintable(QString::number(engine.positionSeconds()))
+        );
         // The new track is seekable and ends normally.
         QVERIFY(engine.seek(2.7));
         pumpUntil([&] { return finished.count() > 0; }, 3000);
@@ -208,10 +221,13 @@ private Q_SLOTS:
         const auto b = queueWhole(mp3);
         QTest::qWait(150);  // the rest of track 1 is decoded and track 2 chained behind it
         QVERIFY(engine.seek(0.5));  // back into track 1
-        pumpUntil([&] {
-            const double p = engine.positionSeconds();
-            return p >= 0.8 && p < 1.5;
-        }, 2000);
+        pumpUntil(
+            [&] {
+                const double p = engine.positionSeconds();
+                return p >= 0.8 && p < 1.5;
+            },
+            2000
+        );
         QCOMPARE(advanced.count(), 0);
         const double pos = engine.positionSeconds();
         QVERIFY2(pos >= 0.5 && pos < 1.5, qPrintable(QString::number(pos)));
@@ -303,8 +319,11 @@ private Q_SLOTS:
             engine.clearQueued();
             QElapsedTimer t;
             t.start();
-            if (round == 0) engine.stop();
-            else engine.beginStream();
+            if (round == 0) {
+                engine.stop();
+            } else {
+                engine.beginStream();
+            }
             QVERIFY2(t.elapsed() < 1000, qPrintable(QString::number(t.elapsed())));
         }
         engine.stop();

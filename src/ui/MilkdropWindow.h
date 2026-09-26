@@ -2,14 +2,14 @@
 // inside, preset switching (in order or at random), lock, fullscreen.
 #pragma once
 
-#include <memory>
+#include "ui/GenWindow.h"
+#include "vis/MilkdropPresets.h"
 
 #include <QList>
 #include <QSet>
 #include <QStringList>
 
-#include "ui/GenWindow.h"
-#include "vis/MilkdropPresets.h"
+#include <memory>
 
 namespace qiyaa {
 
@@ -22,8 +22,13 @@ class MilkdropWindow : public GenWindow {
     Q_OBJECT
 public:
     // Presets: built-ins from `builtInDir` (resources), the user's own from `userDir`.
-    MilkdropWindow(audio::AudioEngine* engine, const QString& builtInDir, const QString& userDir, const Skin* skin,
-                   QWidget* parent = nullptr);
+    MilkdropWindow(
+        audio::AudioEngine* engine,
+        const QString& builtInDir,
+        const QString& userDir,
+        const Skin* skin,
+        QWidget* parent = nullptr
+    );
     ~MilkdropWindow() override;
 
     const MilkdropPresets& presets() const { return m_presets; }
@@ -95,13 +100,13 @@ private:
     QString m_builtInDir;
     QString m_userDir;
     MilkdropPresets m_presets;
-    MilkdropView* m_view = nullptr;      // owned by m_container; null without OpenGL
+    MilkdropView* m_view = nullptr;  // owned by m_container; null without OpenGL
     QString m_glProblem;
     bool m_viewTried = false;
     QWidget* m_container = nullptr;
     std::unique_ptr<MilkdropView> m_fullView;
     int m_current = -1;
-    QList<int> m_history;                // for "previous" in shuffle mode
+    QList<int> m_history;  // for "previous" in shuffle mode
     int m_failuresInARow = 0;
     bool m_shuffle = true;
     bool m_locked = false;

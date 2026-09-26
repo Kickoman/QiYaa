@@ -18,7 +18,9 @@ QList<DownloadVariant> parseDownloadVariants(const QJsonArray& result) {
         d.bitrateKbps = o.value(QStringLiteral("bitrateInKbps")).toInt();
         d.preview = o.value(QStringLiteral("preview")).toBool();
         d.downloadInfoUrl = QUrl(o.value(QStringLiteral("downloadInfoUrl")).toString());
-        if (d.downloadInfoUrl.isValid()) out.append(d);
+        if (d.downloadInfoUrl.isValid()) {
+            out.append(d);
+        }
     }
     return out;
 }
@@ -26,11 +28,19 @@ QList<DownloadVariant> parseDownloadVariants(const QJsonArray& result) {
 bool pickBestVariant(const QList<DownloadVariant>& variants, DownloadVariant* out) {
     const DownloadVariant* best = nullptr;
     for (const DownloadVariant& v : variants) {
-        if (v.codec != QLatin1String("mp3") || v.preview) continue;
-        if (!best || v.bitrateKbps > best->bitrateKbps) best = &v;
+        if (v.codec != QLatin1String("mp3") || v.preview) {
+            continue;
+        }
+        if (!best || v.bitrateKbps > best->bitrateKbps) {
+            best = &v;
+        }
     }
-    if (!best && !variants.isEmpty()) best = &variants.first();
-    if (!best) return false;
+    if (!best && !variants.isEmpty()) {
+        best = &variants.first();
+    }
+    if (!best) {
+        return false;
+    }
     *out = *best;
     return true;
 }
@@ -38,11 +48,15 @@ bool pickBestVariant(const QList<DownloadVariant>& variants, DownloadVariant* ou
 bool parseDownloadInfo(const QByteArray& json, DownloadInfo* out) {
     QJsonParseError err{};
     const QJsonDocument doc = QJsonDocument::fromJson(json, &err);
-    if (err.error != QJsonParseError::NoError || !doc.isObject()) return false;
+    if (err.error != QJsonParseError::NoError || !doc.isObject()) {
+        return false;
+    }
     const QJsonObject o = doc.object();
     auto str = [&](const char* key) {
         const QJsonValue v = o.value(QLatin1String(key));
-        return v.isString() ? v.toString() : v.isDouble() ? QString::number(qint64(v.toDouble())) : QString();
+        return v.isString() ? v.toString()
+            : v.isDouble()  ? QString::number(qint64(v.toDouble()))
+                            : QString();
     };
     out->host = str("host");
     out->path = str("path");

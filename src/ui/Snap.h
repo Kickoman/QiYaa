@@ -13,8 +13,7 @@ inline constexpr int kSnapDistance = 15;
 
 // Returns the position `moving` should have so that it sticks to the edges of any
 // of `others` that are within kSnapDistance. Axes that don't snap keep their value.
-QPoint snapToOthers(const QRect& moving, const QList<QRect>& others,
-                    int distance = kSnapDistance);
+QPoint snapToOthers(const QRect& moving, const QList<QRect>& others, int distance = kSnapDistance);
 
 // Snaps `moving` to the inner edges of `screen` (available geometry) when near.
 QPoint snapWithin(const QRect& moving, const QRect& screen, int distance = kSnapDistance);
@@ -45,7 +44,11 @@ QList<int> stackBelow(int self, const QList<QRect>& rects, int dy, const QList<b
 
 // Full pipeline used while dragging: snap to other windows, then to the screen
 // edges, then clamp inside the screen the window is on.
-QPoint resolveDragPosition(const QRect& proposed, const QList<QRect>& others,
-                           const QList<QRect>& screens, int distance = kSnapDistance);
+QPoint resolveDragPosition(
+    const QRect& proposed,
+    const QList<QRect>& others,
+    const QList<QRect>& screens,
+    int distance = kSnapDistance
+);
 
 }  // namespace qiyaa::snap

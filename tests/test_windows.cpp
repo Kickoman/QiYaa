@@ -1,4 +1,14 @@
 // The full window set on the offscreen platform: docking, scale, playlist, EQ.
+#include "MockHttpServer.h"
+#include "app/App.h"
+#include "core/CoverCache.h"
+#include "ui/EqualizerWindow.h"
+#include "ui/LoginDialog.h"
+#include "ui/MainWindow.h"
+#include "ui/MilkdropWindow.h"
+#include "ui/NowPlayingWindow.h"
+#include "ui/PlaylistWindow.h"
+
 #include <QApplication>
 #include <QBuffer>
 #include <QLabel>
@@ -8,22 +18,19 @@
 #include <QSignalSpy>
 #include <QTest>
 
-#include "app/App.h"
-#include "ui/EqualizerWindow.h"
-#include "MockHttpServer.h"
-#include "core/CoverCache.h"
-#include "ui/LoginDialog.h"
-#include "ui/MilkdropWindow.h"
-#include "ui/NowPlayingWindow.h"
-#include "ui/MainWindow.h"
-#include "ui/PlaylistWindow.h"
-
 using namespace qiyaa;
 using yandex::Track;
 
 namespace {
 
-void mouse(QWidget* w, QEvent::Type type, QPoint local, QPoint global, Qt::MouseButton button, Qt::MouseButtons buttons) {
+void mouse(
+    QWidget* w,
+    QEvent::Type type,
+    QPoint local,
+    QPoint global,
+    Qt::MouseButton button,
+    Qt::MouseButtons buttons
+) {
     QMouseEvent e(type, QPointF(local), QPointF(global), button, buttons, Qt::NoModifier);
     QCoreApplication::sendEvent(w, &e);
 }
@@ -69,8 +76,9 @@ private:
 
     // Scale tests need the stack to fit on screen (see tests/CMakeLists.txt).
     void requireBigScreen() {
-        if (QGuiApplication::primaryScreen()->availableGeometry().height() < 1200)
+        if (QGuiApplication::primaryScreen()->availableGeometry().height() < 1200) {
             QSKIP("needs a 2560x1440 virtual screen");
+        }
     }
 
 private Q_SLOTS:
@@ -106,10 +114,10 @@ private Q_SLOTS:
 
     void equalizerDetachesAndSnapsBack() {
         const QPoint start = eq->pos();
-        drag(eq, {100, 5}, {300, 0});            // pull it away to the right
+        drag(eq, {100, 5}, {300, 0});  // pull it away to the right
         QCOMPARE(eq->pos(), start + QPoint(300, 0));
         QVERIFY(!main->dockedWindows().contains(eq));
-        drag(eq, {100, 5}, {-292, 0});           // within 15 px of the old spot: snaps
+        drag(eq, {100, 5}, {-292, 0});  // within 15 px of the old spot: snaps
         QCOMPARE(eq->pos(), start);
     }
 
@@ -135,10 +143,13 @@ private Q_SLOTS:
         // Stack at 400% is 1856 px tall: taller than the 1440 px test screen.
         app->setScale(4.0);
         const QRect screen = QGuiApplication::primaryScreen()->availableGeometry();
-        for (QWidget* w : {static_cast<QWidget*>(main), static_cast<QWidget*>(eq), static_cast<QWidget*>(pl)}) {
+        for (QWidget* w :
+             {static_cast<QWidget*>(main), static_cast<QWidget*>(eq), static_cast<QWidget*>(pl)}) {
             const QRect r = w->frameGeometry();
             QVERIFY2(screen.contains(r.topLeft()), qPrintable(w->windowTitle()));
-            if (r.width() <= screen.width() && r.height() <= screen.height()) QVERIFY(screen.contains(r));
+            if (r.width() <= screen.width() && r.height() <= screen.height()) {
+                QVERIFY(screen.contains(r));
+            }
         }
     }
 
@@ -174,8 +185,10 @@ private Q_SLOTS:
     void smoothScrollWheelChangesVolume() {
         main->setVolume(50);
         for (int i = 0; i < 3; ++i) {  // three 40-unit touchpad deltas = one notch
-            QWheelEvent w(QPointF(150, 60), main->mapToGlobal(QPointF(150, 60)), QPoint(), QPoint(0, 40), Qt::NoButton,
-                          Qt::NoModifier, Qt::NoScrollPhase, false);
+            QWheelEvent w(
+                QPointF(150, 60), main->mapToGlobal(QPointF(150, 60)), QPoint(), QPoint(0, 40),
+                Qt::NoButton, Qt::NoModifier, Qt::NoScrollPhase, false
+            );
             QCoreApplication::sendEvent(main, &w);
         }
         QCOMPARE(main->volume(), 54);
@@ -194,15 +207,20 @@ private Q_SLOTS:
         const QPoint row3(60, 20 + 3 + 2 * 13 + 6);
         QCOMPARE(pl->rowAt(row3), 2);
         // Double click plays that row (no audio device here, but the index moves).
-        QMouseEvent dbl(QEvent::MouseButtonDblClick, QPointF(row3), pl->mapToGlobal(QPointF(row3)), Qt::LeftButton, Qt::LeftButton, Qt::NoModifier);
+        QMouseEvent dbl(
+            QEvent::MouseButtonDblClick, QPointF(row3), pl->mapToGlobal(QPointF(row3)),
+            Qt::LeftButton, Qt::LeftButton, Qt::NoModifier
+        );
         QCoreApplication::sendEvent(pl, &dbl);
         QCOMPARE(app->player()->currentIndex(), 2);
     }
 
     void playlistScrollsAndResizes() {
         app->player()->setQueue(tracks(50), "Test", false);
-        QWheelEvent wheel(QPointF(60, 60), pl->mapToGlobal(QPointF(60, 60)), QPoint(), QPoint(0, -120), Qt::NoButton,
-                          Qt::NoModifier, Qt::NoScrollPhase, false);
+        QWheelEvent wheel(
+            QPointF(60, 60), pl->mapToGlobal(QPointF(60, 60)), QPoint(), QPoint(0, -120),
+            Qt::NoButton, Qt::NoModifier, Qt::NoScrollPhase, false
+        );
         QCoreApplication::sendEvent(pl, &wheel);
         QCOMPARE(pl->scrollOffset(), 3);
         // Drag the resize grip by one step to the right and two down.
@@ -228,8 +246,12 @@ private Q_SLOTS:
         QSignalSpy changed(eq, &EqualizerWindow::settingsChanged);
         // Band 60 Hz at x=78, slider top y=38, 51 px travel: top = +12 dB.
         const QPoint top(78 + 7, 38 + 5);
-        mouse(eq, QEvent::MouseButtonPress, top, eq->mapToGlobal(top), Qt::LeftButton, Qt::LeftButton);
-        mouse(eq, QEvent::MouseButtonRelease, top, eq->mapToGlobal(top), Qt::LeftButton, Qt::NoButton);
+        mouse(
+            eq, QEvent::MouseButtonPress, top, eq->mapToGlobal(top), Qt::LeftButton, Qt::LeftButton
+        );
+        mouse(
+            eq, QEvent::MouseButtonRelease, top, eq->mapToGlobal(top), Qt::LeftButton, Qt::NoButton
+        );
         QVERIFY(changed.count() >= 1);
         QCOMPARE(eq->settings().bandsDb[0], 12.0);
         // ON button turns the EQ off.
@@ -254,10 +276,15 @@ private Q_SLOTS:
         QVERIFY(QTest::qWaitForWindowExposed(&dlg));
         auto allTextFits = [&dlg] {
             for (QLabel* l : dlg.findChildren<QLabel*>()) {
-                if (!l->isVisible() || l->text().isEmpty()) continue;
-                const int need = l->wordWrap() ? l->heightForWidth(l->width()) : l->sizeHint().height();
+                if (!l->isVisible() || l->text().isEmpty()) {
+                    continue;
+                }
+                const int need =
+                    l->wordWrap() ? l->heightForWidth(l->width()) : l->sizeHint().height();
                 if (l->height() < need) {
-                    qWarning("label %s: %d < %d", qPrintable(l->text().left(30)), l->height(), need);
+                    qWarning(
+                        "label %s: %d < %d", qPrintable(l->text().left(30)), l->height(), need
+                    );
                     return false;
                 }
             }
@@ -267,11 +294,17 @@ private Q_SLOTS:
         dlg.resize(dlg.width(), 150);
         QApplication::processEvents();
         QVERIFY(allTextFits());
-        QVERIFY(QTest::qWaitFor([&] {
-            for (QLabel* l : dlg.findChildren<QLabel*>())
-                if (l->text().contains(QStringLiteral("не удался"))) return true;
-            return false;
-        }, 5000));
+        QVERIFY(QTest::qWaitFor(
+            [&] {
+                for (QLabel* l : dlg.findChildren<QLabel*>()) {
+                    if (l->text().contains(QStringLiteral("не удался"))) {
+                        return true;
+                    }
+                }
+                return false;
+            },
+            5000
+        ));
         QApplication::processEvents();
         QVERIFY(allTextFits());
         dlg.resize(dlg.width(), 150);
@@ -284,15 +317,16 @@ private Q_SLOTS:
         const QPoint mainPos = main->pos();
         main->setShaded(true);
         QCOMPARE(main->size(), QSize(275, 14));
-        QCOMPARE(eq->pos(), mainPos + QPoint(0, 14));           // pulled up
+        QCOMPARE(eq->pos(), mainPos + QPoint(0, 14));  // pulled up
         QCOMPARE(pl->pos(), eq->pos() + QPoint(0, eq->height()));
         eq->setShaded(true);
         QCOMPARE(eq->height(), 14);
         QCOMPARE(pl->pos(), mainPos + QPoint(0, 28));
         pl->setShaded(true);
         QCOMPARE(pl->size(), QSize(275, 14));
-        if (!qEnvironmentVariableIsEmpty("QIYAA_TEST_SHOTS"))
+        if (!qEnvironmentVariableIsEmpty("QIYAA_TEST_SHOTS")) {
             app->snapshot().save(qEnvironmentVariable("QIYAA_TEST_SHOTS") + "/shaded.png");
+        }
         main->setShaded(false);
         eq->setShaded(false);
         pl->setShaded(false);
@@ -334,7 +368,9 @@ private Q_SLOTS:
         pl->setShaded(true);
         app->player()->playIndex(39);  // scrolls the one-row shaded view to row 39
         pl->setShaded(false);
-        QCOMPARE(pl->scrollOffset(), 40 - 13);  // 13 rows fit the default height; last row at the bottom
+        QCOMPARE(
+            pl->scrollOffset(), 40 - 13
+        );  // 13 rows fit the default height; last row at the bottom
     }
 
     void unshadingAtTheBottomStaysOnScreen() {
@@ -342,7 +378,8 @@ private Q_SLOTS:
         eq->setShaded(true);
         pl->setShaded(true);
         const QRect screen = main->screen()->availableGeometry();
-        const int y = screen.y() + screen.height() - 42;  // the shaded stack sits on the bottom edge
+        const int y =
+            screen.y() + screen.height() - 42;  // the shaded stack sits on the bottom edge
         main->move(main->x(), y);
         eq->move(main->x(), y + 14);
         pl->move(main->x(), y + 28);
@@ -366,10 +403,13 @@ private Q_SLOTS:
         QVERIFY(!md->isVisible());  // off by default
         app->setMilkdropVisible(true);
         QVERIFY(md->isVisible());
-        QCOMPARE(md->pos(), main->pos() + QPoint(main->width(), main->height()));  // right of the equalizer
+        QCOMPARE(
+            md->pos(), main->pos() + QPoint(main->width(), main->height())
+        );  // right of the equalizer
         QVERIFY(md->presets().size() >= 50);
-        if (!qEnvironmentVariableIsEmpty("QIYAA_TEST_SHOTS"))
+        if (!qEnvironmentVariableIsEmpty("QIYAA_TEST_SHOTS")) {
             app->snapshot().save(qEnvironmentVariable("QIYAA_TEST_SHOTS") + "/milkdrop-window.png");
+        }
         app->setMilkdropVisible(false);
         QVERIFY(!md->isVisible());
 #else
@@ -379,8 +419,10 @@ private Q_SLOTS:
     }
 
     void doubleClickTitleShades() {
-        QMouseEvent dbl(QEvent::MouseButtonDblClick, QPointF(100, 5), main->mapToGlobal(QPointF(100, 5)), Qt::LeftButton,
-                        Qt::LeftButton, Qt::NoModifier);
+        QMouseEvent dbl(
+            QEvent::MouseButtonDblClick, QPointF(100, 5), main->mapToGlobal(QPointF(100, 5)),
+            Qt::LeftButton, Qt::LeftButton, Qt::NoModifier
+        );
         QCoreApplication::sendEvent(main, &dbl);
         QVERIFY(main->isShaded());
         QCoreApplication::sendEvent(main, &dbl);
@@ -390,12 +432,20 @@ private Q_SLOTS:
     void eqShadeSlidersDriveMainVolume() {
         eq->setShaded(true);
         const QPoint vol(61 + 96, 7);  // right end of the mini volume slider
-        mouse(eq, QEvent::MouseButtonPress, vol, eq->mapToGlobal(vol), Qt::LeftButton, Qt::LeftButton);
-        mouse(eq, QEvent::MouseButtonRelease, vol, eq->mapToGlobal(vol), Qt::LeftButton, Qt::NoButton);
+        mouse(
+            eq, QEvent::MouseButtonPress, vol, eq->mapToGlobal(vol), Qt::LeftButton, Qt::LeftButton
+        );
+        mouse(
+            eq, QEvent::MouseButtonRelease, vol, eq->mapToGlobal(vol), Qt::LeftButton, Qt::NoButton
+        );
         QCOMPARE(main->volume(), 100);
-        const QPoint bal(164, 7);      // left end of the mini balance slider
-        mouse(eq, QEvent::MouseButtonPress, bal, eq->mapToGlobal(bal), Qt::LeftButton, Qt::LeftButton);
-        mouse(eq, QEvent::MouseButtonRelease, bal, eq->mapToGlobal(bal), Qt::LeftButton, Qt::NoButton);
+        const QPoint bal(164, 7);  // left end of the mini balance slider
+        mouse(
+            eq, QEvent::MouseButtonPress, bal, eq->mapToGlobal(bal), Qt::LeftButton, Qt::LeftButton
+        );
+        mouse(
+            eq, QEvent::MouseButtonRelease, bal, eq->mapToGlobal(bal), Qt::LeftButton, Qt::NoButton
+        );
         QCOMPARE(main->balance(), -100);
     }
 
@@ -416,7 +466,9 @@ private Q_SLOTS:
         QBuffer buf(&png);
         buf.open(QIODevice::WriteOnly);
         red.save(&buf, "PNG");
-        server.on("GET", "/cover/400x400", [png](const MockRequest&) { return MockResponse{200, png}; });
+        server.on("GET", "/cover/400x400", [png](const MockRequest&) {
+            return MockResponse{200, png};
+        });
 
         QList<Track> list = tracks(1);
         list[0].title = QStringLiteral("Группа крови");
@@ -428,13 +480,16 @@ private Q_SLOTS:
         app->setNowPlayingVisible(true);
         NowPlayingWindow* np = app->nowPlayingWindow();
         QVERIFY(QTest::qWaitForWindowExposed(np));
-        QVERIFY(QTest::qWaitFor([&] { return !app->covers()->localFile(list[0].coverUrl(400)).isEmpty(); }, 5000));
+        QVERIFY(QTest::qWaitFor(
+            [&] { return !app->covers()->localFile(list[0].coverUrl(400)).isEmpty(); }, 5000
+        ));
         QApplication::processEvents();
         const QImage shot = np->grab().toImage();
         const QRect c = np->coverRect();
         QCOMPARE(QColor(shot.pixel(c.center())), QColor(Qt::red));
-        if (!qEnvironmentVariableIsEmpty("QIYAA_TEST_SHOTS"))
+        if (!qEnvironmentVariableIsEmpty("QIYAA_TEST_SHOTS")) {
             app->snapshot().save(qEnvironmentVariable("QIYAA_TEST_SHOTS") + "/nowplaying.png");
+        }
         // Docked to the right of the main window by default.
         QCOMPARE(np->pos(), main->pos() + QPoint(main->width(), 0));
     }

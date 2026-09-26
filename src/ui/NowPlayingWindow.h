@@ -12,7 +12,12 @@ class Player;
 class NowPlayingWindow : public GenWindow {
     Q_OBJECT
 public:
-    NowPlayingWindow(Player* player, CoverCache* covers, const Skin* skin, QWidget* parent = nullptr);
+    NowPlayingWindow(
+        Player* player,
+        CoverCache* covers,
+        const Skin* skin,
+        QWidget* parent = nullptr
+    );
 
     // Where the cover is drawn (skin coordinates), for tests.
     QRect coverRect() const;

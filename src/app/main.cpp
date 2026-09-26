@@ -1,4 +1,5 @@
-#include <memory>
+#include "app/App.h"
+#include "ui/MainWindow.h"
 
 #include <QApplication>
 #include <QCommandLineParser>
@@ -6,8 +7,7 @@
 #include <QIcon>
 #include <QTimer>
 
-#include "app/App.h"
-#include "ui/MainWindow.h"
+#include <memory>
 
 using namespace qiyaa;
 
@@ -18,10 +18,16 @@ namespace {
 // platform, run through XWayland; fall back to native Wayland if xcb is missing.
 void choosePlatform() {
 #if defined(Q_OS_LINUX) || defined(Q_OS_FREEBSD)
-    if (qEnvironmentVariableIsSet("QT_QPA_PLATFORM")) return;
-    if (qEnvironmentVariable("QIYAA_NATIVE_WAYLAND") == QLatin1String("1")) return;
-    if (qEnvironmentVariableIsSet("WAYLAND_DISPLAY") || qEnvironmentVariable("XDG_SESSION_TYPE") == QLatin1String("wayland"))
+    if (qEnvironmentVariableIsSet("QT_QPA_PLATFORM")) {
+        return;
+    }
+    if (qEnvironmentVariable("QIYAA_NATIVE_WAYLAND") == QLatin1String("1")) {
+        return;
+    }
+    if (qEnvironmentVariableIsSet("WAYLAND_DISPLAY")
+        || qEnvironmentVariable("XDG_SESSION_TYPE") == QLatin1String("wayland")) {
         qputenv("QT_QPA_PLATFORM", "xcb;wayland");
+    }
 #endif
 }
 
@@ -37,7 +43,9 @@ void streamLocalFile(audio::AudioEngine* engine, const QString& path) {
     auto* timer = new QTimer(engine);
     QObject::connect(timer, &QTimer::timeout, engine, [engine, file, timer] {
         const QByteArray chunk = file->read(64 * 1024);
-        if (!chunk.isEmpty()) engine->appendData(chunk);
+        if (!chunk.isEmpty()) {
+            engine->appendData(chunk);
+        }
         if (file->atEnd()) {
             engine->finishData();
             timer->deleteLater();
@@ -49,9 +57,11 @@ void streamLocalFile(audio::AudioEngine* engine, const QString& path) {
 // A few fake tracks, for screenshots and UI testing without an account.
 QList<yandex::Track> demoTracks() {
     const std::pair<const char*, int> raw[] = {
-        {"Кино - Группа крови", 285},      {"Земфира - Искала", 237},         {"Сплин - Выхода нет", 227},
-        {"Björk - Jóga", 305},             {"Daft Punk - Digital Love", 301}, {"Мумий Тролль - Владивосток 2000", 164},
-        {"Radiohead - Karma Police", 264}, {"Кино - Кукушка", 395},           {"Nirvana - Come As You Are", 219},
+        {"Кино - Группа крови", 285},       {"Земфира - Искала", 237},
+        {"Сплин - Выхода нет", 227},        {"Björk - Jóga", 305},
+        {"Daft Punk - Digital Love", 301},  {"Мумий Тролль - Владивосток 2000", 164},
+        {"Radiohead - Karma Police", 264},  {"Кино - Кукушка", 395},
+        {"Nirvana - Come As You Are", 219},
     };
     QList<yandex::Track> out;
     int id = 1;
@@ -73,10 +83,13 @@ int main(int argc, char* argv[]) {
     choosePlatform();
     QApplication app(argc, argv);
     QApplication::setApplicationName(QStringLiteral("QiYaa"));
-    QGuiApplication::setDesktopFileName(QStringLiteral("qiyaa"));  // matches qiyaa.desktop (taskbar icon, MPRIS)
+    QGuiApplication::setDesktopFileName(QStringLiteral("qiyaa")
+    );  // matches qiyaa.desktop (taskbar icon, MPRIS)
     {
         QIcon icon;
-        for (int size : {16, 24, 32, 48, 64, 128, 256}) icon.addFile(QStringLiteral(":/icons/qiyaa-%1.png").arg(size));
+        for (int size : {16, 24, 32, 48, 64, 128, 256}) {
+            icon.addFile(QStringLiteral(":/icons/qiyaa-%1.png").arg(size));
+        }
         QApplication::setWindowIcon(icon);
     }
     QApplication::setApplicationVersion(QStringLiteral(QIYAA_VERSION));
@@ -86,15 +99,33 @@ int main(int argc, char* argv[]) {
     cli.setApplicationDescription(QStringLiteral("Winamp-style Yandex Music player"));
     cli.addHelpOption();
     cli.addVersionOption();
-    QCommandLineOption screenshotOpt(QStringLiteral("screenshot"), QStringLiteral("Render the windows to <png> and exit."),
-                                     QStringLiteral("png"));
-    QCommandLineOption skinOpt(QStringLiteral("skin"), QStringLiteral("Use skin <wsz> for this run."), QStringLiteral("wsz"));
-    QCommandLineOption fileOpt(QStringLiteral("play-file"), QStringLiteral("Play a local audio file instead of Yandex Music."),
-                               QStringLiteral("path"));
-    QCommandLineOption offlineOpt(QStringLiteral("offline"), QStringLiteral("Don't connect to Yandex Music."));
-    QCommandLineOption textOpt(QStringLiteral("text"), QStringLiteral("Show <text> in the marquee."), QStringLiteral("text"));
-    QCommandLineOption demoOpt(QStringLiteral("demo"), QStringLiteral("Fill the playlist with sample entries (UI testing)."));
-    QCommandLineOption scaleOpt(QStringLiteral("scale"), QStringLiteral("Window size for this run, e.g. 1.5."), QStringLiteral("factor"));
+    QCommandLineOption screenshotOpt(
+        QStringLiteral("screenshot"), QStringLiteral("Render the windows to <png> and exit."),
+        QStringLiteral("png")
+    );
+    QCommandLineOption skinOpt(
+        QStringLiteral("skin"), QStringLiteral("Use skin <wsz> for this run."),
+        QStringLiteral("wsz")
+    );
+    QCommandLineOption fileOpt(
+        QStringLiteral("play-file"),
+        QStringLiteral("Play a local audio file instead of Yandex Music."), QStringLiteral("path")
+    );
+    QCommandLineOption offlineOpt(
+        QStringLiteral("offline"), QStringLiteral("Don't connect to Yandex Music.")
+    );
+    QCommandLineOption textOpt(
+        QStringLiteral("text"), QStringLiteral("Show <text> in the marquee."),
+        QStringLiteral("text")
+    );
+    QCommandLineOption demoOpt(
+        QStringLiteral("demo"),
+        QStringLiteral("Fill the playlist with sample entries (UI testing).")
+    );
+    QCommandLineOption scaleOpt(
+        QStringLiteral("scale"), QStringLiteral("Window size for this run, e.g. 1.5."),
+        QStringLiteral("factor")
+    );
     cli.addOptions({screenshotOpt, skinOpt, fileOpt, offlineOpt, textOpt, demoOpt, scaleOpt});
     cli.process(app);
 
@@ -109,16 +140,24 @@ int main(int argc, char* argv[]) {
     App qiyaa(opts);
 
     qiyaa.start();
-    if (cli.isSet(scaleOpt)) qiyaa.setScale(cli.value(scaleOpt).toDouble(), /*persist=*/false);
-    if (cli.isSet(demoOpt)) qiyaa.player()->setQueue(demoTracks(), QStringLiteral("Demo"), false);
-    if (cli.isSet(textOpt)) qiyaa.mainWindow()->setStatusText(cli.value(textOpt));
+    if (cli.isSet(scaleOpt)) {
+        qiyaa.setScale(cli.value(scaleOpt).toDouble(), /*persist=*/false);
+    }
+    if (cli.isSet(demoOpt)) {
+        qiyaa.player()->setQueue(demoTracks(), QStringLiteral("Demo"), false);
+    }
+    if (cli.isSet(textOpt)) {
+        qiyaa.mainWindow()->setStatusText(cli.value(textOpt));
+    }
 
     if (screenshot && !cli.isSet(fileOpt)) {
         QApplication::processEvents();
         return qiyaa.snapshot().save(cli.value(screenshotOpt)) ? 0 : 1;
     }
 
-    if (cli.isSet(fileOpt)) streamLocalFile(qiyaa.engine(), cli.value(fileOpt));
+    if (cli.isSet(fileOpt)) {
+        streamLocalFile(qiyaa.engine(), cli.value(fileOpt));
+    }
     if (screenshot) {
         QTimer::singleShot(1500, &app, [&] {
             const bool ok = qiyaa.snapshot().save(cli.value(screenshotOpt));

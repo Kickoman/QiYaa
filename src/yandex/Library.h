@@ -3,14 +3,14 @@
 // Endpoints mirror what Yaamp used.
 #pragma once
 
+#include "yandex/ApiClient.h"
+
 #include <QHash>
 #include <QList>
 #include <QObject>
 #include <QSet>
 #include <QString>
 #include <QStringList>
-
-#include "yandex/ApiClient.h"
 
 namespace qiyaa::yandex {
 
@@ -27,7 +27,7 @@ struct PlaylistRef {
 };
 
 struct Station {
-    QString id;    // "type:tag", e.g. "genre:rock", "user:onyourwave"
+    QString id;  // "type:tag", e.g. "genre:rock", "user:onyourwave"
     QString type;  // "genre", "mood", ...
     QString name;
 };
@@ -92,8 +92,14 @@ public:
     // Tells the wave what the user did so "Моя волна" learns. Tries the rotor
     // session endpoint first and falls back to the station endpoint for that
     // session if the server rejects it. Fire-and-forget.
-    void waveFeedback(const QString& sessionId, const QString& stationId, const QString& batchId, WaveEvent event,
-                      const Track* track = nullptr, double playedSeconds = 0);
+    void waveFeedback(
+        const QString& sessionId,
+        const QString& stationId,
+        const QString& batchId,
+        WaveEvent event,
+        const Track* track = nullptr,
+        double playedSeconds = 0
+    );
     static QString waveEventName(WaveEvent e);
 
     bool isLiked(const QString& trackId) const { return m_likedIds.contains(trackId); }

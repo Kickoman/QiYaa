@@ -4,15 +4,15 @@
 // QOpenGLWidget would render into an offscreen FBO instead).
 #pragma once
 
-#include <optional>
-#include <vector>
-
 #include <QByteArray>
 #include <QElapsedTimer>
 #include <QImage>
 #include <QOpenGLWindow>
 #include <QString>
 #include <QTimer>
+
+#include <optional>
+#include <vector>
 
 struct projectm;  // projectM's opaque instance (projectm_handle)
 
@@ -35,7 +35,7 @@ public:
     // Switches to this preset at the next frame, blended over unless `smooth` is false.
     void loadPreset(const QByteArray& milk, bool smooth);
     void setPresetDuration(double seconds);  // then switchRequested() asks for the next one
-    void setLocked(bool locked);             // no automatic switching
+    void setLocked(bool locked);  // no automatic switching
     void setTextureSearchPaths(const QStringList& paths);
     // Renders frames while on (at `fps`); nothing at all while off.
     void setRendering(bool on, int fps = 60);
@@ -62,7 +62,7 @@ public:
 Q_SIGNALS:
     void ready();
     void failed(const QString& reason);
-    void switchRequested(bool hardCut);    // the preset's time is up (or a hard cut on a beat)
+    void switchRequested(bool hardCut);  // the preset's time is up (or a hard cut on a beat)
     void presetFailed(const QString& message);
     void staysBlack();
     void drawsPicture();  // the first sample after a load that isn't black
@@ -104,7 +104,7 @@ private:
     QString m_glInfo;
 
     bool m_blackWatch = false;
-    int m_blackGraceMs = 5000;     // new presets fade in (and the blend takes 3 s)
+    int m_blackGraceMs = 5000;  // new presets fade in (and the blend takes 3 s)
     int m_blackIntervalMs = 1000;
     int m_blackChecksNeeded = 4;
     int m_blackChecks = 0;
@@ -112,7 +112,7 @@ private:
     bool m_captureRequested = false;
     QElapsedTimer m_sinceLoad;
     QElapsedTimer m_sinceCheck;
-    unsigned m_probeFbo = 0;       // tiny render target the picture is scaled into
+    unsigned m_probeFbo = 0;  // tiny render target the picture is scaled into
     unsigned m_probeTex = 0;
 };
 

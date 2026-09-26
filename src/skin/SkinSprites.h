@@ -60,9 +60,11 @@ inline constexpr QRect kMonoSelected{29, 0, 27, 12};
 // ------------------------------------------------------------------ NUMBERS.BMP / NUMS_EX.BMP
 inline constexpr int kDigitW = 9;
 inline constexpr int kDigitH = 13;
-inline constexpr QRect digit(int d) { return {d * kDigitW, 0, kDigitW, kDigitH}; }
-inline constexpr QRect kMinusSign{20, 6, 5, 1};        // numbers.bmp
-inline constexpr QRect kMinusSignEx{99, 0, 9, 13};     // nums_ex.bmp
+inline constexpr QRect digit(int d) {
+    return {d * kDigitW, 0, kDigitW, kDigitH};
+}
+inline constexpr QRect kMinusSign{20, 6, 5, 1};  // numbers.bmp
+inline constexpr QRect kMinusSignEx{99, 0, 9, 13};  // nums_ex.bmp
 
 // ------------------------------------------------------------------ POSBAR.BMP
 inline constexpr QRect kPositionBackground{0, 0, 248, 10};
@@ -76,10 +78,14 @@ struct ToggleSprite {
     QRect on;
     QRect onPressed;
 };
-inline constexpr ToggleSprite kShuffle{{28, 0, 47, 15}, {28, 15, 47, 15}, {28, 30, 47, 15}, {28, 45, 47, 15}};
-inline constexpr ToggleSprite kRepeat{{0, 0, 28, 15}, {0, 15, 28, 15}, {0, 30, 28, 15}, {0, 45, 28, 15}};
-inline constexpr ToggleSprite kEqButton{{0, 61, 23, 12}, {46, 61, 23, 12}, {0, 73, 23, 12}, {46, 73, 23, 12}};
-inline constexpr ToggleSprite kPlButton{{23, 61, 23, 12}, {69, 61, 23, 12}, {23, 73, 23, 12}, {69, 73, 23, 12}};
+inline constexpr ToggleSprite
+    kShuffle{{28, 0, 47, 15}, {28, 15, 47, 15}, {28, 30, 47, 15}, {28, 45, 47, 15}};
+inline constexpr ToggleSprite
+    kRepeat{{0, 0, 28, 15}, {0, 15, 28, 15}, {0, 30, 28, 15}, {0, 45, 28, 15}};
+inline constexpr ToggleSprite
+    kEqButton{{0, 61, 23, 12}, {46, 61, 23, 12}, {0, 73, 23, 12}, {46, 73, 23, 12}};
+inline constexpr ToggleSprite
+    kPlButton{{23, 61, 23, 12}, {69, 61, 23, 12}, {23, 73, 23, 12}, {69, 73, 23, 12}};
 
 // ------------------------------------------------------------------ VOLUME.BMP / BALANCE.BMP
 // Background is a vertical strip of 28 frames, 15px apart, 13px high.
@@ -107,8 +113,10 @@ inline constexpr QRect kThumb{0, 164, 11, 11};
 inline constexpr QRect kThumbSelected{0, 176, 11, 11};
 inline constexpr QRect kCloseButton{0, 116, 9, 9};
 inline constexpr QRect kCloseButtonDown{0, 125, 9, 9};
-inline constexpr ToggleSprite kOn{{10, 119, 26, 12}, {128, 119, 26, 12}, {69, 119, 26, 12}, {187, 119, 26, 12}};
-inline constexpr ToggleSprite kAuto{{36, 119, 32, 12}, {154, 119, 32, 12}, {95, 119, 32, 12}, {213, 119, 32, 12}};
+inline constexpr ToggleSprite
+    kOn{{10, 119, 26, 12}, {128, 119, 26, 12}, {69, 119, 26, 12}, {187, 119, 26, 12}};
+inline constexpr ToggleSprite
+    kAuto{{36, 119, 32, 12}, {154, 119, 32, 12}, {95, 119, 32, 12}, {213, 119, 32, 12}};
 inline constexpr QRect kGraphBackground{0, 294, 113, 19};
 inline constexpr QRect kGraphLineColors{115, 294, 1, 19};
 inline constexpr QRect kPreampLine{0, 314, 113, 1};
@@ -122,7 +130,7 @@ inline constexpr QPoint kAutoPos{40, 18};
 inline constexpr QPoint kPresetsPos{217, 18};
 inline constexpr QPoint kGraphPos{86, 17};
 inline constexpr QPoint kPreampPos{21, 38};
-inline constexpr int kBandsX = 78;     // first band
+inline constexpr int kBandsX = 78;  // first band
 inline constexpr int kBandStep = 18;
 inline constexpr int kSlidersY = 38;
 inline constexpr int kSliderTravel = 62 - 11;  // thumb travel in px
@@ -132,9 +140,12 @@ inline constexpr int kSliderTravel = 62 - 11;  // thumb travel in px
 namespace eqex {
 inline constexpr QRect kShadeBackgroundSelected{0, 0, 275, 14};
 inline constexpr QRect kShadeBackground{0, 15, 275, 14};
-inline constexpr QRect kVolumeThumb[3] = {{1, 30, 3, 7}, {4, 30, 3, 7}, {7, 30, 3, 7}};   // left/centre/right
+inline constexpr QRect kVolumeThumb[3] =
+    {{1, 30, 3, 7}, {4, 30, 3, 7}, {7, 30, 3, 7}};  // left/centre/right
 inline constexpr QRect kBalanceThumb[3] = {{11, 30, 3, 7}, {14, 30, 3, 7}, {17, 30, 3, 7}};
-inline constexpr QRect kShadeButtonDown{1, 38, 9, 9};        // normal mode, pressed ("maximize" in webamp)
+inline constexpr QRect kShadeButtonDown{
+    1, 38, 9, 9
+};  // normal mode, pressed ("maximize" in webamp)
 inline constexpr QRect kShadeButtonShadedDown{1, 47, 9, 9};  // shade mode, pressed ("minimize")
 inline constexpr QRect kCloseButtonDown{11, 47, 9, 9};
 inline constexpr QRect kVolume{61, 4, 97, 7};

@@ -1,20 +1,26 @@
+#include "skin/Skin.h"
+#include "vis/Visualizer.h"
+
+#include <QPainter>
+
 #include <algorithm>
 #include <array>
 #include <cmath>
 #include <numbers>
 
-#include <QPainter>
-
-#include "skin/Skin.h"
-#include "vis/Visualizer.h"
-
 namespace qiyaa::vis {
 
 // ------------------------------------------------------------------ Analyzer
 
-Analyzer::Analyzer(int fftSize) : m_size(fftSize), m_window(fftSize), m_re(fftSize), m_im(fftSize), m_db(fftSize / 2 + 1) {
-    for (int i = 0; i < fftSize; ++i)
+Analyzer::Analyzer(int fftSize)
+    : m_size(fftSize)
+    , m_window(fftSize)
+    , m_re(fftSize)
+    , m_im(fftSize)
+    , m_db(fftSize / 2 + 1) {
+    for (int i = 0; i < fftSize; ++i) {
         m_window[i] = 0.5f - 0.5f * std::cos(2.0f * std::numbers::pi_v<float> * i / (fftSize - 1));
+    }
 }
 
 const std::vector<float>& Analyzer::analyze(std::span<const float> mono) {
@@ -26,7 +32,9 @@ const std::vector<float>& Analyzer::analyze(std::span<const float> mono) {
     // Iterative radix-2 FFT.
     for (int i = 1, j = 0; i < n; ++i) {
         int bit = n >> 1;
-        for (; j & bit; bit >>= 1) j ^= bit;
+        for (; j & bit; bit >>= 1) {
+            j ^= bit;
+        }
         j ^= bit;
         if (i < j) {
             std::swap(m_re[i], m_re[j]);
@@ -93,7 +101,9 @@ public:
             int i0 = std::clamp(int(f0 / binHz), 1, int(f.spectrum.size()) - 1);
             int i1 = std::clamp(int(std::ceil(f1 / binHz)), i0 + 1, int(f.spectrum.size()));
             float peakDb = kMinDb;
-            for (int i = i0; i < i1; ++i) peakDb = std::max(peakDb, f.spectrum[i]);
+            for (int i = i0; i < i1; ++i) {
+                peakDb = std::max(peakDb, f.spectrum[i]);
+            }
             const float target = std::clamp((peakDb - kMinDb) / (kMaxDb - kMinDb), 0.0f, 1.0f);
             // Bars jump up and fall smoothly, like Winamp's "fast" falloff.
             m_bars[b] = std::max(target, m_bars[b] - 0.07f);
@@ -119,7 +129,9 @@ public:
                 p.fillRect(x, area.y() + h - 1 - i, 3, 1, visColor(skin, colorIndex));
             }
             const int peakY = int(std::ceil(m_peaks[b] * h));
-            if (peakY > 0) p.fillRect(x, area.y() + h - peakY, 3, 1, visColor(skin, 23));
+            if (peakY > 0) {
+                p.fillRect(x, area.y() + h - peakY, 3, 1, visColor(skin, 23));
+            }
         }
     }
 
@@ -149,7 +161,9 @@ public:
     }
 
     void render(QPainter& p, const QRect& area, const Skin& skin) const override {
-        if (m_ys[0] < 0) return;
+        if (m_ys[0] < 0) {
+            return;
+        }
         int last = m_ys[0];
         for (int x = 0; x < kWidth && x < area.width(); ++x) {
             const int y = m_ys[x];
@@ -157,7 +171,9 @@ public:
             for (int yy = top; yy <= bottom; ++yy) {
                 // Colours 18..22: from the centre line outwards.
                 const int dist = int(std::abs(yy - 7.5f));
-                p.fillRect(area.x() + x, area.y() + yy, 1, 1, visColor(skin, 18 + std::min(4, dist / 2)));
+                p.fillRect(
+                    area.x() + x, area.y() + yy, 1, 1, visColor(skin, 18 + std::min(4, dist / 2))
+                );
             }
             last = y;
         }
@@ -174,7 +190,11 @@ private:
 
 }  // namespace
 
-std::unique_ptr<Visualizer> makeSpectrum() { return std::make_unique<Spectrum>(); }
-std::unique_ptr<Visualizer> makeOscilloscope() { return std::make_unique<Oscilloscope>(); }
+std::unique_ptr<Visualizer> makeSpectrum() {
+    return std::make_unique<Spectrum>();
+}
+std::unique_ptr<Visualizer> makeOscilloscope() {
+    return std::make_unique<Oscilloscope>();
+}
 
 }  // namespace qiyaa::vis

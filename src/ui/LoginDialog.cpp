@@ -1,19 +1,19 @@
 #include "ui/LoginDialog.h"
 
-#include <algorithm>
+#include "yandex/OAuth.h"
+#include "yandex/Token.h"
 
+#include <QClipboard>
 #include <QDesktopServices>
 #include <QFontMetrics>
 #include <QFrame>
 #include <QGuiApplication>
-#include <QClipboard>
 #include <QLabel>
 #include <QLineEdit>
 #include <QPushButton>
 #include <QVBoxLayout>
 
-#include "yandex/OAuth.h"
-#include "yandex/Token.h"
+#include <algorithm>
 
 namespace qiyaa {
 
@@ -22,16 +22,21 @@ constexpr int kDialogWidth = 460;
 }
 
 LoginDialog::LoginDialog(QNetworkAccessManager* nam, QWidget* parent, const QString& oauthBase)
-    : QDialog(parent), m_device(new yandex::DeviceLogin(nam, this)) {
+    : QDialog(parent)
+    , m_device(new yandex::DeviceLogin(nam, this)) {
     setWindowTitle(QStringLiteral("Вход в Яндекс Музыку"));
     setMinimumWidth(kDialogWidth);
-    if (!oauthBase.isEmpty()) m_device->setBaseUrl(oauthBase);
+    if (!oauthBase.isEmpty()) {
+        m_device->setBaseUrl(oauthBase);
+    }
 
     auto* layout = new QVBoxLayout(this);
 
     // --- Device code.
-    auto* h1 = new QLabel(QStringLiteral("<b>Способ 1.</b> Откройте страницу подтверждения в любом браузере "
-                                         "(можно на телефоне) и введите код:"));
+    auto* h1 = new QLabel(
+        QStringLiteral("<b>Способ 1.</b> Откройте страницу подтверждения в любом браузере "
+                       "(можно на телефоне) и введите код:")
+    );
     h1->setWordWrap(true);
     layout->addWidget(h1);
 
@@ -61,7 +66,8 @@ LoginDialog::LoginDialog(QNetworkAccessManager* nam, QWidget* parent, const QStr
     auto* h2 = new QLabel(QStringLiteral(
         "<b>Способ 2.</b> Войдите через браузер. После входа Яндекс откроет страницу "
         "<i>music.yandex.ru/#access_token=…</i> — скопируйте её адрес целиком и вставьте сюда "
-        "(или вставьте сам токен)."));
+        "(или вставьте сам токен)."
+    ));
     h2->setWordWrap(true);
     layout->addWidget(h2);
     auto* openBrowser = new QPushButton(QStringLiteral("Открыть страницу входа"));
@@ -80,26 +86,37 @@ LoginDialog::LoginDialog(QNetworkAccessManager* nam, QWidget* parent, const QStr
     layout->addSpacing(8);
     layout->addWidget(cancel, 0, Qt::AlignRight);
 
-    connect(m_openDevice, &QPushButton::clicked, this, [this] { QDesktopServices::openUrl(m_verifyUrl); });
-    connect(openBrowser, &QPushButton::clicked, this, [] { QDesktopServices::openUrl(yandex::DeviceLogin::browserLoginUrl()); });
+    connect(m_openDevice, &QPushButton::clicked, this, [this] {
+        QDesktopServices::openUrl(m_verifyUrl);
+    });
+    connect(openBrowser, &QPushButton::clicked, this, [] {
+        QDesktopServices::openUrl(yandex::DeviceLogin::browserLoginUrl());
+    });
     connect(use, &QPushButton::clicked, this, &LoginDialog::tryPasted);
     connect(m_paste, &QLineEdit::returnPressed, this, &LoginDialog::tryPasted);
     connect(cancel, &QPushButton::clicked, this, &QDialog::reject);
 
-    connect(m_device, &yandex::DeviceLogin::codeReady, this, [this](const QString& code, const QUrl& url) {
-        m_code->setText(code);
-        m_verifyUrl = url;
-        m_openDevice->setText(QStringLiteral("Открыть %1").arg(url.host() + url.path()));
-        m_openDevice->setEnabled(true);
-        m_deviceStatus->setText(QStringLiteral("Жду подтверждения... (код скопирован в буфер обмена)"));
-        QGuiApplication::clipboard()->setText(code);
-        fitToContents();
-    });
+    connect(
+        m_device, &yandex::DeviceLogin::codeReady, this,
+        [this](const QString& code, const QUrl& url) {
+            m_code->setText(code);
+            m_verifyUrl = url;
+            m_openDevice->setText(QStringLiteral("Открыть %1").arg(url.host() + url.path()));
+            m_openDevice->setEnabled(true);
+            m_deviceStatus->setText(
+                QStringLiteral("Жду подтверждения... (код скопирован в буфер обмена)")
+            );
+            QGuiApplication::clipboard()->setText(code);
+            fitToContents();
+        }
+    );
     connect(m_device, &yandex::DeviceLogin::succeeded, this, &LoginDialog::finishWith);
     connect(m_device, &yandex::DeviceLogin::failed, this, [this](const QString& err) {
         m_code->setText(QStringLiteral("—"));
         m_openDevice->setEnabled(false);
-        m_deviceStatus->setText(QStringLiteral("Вход по коду не удался: %1. Воспользуйтесь способом 2.").arg(err));
+        m_deviceStatus->setText(
+            QStringLiteral("Вход по коду не удался: %1. Воспользуйтесь способом 2.").arg(err)
+        );
         fitToContents();
     });
 
@@ -114,13 +131,17 @@ void LoginDialog::fitToContents() {
     const int w = std::max(width(), minimumWidth());
     const int h = l->totalHeightForWidth(w);
     setMinimumHeight(h);
-    if (height() < h) resize(w, h);
+    if (height() < h) {
+        resize(w, h);
+    }
 }
 
 void LoginDialog::tryPasted() {
     const QString token = yandex::normalizeToken(m_paste->text().toUtf8());
     if (token.isEmpty()) {
-        m_pasteError->setText(QStringLiteral("Не вижу здесь токена. Нужен адрес с «#access_token=…» или сам токен."));
+        m_pasteError->setText(
+            QStringLiteral("Не вижу здесь токена. Нужен адрес с «#access_token=…» или сам токен.")
+        );
         m_pasteError->show();
         fitToContents();
         return;

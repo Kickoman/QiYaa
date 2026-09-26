@@ -2,9 +2,9 @@
 // media panel, lock screen. Windows 10+ only; built when C++/WinRT is available.
 #pragma once
 
-#include <memory>
-
 #include <QObject>
+
+#include <memory>
 
 class QWidget;
 

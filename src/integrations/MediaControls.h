@@ -3,11 +3,11 @@
 // the windows.
 #pragma once
 
-#include <functional>
-
 #include <QObject>
 #include <QString>
 #include <QUrl>
+
+#include <functional>
 
 namespace qiyaa {
 
@@ -18,9 +18,9 @@ class MediaControls : public QObject {
     Q_OBJECT
 public:
     struct Hooks {
-        std::function<int()> volume;           // 0..100
+        std::function<int()> volume;  // 0..100
         std::function<void(int)> setVolume;
-        std::function<void()> raise;           // bring the windows to front
+        std::function<void()> raise;  // bring the windows to front
         std::function<void()> quit;
     };
 
@@ -50,7 +50,7 @@ Q_SIGNALS:
     void trackChanged();
     void statusChanged();
     void artChanged();
-    void modesChanged();           // shuffle / repeat
+    void modesChanged();  // shuffle / repeat
     void seeked(double seconds);
     // The app emits this when its volume changes (the hooks only read/write it).
     void volumeChanged();

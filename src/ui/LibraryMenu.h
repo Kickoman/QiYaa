@@ -2,10 +2,10 @@
 // playlists, artists, albums, stations, search) and current-track actions.
 #pragma once
 
-#include <functional>
-
 #include <QString>
 #include <QStringList>
+
+#include <functional>
 
 class QMenu;
 class QWidget;
@@ -23,6 +23,11 @@ void search(Player* player, const QString& text);
 }  // namespace sources
 
 // Adds the Yandex items to `menu`. `loginRequested` opens the login dialog.
-void addLibraryActions(QMenu* menu, Player* player, QWidget* dialogParent, std::function<void()> loginRequested);
+void addLibraryActions(
+    QMenu* menu,
+    Player* player,
+    QWidget* dialogParent,
+    std::function<void()> loginRequested
+);
 
 }  // namespace qiyaa

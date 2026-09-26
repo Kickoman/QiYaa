@@ -1,14 +1,14 @@
 // The Winamp main window (275x116).
 #pragma once
 
-#include <memory>
-#include <vector>
+#include "ui/SkinnedWindow.h"
+#include "vis/Visualizer.h"
 
 #include <QElapsedTimer>
 #include <QTimer>
 
-#include "ui/SkinnedWindow.h"
-#include "vis/Visualizer.h"
+#include <memory>
+#include <vector>
 
 namespace qiyaa {
 
@@ -43,7 +43,7 @@ public:
 Q_SIGNALS:
     void eqToggleRequested();
     void plToggleRequested();
-    void menuRequested(QPoint globalPos);         // options button / right click
+    void menuRequested(QPoint globalPos);  // options button / right click
     void sourcesMenuRequested(QPoint globalPos);  // eject button
     void closeRequested();
     void minimizedChanged(bool minimized);
@@ -57,7 +57,9 @@ protected:
     bool skinMousePress(QPoint pos, Qt::MouseButton button) override;
     void skinMouseMove(QPoint pos) override;
     void skinMouseRelease(QPoint pos, Qt::MouseButton button) override;
-    QString regionSection() const override { return isShaded() ? QStringLiteral("windowshade") : QStringLiteral("normal"); }
+    QString regionSection() const override {
+        return isShaded() ? QStringLiteral("windowshade") : QStringLiteral("normal");
+    }
     bool skinMouseDoubleClick(QPoint pos, Qt::MouseButton button) override;
     void contextMenuEvent(QContextMenuEvent* e) override;
     void wheelEvent(QWheelEvent* e) override;
@@ -65,10 +67,27 @@ protected:
 
 private:
     enum class Element {
-        None, Options, Minimize, Shade, Close,
-        Previous, Play, Pause, Stop, Next, Eject,
-        Shuffle, Repeat, EqToggle, PlToggle,
-        Volume, Balance, Position, Marquee, Visualizer, Time,
+        None,
+        Options,
+        Minimize,
+        Shade,
+        Close,
+        Previous,
+        Play,
+        Pause,
+        Stop,
+        Next,
+        Eject,
+        Shuffle,
+        Repeat,
+        EqToggle,
+        PlToggle,
+        Volume,
+        Balance,
+        Position,
+        Marquee,
+        Visualizer,
+        Time,
     };
 
     Element hitTest(QPoint p) const;
@@ -80,7 +99,9 @@ private:
     QString marqueeText() const;
     QPoint globalAt(QPoint skinPos) const;
 
-    void drawButton(QPainter& p, Element e, const QPoint& at, const QRect& normal, const QRect& pressed) const;
+    void
+    drawButton(QPainter& p, Element e, const QPoint& at, const QRect& normal, const QRect& pressed)
+        const;
     void drawTime(QPainter& p) const;
     void paintShaded(QPainter& p);
     Element hitTestShaded(QPoint p) const;

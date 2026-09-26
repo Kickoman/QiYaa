@@ -15,15 +15,15 @@
 // from a timer only while something is playing.
 #pragma once
 
-#include <atomic>
-#include <memory>
+#include "audio/Equalizer.h"
 
 #include <QByteArray>
 #include <QHash>
 #include <QObject>
 #include <QString>
 
-#include "audio/Equalizer.h"
+#include <atomic>
+#include <memory>
 
 namespace qiyaa::audio {
 
@@ -78,7 +78,7 @@ public:
     int sourceSampleRate() const { return m_sourceRate.load(); }
     int sourceChannels() const { return m_sourceChannels.load(); }
 
-    void setVolume(int percent);    // 0..100
+    void setVolume(int percent);  // 0..100
     void setEqualizer(const EqSettings& settings);
 
     // Latest `count` output frames (after EQ, before volume) for visualizations.
@@ -89,7 +89,7 @@ public:
     uint32_t readNewVisSamples(uint32_t* cursor, float* stereo, uint32_t maxFrames) const;
     uint32_t visCursor() const;
     int outputSampleRate() const;
-    void setBalance(int balance);   // -100 (left) .. 100 (right)
+    void setBalance(int balance);  // -100 (left) .. 100 (right)
 
     // Publishes state changes and end of track; call from a UI timer.
     void poll();

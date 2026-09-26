@@ -27,7 +27,9 @@ QStringList yaampDataDirs() {
 #endif
     QStringList out;
     for (const QString& b : bases) {
-        if (b.isEmpty()) continue;
+        if (b.isEmpty()) {
+            continue;
+        }
         out << b + QStringLiteral("/Yaamp") << b + QStringLiteral("/yaamp");
     }
     return out;

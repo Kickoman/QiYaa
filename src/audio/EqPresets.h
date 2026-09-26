@@ -2,16 +2,15 @@
 // Values are in Winamp's .eqf scale 1..64, where 1 = -12 dB and 64 = +12 dB.
 #pragma once
 
-#include <algorithm>
-#include <array>
-#include <cmath>
+#include "audio/Equalizer.h"
 
 #include <QByteArray>
-
 #include <QList>
 #include <QString>
 
-#include "audio/Equalizer.h"
+#include <algorithm>
+#include <array>
+#include <cmath>
 
 namespace qiyaa::audio {
 
@@ -66,7 +65,9 @@ inline QList<EqPreset> builtinEqPresets() {
         EqPreset p;
         p.name = QString::fromLatin1(r.name);
         p.settings.preampDb = eqfToDb(r.preamp);
-        for (int i = 0; i < kEqBands; ++i) p.settings.bandsDb[i] = eqfToDb(r.bands[i]);
+        for (int i = 0; i < kEqBands; ++i) {
+            p.settings.bandsDb[i] = eqfToDb(r.bands[i]);
+        }
         out << p;
     }
     return out;

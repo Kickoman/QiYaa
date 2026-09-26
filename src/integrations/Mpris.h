@@ -19,8 +19,12 @@ class Mpris : public QObject {
 public:
     // `serviceSuffix` goes after "org.mpris.MediaPlayer2." (default "qiyaa").
     // `bus` defaults to the session bus.
-    explicit Mpris(MediaControls* controls, const QString& serviceSuffix = QStringLiteral("qiyaa"),
-                   const QDBusConnection& bus = QDBusConnection::sessionBus(), QObject* parent = nullptr);
+    explicit Mpris(
+        MediaControls* controls,
+        const QString& serviceSuffix = QStringLiteral("qiyaa"),
+        const QDBusConnection& bus = QDBusConnection::sessionBus(),
+        QObject* parent = nullptr
+    );
     ~Mpris() override;
 
     bool isRegistered() const { return m_registered; }
@@ -94,7 +98,7 @@ public:
     QString loopStatus() const;
     void setLoopStatus(const QString& s);
     double rate() const { return 1.0; }
-    void setRate(double) {}
+    void setRate(double) { }
     bool shuffle() const;
     void setShuffle(bool on);
     QVariantMap metadata() const;
@@ -113,7 +117,7 @@ public Q_SLOTS:
     void Play();
     void Seek(qlonglong offsetUs);
     void SetPosition(const QDBusObjectPath& trackId, qlonglong positionUs);
-    void OpenUri(const QString&) {}
+    void OpenUri(const QString&) { }
 
 Q_SIGNALS:
     void Seeked(qlonglong positionUs);

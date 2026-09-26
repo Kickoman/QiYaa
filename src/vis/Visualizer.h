@@ -3,12 +3,12 @@
 // to implement this interface — the audio engine does not change.
 #pragma once
 
+#include <QRect>
+#include <QString>
+
 #include <memory>
 #include <span>
 #include <vector>
-
-#include <QRect>
-#include <QString>
 
 class QPainter;
 
@@ -20,7 +20,8 @@ namespace qiyaa::vis {
 
 struct VisFrame {
     std::span<const float> left, right;  // latest PCM, -1..1
-    std::span<const float> spectrum;     // magnitudes in dBFS, bins 0..N/2 (bin width = sampleRate / fftSize)
+    std::span<const float>
+        spectrum;  // magnitudes in dBFS, bins 0..N/2 (bin width = sampleRate / fftSize)
     int sampleRate = 44100;
     int fftSize = 1024;
 };
@@ -33,7 +34,7 @@ public:
     virtual void update(const VisFrame& frame) = 0;
     // Called whenever the window repaints; must only draw the last state.
     virtual void render(QPainter& p, const QRect& area, const Skin& skin) const = 0;
-    virtual void reset() {}
+    virtual void reset() { }
 };
 
 // Winamp's classic 19-bar analyzer with falling peaks, colours from VISCOLOR.TXT.

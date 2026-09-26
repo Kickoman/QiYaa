@@ -22,7 +22,9 @@ void EqualizerDsp::setSampleRate(uint32_t rate) {
     publish(m_last);
     // Make it current immediately (no audio thread yet).
     const int prev = m_middle.exchange(m_front);
-    if (prev & kDirty) m_front = prev & 3;
+    if (prev & kDirty) {
+        m_front = prev & 3;
+    }
 }
 
 EqualizerDsp::Coeffs EqualizerDsp::compute(const EqSettings& s, double sampleRate) {
@@ -33,7 +35,9 @@ EqualizerDsp::Coeffs EqualizerDsp::compute(const EqSettings& s, double sampleRat
         Biquad& b = c.bands[i];
         const double db = std::clamp(s.bandsDb[i], -kEqMaxDb, kEqMaxDb);
         const double f0 = kEqBandHz[i];
-        if (std::abs(db) < 0.05 || f0 >= sampleRate * 0.49) continue;  // identity
+        if (std::abs(db) < 0.05 || f0 >= sampleRate * 0.49) {
+            continue;  // identity
+        }
         // RBJ audio EQ cookbook, peaking EQ.
         const double A = std::pow(10.0, db / 40.0);
         const double w0 = 2.0 * std::numbers::pi * f0 / sampleRate;
@@ -63,10 +67,15 @@ void EqualizerDsp::process(float* frames, uint32_t frameCount) {
         m_front = prev & 3;
     }
     const Coeffs& c = m_slots[m_front];
-    if (!c.enabled) return;
+    if (!c.enabled) {
+        return;
+    }
 
-    if (c.preamp != 1.0f)
-        for (uint32_t i = 0; i < frameCount * 2; ++i) frames[i] *= c.preamp;
+    if (c.preamp != 1.0f) {
+        for (uint32_t i = 0; i < frameCount * 2; ++i) {
+            frames[i] *= c.preamp;
+        }
+    }
 
     for (int band = 0; band < kEqBands; ++band) {
         const Biquad& b = c.bands[band];
@@ -96,12 +105,18 @@ void EqualizerDsp::process(float* frames, uint32_t frameCount) {
 
 double EqualizerDsp::responseDb(const EqSettings& s, double hz, double sampleRate) {
     const Coeffs c = compute(s, sampleRate);
-    if (!c.enabled) return 0.0;
-    const std::complex<double> z = std::polar(1.0, -2.0 * std::numbers::pi * hz / sampleRate);  // z^-1
+    if (!c.enabled) {
+        return 0.0;
+    }
+    const std::complex<double> z =
+        std::polar(1.0, -2.0 * std::numbers::pi * hz / sampleRate);  // z^-1
     std::complex<double> h = c.preamp;
     for (const Biquad& b : c.bands) {
-        if (b.identity) continue;
-        h *= (double(b.b0) + double(b.b1) * z + double(b.b2) * z * z) / (1.0 + double(b.a1) * z + double(b.a2) * z * z);
+        if (b.identity) {
+            continue;
+        }
+        h *= (double(b.b0) + double(b.b1) * z + double(b.b2) * z * z)
+            / (1.0 + double(b.a1) * z + double(b.a2) * z * z);
     }
     return 20.0 * std::log10(std::abs(h));
 }

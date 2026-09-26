@@ -27,9 +27,9 @@ public:
     // The preset text, NUL-terminated (projectM wants a C string). Empty if unreadable.
     QByteArray data(int index) const;
 
-    int next(int current) const;      // wraps around
+    int next(int current) const;  // wraps around
     int previous(int current) const;  // wraps around
-    int random(int current) const;    // a different one when there are several
+    int random(int current) const;  // a different one when there are several
 
 private:
     QList<Preset> m_presets;

@@ -1,15 +1,15 @@
 // Drives the real main window on the offscreen platform (one 800x600 screen).
-#include <QGuiApplication>
-#include <QMouseEvent>
-#include <QNetworkAccessManager>
-#include <QScreen>
-#include <QTest>
-
 #include "audio/AudioEngine.h"
 #include "core/Player.h"
 #include "skin/Skin.h"
 #include "ui/MainWindow.h"
 #include "yandex/ApiClient.h"
+
+#include <QGuiApplication>
+#include <QMouseEvent>
+#include <QNetworkAccessManager>
+#include <QScreen>
+#include <QTest>
 
 using namespace qiyaa;
 
@@ -27,8 +27,10 @@ private:
 
     void send(QEvent::Type type, QPoint local, Qt::MouseButtons buttons) {
         const QPointF global = win->mapToGlobal(QPointF(local));
-        QMouseEvent e(type, QPointF(local), global,
-                      type == QEvent::MouseMove ? Qt::NoButton : Qt::LeftButton, buttons, Qt::NoModifier);
+        QMouseEvent e(
+            type, QPointF(local), global, type == QEvent::MouseMove ? Qt::NoButton : Qt::LeftButton,
+            buttons, Qt::NoModifier
+        );
         QCoreApplication::sendEvent(win.get(), &e);
     }
 
@@ -58,10 +60,16 @@ private Q_SLOTS:
         win->placeAt(QPoint(100, 100));
         send(QEvent::MouseButtonPress, {100, 5}, Qt::LeftButton);
         // Local coords of the move are relative to the old position; global is what matters.
-        QMouseEvent move(QEvent::MouseMove, QPointF(150, 45), QPointF(250, 145), Qt::NoButton, Qt::LeftButton, Qt::NoModifier);
+        QMouseEvent move(
+            QEvent::MouseMove, QPointF(150, 45), QPointF(250, 145), Qt::NoButton, Qt::LeftButton,
+            Qt::NoModifier
+        );
         QCoreApplication::sendEvent(win.get(), &move);
         QCOMPARE(win->pos(), QPoint(150, 140));
-        QMouseEvent up(QEvent::MouseButtonRelease, QPointF(100, 5), QPointF(250, 145), Qt::LeftButton, Qt::NoButton, Qt::NoModifier);
+        QMouseEvent up(
+            QEvent::MouseButtonRelease, QPointF(100, 5), QPointF(250, 145), Qt::LeftButton,
+            Qt::NoButton, Qt::NoModifier
+        );
         QCoreApplication::sendEvent(win.get(), &up);
     }
 
@@ -69,16 +77,23 @@ private Q_SLOTS:
         win->placeAt(QPoint(100, 100));
         send(QEvent::MouseButtonPress, {100, 5}, Qt::LeftButton);
         // Cursor way past the right edge: the window must stop at the edge.
-        QMouseEvent far(QEvent::MouseMove, QPointF(0, 0), QPointF(5000, 205), Qt::NoButton, Qt::LeftButton, Qt::NoModifier);
+        QMouseEvent far(
+            QEvent::MouseMove, QPointF(0, 0), QPointF(5000, 205), Qt::NoButton, Qt::LeftButton,
+            Qt::NoModifier
+        );
         QCoreApplication::sendEvent(win.get(), &far);
         QCOMPARE(win->pos().x(), screen.right() + 1 - win->width());
         // Near the left edge (within 15 px): snaps to 0.
-        QMouseEvent nearLeft(QEvent::MouseMove, QPointF(0, 0), QPointF(screen.left() + 110, 205), Qt::NoButton,
-                             Qt::LeftButton, Qt::NoModifier);
+        QMouseEvent nearLeft(
+            QEvent::MouseMove, QPointF(0, 0), QPointF(screen.left() + 110, 205), Qt::NoButton,
+            Qt::LeftButton, Qt::NoModifier
+        );
         QCoreApplication::sendEvent(win.get(), &nearLeft);
         QCOMPARE(win->pos().x(), screen.left());
-        QMouseEvent up(QEvent::MouseButtonRelease, QPointF(100, 5), QPointF(110, 205), Qt::LeftButton, Qt::NoButton,
-                       Qt::NoModifier);
+        QMouseEvent up(
+            QEvent::MouseButtonRelease, QPointF(100, 5), QPointF(110, 205), Qt::LeftButton,
+            Qt::NoButton, Qt::NoModifier
+        );
         QCoreApplication::sendEvent(win.get(), &up);
     }
 

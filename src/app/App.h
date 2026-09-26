@@ -2,18 +2,18 @@
 // the three Winamp windows; handles layout, menus, shortcuts, settings, login.
 #pragma once
 
-#include <memory>
+#include "audio/AudioEngine.h"
+#include "core/Player.h"
+#include "skin/Skin.h"
+#include "yandex/ApiClient.h"
+#include "yandex/Library.h"
 
 #include <QNetworkAccessManager>
 #include <QObject>
 #include <QSettings>
 #include <QTemporaryDir>
 
-#include "audio/AudioEngine.h"
-#include "core/Player.h"
-#include "skin/Skin.h"
-#include "yandex/ApiClient.h"
-#include "yandex/Library.h"
+#include <memory>
 
 class QMenu;
 
@@ -32,12 +32,12 @@ class App : public QObject {
     Q_OBJECT
 public:
     struct Options {
-        QString skinOverride;   // --skin
-        QString settingsFile;   // default: <configDir>/settings.ini
-        bool offline = false;   // --offline: don't talk to Yandex
-        bool audio = true;      // false for screenshots/tests
+        QString skinOverride;  // --skin
+        QString settingsFile;  // default: <configDir>/settings.ini
+        bool offline = false;  // --offline: don't talk to Yandex
+        bool audio = true;  // false for screenshots/tests
         bool readOnlySettings = false;  // use a throwaway settings file
-        bool mediaIntegration = true;   // MPRIS / SMTC (off in tests and screenshots)
+        bool mediaIntegration = true;  // MPRIS / SMTC (off in tests and screenshots)
     };
 
     explicit App(const Options& options, QObject* parent = nullptr);

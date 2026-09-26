@@ -2,27 +2,29 @@
 // records every request. One request per connection (Connection: close).
 #pragma once
 
-#include <functional>
-
 #include <QHash>
 #include <QHostAddress>
 #include <QList>
 #include <QPointer>
-#include <QTimer>
 #include <QTcpServer>
 #include <QTcpSocket>
+#include <QTimer>
 #include <QUrl>
 #include <QUrlQuery>
 
+#include <functional>
+
 struct MockRequest {
     QByteArray method;
-    QString path;    // without query
+    QString path;  // without query
     QUrlQuery query;
     QByteArray body;
     QHash<QByteArray, QByteArray> headers;  // lower-case names
 
     QUrlQuery form() const { return QUrlQuery(QString::fromUtf8(body).replace(u'+', u' ')); }
-    QString formValue(const QString& key) const { return form().queryItemValue(key, QUrl::FullyDecoded); }
+    QString formValue(const QString& key) const {
+        return form().queryItemValue(key, QUrl::FullyDecoded);
+    }
 };
 
 struct MockResponse {
@@ -49,15 +51,20 @@ public:
         });
     }
 
-    QString baseUrl() const { return QStringLiteral("http://127.0.0.1:%1").arg(m_server.serverPort()); }
+    QString baseUrl() const {
+        return QStringLiteral("http://127.0.0.1:%1").arg(m_server.serverPort());
+    }
 
     // Exact "METHOD /path" match.
-    void on(const QByteArray& method, const QString& path, Handler h) { m_routes[method + ' ' + path.toUtf8()] = std::move(h); }
+    void on(const QByteArray& method, const QString& path, Handler h) {
+        m_routes[method + ' ' + path.toUtf8()] = std::move(h);
+    }
     // Any path starting with `prefix` (when no exact route matches).
     void onPrefix(const QByteArray& method, const QString& prefix, Handler h) {
         m_prefixRoutes.append({method, prefix, std::move(h)});
     }
-    void json(const QByteArray& method, const QString& path, const QByteArray& body, int status = 200) {
+    void
+    json(const QByteArray& method, const QString& path, const QByteArray& body, int status = 200) {
         on(method, path, [body, status](const MockRequest&) { return MockResponse{status, body}; });
     }
     // Wraps `result` in Yandex's {"result": ...} envelope.
@@ -67,15 +74,20 @@ public:
 
     const QList<MockRequest>& requests() const { return m_requests; }
     const MockRequest* last(const QString& path) const {
-        for (auto it = m_requests.crbegin(); it != m_requests.crend(); ++it)
-            if (it->path == path) return &*it;
+        for (auto it = m_requests.crbegin(); it != m_requests.crend(); ++it) {
+            if (it->path == path) {
+                return &*it;
+            }
+        }
         return nullptr;
     }
 
 private:
     void handle(QTcpSocket* s, QByteArray& buf) {
         const int headerEnd = buf.indexOf("\r\n\r\n");
-        if (headerEnd < 0) return;
+        if (headerEnd < 0) {
+            return;
+        }
         const QList<QByteArray> lines = buf.left(headerEnd).split('\n');
         MockRequest req;
         const QList<QByteArray> first = lines.value(0).trimmed().split(' ');
@@ -87,12 +99,18 @@ private:
         for (int i = 1; i < lines.size(); ++i) {
             const QByteArray line = lines[i].trimmed();
             const int colon = line.indexOf(':');
-            if (colon <= 0) continue;
+            if (colon <= 0) {
+                continue;
+            }
             const QByteArray name = line.left(colon).trimmed().toLower();
             req.headers[name] = line.mid(colon + 1).trimmed();
-            if (name == "content-length") contentLength = line.mid(colon + 1).trimmed().toLongLong();
+            if (name == "content-length") {
+                contentLength = line.mid(colon + 1).trimmed().toLongLong();
+            }
         }
-        if (buf.size() < headerEnd + 4 + contentLength) return;  // wait for the body
+        if (buf.size() < headerEnd + 4 + contentLength) {
+            return;  // wait for the body
+        }
         req.body = buf.mid(headerEnd + 4, contentLength);
         buf.clear();
         m_requests << req;
@@ -102,18 +120,21 @@ private:
         if (it != m_routes.cend()) {
             resp = (*it)(req);
         } else {
-            for (const PrefixRoute& r : m_prefixRoutes)
+            for (const PrefixRoute& r : m_prefixRoutes) {
                 if (r.method == req.method && req.path.startsWith(r.prefix)) {
                     resp = r.handler(req);
                     break;
                 }
+            }
         }
         QByteArray out = "HTTP/1.1 " + QByteArray::number(resp.status) + " X\r\n";
         out += "Content-Type: application/json\r\nConnection: close\r\n";
         out += "Content-Length: " + QByteArray::number(resp.body.size()) + "\r\n\r\n" + resp.body;
         QPointer<QTcpSocket> guard(s);
         QTimer::singleShot(resp.delayMs, s, [guard, out] {
-            if (!guard) return;
+            if (!guard) {
+                return;
+            }
             guard->write(out);
             guard->disconnectFromHost();
         });

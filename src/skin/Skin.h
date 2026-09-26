@@ -1,6 +1,8 @@
 // A loaded Winamp 2.x skin (.wsz = zip of BMP sprite sheets + a few text files).
 #pragma once
 
+#include "skin/Region.h"
+
 #include <QByteArray>
 #include <QColor>
 #include <QHash>
@@ -8,8 +10,6 @@
 #include <QList>
 #include <QPainter>
 #include <QString>
-
-#include "skin/Region.h"
 
 namespace qiyaa {
 
@@ -19,13 +19,13 @@ public:
         Main,
         CButtons,
         TitleBar,
-        Numbers,   // nums_ex.bmp if present, otherwise numbers.bmp
+        Numbers,  // nums_ex.bmp if present, otherwise numbers.bmp
         PlayPaus,
         MonoSter,
         PosBar,
         ShufRep,
         Volume,
-        Balance,   // falls back to volume.bmp like Winamp does
+        Balance,  // falls back to volume.bmp like Winamp does
         Text,
         EqMain,
         PlEdit,
@@ -44,8 +44,10 @@ public:
 
     // Loads a .wsz from memory. Missing sheets are taken from `fallback` (normally
     // the built-in base skin). Returns false and fills `error` if the archive is unusable.
-    bool loadFromWsz(const QByteArray& zip, const Skin* fallback = nullptr, QString* error = nullptr);
-    bool loadFromFile(const QString& path, const Skin* fallback = nullptr, QString* error = nullptr);
+    bool
+    loadFromWsz(const QByteArray& zip, const Skin* fallback = nullptr, QString* error = nullptr);
+    bool
+    loadFromFile(const QString& path, const Skin* fallback = nullptr, QString* error = nullptr);
 
     // Built-in default skin from Qt resources.
     static Skin builtinBase();

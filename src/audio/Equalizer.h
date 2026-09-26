@@ -12,7 +12,8 @@
 namespace qiyaa::audio {
 
 inline constexpr int kEqBands = 10;
-inline constexpr std::array<double, kEqBands> kEqBandHz = {60, 170, 310, 600, 1000, 3000, 6000, 12000, 14000, 16000};
+inline constexpr std::array<double, kEqBands> kEqBandHz = {60,   170,  310,   600,   1000,
+                                                           3000, 6000, 12000, 14000, 16000};
 inline constexpr double kEqMaxDb = 12.0;
 
 struct EqSettings {
@@ -58,9 +59,9 @@ private:
 
     // Triple buffer: writer owns `back`, reader owns `front`, `middle` is exchanged.
     std::array<Coeffs, 3> m_slots{};
-    int m_back = 0;                       // writer only
-    int m_front = 1;                      // reader only
-    std::atomic<int> m_middle{2 | 0};    // index | (dirty << 2)
+    int m_back = 0;  // writer only
+    int m_front = 1;  // reader only
+    std::atomic<int> m_middle{2 | 0};  // index | (dirty << 2)
 
     // Filter state per band per channel (audio thread only).
     std::array<std::array<float, 2>, kEqBands> m_z1{};

@@ -1,7 +1,7 @@
 #include "ui/SkinnedWindow.h"
 
-#include <algorithm>
-#include <cmath>
+#include "skin/Skin.h"
+#include "ui/Snap.h"
 
 #include <QGuiApplication>
 #include <QMouseEvent>
@@ -11,8 +11,8 @@
 #include <QWheelEvent>
 #include <QWindow>
 
-#include "skin/Skin.h"
-#include "ui/Snap.h"
+#include <algorithm>
+#include <cmath>
 
 namespace qiyaa {
 
@@ -24,31 +24,48 @@ QList<SkinnedWindow*>& registry() {
 
 QList<QRect> screenRects() {
     QList<QRect> out;
-    for (QScreen* s : QGuiApplication::screens()) out << s->availableGeometry();
+    for (QScreen* s : QGuiApplication::screens()) {
+        out << s->availableGeometry();
+    }
     return out;
 }
 }  // namespace
 
 SkinnedWindow::SkinnedWindow(const Skin* skin, QSize skinSize, QWidget* parent)
-    : QWidget(parent, Qt::Window | Qt::FramelessWindowHint), m_skin(skin), m_skinSize(skinSize) {
+    : QWidget(parent, Qt::Window | Qt::FramelessWindowHint)
+    , m_skin(skin)
+    , m_skinSize(skinSize) {
     setAttribute(Qt::WA_OpaquePaintEvent);
     setAttribute(Qt::WA_NoSystemBackground);
     applySize();
     registry().append(this);
 
     // Monitor unplugged / resolution changed: pull the window back on screen.
-    auto recheck = [this] { if (isVisible()) ensureVisible(); };
+    auto recheck = [this] {
+        if (isVisible()) {
+            ensureVisible();
+        }
+    };
     connect(qApp, &QGuiApplication::screenRemoved, this, recheck);
     connect(qApp, &QGuiApplication::screenAdded, this, [this](QScreen* s) {
-        connect(s, &QScreen::availableGeometryChanged, this, [this] { if (isVisible()) ensureVisible(); });
+        connect(s, &QScreen::availableGeometryChanged, this, [this] {
+            if (isVisible()) {
+                ensureVisible();
+            }
+        });
     });
-    for (QScreen* s : QGuiApplication::screens())
+    for (QScreen* s : QGuiApplication::screens()) {
         connect(s, &QScreen::availableGeometryChanged, this, recheck);
+    }
 }
 
-SkinnedWindow::~SkinnedWindow() { registry().removeAll(this); }
+SkinnedWindow::~SkinnedWindow() {
+    registry().removeAll(this);
+}
 
-const QList<SkinnedWindow*>& SkinnedWindow::allWindows() { return registry(); }
+const QList<SkinnedWindow*>& SkinnedWindow::allWindows() {
+    return registry();
+}
 
 bool SkinnedWindow::canPositionWindows() {
     return !QGuiApplication::platformName().startsWith(QLatin1String("wayland"));
@@ -68,13 +85,16 @@ void SkinnedWindow::setSkin(const Skin* skin) {
 }
 
 void SkinnedWindow::applySize() {
-    setFixedSize(QSize(qRound(m_skinSize.width() * m_scale), qRound(m_skinSize.height() * m_scale)));
+    setFixedSize(QSize(qRound(m_skinSize.width() * m_scale), qRound(m_skinSize.height() * m_scale))
+    );
     m_buffer = QImage();
 }
 
 void SkinnedWindow::setScale(double scale) {
     scale = std::round(std::clamp(scale, 1.0, 4.0) * 20.0) / 20.0;
-    if (std::abs(scale - m_scale) < 1e-6) return;
+    if (std::abs(scale - m_scale) < 1e-6) {
+        return;
+    }
     m_scale = scale;
     applySize();
     applyMask();
@@ -83,7 +103,9 @@ void SkinnedWindow::setScale(double scale) {
 }
 
 void SkinnedWindow::setSkinSize(QSize size) {
-    if (size == m_skinSize) return;
+    if (size == m_skinSize) {
+        return;
+    }
     m_skinSize = size;
     applySize();
     applyMask();
@@ -91,7 +113,9 @@ void SkinnedWindow::setSkinSize(QSize size) {
 }
 
 void SkinnedWindow::placeAt(QPoint pos) {
-    if (!canPositionWindows()) return;
+    if (!canPositionWindows()) {
+        return;
+    }
     QRect r(pos, size());
     move(snap::clampInside(r, snap::pickScreen(r, screenRects())));
 }
@@ -114,7 +138,9 @@ void SkinnedWindow::resizeKeepingStack(QSize newSkinSize) {
     QList<bool> visible;
     int self = -1;
     for (SkinnedWindow* w : registry()) {
-        if (w == this) self = int(all.size());
+        if (w == this) {
+            self = int(all.size());
+        }
         all << w;
         rects << w->frameGeometry();
         visible << w->isVisible();
@@ -122,22 +148,36 @@ void SkinnedWindow::resizeKeepingStack(QSize newSkinSize) {
     const int oldHeight = height();
     setSkinSize(newSkinSize);
     const int dy = height() - oldHeight;
-    if (dy == 0 || !canPositionWindows()) return;
+    if (dy == 0 || !canPositionWindows()) {
+        return;
+    }
     QList<SkinnedWindow*> group{this};
     for (int i : snap::stackBelow(self, rects, dy, visible)) {
         all[i]->move(all[i]->pos() + QPoint(0, dy));
         group << all[i];
     }
     // Growing near the bottom of the screen: lift the whole stack back onto it.
-    if (dy < 0 || !isVisible()) return;
-    for (SkinnedWindow* w : dockedWindows())
-        if (!group.contains(w)) group << w;
+    if (dy < 0 || !isVisible()) {
+        return;
+    }
+    for (SkinnedWindow* w : dockedWindows()) {
+        if (!group.contains(w)) {
+            group << w;
+        }
+    }
     QRect bounds;
-    for (SkinnedWindow* w : group)
-        if (w->isVisible()) bounds |= w->frameGeometry();
-    const QPoint shift = snap::clampInside(bounds, snap::pickScreen(bounds, screenRects())) - bounds.topLeft();
-    if (!shift.isNull())
-        for (SkinnedWindow* w : group) w->move(w->pos() + shift);
+    for (SkinnedWindow* w : group) {
+        if (w->isVisible()) {
+            bounds |= w->frameGeometry();
+        }
+    }
+    const QPoint shift =
+        snap::clampInside(bounds, snap::pickScreen(bounds, screenRects())) - bounds.topLeft();
+    if (!shift.isNull()) {
+        for (SkinnedWindow* w : group) {
+            w->move(w->pos() + shift);
+        }
+    }
 }
 
 QList<SkinnedWindow*> SkinnedWindow::dockedWindows() const {
@@ -145,18 +185,26 @@ QList<SkinnedWindow*> SkinnedWindow::dockedWindows() const {
     QList<QRect> rects;
     int self = -1;
     for (SkinnedWindow* w : registry()) {
-        if (!w->isVisible()) continue;
-        if (w == this) self = int(visible.size());
+        if (!w->isVisible()) {
+            continue;
+        }
+        if (w == this) {
+            self = int(visible.size());
+        }
         visible << w;
         rects << w->frameGeometry();
     }
     QList<SkinnedWindow*> out;
-    for (int i : snap::connectedGroup(self, rects)) out << visible[i];
+    for (int i : snap::connectedGroup(self, rects)) {
+        out << visible[i];
+    }
     return out;
 }
 
 QPoint SkinnedWindow::toSkin(QPointF widgetPos) const {
-    return QPoint(int(std::floor(widgetPos.x() / m_scale)), int(std::floor(widgetPos.y() / m_scale)));
+    return QPoint(
+        int(std::floor(widgetPos.x() / m_scale)), int(std::floor(widgetPos.y() / m_scale))
+    );
 }
 
 int SkinnedWindow::wheelSteps(QWheelEvent* e) {
@@ -167,13 +215,16 @@ int SkinnedWindow::wheelSteps(QWheelEvent* e) {
 }
 
 void SkinnedWindow::updateSkinRect(const QRect& r) {
-    const QRectF scaled(r.x() * m_scale, r.y() * m_scale, r.width() * m_scale, r.height() * m_scale);
+    const QRectF scaled(
+        r.x() * m_scale, r.y() * m_scale, r.width() * m_scale, r.height() * m_scale
+    );
     update(scaled.toAlignedRect().adjusted(-1, -1, 1, 1));
 }
 
 void SkinnedWindow::applyMask() {
     const QString section = regionSection();
-    const auto it = section.isEmpty() ? m_skin->region().cend() : m_skin->region().constFind(section);
+    const auto it =
+        section.isEmpty() ? m_skin->region().cend() : m_skin->region().constFind(section);
     if (it == m_skin->region().cend()) {
         clearMask();
         return;
@@ -181,7 +232,9 @@ void SkinnedWindow::applyMask() {
     // Scale the polygons themselves (not the region) so fractional scales stay accurate.
     const QTransform t = QTransform::fromScale(m_scale, m_scale);
     QList<QPolygon> scaled;
-    for (const QPolygon& poly : *it) scaled << t.map(QPolygonF(poly)).toPolygon();
+    for (const QPolygon& poly : *it) {
+        scaled << t.map(QPolygonF(poly)).toPolygon();
+    }
     setMask(regionFromPolygons(scaled));
 }
 
@@ -199,7 +252,9 @@ void SkinnedWindow::paintEvent(QPaintEvent*) {
     // covers the physical pixels, then scale that down smoothly ("sharp bilinear").
     const int n = int(std::ceil(m_scale * devicePixelRatioF() - 1e-6));
     const QSize bufSize = m_skinSize * n;
-    if (m_buffer.size() != bufSize) m_buffer = QImage(bufSize, QImage::Format_ARGB32_Premultiplied);
+    if (m_buffer.size() != bufSize) {
+        m_buffer = QImage(bufSize, QImage::Format_ARGB32_Premultiplied);
+    }
     {
         QPainter bp(&m_buffer);
         bp.setRenderHint(QPainter::SmoothPixmapTransform, false);
@@ -212,22 +267,33 @@ void SkinnedWindow::paintEvent(QPaintEvent*) {
 
 void SkinnedWindow::mousePressEvent(QMouseEvent* e) {
     const QPoint sp = toSkin(e->position());
-    if (skinMousePress(sp, e->button())) return;
-    if (e->button() != Qt::LeftButton || !isDragArea(sp)) return;
+    if (skinMousePress(sp, e->button())) {
+        return;
+    }
+    if (e->button() != Qt::LeftButton || !isDragArea(sp)) {
+        return;
+    }
 
     if (!canPositionWindows()) {
         // Native Wayland: let the compositor move us (no snapping possible).
-        if (QWindow* w = windowHandle()) w->startSystemMove();
+        if (QWindow* w = windowHandle()) {
+            w->startSystemMove();
+        }
         return;
     }
     m_dragging = true;
     m_pressGlobal = e->globalPosition().toPoint();
     m_group.clear();
     m_group.append({this, pos()});
-    if (m_dragsDocked)
-        for (SkinnedWindow* w : dockedWindows()) m_group.append({w, w->pos()});
+    if (m_dragsDocked) {
+        for (SkinnedWindow* w : dockedWindows()) {
+            m_group.append({w, w->pos()});
+        }
+    }
     m_groupStartBounds = QRect();
-    for (const auto& [w, start] : m_group) m_groupStartBounds |= QRect(start, w->size());
+    for (const auto& [w, start] : m_group) {
+        m_groupStartBounds |= QRect(start, w->size());
+    }
 }
 
 void SkinnedWindow::mouseMoveEvent(QMouseEvent* e) {
@@ -240,14 +306,24 @@ void SkinnedWindow::mouseMoveEvent(QMouseEvent* e) {
     const QPoint delta = e->globalPosition().toPoint() - m_pressGlobal;
     QList<QRect> others;
     for (SkinnedWindow* w : registry()) {
-        if (!w->isVisible()) continue;
-        const bool inGroup = std::any_of(m_group.cbegin(), m_group.cend(), [w](const auto& g) { return g.first == w; });
-        if (!inGroup) others << w->frameGeometry();
+        if (!w->isVisible()) {
+            continue;
+        }
+        const bool inGroup = std::any_of(m_group.cbegin(), m_group.cend(), [w](const auto& g) {
+            return g.first == w;
+        });
+        if (!inGroup) {
+            others << w->frameGeometry();
+        }
     }
-    const QPoint target = snap::resolveDragPosition(m_groupStartBounds.translated(delta), others, screenRects());
+    const QPoint target =
+        snap::resolveDragPosition(m_groupStartBounds.translated(delta), others, screenRects());
     const QPoint applied = target - m_groupStartBounds.topLeft();
-    for (const auto& [w, start] : m_group)
-        if (w && w->pos() != start + applied) w->move(start + applied);
+    for (const auto& [w, start] : m_group) {
+        if (w && w->pos() != start + applied) {
+            w->move(start + applied);
+        }
+    }
 }
 
 void SkinnedWindow::mouseReleaseEvent(QMouseEvent* e) {
@@ -261,11 +337,15 @@ void SkinnedWindow::mouseReleaseEvent(QMouseEvent* e) {
 }
 
 void SkinnedWindow::mouseDoubleClickEvent(QMouseEvent* e) {
-    if (!skinMouseDoubleClick(toSkin(e->position()), e->button())) mousePressEvent(e);
+    if (!skinMouseDoubleClick(toSkin(e->position()), e->button())) {
+        mousePressEvent(e);
+    }
 }
 
 void SkinnedWindow::changeEvent(QEvent* e) {
-    if (e->type() == QEvent::ActivationChange) update();
+    if (e->type() == QEvent::ActivationChange) {
+        update();
+    }
     QWidget::changeEvent(e);
 }
 

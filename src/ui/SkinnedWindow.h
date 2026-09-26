@@ -3,14 +3,14 @@
 // inside the visible screen area.
 #pragma once
 
-#include <cmath>
-
 #include <QImage>
 #include <QList>
 #include <QPoint>
 #include <QPointer>
 #include <QSize>
 #include <QWidget>
+
+#include <cmath>
 
 namespace qiyaa {
 
@@ -71,11 +71,11 @@ protected:
     virtual bool isDragArea(QPoint skinPos) const = 0;
     // Mouse handling for controls, in skin coordinates. Return true if consumed.
     virtual bool skinMousePress(QPoint, Qt::MouseButton) { return false; }
-    virtual void skinMouseMove(QPoint) {}
-    virtual void skinMouseRelease(QPoint, Qt::MouseButton) {}
+    virtual void skinMouseMove(QPoint) { }
+    virtual void skinMouseRelease(QPoint, Qt::MouseButton) { }
     // Return true if consumed; otherwise the double click acts as a normal press.
     virtual bool skinMouseDoubleClick(QPoint, Qt::MouseButton) { return false; }
-    virtual void skinChanged() {}
+    virtual void skinChanged() { }
     // Section of region.txt to use as the window mask ("normal", "equalizer", ...);
     // empty = rectangular window.
     virtual QString regionSection() const { return {}; }

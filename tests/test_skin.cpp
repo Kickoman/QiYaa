@@ -1,7 +1,7 @@
+#include "skin/Skin.h"
+
 #include <QDir>
 #include <QTest>
-
-#include "skin/Skin.h"
 
 using namespace qiyaa;
 
@@ -18,8 +18,9 @@ private Q_SLOTS:
     }
     void allBuiltinSkinsLoad_data() {
         QTest::addColumn<QString>("path");
-        for (const QString& f : QDir(":/skins").entryList({"*.wsz"}))
+        for (const QString& f : QDir(":/skins").entryList({"*.wsz"})) {
             QTest::newRow(qPrintable(f)) << QStringLiteral(":/skins/") + f;
+        }
     }
     void allBuiltinSkinsLoad() {
         QFETCH(QString, path);
@@ -27,9 +28,11 @@ private Q_SLOTS:
         Skin s;
         QString err;
         QVERIFY2(s.loadFromFile(path, &base, &err), qPrintable(err));
-        for (auto sheet : {Skin::Sheet::Main, Skin::Sheet::CButtons, Skin::Sheet::TitleBar, Skin::Sheet::Numbers,
-                           Skin::Sheet::PosBar, Skin::Sheet::Volume, Skin::Sheet::Balance, Skin::Sheet::Text})
+        for (auto sheet :
+             {Skin::Sheet::Main, Skin::Sheet::CButtons, Skin::Sheet::TitleBar, Skin::Sheet::Numbers,
+              Skin::Sheet::PosBar, Skin::Sheet::Volume, Skin::Sheet::Balance, Skin::Sheet::Text}) {
             QVERIFY(!s.sheet(sheet).isNull());
+        }
     }
     void garbageIsRejected() {
         Skin s;

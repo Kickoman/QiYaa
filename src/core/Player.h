@@ -1,8 +1,8 @@
 // Playback controller: the current queue (playlist) and what plays from it.
 #pragma once
 
-#include <functional>
-#include <optional>
+#include "audio/AudioEngine.h"
+#include "yandex/Library.h"
 
 #include <QList>
 #include <QObject>
@@ -10,8 +10,8 @@
 #include <QString>
 #include <QTimer>
 
-#include "audio/AudioEngine.h"
-#include "yandex/Library.h"
+#include <functional>
+#include <optional>
 
 class QNetworkReply;
 
@@ -24,7 +24,8 @@ public:
     using MoreFn = std::function<void(std::function<void(const QList<yandex::Track>&)> done)>;
     // What happened to a track of the queue (used for wave feedback).
     enum class TrackEvent { Started, Finished, Skipped };
-    using EventFn = std::function<void(TrackEvent event, const yandex::Track& track, double playedSeconds)>;
+    using EventFn =
+        std::function<void(TrackEvent event, const yandex::Track& track, double playedSeconds)>;
 
     Player(yandex::Library* library, audio::AudioEngine* engine, QObject* parent = nullptr);
 
@@ -34,8 +35,13 @@ public:
     bool isLatestSourceRequest(quint64 ticket) const { return ticket == m_sourceRequest; }
 
     // Replaces the queue. `autoplay` starts the first track right away.
-    void setQueue(const QList<yandex::Track>& tracks, const QString& title, bool autoplay, MoreFn more = {},
-                  EventFn events = {});
+    void setQueue(
+        const QList<yandex::Track>& tracks,
+        const QString& title,
+        bool autoplay,
+        MoreFn more = {},
+        EventFn events = {}
+    );
     void appendTracks(const QList<yandex::Track>& tracks);
     void removeTracks(QList<int> indices);
     void clearQueue();
@@ -71,11 +77,11 @@ public:
 
 Q_SIGNALS:
     void statusMessage(const QString& text);
-    void playlistChanged();   // any change: append, remove, replace
-    void queueReplaced();     // a new source replaced the whole queue
+    void playlistChanged();  // any change: append, remove, replace
+    void queueReplaced();  // a new source replaced the whole queue
     void currentTrackChanged();
-    void positionTick();      // ~10 Hz while something is loaded (for time displays)
-    void modesChanged();      // shuffle or repeat
+    void positionTick();  // ~10 Hz while something is loaded (for time displays)
+    void modesChanged();  // shuffle or repeat
     void seeked(double seconds);
 
 private:
@@ -84,8 +90,8 @@ private:
     struct Preload {
         int index = -1;
         QString trackId;
-        quint64 gen = 0;           // invalidates its link request
-        StreamId stream = 0;       // 0 until the link is resolved
+        quint64 gen = 0;  // invalidates its link request
+        StreamId stream = 0;  // 0 until the link is resolved
         int bitrate = 0;
         QPointer<QNetworkReply> reply;
         bool downloadDone = false;
@@ -135,8 +141,8 @@ private:
     bool m_repeat = false;
     quint64 m_generation = 0;  // invalidates callbacks of tracks we already skipped
     QPointer<QNetworkReply> m_download;
-    StreamId m_stream = 0;               // the current track's engine stream
-    bool m_currentDownloaded = false;    // the whole current track is in memory
+    StreamId m_stream = 0;  // the current track's engine stream
+    bool m_currentDownloaded = false;  // the whole current track is in memory
     std::optional<Preload> m_preload;
     quint64 m_preloadGen = 0;
 };

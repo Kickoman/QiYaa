@@ -2,9 +2,9 @@
 // PLEDIT.BMP and PLEDIT.TXT, shows the player's queue.
 #pragma once
 
-#include <QSet>
-
 #include "ui/SkinnedWindow.h"
+
+#include <QSet>
 
 namespace qiyaa {
 
@@ -64,8 +64,8 @@ private:
     QSize m_steps{0, 4};
     int m_scroll = 0;
     QSet<int> m_selected;
-    int m_anchor = -1;   // fixed end of a Shift range
-    int m_cursor = -1;   // row the keyboard is on
+    int m_anchor = -1;  // fixed end of a Shift range
+    int m_cursor = -1;  // row the keyboard is on
     int m_shownSecond = -1;
 
     Drag m_drag = Drag::None;

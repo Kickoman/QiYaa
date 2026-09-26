@@ -1,6 +1,6 @@
-#include <QTest>
-
 #include "ui/Snap.h"
+
+#include <QTest>
 
 using namespace qiyaa::snap;
 

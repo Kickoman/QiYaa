@@ -3,8 +3,6 @@
 // Higher-level sources (playlists, waves, search...) live in Library.
 #pragma once
 
-#include <functional>
-
 #include <QJsonObject>
 #include <QJsonValue>
 #include <QList>
@@ -13,6 +11,8 @@
 #include <QStringList>
 #include <QUrl>
 #include <QUrlQuery>
+
+#include <functional>
 
 class QNetworkAccessManager;
 class QNetworkReply;
@@ -26,7 +26,7 @@ struct Account {
 };
 
 struct Track {
-    QString id;       // numeric id as string
+    QString id;  // numeric id as string
     QString albumId;  // first album, may be empty
     QString title;
     QStringList artists;
@@ -38,7 +38,7 @@ struct Track {
     QString coverUri;  // "avatars.yandex.net/get-music-content/.../%%" (%% = size)
 
     QString displayTitle() const;  // "Artist1, Artist2 - Title"
-    QUrl webUrl() const;           // music.yandex.ru page
+    QUrl webUrl() const;  // music.yandex.ru page
     QUrl coverUrl(int size = 400) const;  // empty if the track has no cover
 };
 
