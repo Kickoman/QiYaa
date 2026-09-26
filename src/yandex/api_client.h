@@ -59,13 +59,13 @@ public:
 
     explicit ApiClient(QNetworkAccessManager* nam, QObject* parent = nullptr);
 
-    void setToken(const QString& token) { m_token = token; }
-    const QString& token() const { return m_token; }
-    bool hasToken() const { return !m_token.isEmpty(); }
-    QNetworkAccessManager* network() const { return m_nam; }
+    void setToken(const QString& token) { accessToken = token; }
+    const QString& token() const { return accessToken; }
+    bool hasToken() const { return !accessToken.isEmpty(); }
+    QNetworkAccessManager* network() const { return networkManager; }
 
     // For tests: point the client at a local mock server.
-    void setBaseUrl(const QString& base) { m_base = base; }
+    void setBaseUrl(const QString& base) { baseUrl = base; }
 
     // Generic requests.
     void getJson(const QString& path, const QUrlQuery& query, TJsonCallback cb);
@@ -79,7 +79,7 @@ public:
     void reportPlayStarted(const Account& account, const Track& track, const QString& playId);
 
     // POSTs (play reports, wave feedback) still on their way; see postsSettled().
-    int pendingPosts() const { return m_pendingPosts; }
+    int pendingPosts() const { return pendingPostCount; }
 
     static Track ParseTrack(const QJsonValue& v);
     static QString IdString(const QJsonValue& v);  // ids come as numbers or strings
@@ -92,10 +92,10 @@ private:
     void handleJson(QNetworkReply* reply, TJsonCallback cb);
     void trackPost(QNetworkReply* reply);
 
-    QNetworkAccessManager* m_nam;
-    QString m_token;
-    QString m_base;
-    int m_pendingPosts = 0;
+    QNetworkAccessManager* networkManager;
+    QString accessToken;
+    QString baseUrl;
+    int pendingPostCount = 0;
 };
 
 }  // namespace Yandex

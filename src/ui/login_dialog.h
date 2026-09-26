@@ -25,7 +25,7 @@ public:
         const QString& oauthBase = {}
     );
 
-    QString token() const { return m_token; }
+    QString token() const { return accessToken; }
 
 private:
     void finishWith(const QString& token);
@@ -34,14 +34,14 @@ private:
     void fitToContents();
     void tryPasted();
 
-    Yandex::DeviceLogin* m_device;
-    QLabel* m_code;
-    QLabel* m_deviceStatus;
-    QPushButton* m_openDevice;
-    QLineEdit* m_paste;
-    QLabel* m_pasteError;
-    QUrl m_verifyUrl;
-    QString m_token;
+    Yandex::DeviceLogin* device;
+    QLabel* codeLabel;
+    QLabel* deviceStatus;
+    QPushButton* openDevice;
+    QLineEdit* pasteField;
+    QLabel* pasteError;
+    QUrl verifyUrl;
+    QString accessToken;
 };
 
 }  // namespace Ui

@@ -54,18 +54,18 @@ private:
 
     static Coeffs ComputeCoefficients(const EqSettings& s, double sampleRate);
 
-    double m_sampleRate = 44100;
-    EqSettings m_last;
+    double sampleRate = 44100;
+    EqSettings lastSettings;
 
     // Triple buffer: writer owns `back`, reader owns `front`, `middle` is exchanged.
-    std::array<Coeffs, 3> m_slots{};
-    int m_back = 0;  // writer only
-    int m_front = 1;  // reader only
-    std::atomic<int> m_middle{2 | 0};  // index | (dirty << 2)
+    std::array<Coeffs, 3> coefficientSlots{};
+    int back = 0;  // writer only
+    int front = 1;  // reader only
+    std::atomic<int> middle{2 | 0};  // index | (dirty << 2)
 
     // Filter state per band per channel (audio thread only).
-    std::array<std::array<float, 2>, kEqBands> m_z1{};
-    std::array<std::array<float, 2>, kEqBands> m_z2{};
+    std::array<std::array<float, 2>, kEqBands> filterState1{};
+    std::array<std::array<float, 2>, kEqBands> filterState2{};
 };
 
 }  // namespace Audio

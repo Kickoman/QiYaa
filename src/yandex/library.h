@@ -62,13 +62,13 @@ public:
 
     explicit Library(ApiClient* api, QObject* parent = nullptr);
 
-    ApiClient* api() const { return m_api; }
+    ApiClient* api() const { return apiClient; }
 
     // Loads the account for the API client's current token.
     void connectAccount(TCallback<Account> cb);
     void logout();
-    bool isLoggedIn() const { return !m_account.uid.isEmpty(); }
-    const Account& account() const { return m_account; }
+    bool isLoggedIn() const { return !accountData.uid.isEmpty(); }
+    const Account& account() const { return accountData; }
 
     void likedTracks(TCallback<QList<Track>> cb);
     void tracksByIds(const QStringList& ids, TCallback<QList<Track>> cb);  // chunked, order kept
@@ -102,7 +102,7 @@ public:
     );
     static QString WaveEventName(WaveEvent e);
 
-    bool isLiked(const QString& trackId) const { return m_likedIds.contains(trackId); }
+    bool isLiked(const QString& trackId) const { return likedIds.contains(trackId); }
     void setLiked(const QString& trackId, bool liked, TCallback<bool> cb);
     void dislike(const QString& trackId, TCallback<bool> cb);
 
@@ -119,10 +119,10 @@ private:
     void tracksFromItems(const QJsonArray& items, TCallback<QList<Track>> cb);
     QString userPath(const QString& rest) const;
 
-    ApiClient* m_api;
-    Account m_account;
-    QSet<QString> m_likedIds;
-    QSet<QString> m_stationFeedbackSessions;  // sessions whose session-feedback endpoint failed
+    ApiClient* apiClient;
+    Account accountData;
+    QSet<QString> likedIds;
+    QSet<QString> stationFeedbackSessions;  // sessions whose session-feedback endpoint failed
 };
 
 }  // namespace Yandex

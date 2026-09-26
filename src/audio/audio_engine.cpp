@@ -29,99 +29,99 @@ class StreamBuffer {
 public:
     void append(const char* data, size_t n) {
         {
-            std::lock_guard lock(m_mutex);
-            m_data.insert(m_data.end(), data, data + n);
+            std::lock_guard lock(mutex);
+            bytes.insert(bytes.end(), data, data + n);
         }
-        m_cv.notify_all();
+        wakeUp.notify_all();
     }
     void finish(bool failed) {
         {
-            std::lock_guard lock(m_mutex);
-            m_finished = true;
-            m_failed = failed;
+            std::lock_guard lock(mutex);
+            isFinished = true;
+            endedWithError = failed;
         }
-        m_cv.notify_all();
+        wakeUp.notify_all();
     }
     // Makes a blocked (or the next) read return MA_CANCELLED until resume().
     void interrupt() {
         {
-            std::lock_guard lock(m_mutex);
-            m_interrupted = true;
+            std::lock_guard lock(mutex);
+            interrupted = true;
         }
-        m_cv.notify_all();
+        wakeUp.notify_all();
     }
     void resume() {
-        std::lock_guard lock(m_mutex);
-        m_interrupted = false;
+        std::lock_guard lock(mutex);
+        interrupted = false;
     }
     void rewind() {
-        std::lock_guard lock(m_mutex);
-        m_cursor = 0;
+        std::lock_guard lock(mutex);
+        cursorRow = 0;
     }
     // Completely downloaded (successfully or not): reading it never waits.
     bool finished() const {
-        std::lock_guard lock(m_mutex);
-        return m_finished;
+        std::lock_guard lock(mutex);
+        return isFinished;
     }
 
     // Blocking read at the cursor. Returns MA_AT_END at the end of a finished stream.
     ma_result read(void* out, size_t n, size_t* got) {
-        std::unique_lock lock(m_mutex);
-        m_cv.wait(lock, [&] { return m_interrupted || m_finished || m_data.size() > m_cursor; });
+        std::unique_lock lock(mutex);
+        wakeUp.wait(lock, [&] { return interrupted || isFinished || bytes.size() > cursorRow; });
         *got = 0;
-        if (m_interrupted) {
+        if (interrupted) {
             return MA_CANCELLED;
         }
-        const size_t avail = m_data.size() - std::min(m_cursor, m_data.size());
+        const size_t avail = bytes.size() - std::min(cursorRow, bytes.size());
         const size_t take = std::min(n, avail);
         if (take == 0) {
             return MA_AT_END;
         }
-        std::memcpy(out, m_data.data() + m_cursor, take);
-        m_cursor += take;
+        std::memcpy(out, bytes.data() + cursorRow, take);
+        cursorRow += take;
         *got = take;
         return MA_SUCCESS;
     }
 
     ma_result seek(ma_int64 offset, ma_seek_origin origin) {
-        std::unique_lock lock(m_mutex);
+        std::unique_lock lock(mutex);
         ma_int64 target = 0;
         switch (origin) {
             case ma_seek_origin_start: target = offset; break;
-            case ma_seek_origin_current: target = ma_int64(m_cursor) + offset; break;
+            case ma_seek_origin_current: target = ma_int64(cursorRow) + offset; break;
             case ma_seek_origin_end:
                 // Size is unknown until the download completes; don't stall streaming for it.
-                if (!m_finished) {
+                if (!isFinished) {
                     return MA_BAD_SEEK;
                 }
-                target = ma_int64(m_data.size()) + offset;
+                target = ma_int64(bytes.size()) + offset;
                 break;
         }
         if (target < 0) {
             return MA_BAD_SEEK;
         }
         // Seeking forward past downloaded data: wait for it (only happens on user seek).
-        m_cv.wait(lock, [&] {
-            return m_interrupted || m_finished || ma_int64(m_data.size()) >= target;
+        wakeUp.wait(lock, [&] {
+            return interrupted || isFinished || ma_int64(bytes.size()) >= target;
         });
-        if (m_interrupted) {
+        if (interrupted) {
             return MA_CANCELLED;
         }
-        if (target > ma_int64(m_data.size())) {
+        if (target > ma_int64(bytes.size())) {
             return MA_BAD_SEEK;
         }
-        m_cursor = size_t(target);
+        cursorRow = size_t(target);
         return MA_SUCCESS;
     }
 
 private:
-    mutable std::mutex m_mutex;
-    std::condition_variable m_cv;
-    std::vector<char> m_data;
-    size_t m_cursor = 0;
-    bool m_finished = false;
-    bool m_failed = false;
-    bool m_interrupted = false;
+    mutable std::mutex mutex;
+    std::condition_variable wakeUp;
+    std::vector<char> bytes;
+    size_t cursorRow = 0;
+    bool isFinished = false;
+    bool endedWithError = false;
+    bool interrupted = false;
 };
 
 struct AudioEngine::Impl {
@@ -477,7 +477,7 @@ AudioEngine::AudioEngine(QObject* parent)
 
 AudioEngine::~AudioEngine() {
     d->outputEnabled = false;
-    d->stopDecoderThread(m_streams);
+    d->stopDecoderThread(streams);
     if (d->deviceReady) {
         ma_device_uninit(&d->device);
     }
@@ -577,9 +577,9 @@ QString AudioEngine::backendName() const {
 
 void AudioEngine::dropStreams() {
     d->outputEnabled.store(false, std::memory_order_release);
-    d->stopDecoderThread(m_streams);
-    m_streams.clear();
-    m_current = m_queued = 0;
+    d->stopDecoderThread(streams);
+    streams.clear();
+    current = queued = 0;
 }
 
 void AudioEngine::startDecoder() {
@@ -602,11 +602,11 @@ void AudioEngine::startDecoder() {
     d->decoderEpoch = 0;
     d->uiEpoch = 0;
     d->failedQueued = 0;
-    m_sourceRate = 0;
-    m_sourceChannels = 0;
+    sourceRate = 0;
+    sourceChannelCount = 0;
 
     d->decoderThread = std::thread(
-        &Impl::decoderMain, d.get(), m_streams.value(m_current), &m_sourceRate, &m_sourceChannels
+        &Impl::decoderMain, d.get(), streams.value(current), &sourceRate, &sourceChannelCount
     );
     d->outputEnabled.store(true, std::memory_order_release);
     setState(State::Buffering);
@@ -619,10 +619,10 @@ AudioEngine::TStreamId AudioEngine::beginStream() {
         Q_EMIT errorOccurred(QStringLiteral("no audio output device"));
         return 0;
     }
-    m_current = ++m_lastId;
-    m_streams.insert(m_current, std::make_shared<StreamBuffer>());
+    current = ++lastId;
+    streams.insert(current, std::make_shared<StreamBuffer>());
     startDecoder();
-    return m_current;
+    return current;
 }
 
 AudioEngine::TStreamId AudioEngine::queueStream() {
@@ -630,21 +630,21 @@ AudioEngine::TStreamId AudioEngine::queueStream() {
     if (!d->decoderThread.joinable()) {
         return 0;
     }
-    m_queued = ++m_lastId;
+    queued = ++lastId;
     auto buf = std::make_shared<StreamBuffer>();
-    m_streams.insert(m_queued, buf);
+    streams.insert(queued, buf);
     std::lock_guard lock(d->queueMutex);
     d->queued = std::move(buf);
-    d->queuedId = m_queued;
-    return m_queued;
+    d->queuedId = queued;
+    return queued;
 }
 
 void AudioEngine::clearQueued() {
-    const TStreamId id = std::exchange(m_queued, 0);
+    const TStreamId id = std::exchange(queued, 0);
     if (!id) {
         return;
     }
-    std::shared_ptr<StreamBuffer> buf = m_streams.take(id);
+    std::shared_ptr<StreamBuffer> buf = streams.take(id);
     std::lock_guard lock(d->queueMutex);
     if (d->queuedId == id) {
         d->queued.reset();
@@ -663,7 +663,7 @@ void AudioEngine::clearQueued() {
 }
 
 AudioEngine::TStreamId AudioEngine::queuedStream() const {
-    return m_queued && d->failedQueued.load() != m_queued ? m_queued : 0;
+    return queued && d->failedQueued.load() != queued ? queued : 0;
 }
 
 AudioEngine::TStreamId AudioEngine::playQueuedNow() {
@@ -671,38 +671,38 @@ AudioEngine::TStreamId AudioEngine::playQueuedNow() {
     if (!id) {
         return 0;
     }
-    std::shared_ptr<StreamBuffer> buf = m_streams.value(id);
+    std::shared_ptr<StreamBuffer> buf = streams.value(id);
     d->outputEnabled.store(false, std::memory_order_release);
-    d->stopDecoderThread(m_streams);
-    m_streams.clear();
+    d->stopDecoderThread(streams);
+    streams.clear();
     buf->rewind();
-    m_streams.insert(id, buf);
-    m_current = id;
-    m_queued = 0;
+    streams.insert(id, buf);
+    current = id;
+    queued = 0;
     startDecoder();
     return id;
 }
 
 void AudioEngine::appendData(TStreamId stream, const QByteArray& bytes) {
-    if (const auto buf = m_streams.value(stream)) {
+    if (const auto buf = streams.value(stream)) {
         buf->append(bytes.constData(), size_t(bytes.size()));
     }
 }
 
 void AudioEngine::finishData(TStreamId stream) {
-    if (const auto buf = m_streams.value(stream)) {
+    if (const auto buf = streams.value(stream)) {
         buf->finish(false);
     }
 }
 
 void AudioEngine::failData(TStreamId stream) {
-    if (const auto buf = m_streams.value(stream)) {
+    if (const auto buf = streams.value(stream)) {
         buf->finish(true);
     }
 }
 
 void AudioEngine::pause() {
-    if (m_state != State::Playing && m_state != State::Buffering) {
+    if (currentState != State::Playing && currentState != State::Buffering) {
         return;
     }
     if (d->deviceReady) {
@@ -712,7 +712,7 @@ void AudioEngine::pause() {
 }
 
 void AudioEngine::resume() {
-    if (m_state != State::Paused) {
+    if (currentState != State::Paused) {
         return;
     }
     if (d->deviceReady) {
@@ -781,20 +781,20 @@ int AudioEngine::outputSampleRate() const {
 }
 
 void AudioEngine::setVolume(int percent) {
-    m_volume = std::clamp(percent, 0, 100);
+    volumePercent = std::clamp(percent, 0, 100);
     updateGains();
 }
 
 void AudioEngine::setBalance(int balance) {
-    m_balance = std::clamp(balance, -100, 100);
+    balancePercent = std::clamp(balance, -100, 100);
     updateGains();
 }
 
 void AudioEngine::updateGains() {
     // Perceptual-ish volume curve; balance attenuates the opposite channel.
-    const float v = float(m_volume) / 100.0f;
+    const float v = float(volumePercent) / 100.0f;
     const float g = v * v;
-    const float b = float(m_balance) / 100.0f;
+    const float b = float(balancePercent) / 100.0f;
     d->gainL = g * (b > 0 ? 1.0f - b : 1.0f);
     d->gainR = g * (b < 0 ? 1.0f + b : 1.0f);
 }
@@ -806,9 +806,9 @@ void AudioEngine::poll() {
         return;
     }
     // The queued stream turned out undecodable: forget it (the UI starts the next track itself).
-    if (const TStreamId bad = d->failedQueued.exchange(0); bad && bad == m_queued) {
-        m_streams.remove(bad);
-        m_queued = 0;
+    if (const TStreamId bad = d->failedQueued.exchange(0); bad && bad == queued) {
+        streams.remove(bad);
+        queued = 0;
     }
     // Playback crossed into the chained track?
     const int chained = d->decoderEpoch.load(std::memory_order_acquire);
@@ -829,18 +829,18 @@ void AudioEngine::poll() {
         }
         d->frameOffset = -ma_int64(d->boundaryFrame.load());
         d->uiEpoch.store(chained, std::memory_order_release);
-        m_streams.remove(m_current);
-        m_current = std::exchange(m_queued, 0);
-        m_sourceRate = d->nextRate.load();
-        m_sourceChannels = d->nextChannels.load();
+        streams.remove(current);
+        current = std::exchange(queued, 0);
+        sourceRate = d->nextRate.load();
+        sourceChannelCount = d->nextChannels.load();
         Q_EMIT trackAdvanced();
         return;
     }
-    if (m_state == State::Buffering && d->decoderStarted
+    if (currentState == State::Buffering && d->decoderStarted
         && ma_pcm_rb_available_read(&d->ring) > 0) {
         setState(State::Playing);
     }
-    if (m_state == State::Playing && d->decoderDone && ma_pcm_rb_available_read(&d->ring) == 0
+    if (currentState == State::Playing && d->decoderDone && ma_pcm_rb_available_read(&d->ring) == 0
         && d->seekRequest.load() < 0 && !d->finishedReported) {
         {
             // Under the lock: a chain in progress re-checks it before committing.
@@ -855,10 +855,10 @@ void AudioEngine::poll() {
 }
 
 void AudioEngine::setState(State s) {
-    if (m_state == s) {
+    if (currentState == s) {
         return;
     }
-    m_state = s;
+    currentState = s;
     Q_EMIT stateChanged(s);
 }
 

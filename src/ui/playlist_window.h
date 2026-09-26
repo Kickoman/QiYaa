@@ -18,15 +18,15 @@ public:
     PlaylistWindow(Core::Player* player, const Skins::Skin* skin, QWidget* parent = nullptr);
 
     // Size in resize steps beyond the minimum 275x116 (Winamp's playlist "segments").
-    QSize sizeSteps() const { return m_steps; }
+    QSize sizeSteps() const { return resizeSteps; }
     void setSizeSteps(QSize steps);
     void setShaded(bool shaded) override;
 
     int visibleRows() const;
-    int scrollOffset() const { return m_scroll; }
+    int scrollOffset() const { return scrollRow; }
     void setScrollOffset(int row);
     void ensureRowVisible(int row);
-    const QSet<int>& selection() const { return m_selected; }
+    const QSet<int>& selection() const { return selectedRows; }
     // Row under a point in skin coordinates, or -1.
     int rowAt(QPoint skinPos) const;
 
@@ -62,19 +62,19 @@ private:
     int miniButtonAt(QPoint p) const;
     void selectRow(int row, Qt::KeyboardModifiers mods);
 
-    Core::Player* m_player;
-    QSize m_steps{0, 4};
-    int m_scroll = 0;
-    QSet<int> m_selected;
-    int m_anchor = -1;  // fixed end of a Shift range
-    int m_cursor = -1;  // row the keyboard is on
-    int m_shownSecond = -1;
+    Core::Player* corePlayer;
+    QSize resizeSteps{0, 4};
+    int scrollRow = 0;
+    QSet<int> selectedRows;
+    int anchor = -1;  // fixed end of a Shift range
+    int cursorRow = -1;  // row the keyboard is on
+    int shownSecond = -1;
 
-    Drag m_drag = Drag::None;
-    QPoint m_dragStart;
-    QSize m_dragStartSteps;
-    int m_dragStartScroll = 0;
-    int m_pressedButton = -1;
+    Drag activeDrag = Drag::None;
+    QPoint dragStart;
+    QSize dragStartSteps;
+    int dragStartScroll = 0;
+    int pressedButton = -1;
 };
 
 }  // namespace Ui

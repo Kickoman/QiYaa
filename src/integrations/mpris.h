@@ -27,20 +27,20 @@ public:
     );
     ~Mpris() override;
 
-    bool isRegistered() const { return m_registered; }
-    QString serviceName() const { return m_service; }
+    bool isRegistered() const { return registered; }
+    QString serviceName() const { return service; }
 
-    MediaControls* controls() const { return m_controls; }
+    MediaControls* controls() const { return mediaControls; }
     QVariantMap metadata() const;
     QString playbackStatus() const;
 
     void emitPropertiesChanged(const QString& interface, const QVariantMap& changed);
 
 private:
-    MediaControls* m_controls;
-    QDBusConnection m_bus;
-    QString m_service;
-    bool m_registered = false;
+    MediaControls* mediaControls;
+    QDBusConnection connection;
+    QString service;
+    bool registered = false;
 };
 
 // org.mpris.MediaPlayer2
@@ -69,7 +69,7 @@ public Q_SLOTS:
     void Quit();
 
 private:
-    Mpris* m_mpris;
+    Mpris* mpris;
 };
 
 // org.mpris.MediaPlayer2.Player
@@ -123,7 +123,7 @@ Q_SIGNALS:
     void Seeked(qlonglong positionUs);
 
 private:
-    Mpris* m_mpris;
+    Mpris* mpris;
 };
 
 }  // namespace Integrations

@@ -13,21 +13,22 @@ namespace Vis {
 // ------------------------------------------------------------------ Analyzer
 
 Analyzer::Analyzer(int fftSize)
-    : m_size(fftSize)
-    , m_window(fftSize)
-    , m_re(fftSize)
-    , m_im(fftSize)
-    , m_db(fftSize / 2 + 1) {
+    : fftLength(fftSize)
+    , windowFunction(fftSize)
+    , real(fftSize)
+    , imaginary(fftSize)
+    , decibels(fftSize / 2 + 1) {
     for (int i = 0; i < fftSize; ++i) {
-        m_window[i] = 0.5f - 0.5f * std::cos(2.0f * std::numbers::pi_v<float> * i / (fftSize - 1));
+        windowFunction[i] =
+            0.5f - 0.5f * std::cos(2.0f * std::numbers::pi_v<float> * i / (fftSize - 1));
     }
 }
 
 const std::vector<float>& Analyzer::analyze(std::span<const float> mono) {
-    const int n = m_size;
+    const int n = fftLength;
     for (int i = 0; i < n; ++i) {
-        m_re[i] = i < int(mono.size()) ? mono[i] * m_window[i] : 0.0f;
-        m_im[i] = 0.0f;
+        real[i] = i < int(mono.size()) ? mono[i] * windowFunction[i] : 0.0f;
+        imaginary[i] = 0.0f;
     }
     // Iterative radix-2 FFT.
     for (int i = 1, j = 0; i < n; ++i) {
@@ -37,8 +38,8 @@ const std::vector<float>& Analyzer::analyze(std::span<const float> mono) {
         }
         j ^= bit;
         if (i < j) {
-            std::swap(m_re[i], m_re[j]);
-            std::swap(m_im[i], m_im[j]);
+            std::swap(real[i], real[j]);
+            std::swap(imaginary[i], imaginary[j]);
         }
     }
     for (int len = 2; len <= n; len <<= 1) {
@@ -48,12 +49,12 @@ const std::vector<float>& Analyzer::analyze(std::span<const float> mono) {
             float cr = 1.0f, ci = 0.0f;
             for (int k = 0; k < len / 2; ++k) {
                 const int a = i + k, b = i + k + len / 2;
-                const float tr = m_re[b] * cr - m_im[b] * ci;
-                const float ti = m_re[b] * ci + m_im[b] * cr;
-                m_re[b] = m_re[a] - tr;
-                m_im[b] = m_im[a] - ti;
-                m_re[a] += tr;
-                m_im[a] += ti;
+                const float tr = real[b] * cr - imaginary[b] * ci;
+                const float ti = real[b] * ci + imaginary[b] * cr;
+                real[b] = real[a] - tr;
+                imaginary[b] = imaginary[a] - ti;
+                real[a] += tr;
+                imaginary[a] += ti;
                 const float ncr = cr * wr - ci * wi;
                 ci = cr * wi + ci * wr;
                 cr = ncr;
@@ -63,10 +64,10 @@ const std::vector<float>& Analyzer::analyze(std::span<const float> mono) {
     // A full-scale sine gives magnitude n/4 with a Hann window -> 0 dBFS.
     const float norm = 4.0f / n;
     for (int i = 0; i <= n / 2; ++i) {
-        const float mag = std::sqrt(m_re[i] * m_re[i] + m_im[i] * m_im[i]) * norm;
-        m_db[i] = 20.0f * std::log10(std::max(mag, 1e-9f));
+        const float mag = std::sqrt(real[i] * real[i] + imaginary[i] * imaginary[i]) * norm;
+        decibels[i] = 20.0f * std::log10(std::max(mag, 1e-9f));
     }
-    return m_db;
+    return decibels;
 }
 
 namespace {
@@ -86,9 +87,9 @@ public:
     QString name() const override { return QStringLiteral("Спектр"); }
 
     void reset() override {
-        m_bars.fill(0);
-        m_peaks.fill(0);
-        m_peakFrames.fill(0);
+        bars.fill(0);
+        peaks.fill(0);
+        peakFrames.fill(0);
     }
 
     void update(const VisFrame& f) override {
@@ -106,15 +107,15 @@ public:
             }
             const float target = std::clamp((peakDb - kMinDb) / (kMaxDb - kMinDb), 0.0f, 1.0f);
             // Bars jump up and fall smoothly, like Winamp's "fast" falloff.
-            m_bars[b] = std::max(target, m_bars[b] - 0.07f);
-            float peak = m_peaks[b] - 0.0004f * m_peakFrames[b] * m_peakFrames[b];
-            if (peak < m_bars[b]) {
-                peak = m_bars[b];
-                m_peakFrames[b] = 0;
+            bars[b] = std::max(target, bars[b] - 0.07f);
+            float peak = peaks[b] - 0.0004f * peakFrames[b] * peakFrames[b];
+            if (peak < bars[b]) {
+                peak = bars[b];
+                peakFrames[b] = 0;
             } else {
-                ++m_peakFrames[b];
+                ++peakFrames[b];
             }
-            m_peaks[b] = std::max(peak, 0.0f);
+            peaks[b] = std::max(peak, 0.0f);
         }
     }
 
@@ -122,13 +123,13 @@ public:
         const int h = area.height();
         for (int b = 0; b < kBars; ++b) {
             const int x = area.x() + b * 4;
-            const int barH = int(std::ceil(m_bars[b] * h));
+            const int barH = int(std::ceil(bars[b] * h));
             for (int i = 0; i < barH; ++i) {
                 // Colours 2..17: analyzer gradient from top to bottom.
                 const int colorIndex = 2 + (h - 1 - i) * 16 / h;
                 p.fillRect(x, area.y() + h - 1 - i, 3, 1, VisColor(skin, colorIndex));
             }
-            const int peakY = int(std::ceil(m_peaks[b] * h));
+            const int peakY = int(std::ceil(peaks[b] * h));
             if (peakY > 0) {
                 p.fillRect(x, area.y() + h - peakY, 3, 1, VisColor(skin, 23));
             }
@@ -136,9 +137,9 @@ public:
     }
 
 private:
-    std::array<float, kBars> m_bars{};
-    std::array<float, kBars> m_peaks{};
-    std::array<int, kBars> m_peakFrames{};
+    std::array<float, kBars> bars{};
+    std::array<float, kBars> peaks{};
+    std::array<int, kBars> peakFrames{};
 };
 
 // ------------------------------------------------------------------ Oscilloscope
@@ -146,7 +147,7 @@ private:
 class Oscilloscope : public Visualizer {
 public:
     QString name() const override { return QStringLiteral("Осциллограф"); }
-    void reset() override { m_ys.fill(-1); }
+    void reset() override { ys.fill(-1); }
 
     void update(const VisFrame& f) override {
         const int n = int(f.left.size());
@@ -156,17 +157,17 @@ public:
         for (int x = 0; x < kWidth; ++x) {
             const int i = start + x * window / kWidth;
             const float v = 0.5f * (f.left[i] + f.right[i]);
-            m_ys[x] = std::clamp(int(std::lround(7.5f - v * 8.0f)), 0, 15);
+            ys[x] = std::clamp(int(std::lround(7.5f - v * 8.0f)), 0, 15);
         }
     }
 
     void render(QPainter& p, const QRect& area, const Skins::Skin& skin) const override {
-        if (m_ys[0] < 0) {
+        if (ys[0] < 0) {
             return;
         }
-        int last = m_ys[0];
+        int last = ys[0];
         for (int x = 0; x < kWidth && x < area.width(); ++x) {
-            const int y = m_ys[x];
+            const int y = ys[x];
             const int top = std::min(last, y), bottom = std::max(last, y);
             for (int yy = top; yy <= bottom; ++yy) {
                 // Colours 18..22: from the centre line outwards.
@@ -181,7 +182,7 @@ public:
 
 private:
     static constexpr int kWidth = 75;
-    std::array<int, kWidth> m_ys = [] {
+    std::array<int, kWidth> ys = [] {
         std::array<int, kWidth> a{};
         a.fill(-1);
         return a;

@@ -54,18 +54,18 @@ public:
     // Shows the windows and connects to Yandex Music (or asks to log in).
     void start();
 
-    Ui::MainWindow* mainWindow() const { return m_main.get(); }
-    Ui::EqualizerWindow* equalizerWindow() const { return m_eq.get(); }
-    Ui::PlaylistWindow* playlistWindow() const { return m_pl.get(); }
-    Ui::NowPlayingWindow* nowPlayingWindow() const { return m_np.get(); }
+    Ui::MainWindow* mainWindow() const { return mainWindowInstance.get(); }
+    Ui::EqualizerWindow* equalizerWindow() const { return equalizerWindowInstance.get(); }
+    Ui::PlaylistWindow* playlistWindow() const { return playlistWindowInstance.get(); }
+    Ui::NowPlayingWindow* nowPlayingWindow() const { return nowPlayingWindowInstance.get(); }
     Ui::MilkdropWindow* milkdropWindow() const {
-        return m_md.get();
+        return milkdropWindowInstance.get();
     }  // null if built without Milkdrop
-    Core::CoverCache* covers() const { return m_covers.get(); }
-    Core::Player* player() { return &m_player; }
-    Audio::AudioEngine* engine() { return &m_engine; }
-    Yandex::ApiClient* api() { return &m_api; }
-    Yandex::Library* library() { return &m_library; }
+    Core::CoverCache* covers() const { return coverCache.get(); }
+    Core::Player* player() { return &corePlayer; }
+    Audio::AudioEngine* engine() { return &audioEngine; }
+    Yandex::ApiClient* api() { return &apiClient; }
+    Yandex::Library* library() { return &yandexLibrary; }
 
     bool loadSkin(const QString& path);
     // `persist` = remember it (false for the --scale command-line override).
@@ -97,29 +97,29 @@ private:
     void transportKey(int key);  // Winamp's Z X C V B and the arrows
     QList<Ui::SkinnedWindow*> windows() const;
 
-    Options m_options;
-    std::unique_ptr<QTemporaryDir> m_tmpDir;
-    QSettings m_settings;
-    Skins::Skin m_baseSkin;
-    std::unique_ptr<Skins::Skin> m_skin;
-    bool m_transientScale = false;
-    bool m_quitting = false;  // --scale: don't save positions made at this scale
+    Options startOptions;
+    std::unique_ptr<QTemporaryDir> tmpDir;
+    QSettings settings;
+    Skins::Skin baseSkin;
+    std::unique_ptr<Skins::Skin> currentSkin;
+    bool transientScale = false;
+    bool quitting = false;  // --scale: don't save positions made at this scale
 
-    QNetworkAccessManager m_nam;
-    Yandex::ApiClient m_api;
-    Yandex::Library m_library;
-    Audio::AudioEngine m_engine;
-    Core::Player m_player;
-    std::unique_ptr<Core::CoverCache> m_covers;
-    std::unique_ptr<Integrations::MediaControls> m_mediaControls;
-    std::unique_ptr<QObject> m_osMedia;  // Mpris or Smtc
+    QNetworkAccessManager networkManager;
+    Yandex::ApiClient apiClient;
+    Yandex::Library yandexLibrary;
+    Audio::AudioEngine audioEngine;
+    Core::Player corePlayer;
+    std::unique_ptr<Core::CoverCache> coverCache;
+    std::unique_ptr<Integrations::MediaControls> mediaControls;
+    std::unique_ptr<QObject> systemMediaControls;  // Mpris or Smtc
 
     // Declared last: destroyed first.
-    std::unique_ptr<Ui::MainWindow> m_main;
-    std::unique_ptr<Ui::EqualizerWindow> m_eq;
-    std::unique_ptr<Ui::PlaylistWindow> m_pl;
-    std::unique_ptr<Ui::NowPlayingWindow> m_np;
-    std::unique_ptr<Ui::MilkdropWindow> m_md;
+    std::unique_ptr<Ui::MainWindow> mainWindowInstance;
+    std::unique_ptr<Ui::EqualizerWindow> equalizerWindowInstance;
+    std::unique_ptr<Ui::PlaylistWindow> playlistWindowInstance;
+    std::unique_ptr<Ui::NowPlayingWindow> nowPlayingWindowInstance;
+    std::unique_ptr<Ui::MilkdropWindow> milkdropWindowInstance;
 };
 
 }  // namespace App

@@ -33,8 +33,8 @@ QList<QRect> ScreenRects() {
 
 SkinnedWindow::SkinnedWindow(const Skins::Skin* skin, QSize skinSize, QWidget* parent)
     : QWidget(parent, Qt::Window | Qt::FramelessWindowHint)
-    , m_skin(skin)
-    , m_skinSize(skinSize) {
+    , currentSkin(skin)
+    , skinPixelSize(skinSize) {
     setAttribute(Qt::WA_OpaquePaintEvent);
     setAttribute(Qt::WA_NoSystemBackground);
     applySize();
@@ -78,24 +78,25 @@ void SkinnedWindow::setSecondary() {
 }
 
 void SkinnedWindow::setSkin(const Skins::Skin* skin) {
-    m_skin = skin;
+    currentSkin = skin;
     applyMask();
     skinChanged();
     update();
 }
 
 void SkinnedWindow::applySize() {
-    setFixedSize(QSize(qRound(m_skinSize.width() * m_scale), qRound(m_skinSize.height() * m_scale))
-    );
-    m_buffer = QImage();
+    setFixedSize(QSize(
+        qRound(skinPixelSize.width() * scaleFactor), qRound(skinPixelSize.height() * scaleFactor)
+    ));
+    buffer = QImage();
 }
 
 void SkinnedWindow::setScale(double scale) {
     scale = std::round(std::clamp(scale, 1.0, 4.0) * 20.0) / 20.0;
-    if (std::abs(scale - m_scale) < 1e-6) {
+    if (std::abs(scale - scaleFactor) < 1e-6) {
         return;
     }
-    m_scale = scale;
+    scaleFactor = scale;
     applySize();
     applyMask();
     ensureVisible();
@@ -103,10 +104,10 @@ void SkinnedWindow::setScale(double scale) {
 }
 
 void SkinnedWindow::setSkinSize(QSize size) {
-    if (size == m_skinSize) {
+    if (size == skinPixelSize) {
         return;
     }
-    m_skinSize = size;
+    skinPixelSize = size;
     applySize();
     applyMask();
     update();
@@ -125,7 +126,7 @@ void SkinnedWindow::ensureVisible() {
 }
 
 void SkinnedWindow::applyShade(bool shaded, QSize newSkinSize) {
-    m_shaded = shaded;
+    shadeEnabled = shaded;
     resizeKeepingStack(newSkinSize);
     applyMask();  // the region section changes with the mode even if the size doesn't
     Q_EMIT shadeChanged(shaded);  // last: listeners save positions, which are final now
@@ -203,20 +204,20 @@ QList<SkinnedWindow*> SkinnedWindow::dockedWindows() const {
 
 QPoint SkinnedWindow::toSkin(QPointF widgetPos) const {
     return QPoint(
-        int(std::floor(widgetPos.x() / m_scale)), int(std::floor(widgetPos.y() / m_scale))
+        int(std::floor(widgetPos.x() / scaleFactor)), int(std::floor(widgetPos.y() / scaleFactor))
     );
 }
 
 int SkinnedWindow::wheelSteps(QWheelEvent* e) {
-    m_wheelAccum += e->angleDelta().y();
-    const int steps = m_wheelAccum / 120;
-    m_wheelAccum -= steps * 120;
+    wheelAccum += e->angleDelta().y();
+    const int steps = wheelAccum / 120;
+    wheelAccum -= steps * 120;
     return steps;
 }
 
 void SkinnedWindow::updateSkinRect(const QRect& r) {
     const QRectF scaled(
-        r.x() * m_scale, r.y() * m_scale, r.width() * m_scale, r.height() * m_scale
+        r.x() * scaleFactor, r.y() * scaleFactor, r.width() * scaleFactor, r.height() * scaleFactor
     );
     update(scaled.toAlignedRect().adjusted(-1, -1, 1, 1));
 }
@@ -224,13 +225,13 @@ void SkinnedWindow::updateSkinRect(const QRect& r) {
 void SkinnedWindow::applyMask() {
     const QString section = regionSection();
     const auto it =
-        section.isEmpty() ? m_skin->region().cend() : m_skin->region().constFind(section);
-    if (it == m_skin->region().cend()) {
+        section.isEmpty() ? currentSkin->region().cend() : currentSkin->region().constFind(section);
+    if (it == currentSkin->region().cend()) {
         clearMask();
         return;
     }
     // Scale the polygons themselves (not the region) so fractional scales stay accurate.
-    const QTransform t = QTransform::fromScale(m_scale, m_scale);
+    const QTransform t = QTransform::fromScale(scaleFactor, scaleFactor);
     QList<QPolygon> scaled;
     for (const QPolygon& poly : *it) {
         scaled << t.map(QPolygonF(poly)).toPolygon();
@@ -240,29 +241,29 @@ void SkinnedWindow::applyMask() {
 
 void SkinnedWindow::paintEvent(QPaintEvent*) {
     QPainter p(this);
-    if (IsIntegerScale(m_scale)) {
+    if (IsIntegerScale(scaleFactor)) {
         // Integer scale + no smoothing = crisp pixels.
         p.setRenderHint(QPainter::SmoothPixmapTransform, false);
-        p.scale(m_scale, m_scale);
+        p.scale(scaleFactor, scaleFactor);
         paintSkin(p);
         return;
     }
     // Fractional scale: nearest-neighbour at 1.5x would make some skin pixels 1px
     // and others 2px wide. Instead draw crisply at the next integer scale that
     // covers the physical pixels, then scale that down smoothly ("sharp bilinear").
-    const int n = int(std::ceil(m_scale * devicePixelRatioF() - 1e-6));
-    const QSize bufSize = m_skinSize * n;
-    if (m_buffer.size() != bufSize) {
-        m_buffer = QImage(bufSize, QImage::Format_ARGB32_Premultiplied);
+    const int n = int(std::ceil(scaleFactor * devicePixelRatioF() - 1e-6));
+    const QSize bufSize = skinPixelSize * n;
+    if (buffer.size() != bufSize) {
+        buffer = QImage(bufSize, QImage::Format_ARGB32_Premultiplied);
     }
     {
-        QPainter bp(&m_buffer);
+        QPainter bp(&buffer);
         bp.setRenderHint(QPainter::SmoothPixmapTransform, false);
         bp.scale(n, n);
         paintSkin(bp);
     }
     p.setRenderHint(QPainter::SmoothPixmapTransform, true);
-    p.drawImage(rect(), m_buffer);
+    p.drawImage(rect(), buffer);
 }
 
 void SkinnedWindow::mousePressEvent(QMouseEvent* e) {
@@ -281,35 +282,35 @@ void SkinnedWindow::mousePressEvent(QMouseEvent* e) {
         }
         return;
     }
-    m_dragging = true;
-    m_pressGlobal = e->globalPosition().toPoint();
-    m_group.clear();
-    m_group.append({this, pos()});
-    if (m_dragsDocked) {
+    dragging = true;
+    pressGlobal = e->globalPosition().toPoint();
+    dragGroup.clear();
+    dragGroup.append({this, pos()});
+    if (dragsDocked) {
         for (SkinnedWindow* w : dockedWindows()) {
-            m_group.append({w, w->pos()});
+            dragGroup.append({w, w->pos()});
         }
     }
-    m_groupStartBounds = QRect();
-    for (const auto& [w, start] : m_group) {
-        m_groupStartBounds |= QRect(start, w->size());
+    groupStartBounds = QRect();
+    for (const auto& [w, start] : dragGroup) {
+        groupStartBounds |= QRect(start, w->size());
     }
 }
 
 void SkinnedWindow::mouseMoveEvent(QMouseEvent* e) {
-    if (!m_dragging) {
+    if (!dragging) {
         skinMouseMove(toSkin(e->position()));
         return;
     }
     // The whole group moves as one rectangle: it snaps to windows outside the
     // group and to screen edges, and is clamped to the screen as a unit.
-    const QPoint delta = e->globalPosition().toPoint() - m_pressGlobal;
+    const QPoint delta = e->globalPosition().toPoint() - pressGlobal;
     QList<QRect> others;
     for (SkinnedWindow* w : WindowRegistry()) {
         if (!w->isVisible()) {
             continue;
         }
-        const bool inGroup = std::any_of(m_group.cbegin(), m_group.cend(), [w](const auto& g) {
+        const bool inGroup = std::any_of(dragGroup.cbegin(), dragGroup.cend(), [w](const auto& g) {
             return g.first == w;
         });
         if (!inGroup) {
@@ -317,9 +318,9 @@ void SkinnedWindow::mouseMoveEvent(QMouseEvent* e) {
         }
     }
     const QPoint target =
-        Ui::ResolveDragPosition(m_groupStartBounds.translated(delta), others, ScreenRects());
-    const QPoint applied = target - m_groupStartBounds.topLeft();
-    for (const auto& [w, start] : m_group) {
+        Ui::ResolveDragPosition(groupStartBounds.translated(delta), others, ScreenRects());
+    const QPoint applied = target - groupStartBounds.topLeft();
+    for (const auto& [w, start] : dragGroup) {
         if (w && w->pos() != start + applied) {
             w->move(start + applied);
         }
@@ -327,9 +328,9 @@ void SkinnedWindow::mouseMoveEvent(QMouseEvent* e) {
 }
 
 void SkinnedWindow::mouseReleaseEvent(QMouseEvent* e) {
-    if (m_dragging && e->button() == Qt::LeftButton) {
-        m_dragging = false;
-        m_group.clear();
+    if (dragging && e->button() == Qt::LeftButton) {
+        dragging = false;
+        dragGroup.clear();
         Q_EMIT moveFinished();
         return;
     }

@@ -25,7 +25,7 @@ public:
     ~DeviceLogin() override;
 
     // For tests: point at a mock server instead of https://oauth.yandex.ru
-    void setBaseUrl(const QString& base) { m_base = base; }
+    void setBaseUrl(const QString& base) { baseUrl = base; }
 
     void start();
     void cancel();
@@ -41,12 +41,12 @@ Q_SIGNALS:
 private:
     void poll();
 
-    QNetworkAccessManager* m_nam;
-    QString m_base;
-    QString m_deviceCode;
-    QTimer m_pollTimer;
-    QPointer<QNetworkReply> m_reply;
-    qint64 m_deadlineMs = 0;
+    QNetworkAccessManager* networkManager;
+    QString baseUrl;
+    QString deviceCode;
+    QTimer pollTimer;
+    QPointer<QNetworkReply> pendingReply;
+    qint64 deadlineMs = 0;
 };
 
 }  // namespace Yandex

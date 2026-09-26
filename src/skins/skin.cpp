@@ -260,17 +260,17 @@ bool Skin::loadFromWsz(const QByteArray& zip, const Skin* fallback, QString* err
             }
             QImage img = DecodeImage(*it);
             if (!img.isNull()) {
-                m_sheets.insert(s, img);
+                sheets.insert(s, img);
                 return true;
             }
         }
         if (fallback && !fallback->sheet(s).isNull()) {
-            m_sheets.insert(s, fallback->sheet(s));
+            sheets.insert(s, fallback->sheet(s));
         }
         return false;
     };
 
-    m_sheets.clear();
+    sheets.clear();
     load(Sheet::Main, {"main.bmp"});
     load(Sheet::CButtons, {"cbuttons.bmp"});
     load(Sheet::TitleBar, {"titlebar.bmp"});
@@ -286,26 +286,26 @@ bool Skin::loadFromWsz(const QByteArray& zip, const Skin* fallback, QString* err
     measureGenLetters();
     const bool hasVolume = load(Sheet::Volume, {"volume.bmp"});
     if (!load(Sheet::Balance, {"balance.bmp"}) && hasVolume) {
-        m_sheets.insert(Sheet::Balance, m_sheets.value(Sheet::Volume));
+        sheets.insert(Sheet::Balance, sheets.value(Sheet::Volume));
     }
 
     if (files.contains(QStringLiteral("nums_ex.bmp")) && load(Sheet::Numbers, {"nums_ex.bmp"})) {
-        m_numbersEx = true;
+        numbersEx = true;
     } else if (load(Sheet::Numbers, {"numbers.bmp"})) {
-        m_numbersEx = false;
+        numbersEx = false;
     } else {
-        m_numbersEx = fallback ? fallback->m_numbersEx : false;
+        numbersEx = fallback ? fallback->numbersEx : false;
     }
 
-    m_region = ParseRegionTxt(files.value(QStringLiteral("region.txt")));
+    regionData = ParseRegionTxt(files.value(QStringLiteral("region.txt")));
     if (files.contains(QStringLiteral("pledit.txt"))) {
-        m_plStyle = ParsePlaylistStyle(files.value(QStringLiteral("pledit.txt")));
+        plStyle = ParsePlaylistStyle(files.value(QStringLiteral("pledit.txt")));
     } else if (fallback) {
-        m_plStyle = fallback->m_plStyle;
+        plStyle = fallback->plStyle;
     }
-    m_visColors = ParseVisColors(files.value(QStringLiteral("viscolor.txt")));
-    if (m_visColors.size() < 24 && fallback) {
-        m_visColors = fallback->m_visColors;
+    visualizationColors = ParseVisColors(files.value(QStringLiteral("viscolor.txt")));
+    if (visualizationColors.size() < 24 && fallback) {
+        visualizationColors = fallback->visualizationColors;
     }
 
     if (!isValid()) {
@@ -338,8 +338,8 @@ void Skin::measureGenLetters() {
         return out;
     };
     const QImage& gen = sheet(Sheet::Gen);
-    m_genLettersSelected = measure(gen, Skins::GenWindowSprites::kLettersYSelected);
-    m_genLetters = measure(gen, Skins::GenWindowSprites::kLettersY);
+    genLettersSelected = measure(gen, Skins::GenWindowSprites::kLettersYSelected);
+    genLetters = measure(gen, Skins::GenWindowSprites::kLettersY);
 }
 
 int Skin::genTextWidth(const QString& text) const {
@@ -348,15 +348,15 @@ int Skin::genTextWidth(const QString& text) const {
         const int i = c.toUpper().unicode() - u'A';
         if (c == u' ') {
             w += 5;
-        } else if (i >= 0 && i < m_genLetters.size()) {
-            w += m_genLetters[i].second;
+        } else if (i >= 0 && i < genLetters.size()) {
+            w += genLetters[i].second;
         }
     }
     return w;
 }
 
 int Skin::drawGenText(QPainter& p, const QPoint& at, const QString& text, bool selected) const {
-    const auto& letters = selected ? m_genLettersSelected : m_genLetters;
+    const auto& letters = selected ? genLettersSelected : genLetters;
     const int y =
         selected ? Skins::GenWindowSprites::kLettersYSelected : Skins::GenWindowSprites::kLettersY;
     int x = at.x();
@@ -434,8 +434,8 @@ Skin Skin::BuiltinBase() {
 
 const QImage& Skin::sheet(Sheet s) const {
     static const QImage empty;
-    const auto it = m_sheets.constFind(s);
-    return it == m_sheets.cend() ? empty : *it;
+    const auto it = sheets.constFind(s);
+    return it == sheets.cend() ? empty : *it;
 }
 
 void Skin::draw(QPainter& p, Sheet s, const QRect& src, const QPoint& dst) const {

@@ -52,10 +52,10 @@ public:
     // Built-in default skin from Qt resources.
     static Skin BuiltinBase();
 
-    bool isValid() const { return !m_sheets.value(Sheet::Main).isNull(); }
+    bool isValid() const { return !sheets.value(Sheet::Main).isNull(); }
 
     const QImage& sheet(Sheet s) const;
-    bool numbersAreExtended() const { return m_numbersEx; }
+    bool numbersAreExtended() const { return numbersEx; }
 
     // Draws `src` from sheet `s` at `dst` (in skin pixels; painter handles scaling).
     void draw(QPainter& p, Sheet s, const QRect& src, const QPoint& dst) const;
@@ -69,22 +69,22 @@ public:
     int drawText(QPainter& p, const QPoint& at, const QString& text, int maxWidth = -1) const;
     static int TextWidth(const QString& text);
 
-    const TRegionData& region() const { return m_region; }
-    const QList<QColor>& visColors() const { return m_visColors; }  // 24 entries
-    const PlaylistStyle& playlistStyle() const { return m_plStyle; }
+    const TRegionData& region() const { return regionData; }
+    const QList<QColor>& visColors() const { return visualizationColors; }  // 24 entries
+    const PlaylistStyle& playlistStyle() const { return plStyle; }
 
     static PlaylistStyle ParsePlaylistStyle(const QByteArray& text);
 
 private:
-    QHash<Sheet, QImage> m_sheets;
-    TRegionData m_region;
-    QList<QColor> m_visColors;
-    PlaylistStyle m_plStyle;
+    QHash<Sheet, QImage> sheets;
+    TRegionData regionData;
+    QList<QColor> visualizationColors;
+    PlaylistStyle plStyle;
     // x offset and width of each gen.bmp letter A-Z (same for both rows in practice).
-    QList<std::pair<int, int>> m_genLetters;
-    QList<std::pair<int, int>> m_genLettersSelected;
+    QList<std::pair<int, int>> genLetters;
+    QList<std::pair<int, int>> genLettersSelected;
     void measureGenLetters();
-    bool m_numbersEx = false;
+    bool numbersEx = false;
 };
 
 size_t qHash(Skin::Sheet s, size_t seed = 0) noexcept;

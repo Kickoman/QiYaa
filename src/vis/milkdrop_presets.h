@@ -20,9 +20,9 @@ public:
     // Missing folders are fine.
     void load(const QString& builtInDir, const QString& userDir);
 
-    int size() const { return int(m_presets.size()); }
-    bool isEmpty() const { return m_presets.isEmpty(); }
-    const Preset& at(int index) const { return m_presets.at(index); }
+    int size() const { return int(presetList.size()); }
+    bool isEmpty() const { return presetList.isEmpty(); }
+    const Preset& at(int index) const { return presetList.at(index); }
     int indexOf(const QString& name) const;
     // The preset text, NUL-terminated (projectM wants a C string). Empty if unreadable.
     QByteArray data(int index) const;
@@ -32,7 +32,7 @@ public:
     int random(int current) const;  // a different one when there are several
 
 private:
-    QList<Preset> m_presets;
+    QList<Preset> presetList;
 };
 
 }  // namespace Vis

@@ -28,7 +28,7 @@ private:
 
     struct Impl;
     std::unique_ptr<Impl> d;
-    MediaControls* m_controls;
+    MediaControls* mediaControls;
 };
 
 }  // namespace Integrations

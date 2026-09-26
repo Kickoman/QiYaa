@@ -12,14 +12,14 @@ class EqualizerWindow : public SkinnedWindow {
 public:
     explicit EqualizerWindow(const Skins::Skin* skin, QWidget* parent = nullptr);
 
-    const Audio::EqSettings& settings() const { return m_settings; }
+    const Audio::EqSettings& settings() const { return equalizerSettings; }
     void setSettings(const Audio::EqSettings& s);
-    bool autoOn() const { return m_auto; }
+    bool autoOn() const { return autoEnabled; }
     void setShaded(bool shaded) override;
     // Volume/balance shown in shade mode (they belong to the main window).
     void setMixer(int volume, int balance);
     void setAutoOn(bool on) {
-        m_auto = on;
+        autoEnabled = on;
         update();
     }
 
@@ -60,12 +60,12 @@ private:
     void saveEqf();
     void paintShaded(QPainter& p);
 
-    Audio::EqSettings m_settings;
-    bool m_auto = false;
-    int m_pressed = 0;  // kElNone
-    bool m_pressedInside = false;
-    int m_volume = 75;
-    int m_balance = 0;
+    Audio::EqSettings equalizerSettings;
+    bool autoEnabled = false;
+    int pressedElement = 0;  // kElNone
+    bool pressedInside = false;
+    int volumePercent = 75;
+    int balancePercent = 0;
 };
 
 }  // namespace Ui

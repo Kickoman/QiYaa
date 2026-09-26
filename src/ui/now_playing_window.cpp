@@ -24,13 +24,13 @@ NowPlayingWindow::NowPlayingWindow(
     QWidget* parent
 )
     : GenWindow(skin, QStringLiteral("NOW PLAYING"), parent)
-    , m_player(player)
-    , m_covers(covers) {
+    , corePlayer(player)
+    , coverCache(covers) {
     setWindowTitle(QStringLiteral("QiYaa: сейчас играет"));
-    connect(m_player, &Core::Player::currentTrackChanged, this, [this] { update(); });
-    connect(m_player->library(), &Yandex::Library::likesChanged, this, [this] { update(); });
-    connect(m_covers, &Core::CoverCache::ready, this, [this](const QUrl& url) {
-        if (const auto* t = m_player->currentTrack(); t && t->coverUrl(kCoverPx) == url) {
+    connect(corePlayer, &Core::Player::currentTrackChanged, this, [this] { update(); });
+    connect(corePlayer->library(), &Yandex::Library::likesChanged, this, [this] { update(); });
+    connect(coverCache, &Core::CoverCache::ready, this, [this](const QUrl& url) {
+        if (const auto* t = corePlayer->currentTrack(); t && t->coverUrl(kCoverPx) == url) {
             update();
         }
     });
@@ -45,10 +45,10 @@ QRect NowPlayingWindow::coverRect() const {
 void NowPlayingWindow::paintContent(QPainter& p, const QRect& area) {
     const Skins::Skin::PlaylistStyle& st = skin().playlistStyle();
     p.fillRect(area, st.normalBg);
-    const Yandex::Track* t = m_player->currentTrack();
+    const Yandex::Track* t = corePlayer->currentTrack();
 
     const QRect cover = coverRect();
-    const QImage img = t ? m_covers->get(t->coverUrl(kCoverPx)) : QImage();
+    const QImage img = t ? coverCache->get(t->coverUrl(kCoverPx)) : QImage();
     if (!img.isNull()) {
         p.save();
         p.setRenderHint(QPainter::SmoothPixmapTransform, true);  // a photo, not pixel art
@@ -102,13 +102,13 @@ void NowPlayingWindow::paintContent(QPainter& p, const QRect& area) {
         font, st.normal,
         QStringLiteral("%1:%2").arg(secs / 60).arg(secs % 60, 2, 10, QLatin1Char('0'))
     );
-    if (m_player->library()->isLiked(t->id)) {
+    if (corePlayer->library()->isLiked(t->id)) {
         line(font, st.current, QStringLiteral("♥ В «Мне нравится»"));
     }
 }
 
 bool NowPlayingWindow::contentMousePress(QPoint pos, Qt::MouseButton button) {
-    const Yandex::Track* t = m_player->currentTrack();
+    const Yandex::Track* t = corePlayer->currentTrack();
     if (button != Qt::LeftButton || !t || !coverRect().contains(pos)) {
         return false;
     }

@@ -63,20 +63,20 @@ public:
     void finishData(TStreamId stream);
     void failData(TStreamId stream);
     // The same for the current stream.
-    void appendData(const QByteArray& bytes) { appendData(m_current, bytes); }
-    void finishData() { finishData(m_current); }
-    void failData() { failData(m_current); }
-    TStreamId currentStream() const { return m_current; }
+    void appendData(const QByteArray& bytes) { appendData(current, bytes); }
+    void finishData() { finishData(current); }
+    void failData() { failData(current); }
+    TStreamId currentStream() const { return current; }
 
     void pause();
     void resume();
     void stop();
     bool seek(double seconds);  // within the downloaded part
 
-    State state() const { return m_state; }
+    State state() const { return currentState; }
     double positionSeconds() const;
-    int sourceSampleRate() const { return m_sourceRate.load(); }
-    int sourceChannels() const { return m_sourceChannels.load(); }
+    int sourceSampleRate() const { return sourceRate.load(); }
+    int sourceChannels() const { return sourceChannelCount.load(); }
 
     void setVolume(int percent);  // 0..100
     void setEqualizer(const EqSettings& settings);
@@ -105,21 +105,21 @@ private:
     struct Impl;
     void setState(State s);
     void updateGains();
-    void startDecoder();  // on m_current, with a fresh ring
+    void startDecoder();  // on current, with a fresh ring
     void dropStreams();
 
     // Streams that can still be fed, by id (UI thread only).
-    QHash<TStreamId, std::shared_ptr<StreamBuffer>> m_streams;
-    TStreamId m_lastId = 0;
-    TStreamId m_current = 0;
-    TStreamId m_queued = 0;
+    QHash<TStreamId, std::shared_ptr<StreamBuffer>> streams;
+    TStreamId lastId = 0;
+    TStreamId current = 0;
+    TStreamId queued = 0;
 
     std::unique_ptr<Impl> d;
-    State m_state = State::Stopped;
-    int m_volume = 75;
-    int m_balance = 0;
-    std::atomic<int> m_sourceRate{0};
-    std::atomic<int> m_sourceChannels{0};
+    State currentState = State::Stopped;
+    int volumePercent = 75;
+    int balancePercent = 0;
+    std::atomic<int> sourceRate{0};
+    std::atomic<int> sourceChannelCount{0};
 };
 
 }  // namespace Audio

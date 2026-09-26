@@ -26,16 +26,16 @@ public:
 
     void setVolume(int v);
     void setBalance(int b);
-    int volume() const { return m_volume; }
-    int balance() const { return m_balance; }
+    int volume() const { return volumePercent; }
+    int balance() const { return balancePercent; }
 
     // Reflects whether the equalizer / playlist windows are shown.
     void setEqButton(bool on);
     void setPlButton(bool on);
 
-    VisMode visMode() const { return m_visMode; }
+    VisMode visMode() const { return visualizationMode; }
     void setVisMode(VisMode mode);
-    bool showsRemainingTime() const { return m_remaining; }
+    bool showsRemainingTime() const { return remainingTimeShown; }
     void setShowsRemainingTime(bool on);
 
     void setStatusText(const QString& text);  // shown in the marquee for a few seconds
@@ -109,29 +109,29 @@ private:
     Element hitTestShaded(QPoint p) const;
     QString miniTimeText() const;
 
-    Core::Player* m_player;
-    QTimer m_timer;
-    QElapsedTimer m_blink;
-    QElapsedTimer m_lastFullRepaint;
-    Element m_pressed = Element::None;
-    bool m_pressedInside = false;
-    int m_volume = 75;
-    int m_balance = 0;
-    double m_seekPreview = -1;  // 0..1 while dragging the position bar
-    bool m_eqOn = false;
-    bool m_plOn = false;
-    bool m_remaining = false;
+    Core::Player* corePlayer;
+    QTimer timer;
+    QElapsedTimer blink;
+    QElapsedTimer lastFullRepaint;
+    Element pressedElement = Element::None;
+    bool pressedInside = false;
+    int volumePercent = 75;
+    int balancePercent = 0;
+    double seekPreview = -1;  // 0..1 while dragging the position bar
+    bool eqOn = false;
+    bool plOn = false;
+    bool remainingTimeShown = false;
 
-    QString m_status;
-    QElapsedTimer m_statusAge;
-    int m_marqueeOffset = 0;  // in characters
-    QElapsedTimer m_marqueeStep;
+    QString statusText;
+    QElapsedTimer statusAge;
+    int marqueeOffset = 0;  // in characters
+    QElapsedTimer marqueeStep;
 
-    VisMode m_visMode = VisMode::Spectrum;
-    std::unique_ptr<Vis::Visualizer> m_vis;
-    Vis::Analyzer m_analyzer;
-    std::vector<float> m_visL, m_visR, m_visMono;
-    bool m_visActive = false;
+    VisMode visualizationMode = VisMode::Spectrum;
+    std::unique_ptr<Vis::Visualizer> visualizer;
+    Vis::Analyzer analyzer;
+    std::vector<float> visL, visR, visMono;
+    bool visActive = false;
 };
 
 }  // namespace Ui

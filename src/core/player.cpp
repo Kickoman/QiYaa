@@ -20,68 +20,71 @@ constexpr int kLoadMoreWhenLeft = 2;  // endless sources: fetch more when this m
 
 Player::Player(Yandex::Library* library, Audio::AudioEngine* engine, QObject* parent)
     : QObject(parent)
-    , m_library(library)
-    , m_engine(engine) {
-    connect(m_engine, &Audio::AudioEngine::trackFinished, this, [this] {
+    , yandexLibrary(library)
+    , audioEngine(engine) {
+    connect(audioEngine, &Audio::AudioEngine::trackFinished, this, [this] {
         // A broken download also drains to the end; that's not "listened to the end".
-        if (m_openTrack && m_openTrackEvents) {
-            m_openTrackEvents(
-                m_downloadFailed ? TrackEvent::Skipped : TrackEvent::Finished, *m_openTrack,
+        if (openTrack && openTrackEvents) {
+            openTrackEvents(
+                downloadFailed ? TrackEvent::Skipped : TrackEvent::Finished, *openTrack,
                 playedSeconds()
             );
         }
-        m_openTrack.reset();
-        if (m_repeat && m_playlist.size() == 1) {
-            return playIndex(m_index);
+        openTrack.reset();
+        if (repeatEnabled && queuedTracks.size() == 1) {
+            return playIndex(playingIndex);
         }
         next();
     });
-    connect(m_engine, &Audio::AudioEngine::trackAdvanced, this, [this] {
+    connect(audioEngine, &Audio::AudioEngine::trackAdvanced, this, [this] {
         // The engine went on into the preloaded track without a gap.
-        if (m_openTrack && m_openTrackEvents) {
-            m_openTrackEvents(
-                m_downloadFailed ? TrackEvent::Skipped : TrackEvent::Finished, *m_openTrack,
+        if (openTrack && openTrackEvents) {
+            openTrackEvents(
+                downloadFailed ? TrackEvent::Skipped : TrackEvent::Finished, *openTrack,
                 playedSeconds()
             );
         }
-        m_openTrack.reset();
-        if (!m_preload || m_preload->stream != m_engine->currentStream()
-            || m_preload->index >= m_playlist.size()) {
+        openTrack.reset();
+        if (!preload || preload->stream != audioEngine->currentStream()
+            || preload->index >= queuedTracks.size()) {
             // Not ours (can't happen: a cancelled preload never plays). Resync.
             const int i = sequentialNext();
             i >= 0 ? playIndex(i) : stop();
             return;
         }
-        const Preload p = *std::exchange(m_preload, std::nullopt);
-        ++m_generation;
-        m_download = p.reply;
-        m_stream = p.stream;
-        m_index = p.index;
-        m_currentDownloaded = p.downloadDone && !p.failed;
-        m_downloadFailed = p.failed;
-        m_waitingForMore = false;
+        const Preload p = *std::exchange(preload, std::nullopt);
+        ++generation;
+        download = p.reply;
+        streamId = p.stream;
+        playingIndex = p.index;
+        currentDownloaded = p.downloadDone && !p.failed;
+        downloadFailed = p.failed;
+        waitingForMore = false;
         Q_EMIT currentTrackChanged();
         maybeLoadMore();
-        trackStarted(m_playlist[m_index], p.bitrate);
+        trackStarted(queuedTracks[playingIndex], p.bitrate);
     });
-    connect(m_engine, &Audio::AudioEngine::errorOccurred, this, [this](const QString& msg) {
+    connect(audioEngine, &Audio::AudioEngine::errorOccurred, this, [this](const QString& msg) {
         Q_EMIT statusMessage(QStringLiteral("Audio error: ") + msg);
     });
     // The engine reports end of track etc. only when polled. Poll here, not in a
     // window, so playback continues while the windows are minimised.
-    m_pollTimer.setInterval(100);
-    connect(&m_pollTimer, &QTimer::timeout, this, [this] {
-        m_engine->poll();
+    pollTimer.setInterval(100);
+    connect(&pollTimer, &QTimer::timeout, this, [this] {
+        audioEngine->poll();
         playedSeconds();  // accumulate while it plays
         Q_EMIT positionTick();
     });
-    connect(m_engine, &Audio::AudioEngine::stateChanged, this, [this](Audio::AudioEngine::State s) {
-        if (s == Audio::AudioEngine::State::Stopped) {
-            m_pollTimer.stop();
-        } else if (!m_pollTimer.isActive()) {
-            m_pollTimer.start();
+    connect(
+        audioEngine, &Audio::AudioEngine::stateChanged, this,
+        [this](Audio::AudioEngine::State s) {
+            if (s == Audio::AudioEngine::State::Stopped) {
+                pollTimer.stop();
+            } else if (!pollTimer.isActive()) {
+                pollTimer.start();
+            }
         }
-    });
+    );
 }
 
 void Player::setQueue(
@@ -92,23 +95,23 @@ void Player::setQueue(
     TEventFn events
 ) {
     stop();
-    m_events = std::move(events);
-    m_playlist.clear();
+    reportEvent = std::move(events);
+    queuedTracks.clear();
     for (const Yandex::Track& t : tracks) {
         if (t.available) {
-            m_playlist << t;
+            queuedTracks << t;
         }
     }
-    m_title = title;
-    m_more = std::move(more);
-    m_loadingMore = false;
-    m_waitingForMore = false;
-    ++m_queueGeneration;
-    m_index = m_playlist.isEmpty() ? -1 : 0;
+    titleText = title;
+    loadMore = std::move(more);
+    loadingMore = false;
+    waitingForMore = false;
+    ++queueGeneration;
+    playingIndex = queuedTracks.isEmpty() ? -1 : 0;
     Q_EMIT queueReplaced();
     Q_EMIT playlistChanged();
     Q_EMIT currentTrackChanged();
-    if (autoplay && m_index >= 0) {
+    if (autoplay && playingIndex >= 0) {
         playIndex(0);
     }
 }
@@ -117,15 +120,15 @@ void Player::appendTracks(const QList<Yandex::Track>& tracks) {
     bool added = false;
     for (const Yandex::Track& t : tracks) {
         if (t.available) {
-            m_playlist << t;
+            queuedTracks << t;
             added = true;
         }
     }
     if (!added) {
         return;
     }
-    if (m_index < 0) {
-        m_index = 0;
+    if (playingIndex < 0) {
+        playingIndex = 0;
     }
     Q_EMIT playlistChanged();
     refreshPreload();  // e.g. more wave tracks: now there is a next one
@@ -136,23 +139,23 @@ void Player::removeTracks(QList<int> indices) {
     indices.erase(std::unique(indices.begin(), indices.end()), indices.end());
     bool removedCurrent = false;
     for (int i : indices) {
-        if (i < 0 || i >= m_playlist.size()) {
+        if (i < 0 || i >= queuedTracks.size()) {
             continue;
         }
-        m_playlist.removeAt(i);
-        if (i == m_index) {
+        queuedTracks.removeAt(i);
+        if (i == playingIndex) {
             removedCurrent = true;
-        } else if (i < m_index) {
-            --m_index;
+        } else if (i < playingIndex) {
+            --playingIndex;
         }
     }
     if (removedCurrent) {
         stop();
-        m_index = std::min<int>(m_index, int(m_playlist.size()) - 1);
+        playingIndex = std::min<int>(playingIndex, int(queuedTracks.size()) - 1);
         Q_EMIT currentTrackChanged();
     }
-    if (m_playlist.isEmpty()) {
-        m_index = -1;
+    if (queuedTracks.isEmpty()) {
+        playingIndex = -1;
     }
     Q_EMIT playlistChanged();
     refreshPreload();
@@ -164,7 +167,8 @@ void Player::clearQueue() {
 }
 
 const Yandex::Track* Player::currentTrack() const {
-    return (m_index >= 0 && m_index < m_playlist.size()) ? &m_playlist[m_index] : nullptr;
+    return (playingIndex >= 0 && playingIndex < queuedTracks.size()) ? &queuedTracks[playingIndex]
+                                                                     : nullptr;
 }
 
 double Player::durationSeconds() const {
@@ -173,110 +177,112 @@ double Player::durationSeconds() const {
 }
 
 void Player::play() {
-    switch (m_engine->state()) {
-        case Audio::AudioEngine::State::Paused: m_engine->resume(); return;
+    switch (audioEngine->state()) {
+        case Audio::AudioEngine::State::Paused: audioEngine->resume(); return;
         case Audio::AudioEngine::State::Playing:
-            playIndex(m_index);
+            playIndex(playingIndex);
             return;  // Winamp: Play restarts the track
         case Audio::AudioEngine::State::Buffering: return;
-        case Audio::AudioEngine::State::Stopped: playIndex(m_index < 0 ? 0 : m_index); return;
+        case Audio::AudioEngine::State::Stopped:
+            playIndex(playingIndex < 0 ? 0 : playingIndex);
+            return;
     }
 }
 
 void Player::pause() {
-    if (m_engine->state() == Audio::AudioEngine::State::Paused) {
-        m_engine->resume();
+    if (audioEngine->state() == Audio::AudioEngine::State::Paused) {
+        audioEngine->resume();
     } else {
-        m_engine->pause();
+        audioEngine->pause();
     }
 }
 
 void Player::closeOpenTrack() {
-    if (m_openTrack && m_openTrackEvents) {
-        m_openTrackEvents(TrackEvent::Skipped, *m_openTrack, playedSeconds());
+    if (openTrack && openTrackEvents) {
+        openTrackEvents(TrackEvent::Skipped, *openTrack, playedSeconds());
     }
-    m_openTrack.reset();
+    openTrack.reset();
 }
 
 double Player::playedSeconds() {
-    const double pos = m_engine->positionSeconds();
-    const double step = pos - m_lastPosition;
+    const double pos = audioEngine->positionSeconds();
+    const double step = pos - lastPosition;
     // Normal progress between two polls is ~0.1 s; bigger jumps are seeks.
-    if (m_engine->state() == Audio::AudioEngine::State::Playing && step > 0 && step < 1.0) {
-        m_played += step;
+    if (audioEngine->state() == Audio::AudioEngine::State::Playing && step > 0 && step < 1.0) {
+        played += step;
     }
-    m_lastPosition = pos;
-    return m_played;
+    lastPosition = pos;
+    return played;
 }
 
 void Player::setShuffle(bool on) {
-    if (on == m_shuffle) {
+    if (on == shuffleEnabled) {
         return;
     }
-    m_shuffle = on;
+    shuffleEnabled = on;
     Q_EMIT modesChanged();
     refreshPreload();
 }
 
 void Player::setRepeat(bool on) {
-    if (on == m_repeat) {
+    if (on == repeatEnabled) {
         return;
     }
-    m_repeat = on;
+    repeatEnabled = on;
     Q_EMIT modesChanged();
     refreshPreload();
 }
 
 void Player::stop() {
     closeOpenTrack();
-    m_waitingForMore = false;
-    ++m_generation;
+    waitingForMore = false;
+    ++generation;
     cancelPreload();
     abortDownload();
-    m_engine->stop();
-    m_stream = 0;
+    audioEngine->stop();
+    streamId = 0;
 }
 
 int Player::sequentialNext() const {
-    if (m_playlist.isEmpty()) {
+    if (queuedTracks.isEmpty()) {
         return -1;
     }
-    const int i = m_index + 1;
-    if (i < m_playlist.size()) {
+    const int i = playingIndex + 1;
+    if (i < queuedTracks.size()) {
         return i;
     }
-    if (m_more || !m_repeat) {
+    if (loadMore || !repeatEnabled) {
         return -1;
     }
     return 0;
 }
 
 int Player::pickNext() const {
-    if (!m_shuffle || m_playlist.size() < 2) {
+    if (!shuffleEnabled || queuedTracks.size() < 2) {
         return sequentialNext();
     }
     int i;
     do {
-        i = int(QRandomGenerator::global()->bounded(m_playlist.size()));
-    } while (i == m_index);
+        i = int(QRandomGenerator::global()->bounded(queuedTracks.size()));
+    } while (i == playingIndex);
     return i;
 }
 
 void Player::next() {
-    if (m_playlist.isEmpty()) {
+    if (queuedTracks.isEmpty()) {
         return;
     }
     // Shuffle picked the preloaded one already; in order it's the next anyway.
-    if (m_preload) {
-        return playIndex(m_preload->index);
+    if (preload) {
+        return playIndex(preload->index);
     }
     const int i = pickNext();
     if (i >= 0) {
         return playIndex(i);
     }
-    if (m_more) {  // endless source still loading: wait for it
+    if (loadMore) {  // endless source still loading: wait for it
         stop();
-        m_waitingForMore = true;
+        waitingForMore = true;
         maybeLoadMore();
         Q_EMIT statusMessage(QStringLiteral("Загружаю ещё треки..."));
         return;
@@ -285,10 +291,12 @@ void Player::next() {
 }
 
 void Player::previous() {
-    if (m_playlist.isEmpty()) {
+    if (queuedTracks.isEmpty()) {
         return;
     }
-    playIndex(m_index > 0 ? m_index - 1 : (m_repeat ? int(m_playlist.size()) - 1 : 0));
+    playIndex(
+        playingIndex > 0 ? playingIndex - 1 : (repeatEnabled ? int(queuedTracks.size()) - 1 : 0)
+    );
 }
 
 bool Player::seekFraction(double fraction) {
@@ -299,31 +307,31 @@ bool Player::seekFraction(double fraction) {
 bool Player::seekTo(double seconds) {
     const double dur = durationSeconds();
     const double target = dur > 0 ? std::clamp(seconds, 0.0, dur) : std::max(0.0, seconds);
-    if (!m_engine->seek(target)) {
+    if (!audioEngine->seek(target)) {
         return false;
     }
-    m_lastPosition = target;
+    lastPosition = target;
     Q_EMIT seeked(target);
     return true;
 }
 
 void Player::maybeLoadMore() {
-    if (!m_more || m_loadingMore || m_playlist.size() - m_index > kLoadMoreWhenLeft) {
+    if (!loadMore || loadingMore || queuedTracks.size() - playingIndex > kLoadMoreWhenLeft) {
         return;
     }
-    m_loadingMore = true;
-    const quint64 gen = m_queueGeneration;
+    loadingMore = true;
+    const quint64 gen = queueGeneration;
     QPointer<Player> self(this);
-    m_more([self, gen](const QList<Yandex::Track>& tracks) {
-        if (!self || gen != self->m_queueGeneration) {
+    loadMore([self, gen](const QList<Yandex::Track>& tracks) {
+        if (!self || gen != self->queueGeneration) {
             return;
         }
-        self->m_loadingMore = false;
-        const bool wasWaiting = self->m_waitingForMore;
-        self->m_waitingForMore = false;
+        self->loadingMore = false;
+        const bool wasWaiting = self->waitingForMore;
+        self->waitingForMore = false;
         self->appendTracks(tracks);
-        if (wasWaiting && self->m_index + 1 < self->m_playlist.size()) {
-            self->playIndex(self->m_index + 1);
+        if (wasWaiting && self->playingIndex + 1 < self->queuedTracks.size()) {
+            self->playIndex(self->playingIndex + 1);
         }
     });
 }
@@ -331,69 +339,69 @@ void Player::maybeLoadMore() {
 void Player::shutDown() {
     newSourceRequest();  // loads in flight are stale now
     stop();
-    m_shutDown = true;
+    isShutDown = true;
 }
 
 void Player::playIndex(int index) {
-    if (m_shutDown || index < 0 || index >= m_playlist.size()) {
+    if (isShutDown || index < 0 || index >= queuedTracks.size()) {
         return;
     }
-    m_waitingForMore = false;
+    waitingForMore = false;
     closeOpenTrack();
-    const quint64 gen = ++m_generation;
+    const quint64 gen = ++generation;
     abortDownload();
-    m_index = index;
-    m_bitrate = 0;
-    m_currentDownloaded = false;
-    m_downloadFailed = false;
-    const Yandex::Track track = m_playlist[index];
+    playingIndex = index;
+    bitrateKbps = 0;
+    currentDownloaded = false;
+    downloadFailed = false;
+    const Yandex::Track track = queuedTracks[index];
 
     // Already downloading in the background (e.g. "next" pressed): start it from there.
-    if (m_preload && m_preload->stream && m_preload->trackId == track.id
-        && m_preload->stream == m_engine->queuedStream()) {
-        const Preload p = *std::exchange(m_preload, std::nullopt);
-        m_stream = m_engine->playQueuedNow();
-        m_download = p.reply;
-        m_currentDownloaded = p.downloadDone && !p.failed;
-        m_downloadFailed = p.failed;
+    if (preload && preload->stream && preload->trackId == track.id
+        && preload->stream == audioEngine->queuedStream()) {
+        const Preload p = *std::exchange(preload, std::nullopt);
+        streamId = audioEngine->playQueuedNow();
+        download = p.reply;
+        currentDownloaded = p.downloadDone && !p.failed;
+        downloadFailed = p.failed;
         Q_EMIT currentTrackChanged();
         maybeLoadMore();
         trackStarted(track, p.bitrate);
         return;
     }
     cancelPreload();
-    m_stream = m_engine->beginStream();
+    streamId = audioEngine->beginStream();
     Q_EMIT currentTrackChanged();
     maybeLoadMore();
 
-    m_library->api()->resolveTrackUrl(
+    yandexLibrary->api()->resolveTrackUrl(
         track.id,
         [this, gen, track](const Yandex::ResolvedUrl& url, const QString& err) {
-            if (gen != m_generation) {
+            if (gen != generation) {
                 return;
             }
             if (!err.isEmpty()) {
                 Q_EMIT statusMessage(QStringLiteral("Cannot get link: ") + err);
-                m_engine->stop();
+                audioEngine->stop();
                 return;
             }
-            m_download = startDownload(url.url, m_stream);
+            download = startDownload(url.url, streamId);
             trackStarted(track, url.bitrateKbps);
         }
     );
 }
 
 void Player::trackStarted(const Yandex::Track& track, int bitrate) {
-    m_bitrate = bitrate;
-    m_library->api()->reportPlayStarted(
-        m_library->account(), track, QUuid::createUuid().toString(QUuid::WithoutBraces)
+    bitrateKbps = bitrate;
+    yandexLibrary->api()->reportPlayStarted(
+        yandexLibrary->account(), track, QUuid::createUuid().toString(QUuid::WithoutBraces)
     );
-    m_openTrack = track;
-    m_openTrackEvents = m_events;
-    m_played = 0;
-    m_lastPosition = 0;
-    if (m_events) {
-        m_events(TrackEvent::Started, track, 0);
+    openTrack = track;
+    openTrackEvents = reportEvent;
+    played = 0;
+    lastPosition = 0;
+    if (reportEvent) {
+        reportEvent(TrackEvent::Started, track, 0);
     }
     Q_EMIT currentTrackChanged();
     maybePreload();
@@ -405,19 +413,19 @@ QNetworkReply* Player::startDownload(const QUrl& url, TStreamId stream) {
         QNetworkRequest::RedirectPolicyAttribute, QNetworkRequest::NoLessSafeRedirectPolicy
     );
     req.setTransferTimeout(30000);
-    QNetworkReply* reply = m_library->api()->network()->get(req);
+    QNetworkReply* reply = yandexLibrary->api()->network()->get(req);
     // The engine ignores data for streams it has dropped meanwhile.
     connect(reply, &QNetworkReply::readyRead, this, [this, reply, stream] {
-        m_engine->appendData(stream, reply->readAll());
+        audioEngine->appendData(stream, reply->readAll());
     });
     connect(reply, &QNetworkReply::finished, this, [this, reply, stream] {
         reply->deleteLater();
         const bool failed = reply->error() != QNetworkReply::NoError;
         if (failed) {
-            m_engine->failData(stream);
+            audioEngine->failData(stream);
         } else {
-            m_engine->appendData(stream, reply->readAll());
-            m_engine->finishData(stream);
+            audioEngine->appendData(stream, reply->readAll());
+            audioEngine->finishData(stream);
         }
         downloadFinished(stream, failed, reply->errorString());
     });
@@ -425,23 +433,23 @@ QNetworkReply* Player::startDownload(const QUrl& url, TStreamId stream) {
 }
 
 void Player::downloadFinished(TStreamId stream, bool failed, const QString& error) {
-    if (stream && stream == m_stream) {
+    if (stream && stream == streamId) {
         if (failed) {
             Q_EMIT statusMessage(QStringLiteral("Download failed: ") + error);
-            m_downloadFailed = true;
+            downloadFailed = true;
             return;
         }
-        m_currentDownloaded = true;
+        currentDownloaded = true;
         maybePreload();  // one download at a time: now the next track
-    } else if (m_preload && m_preload->stream == stream) {
-        m_preload->downloadDone = true;
-        m_preload->failed = failed;
+    } else if (preload && preload->stream == stream) {
+        preload->downloadDone = true;
+        preload->failed = failed;
     }
 }
 
 void Player::abortDownload() {
-    if (QNetworkReply* r = m_download) {
-        m_download.clear();
+    if (QNetworkReply* r = download) {
+        download.clear();
         disconnect(r, nullptr, this, nullptr);
         r->abort();
         r->deleteLater();
@@ -449,8 +457,8 @@ void Player::abortDownload() {
 }
 
 void Player::maybePreload() {
-    if (m_preload || m_shutDown || !m_currentDownloaded || !m_openTrack
-        || m_engine->state() == Audio::AudioEngine::State::Stopped) {
+    if (preload || isShutDown || !currentDownloaded || !openTrack
+        || audioEngine->state() == Audio::AudioEngine::State::Stopped) {
         return;
     }
     const int index = pickNext();
@@ -459,59 +467,59 @@ void Player::maybePreload() {
     }
     Preload p;
     p.index = index;
-    p.trackId = m_playlist[index].id;
-    p.gen = ++m_preloadGen;
-    m_preload = p;
+    p.trackId = queuedTracks[index].id;
+    p.gen = ++preloadGen;
+    preload = p;
     QPointer<Player> self(this);
-    m_library->api()->resolveTrackUrl(
+    yandexLibrary->api()->resolveTrackUrl(
         p.trackId,
         [self, gen = p.gen](const Yandex::ResolvedUrl& url, const QString& err) {
-            if (!self || !self->m_preload || self->m_preload->gen != gen) {
+            if (!self || !self->preload || self->preload->gen != gen) {
                 return;
             }
-            const TStreamId stream = err.isEmpty() ? self->m_engine->queueStream() : 0;
+            const TStreamId stream = err.isEmpty() ? self->audioEngine->queueStream() : 0;
             if (!stream) {  // no link (or nothing plays any more): the track starts the usual way
                             // when it's time
-                self->m_preload.reset();
+                self->preload.reset();
                 return;
             }
-            self->m_preload->stream = stream;
-            self->m_preload->bitrate = url.bitrateKbps;
-            self->m_preload->reply = self->startDownload(url.url, stream);
+            self->preload->stream = stream;
+            self->preload->bitrate = url.bitrateKbps;
+            self->preload->reply = self->startDownload(url.url, stream);
         }
     );
 }
 
 void Player::cancelPreload() {
-    if (!m_preload) {
+    if (!preload) {
         return;
     }
-    const Preload p = *std::exchange(m_preload, std::nullopt);
+    const Preload p = *std::exchange(preload, std::nullopt);
     if (QNetworkReply* r = p.reply) {
         disconnect(r, nullptr, this, nullptr);
         r->abort();
         r->deleteLater();
     }
-    if (p.stream && p.stream == m_engine->queuedStream()) {
-        m_engine->clearQueued();
+    if (p.stream && p.stream == audioEngine->queuedStream()) {
+        audioEngine->clearQueued();
     }
 }
 
 void Player::refreshPreload() {
-    if (m_preload) {
+    if (preload) {
         int index = -1;
-        if (m_shuffle) {  // any position is fine, as long as the track is still there
-            for (int i = 0; i < m_playlist.size() && index < 0; ++i) {
-                if (i != m_index && m_playlist[i].id == m_preload->trackId) {
+        if (shuffleEnabled) {  // any position is fine, as long as the track is still there
+            for (int i = 0; i < queuedTracks.size() && index < 0; ++i) {
+                if (i != playingIndex && queuedTracks[i].id == preload->trackId) {
                     index = i;
                 }
             }
         } else if (const int i = sequentialNext();
-                   i >= 0 && m_playlist[i].id == m_preload->trackId) {
+                   i >= 0 && queuedTracks[i].id == preload->trackId) {
             index = i;
         }
         if (index >= 0) {
-            m_preload->index = index;
+            preload->index = index;
             return;
         }
         cancelPreload();

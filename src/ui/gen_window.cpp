@@ -27,14 +27,14 @@ bool RectContains(const QRect& r, QPoint p) {
 
 GenWindow::GenWindow(const Skins::Skin* skin, const QString& title, QWidget* parent)
     : SkinnedWindow(skin, kMinSize, parent)
-    , m_title(title) { }
+    , titleText(title) { }
 
 void GenWindow::setSizeSteps(QSize steps) {
     steps = steps.expandedTo(QSize(0, 0)).boundedTo(QSize(40, 40));
-    if (steps == m_steps) {
+    if (steps == resizeSteps) {
         return;
     }
-    m_steps = steps;
+    resizeSteps = steps;
     setSkinSize(QSize(
         kMinSize.width() + steps.width() * kStepW, kMinSize.height() + steps.height() * kStepH
     ));
@@ -57,7 +57,7 @@ void GenWindow::paintFrame(QPainter& p) {
     for (int x = 0; x < w; x += 25) {
         sk.draw(p, TSheet::Gen, centerFill, {x, 0});
     }
-    const int titleW = sk.genTextWidth(m_title) + 7;  // 4 px left + 3 px right padding
+    const int titleW = sk.genTextWidth(titleText) + 7;  // 4 px left + 3 px right padding
     const int fill = std::max(0, (w - 100 - titleW) / 2);
     const QRect lrFill = active ? Skins::GenWindowSprites::kTopLeftRightFillSelected
                                 : Skins::GenWindowSprites::kTopLeftRightFill;
@@ -79,7 +79,7 @@ void GenWindow::paintFrame(QPainter& p) {
                : Skins::GenWindowSprites::kTopLeftEnd,
         {25 + fill, 0}
     );
-    sk.drawGenText(p, {25 + fill + 25 + 4, 4}, m_title, active);
+    sk.drawGenText(p, {25 + fill + 25 + 4, 4}, titleText, active);
     sk.draw(
         p, TSheet::Gen,
         active ? Skins::GenWindowSprites::kTopRightEndSelected
@@ -91,7 +91,7 @@ void GenWindow::paintFrame(QPainter& p) {
         active ? Skins::GenWindowSprites::kTopRightSelected : Skins::GenWindowSprites::kTopRight,
         {w - 25, 0}
     );
-    if (m_drag == Drag::Close) {
+    if (activeDrag == Drag::Close) {
         sk.draw(p, TSheet::Gen, Skins::GenWindowSprites::kCloseSelected, {w - 11, 3});
     }
 
@@ -139,15 +139,15 @@ bool GenWindow::skinMousePress(QPoint pos, Qt::MouseButton button) {
         return false;
     }
     const int w = skinSize().width(), h = skinSize().height();
-    m_dragStart = pos;
+    dragStart = pos;
     if (RectContains(QRect(w - 11, 3, 9, 9), pos)) {
-        m_drag = Drag::Close;
+        activeDrag = Drag::Close;
         update();
         return true;
     }
     if (RectContains(QRect(w - 20, h - 20, 20, 20), pos)) {
-        m_drag = Drag::Resize;
-        m_dragStartSteps = m_steps;
+        activeDrag = Drag::Resize;
+        dragStartSteps = resizeSteps;
         return true;
     }
     if (RectContains(contentRect(), pos)) {
@@ -157,13 +157,13 @@ bool GenWindow::skinMousePress(QPoint pos, Qt::MouseButton button) {
 }
 
 void GenWindow::skinMouseMove(QPoint pos) {
-    if (m_drag != Drag::Resize) {
+    if (activeDrag != Drag::Resize) {
         return;
     }
-    const QPoint d = pos - m_dragStart;
+    const QPoint d = pos - dragStart;
     setSizeSteps(QSize(
-        m_dragStartSteps.width() + int(std::lround(double(d.x()) / kStepW)),
-        m_dragStartSteps.height() + int(std::lround(double(d.y()) / kStepH))
+        dragStartSteps.width() + int(std::lround(double(d.x()) / kStepW)),
+        dragStartSteps.height() + int(std::lround(double(d.y()) / kStepH))
     ));
 }
 
@@ -171,8 +171,8 @@ void GenWindow::skinMouseRelease(QPoint pos, Qt::MouseButton button) {
     if (button != Qt::LeftButton) {
         return;
     }
-    const Drag drag = m_drag;
-    m_drag = Drag::None;
+    const Drag drag = activeDrag;
+    activeDrag = Drag::None;
     if (drag == Drag::Close && RectContains(QRect(skinSize().width() - 11, 3, 9, 9), pos)) {
         Q_EMIT closeRequested();
     }

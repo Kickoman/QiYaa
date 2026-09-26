@@ -34,8 +34,8 @@ public:
     );
     ~MilkdropWindow() override;
 
-    const Vis::MilkdropPresets& presets() const { return m_presets; }
-    int currentIndex() const { return m_current; }
+    const Vis::MilkdropPresets& presets() const { return presetList; }
+    int currentIndex() const { return selectedIndex; }
     QString currentPreset() const;
     // `byUser`: picked by hand (shown in the main window's marquee) rather
     // than by the automatic switching.
@@ -45,21 +45,21 @@ public:
     void previousPreset();
     void reloadPresets();
 
-    bool shuffle() const { return m_shuffle; }
+    bool shuffle() const { return shuffleEnabled; }
     void setShuffle(bool on);
-    bool locked() const { return m_locked; }
+    bool locked() const { return lockEnabled; }
     void setLocked(bool on);
-    int presetSeconds() const { return m_seconds; }
+    int presetSeconds() const { return switchIntervalSeconds; }
     void setPresetSeconds(int seconds);
     // Slower frames while nothing plays (the picture still moves, the GPU rests).
     void setPlaying(bool playing);
 
-    bool isFullScreenMode() const { return m_fullView != nullptr; }
+    bool isFullScreenMode() const { return fullView != nullptr; }
     void setFullScreenMode(bool on);
 
     // Created when the window is first shown (no OpenGL work before that);
     // stays null when OpenGL isn't usable.
-    Vis::MilkdropView* view() const { return m_view; }
+    Vis::MilkdropView* view() const { return milkdropView; }
     QString failure() const;  // why Milkdrop can't show anything
 
     // What the view reports (public for tests).
@@ -72,7 +72,7 @@ public:
     QStringList blackPresets() const;
     void setBlackPresets(const QStringList& names);
     bool isBlack(int index) const;
-    QString userPresetDir() const { return m_userDir; }
+    QString userPresetDir() const { return userDirectory; }
 
 Q_SIGNALS:
     void presetChanged(const QString& name, bool byUser);
@@ -99,24 +99,24 @@ private:
     // the ones known to show black here.
     int followingPreset() const;
 
-    Audio::AudioEngine* m_engine;
-    QString m_builtInDir;
-    QString m_userDir;
-    Vis::MilkdropPresets m_presets;
-    Vis::MilkdropView* m_view = nullptr;  // owned by m_container; null without OpenGL
-    QString m_glProblem;
-    bool m_viewTried = false;
-    QWidget* m_container = nullptr;
-    std::unique_ptr<Vis::MilkdropView> m_fullView;
-    int m_current = -1;
-    QList<int> m_history;  // for "previous" in shuffle mode
-    int m_failuresInARow = 0;
-    bool m_shuffle = true;
-    bool m_locked = false;
-    int m_seconds = 30;
-    bool m_playing = false;
-    QSet<QString> m_black;
-    int m_blackInARow = 0;  // many in a row: the problem isn't the presets
+    Audio::AudioEngine* audioEngine;
+    QString builtInDirectory;
+    QString userDirectory;
+    Vis::MilkdropPresets presetList;
+    Vis::MilkdropView* milkdropView = nullptr;  // owned by container; null without OpenGL
+    QString glProblem;
+    bool viewTried = false;
+    QWidget* container = nullptr;
+    std::unique_ptr<Vis::MilkdropView> fullView;
+    int selectedIndex = -1;
+    QList<int> history;  // for "previous" in shuffle mode
+    int failuresInARow = 0;
+    bool shuffleEnabled = true;
+    bool lockEnabled = false;
+    int switchIntervalSeconds = 30;
+    bool musicPlaying = false;
+    QSet<QString> blackPresetNames;
+    int blackInARow = 0;  // many in a row: the problem isn't the presets
 };
 
 }  // namespace Ui

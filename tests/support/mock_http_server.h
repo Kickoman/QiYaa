@@ -40,9 +40,9 @@ public:
     using THandler = std::function<MockResponse(const MockRequest&)>;
 
     MockHttpServer() {
-        m_server.listen(QHostAddress::LocalHost);
-        QObject::connect(&m_server, &QTcpServer::newConnection, this, [this] {
-            while (QTcpSocket* s = m_server.nextPendingConnection()) {
+        server.listen(QHostAddress::LocalHost);
+        QObject::connect(&server, &QTcpServer::newConnection, this, [this] {
+            while (QTcpSocket* s = server.nextPendingConnection()) {
                 auto buffer = std::make_shared<QByteArray>();
                 QObject::connect(s, &QTcpSocket::readyRead, s, [this, s, buffer] {
                     *buffer += s->readAll();
@@ -54,16 +54,16 @@ public:
     }
 
     QString baseUrl() const {
-        return QStringLiteral("http://127.0.0.1:%1").arg(m_server.serverPort());
+        return QStringLiteral("http://127.0.0.1:%1").arg(server.serverPort());
     }
 
     // Exact "METHOD /path" match.
     void on(const QByteArray& method, const QString& path, THandler h) {
-        m_routes[method + ' ' + path.toUtf8()] = std::move(h);
+        routes[method + ' ' + path.toUtf8()] = std::move(h);
     }
     // Any path starting with `prefix` (when no exact route matches).
     void onPrefix(const QByteArray& method, const QString& prefix, THandler h) {
-        m_prefixRoutes.append({method, prefix, std::move(h)});
+        prefixRoutes.append({method, prefix, std::move(h)});
     }
     void
     json(const QByteArray& method, const QString& path, const QByteArray& body, int status = 200) {
@@ -74,9 +74,9 @@ public:
         json(method, path, "{\"invocationInfo\":{},\"result\":" + resultJson + "}");
     }
 
-    const QList<MockRequest>& requests() const { return m_requests; }
+    const QList<MockRequest>& requests() const { return recordedRequests; }
     const MockRequest* last(const QString& path) const {
-        for (auto it = m_requests.crbegin(); it != m_requests.crend(); ++it) {
+        for (auto it = recordedRequests.crbegin(); it != recordedRequests.crend(); ++it) {
             if (it->path == path) {
                 return &*it;
             }
@@ -115,14 +115,14 @@ private:
         }
         req.body = buf.mid(headerEnd + 4, contentLength);
         buf.clear();
-        m_requests << req;
+        recordedRequests << req;
 
-        const auto it = m_routes.constFind(req.method + ' ' + req.path.toUtf8());
+        const auto it = routes.constFind(req.method + ' ' + req.path.toUtf8());
         MockResponse resp{404, "{\"error\":\"not found\"}"};
-        if (it != m_routes.cend()) {
+        if (it != routes.cend()) {
             resp = (*it)(req);
         } else {
-            for (const PrefixRoute& r : m_prefixRoutes) {
+            for (const PrefixRoute& r : prefixRoutes) {
                 if (r.method == req.method && req.path.startsWith(r.prefix)) {
                     resp = r.handler(req);
                     break;
@@ -147,10 +147,10 @@ private:
         QString prefix;
         THandler handler;
     };
-    QTcpServer m_server;
-    QHash<QByteArray, THandler> m_routes;
-    QList<PrefixRoute> m_prefixRoutes;
-    QList<MockRequest> m_requests;
+    QTcpServer server;
+    QHash<QByteArray, THandler> routes;
+    QList<PrefixRoute> prefixRoutes;
+    QList<MockRequest> recordedRequests;
 };
 
 }  // namespace Tests

@@ -33,8 +33,8 @@ public:
         QObject* parent = nullptr
     );
 
-    Core::Player* player() const { return m_player; }
-    const Hooks& hooks() const { return m_hooks; }
+    Core::Player* player() const { return corePlayer; }
+    const Hooks& hooks() const { return hookFunctions; }
 
     // Commands with the exact semantics media keys expect (Player::pause toggles).
     void play();
@@ -63,9 +63,9 @@ Q_SIGNALS:
     void volumeChanged();
 
 private:
-    Core::Player* m_player;
-    Core::CoverCache* m_covers;
-    Hooks m_hooks;
+    Core::Player* corePlayer;
+    Core::CoverCache* coverCache;
+    Hooks hookFunctions;
 };
 
 }  // namespace Integrations

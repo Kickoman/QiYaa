@@ -32,11 +32,11 @@ private:
     QString pathFor(const QUrl& url) const;
     void remember(const QUrl& url, const QImage& img);
 
-    QNetworkAccessManager* m_nam;
-    QString m_dir;
-    QHash<QUrl, QImage> m_images;
-    QList<QUrl> m_lru;
-    QSet<QUrl> m_pending;
+    QNetworkAccessManager* networkManager;
+    QString directory;
+    QHash<QUrl, QImage> images;
+    QList<QUrl> recentlyUsed;
+    QSet<QUrl> pending;
 };
 
 }  // namespace Core

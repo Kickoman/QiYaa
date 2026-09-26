@@ -29,8 +29,8 @@ protected:
     bool contentMousePress(QPoint pos, Qt::MouseButton button) override;
 
 private:
-    Core::Player* m_player;
-    Core::CoverCache* m_covers;
+    Core::Player* corePlayer;
+    Core::CoverCache* coverCache;
 };
 
 }  // namespace Ui

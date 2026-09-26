@@ -17,23 +17,23 @@ public:
 
     // Audio thread: interleaved stereo frames.
     void write(const float* frames, uint32_t frameCount) {
-        uint32_t pos = m_pos.load(std::memory_order_relaxed);
+        uint32_t pos = writePosition.load(std::memory_order_relaxed);
         for (uint32_t i = 0; i < frameCount; ++i, ++pos) {
             const uint32_t k = pos & (kSize - 1);
-            m_left[k] = frames[i * 2];
-            m_right[k] = frames[i * 2 + 1];
+            leftSamples[k] = frames[i * 2];
+            rightSamples[k] = frames[i * 2 + 1];
         }
-        m_pos.store(pos, std::memory_order_release);
+        writePosition.store(pos, std::memory_order_release);
     }
 
     // UI thread: the latest `count` frames (count <= kSize), oldest first.
     void read(float* left, float* right, uint32_t count) const {
-        const uint32_t end = m_pos.load(std::memory_order_acquire);
+        const uint32_t end = writePosition.load(std::memory_order_acquire);
         const uint32_t start = end - count;
         for (uint32_t i = 0; i < count; ++i) {
             const uint32_t k = (start + i) & (kSize - 1);
-            left[i] = m_left[k];
-            right[i] = m_right[k];
+            left[i] = leftSamples[k];
+            right[i] = rightSamples[k];
         }
     }
 
@@ -41,29 +41,29 @@ public:
     // them if there are more; older ones are gone after kSize), interleaved
     // stereo into `stereo`. Advances `*cursor`; returns the number of frames.
     uint32_t readNew(uint32_t* cursor, float* stereo, uint32_t maxFrames) const {
-        const uint32_t end = m_pos.load(std::memory_order_acquire);
+        const uint32_t end = writePosition.load(std::memory_order_acquire);
         uint32_t n = std::min(end - *cursor, kSize);  // unsigned difference survives wrap-around
         n = std::min(n, maxFrames);
         const uint32_t start = end - n;
         for (uint32_t i = 0; i < n; ++i) {
             const uint32_t k = (start + i) & (kSize - 1);
-            stereo[i * 2] = m_left[k];
-            stereo[i * 2 + 1] = m_right[k];
+            stereo[i * 2] = leftSamples[k];
+            stereo[i * 2 + 1] = rightSamples[k];
         }
         *cursor = end;
         return n;
     }
-    uint32_t position() const { return m_pos.load(std::memory_order_acquire); }
+    uint32_t position() const { return writePosition.load(std::memory_order_acquire); }
 
     void clear() {
-        m_left.fill(0);
-        m_right.fill(0);
+        leftSamples.fill(0);
+        rightSamples.fill(0);
     }
 
 private:
-    std::array<float, kSize> m_left{};
-    std::array<float, kSize> m_right{};
-    std::atomic<uint32_t> m_pos{0};
+    std::array<float, kSize> leftSamples{};
+    std::array<float, kSize> rightSamples{};
+    std::atomic<uint32_t> writePosition{0};
 };
 
 }  // namespace Audio

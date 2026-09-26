@@ -35,7 +35,7 @@ struct Smtc::Impl {
 Smtc::Smtc(MediaControls* controls, QWidget* window, QObject* parent)
     : QObject(parent)
     , d(std::make_unique<Impl>())
-    , m_controls(controls) {
+    , mediaControls(controls) {
     try {
         // Qt has already initialised COM on this thread; that's fine for WinRT.
         auto interop = winrt::get_activation_factory<
@@ -79,8 +79,8 @@ Smtc::Smtc(MediaControls* controls, QWidget* window, QObject* parent)
         return;
     }
 
-    connect(m_controls, &MediaControls::statusChanged, this, &Smtc::updateStatus);
-    connect(m_controls, &MediaControls::trackChanged, this, &Smtc::updateMetadata);
+    connect(mediaControls, &MediaControls::statusChanged, this, &Smtc::updateStatus);
+    connect(mediaControls, &MediaControls::trackChanged, this, &Smtc::updateMetadata);
     updateStatus();
     updateMetadata();
 }
@@ -102,11 +102,13 @@ bool Smtc::isActive() const {
 
 void Smtc::handleButton(int button) {
     switch (static_cast<WinMedia::SystemMediaTransportControlsButton>(button)) {
-        case WinMedia::SystemMediaTransportControlsButton::Play: m_controls->play(); break;
-        case WinMedia::SystemMediaTransportControlsButton::Pause: m_controls->pause(); break;
-        case WinMedia::SystemMediaTransportControlsButton::Stop: m_controls->stop(); break;
-        case WinMedia::SystemMediaTransportControlsButton::Next: m_controls->next(); break;
-        case WinMedia::SystemMediaTransportControlsButton::Previous: m_controls->previous(); break;
+        case WinMedia::SystemMediaTransportControlsButton::Play: mediaControls->play(); break;
+        case WinMedia::SystemMediaTransportControlsButton::Pause: mediaControls->pause(); break;
+        case WinMedia::SystemMediaTransportControlsButton::Stop: mediaControls->stop(); break;
+        case WinMedia::SystemMediaTransportControlsButton::Next: mediaControls->next(); break;
+        case WinMedia::SystemMediaTransportControlsButton::Previous:
+            mediaControls->previous();
+            break;
         default: break;
     }
 }
@@ -116,7 +118,7 @@ void Smtc::updateStatus() {
         return;
     }
     try {
-        switch (m_controls->status()) {
+        switch (mediaControls->status()) {
             case MediaControls::Status::Playing:
                 d->controls.PlaybackStatus(WinMedia::MediaPlaybackStatus::Playing);
                 break;
@@ -138,7 +140,7 @@ void Smtc::updateMetadata() {
     try {
         auto updater = d->controls.DisplayUpdater();
         updater.ClearAll();  // also drops the previous track's cover
-        const Yandex::Track* t = m_controls->player()->currentTrack();
+        const Yandex::Track* t = mediaControls->player()->currentTrack();
         if (!t) {
             updater.Update();
             return;
@@ -149,7 +151,7 @@ void Smtc::updateMetadata() {
         music.Artist(ToHstring(t->artists.join(QStringLiteral(", "))));
         music.AlbumTitle(ToHstring(t->albumTitle));
         // The https URL: SMTC fetches it itself, and file:// URIs aren't accepted here.
-        const QUrl art = m_controls->remoteArtUrl();
+        const QUrl art = mediaControls->remoteArtUrl();
         if (!art.isEmpty()) {
             updater.Thumbnail(WinStreams::RandomAccessStreamReference::CreateFromUri(
                 WinFoundation::Uri(ToHstring(art.toString()))

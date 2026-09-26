@@ -52,8 +52,8 @@ QUrl Track::webUrl() const {
 
 ApiClient::ApiClient(QNetworkAccessManager* nam, QObject* parent)
     : QObject(parent)
-    , m_nam(nam)
-    , m_base(QStringLiteral("https://api.music.yandex.net")) { }
+    , networkManager(nam)
+    , baseUrl(QStringLiteral("https://api.music.yandex.net")) { }
 
 QString ApiClient::IdString(const QJsonValue& v) {
     if (v.isDouble()) {
@@ -63,11 +63,11 @@ QString ApiClient::IdString(const QJsonValue& v) {
 }
 
 void ApiClient::getJson(const QString& path, const QUrlQuery& query, TJsonCallback cb) {
-    QUrl url(m_base + path);
+    QUrl url(baseUrl + path);
     if (!query.isEmpty()) {
         url.setQuery(query);
     }
-    handleJson(m_nam->get(MakeRequest(url, m_token)), std::move(cb));
+    handleJson(networkManager->get(MakeRequest(url, accessToken)), std::move(cb));
 }
 
 void ApiClient::postForm(const QString& path, const TForm& form, TJsonCallback cb) {
@@ -78,28 +78,29 @@ void ApiClient::postForm(const QString& path, const TForm& form, TJsonCallback c
         }
         body += QUrl::toPercentEncoding(k) + '=' + QUrl::toPercentEncoding(v);
     }
-    QNetworkRequest req = MakeRequest(QUrl(m_base + path), m_token);
+    QNetworkRequest req = MakeRequest(QUrl(baseUrl + path), accessToken);
     req.setHeader(
         QNetworkRequest::ContentTypeHeader, QStringLiteral("application/x-www-form-urlencoded")
     );
-    QNetworkReply* reply = m_nam->post(req, body);
+    QNetworkReply* reply = networkManager->post(req, body);
     handleJson(reply, std::move(cb));
     trackPost(reply);
 }
 
 void ApiClient::postJson(const QString& path, const QJsonObject& body, TJsonCallback cb) {
-    QNetworkRequest req = MakeRequest(QUrl(m_base + path), m_token);
+    QNetworkRequest req = MakeRequest(QUrl(baseUrl + path), accessToken);
     req.setHeader(QNetworkRequest::ContentTypeHeader, QStringLiteral("application/json"));
-    QNetworkReply* reply = m_nam->post(req, QJsonDocument(body).toJson(QJsonDocument::Compact));
+    QNetworkReply* reply =
+        networkManager->post(req, QJsonDocument(body).toJson(QJsonDocument::Compact));
     handleJson(reply, std::move(cb));
     trackPost(reply);
 }
 
 void ApiClient::trackPost(QNetworkReply* reply) {
-    ++m_pendingPosts;
+    ++pendingPostCount;
     // Connected after handleJson's slot, so this runs after the callback.
     connect(reply, &QNetworkReply::finished, this, [this] {
-        if (--m_pendingPosts == 0) {
+        if (--pendingPostCount == 0) {
             Q_EMIT postsSettled();
         }
     });
@@ -230,7 +231,8 @@ void ApiClient::resolveTrackUrl(const QString& trackId, TCallback<ResolvedUrl> c
             q.addQueryItem(QStringLiteral("format"), QStringLiteral("json"));
             infoUrl.setQuery(q);
 
-            QNetworkReply* reply = self->m_nam->get(MakeRequest(infoUrl, self->m_token));
+            QNetworkReply* reply =
+                self->networkManager->get(MakeRequest(infoUrl, self->accessToken));
             const int bitrate = best.bitrateKbps;
             connect(reply, &QNetworkReply::finished, self, [reply, cb, bitrate] {
                 reply->deleteLater();

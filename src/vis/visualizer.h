@@ -46,14 +46,14 @@ std::unique_ptr<Visualizer> MakeOscilloscope();
 class Analyzer {
 public:
     explicit Analyzer(int fftSize = 1024);
-    int fftSize() const { return m_size; }
+    int fftSize() const { return fftLength; }
     // `mono` must have fftSize() samples. Returns fftSize()/2 + 1 magnitudes in dBFS.
     const std::vector<float>& analyze(std::span<const float> mono);
 
 private:
-    int m_size;
-    std::vector<float> m_window;
-    std::vector<float> m_re, m_im, m_db;
+    int fftLength;
+    std::vector<float> windowFunction;
+    std::vector<float> real, imaginary, decibels;
 };
 
 }  // namespace Vis

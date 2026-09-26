@@ -14,16 +14,16 @@ constexpr int kDirty = 4;
 }  // namespace
 
 EqualizerDsp::EqualizerDsp() {
-    m_slots[m_front] = ComputeCoefficients(m_last, m_sampleRate);
+    coefficientSlots[front] = ComputeCoefficients(lastSettings, sampleRate);
 }
 
 void EqualizerDsp::setSampleRate(uint32_t rate) {
-    m_sampleRate = rate > 0 ? rate : 44100;
-    publish(m_last);
+    sampleRate = rate > 0 ? rate : 44100;
+    publish(lastSettings);
     // Make it current immediately (no audio thread yet).
-    const int prev = m_middle.exchange(m_front);
+    const int prev = middle.exchange(front);
     if (prev & kDirty) {
-        m_front = prev & 3;
+        front = prev & 3;
     }
 }
 
@@ -55,18 +55,18 @@ EqualizerDsp::Coeffs EqualizerDsp::ComputeCoefficients(const EqSettings& s, doub
 }
 
 void EqualizerDsp::publish(const EqSettings& settings) {
-    m_last = settings;
-    m_slots[m_back] = ComputeCoefficients(settings, m_sampleRate);
-    const int prev = m_middle.exchange(m_back | kDirty, std::memory_order_acq_rel);
-    m_back = prev & 3;
+    lastSettings = settings;
+    coefficientSlots[back] = ComputeCoefficients(settings, sampleRate);
+    const int prev = middle.exchange(back | kDirty, std::memory_order_acq_rel);
+    back = prev & 3;
 }
 
 void EqualizerDsp::process(float* frames, uint32_t frameCount) {
-    if (m_middle.load(std::memory_order_relaxed) & kDirty) {
-        const int prev = m_middle.exchange(m_front, std::memory_order_acq_rel);
-        m_front = prev & 3;
+    if (middle.load(std::memory_order_relaxed) & kDirty) {
+        const int prev = middle.exchange(front, std::memory_order_acq_rel);
+        front = prev & 3;
     }
-    const Coeffs& c = m_slots[m_front];
+    const Coeffs& c = coefficientSlots[front];
     if (!c.enabled) {
         return;
     }
@@ -81,12 +81,12 @@ void EqualizerDsp::process(float* frames, uint32_t frameCount) {
         const Biquad& b = c.bands[band];
         if (b.identity) {
             // Let the state decay so re-enabling a band doesn't pop.
-            m_z1[band] = {0, 0};
-            m_z2[band] = {0, 0};
+            filterState1[band] = {0, 0};
+            filterState2[band] = {0, 0};
             continue;
         }
         for (int ch = 0; ch < 2; ++ch) {
-            float z1 = m_z1[band][ch], z2 = m_z2[band][ch];
+            float z1 = filterState1[band][ch], z2 = filterState2[band][ch];
             float* p = frames + ch;
             for (uint32_t i = 0; i < frameCount; ++i, p += 2) {
                 // Transposed direct form II.
@@ -97,8 +97,8 @@ void EqualizerDsp::process(float* frames, uint32_t frameCount) {
                 *p = y;
             }
             // Flush denormals.
-            m_z1[band][ch] = std::abs(z1) < 1e-15f ? 0.0f : z1;
-            m_z2[band][ch] = std::abs(z2) < 1e-15f ? 0.0f : z2;
+            filterState1[band][ch] = std::abs(z1) < 1e-15f ? 0.0f : z1;
+            filterState2[band][ch] = std::abs(z2) < 1e-15f ? 0.0f : z2;
         }
     }
 }

@@ -11,7 +11,7 @@ class GenWindow : public SkinnedWindow {
 public:
     GenWindow(const Skins::Skin* skin, const QString& title, QWidget* parent = nullptr);
 
-    QSize sizeSteps() const { return m_steps; }
+    QSize sizeSteps() const { return resizeSteps; }
     void setSizeSteps(QSize steps);
 
 Q_SIGNALS:
@@ -35,11 +35,11 @@ private:
     enum class Drag { None, Close, Resize };
     void paintFrame(QPainter& p);
 
-    QString m_title;
-    QSize m_steps{0, 0};
-    Drag m_drag = Drag::None;
-    QPoint m_dragStart;
-    QSize m_dragStartSteps;
+    QString titleText;
+    QSize resizeSteps{0, 0};
+    Drag activeDrag = Drag::None;
+    QPoint dragStart;
+    QSize dragStartSteps;
 };
 
 }  // namespace Ui

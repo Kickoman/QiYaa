@@ -39,13 +39,13 @@ public:
     void setTextureSearchPaths(const QStringList& paths);
     // Renders frames while on (at `fps`); nothing at all while off.
     void setRendering(bool on, int fps = 60);
-    bool isRendering() const { return m_timer.isActive(); }
+    bool isRendering() const { return timer.isActive(); }
 
     // After the first frame: did projectM start (needs OpenGL 3.3)?
-    bool isReady() const { return m_pm != nullptr; }
-    QString failure() const { return m_failure; }
-    qint64 framesRendered() const { return m_frames; }
-    QString glInfo() const { return m_glInfo; }  // version | renderer, for reports
+    bool isReady() const { return projectM != nullptr; }
+    QString failure() const { return failureReason; }
+    qint64 framesRendered() const { return frameCount; }
+    QString glInfo() const { return glInfoText; }  // version | renderer, for reports
 
     // Watch for a preset that stays black (some GPUs/drivers can't run some
     // presets): while on, the picture is sampled once per `intervalMs` from
@@ -88,32 +88,32 @@ private:
     void watchForBlack();
     bool pictureIsBlack();
 
-    Audio::AudioEngine* m_engine;
-    ::projectm* m_pm = nullptr;
-    QString m_failure;
-    QTimer m_timer;
-    uint32_t m_visCursor = 0;
-    std::vector<float> m_pcm;
-    std::optional<std::pair<QByteArray, bool>> m_pending;
-    double m_duration = 30;
-    bool m_locked = false;
-    QStringList m_texturePaths;
-    bool m_texturePathsDirty = false;
-    QSize m_pixelSize;
-    qint64 m_frames = 0;
-    QString m_glInfo;
+    Audio::AudioEngine* audioEngine;
+    ::projectm* projectM = nullptr;
+    QString failureReason;
+    QTimer timer;
+    uint32_t visReadCursor = 0;
+    std::vector<float> pcm;
+    std::optional<std::pair<QByteArray, bool>> pending;
+    double duration = 30;
+    bool lockEnabled = false;
+    QStringList texturePaths;
+    bool texturePathsDirty = false;
+    QSize pixelSize;
+    qint64 frameCount = 0;
+    QString glInfoText;
 
-    bool m_blackWatch = false;
-    int m_blackGraceMs = 5000;  // new presets fade in (and the blend takes 3 s)
-    int m_blackIntervalMs = 1000;
-    int m_blackChecksNeeded = 4;
-    int m_blackChecks = 0;
-    bool m_sawPicture = false;
-    bool m_captureRequested = false;
-    QElapsedTimer m_sinceLoad;
-    QElapsedTimer m_sinceCheck;
-    unsigned m_probeFbo = 0;  // tiny render target the picture is scaled into
-    unsigned m_probeTex = 0;
+    bool blackWatch = false;
+    int blackGraceMs = 5000;  // new presets fade in (and the blend takes 3 s)
+    int blackIntervalMs = 1000;
+    int blackChecksNeeded = 4;
+    int blackChecks = 0;
+    bool sawPicture = false;
+    bool captureRequested = false;
+    QElapsedTimer sinceLoad;
+    QElapsedTimer sinceCheck;
+    unsigned probeFbo = 0;  // tiny render target the picture is scaled into
+    unsigned probeTex = 0;
 };
 
 }  // namespace Vis

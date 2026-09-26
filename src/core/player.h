@@ -31,8 +31,8 @@ public:
 
     // Loading a source is asynchronous; only the latest request may replace the
     // queue. Take a ticket before the request, check it in the callback.
-    quint64 newSourceRequest() { return ++m_sourceRequest; }
-    bool isLatestSourceRequest(quint64 ticket) const { return ticket == m_sourceRequest; }
+    quint64 newSourceRequest() { return ++sourceRequest; }
+    bool isLatestSourceRequest(quint64 ticket) const { return ticket == sourceRequest; }
 
     // Replaces the queue. `autoplay` starts the first track right away.
     void setQueue(
@@ -60,20 +60,20 @@ public:
     bool seekFraction(double fraction);  // 0..1; false if the track can't seek (yet)
     void setShuffle(bool on);
     void setRepeat(bool on);
-    bool shuffle() const { return m_shuffle; }
-    bool repeat() const { return m_repeat; }
+    bool shuffle() const { return shuffleEnabled; }
+    bool repeat() const { return repeatEnabled; }
 
-    const QList<Yandex::Track>& playlist() const { return m_playlist; }
-    const QString& queueTitle() const { return m_title; }
-    int currentIndex() const { return m_index; }
+    const QList<Yandex::Track>& playlist() const { return queuedTracks; }
+    const QString& queueTitle() const { return titleText; }
+    int currentIndex() const { return playingIndex; }
     const Yandex::Track* currentTrack() const;
-    int currentBitrate() const { return m_bitrate; }
+    int currentBitrate() const { return bitrateKbps; }
     double durationSeconds() const;
-    Audio::AudioEngine* engine() const { return m_engine; }
-    Yandex::Library* library() const { return m_library; }
+    Audio::AudioEngine* engine() const { return audioEngine; }
+    Yandex::Library* library() const { return yandexLibrary; }
     // Index of the track already downloading in the background to follow the
     // current one without a gap (-1 if none yet).
-    int preloadedIndex() const { return m_preload && m_preload->stream ? m_preload->index : -1; }
+    int preloadedIndex() const { return preload && preload->stream ? preload->index : -1; }
 
 Q_SIGNALS:
     void statusMessage(const QString& text);
@@ -117,34 +117,34 @@ private:
     // Seconds of the open track actually heard (seeks don't count).
     double playedSeconds();
 
-    Yandex::Library* m_library;
-    Audio::AudioEngine* m_engine;
-    QList<Yandex::Track> m_playlist;
-    QString m_title;
-    TMoreFn m_more;
-    TEventFn m_events;
+    Yandex::Library* yandexLibrary;
+    Audio::AudioEngine* audioEngine;
+    QList<Yandex::Track> queuedTracks;
+    QString titleText;
+    TMoreFn loadMore;
+    TEventFn reportEvent;
     // The track whose Started was reported and that hasn't finished/skipped yet.
-    std::optional<Yandex::Track> m_openTrack;
-    TEventFn m_openTrackEvents;
-    double m_played = 0;
-    double m_lastPosition = 0;
-    bool m_downloadFailed = false;
-    bool m_shutDown = false;
-    bool m_loadingMore = false;
-    bool m_waitingForMore = false;  // reached the end of an endless queue; play when more arrives
-    quint64 m_sourceRequest = 0;
-    QTimer m_pollTimer;
-    quint64 m_queueGeneration = 0;
-    int m_index = -1;
-    int m_bitrate = 0;
-    bool m_shuffle = false;
-    bool m_repeat = false;
-    quint64 m_generation = 0;  // invalidates callbacks of tracks we already skipped
-    QPointer<QNetworkReply> m_download;
-    TStreamId m_stream = 0;  // the current track's engine stream
-    bool m_currentDownloaded = false;  // the whole current track is in memory
-    std::optional<Preload> m_preload;
-    quint64 m_preloadGen = 0;
+    std::optional<Yandex::Track> openTrack;
+    TEventFn openTrackEvents;
+    double played = 0;
+    double lastPosition = 0;
+    bool downloadFailed = false;
+    bool isShutDown = false;
+    bool loadingMore = false;
+    bool waitingForMore = false;  // reached the end of an endless queue; play when more arrives
+    quint64 sourceRequest = 0;
+    QTimer pollTimer;
+    quint64 queueGeneration = 0;
+    int playingIndex = -1;
+    int bitrateKbps = 0;
+    bool shuffleEnabled = false;
+    bool repeatEnabled = false;
+    quint64 generation = 0;  // invalidates callbacks of tracks we already skipped
+    QPointer<QNetworkReply> download;
+    TStreamId streamId = 0;  // the current track's engine stream
+    bool currentDownloaded = false;  // the whole current track is in memory
+    std::optional<Preload> preload;
+    quint64 preloadGen = 0;
 };
 
 }  // namespace Core

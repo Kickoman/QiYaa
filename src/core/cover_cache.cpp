@@ -16,19 +16,19 @@ constexpr int kMemoryItems = 30;
 
 CoverCache::CoverCache(QNetworkAccessManager* nam, const QString& cacheDir, QObject* parent)
     : QObject(parent)
-    , m_nam(nam)
-    , m_dir(
+    , networkManager(nam)
+    , directory(
           cacheDir.isEmpty() ? QStandardPaths::writableLocation(QStandardPaths::CacheLocation)
                   + QStringLiteral("/covers")
                              : cacheDir
       ) {
-    QDir().mkpath(m_dir);
+    QDir().mkpath(directory);
 }
 
 QString CoverCache::pathFor(const QUrl& url) const {
     const QByteArray hash =
         QCryptographicHash::hash(url.toEncoded(), QCryptographicHash::Sha1).toHex();
-    return m_dir + u'/' + QString::fromLatin1(hash) + QStringLiteral(".jpg");
+    return directory + u'/' + QString::fromLatin1(hash) + QStringLiteral(".jpg");
 }
 
 QString CoverCache::localFile(const QUrl& url) const {
@@ -40,11 +40,11 @@ QString CoverCache::localFile(const QUrl& url) const {
 }
 
 void CoverCache::remember(const QUrl& url, const QImage& img) {
-    m_images.insert(url, img);
-    m_lru.removeAll(url);
-    m_lru.append(url);
-    while (m_lru.size() > kMemoryItems) {
-        m_images.remove(m_lru.takeFirst());
+    images.insert(url, img);
+    recentlyUsed.removeAll(url);
+    recentlyUsed.append(url);
+    while (recentlyUsed.size() > kMemoryItems) {
+        images.remove(recentlyUsed.takeFirst());
     }
 }
 
@@ -52,9 +52,9 @@ QImage CoverCache::get(const QUrl& url) {
     if (url.isEmpty()) {
         return {};
     }
-    if (const auto it = m_images.constFind(url); it != m_images.cend()) {
-        m_lru.removeAll(url);
-        m_lru.append(url);
+    if (const auto it = images.constFind(url); it != images.cend()) {
+        recentlyUsed.removeAll(url);
+        recentlyUsed.append(url);
         return *it;
     }
     // On disk from an earlier run?
@@ -65,23 +65,23 @@ QImage CoverCache::get(const QUrl& url) {
             return img;
         }
     }
-    if (m_pending.contains(url) || !m_nam) {
+    if (pending.contains(url) || !networkManager) {
         return {};
     }
-    m_pending.insert(url);
+    pending.insert(url);
     QNetworkRequest req(url);
     req.setTransferTimeout(20000);
     req.setAttribute(
         QNetworkRequest::RedirectPolicyAttribute, QNetworkRequest::NoLessSafeRedirectPolicy
     );
-    QNetworkReply* reply = m_nam->get(req);
+    QNetworkReply* reply = networkManager->get(req);
     QPointer<CoverCache> self(this);
     connect(reply, &QNetworkReply::finished, this, [self, reply, url] {
         reply->deleteLater();
         if (!self) {
             return;
         }
-        self->m_pending.remove(url);
+        self->pending.remove(url);
         if (reply->error() != QNetworkReply::NoError) {
             return;
         }

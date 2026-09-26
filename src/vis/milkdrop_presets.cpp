@@ -28,12 +28,12 @@ QList<MilkdropPresets::Preset> ScanPresetDirectory(const QString& dir, bool buil
 }  // namespace
 
 void MilkdropPresets::load(const QString& builtInDir, const QString& userDir) {
-    m_presets = ScanPresetDirectory(builtInDir, true) + ScanPresetDirectory(userDir, false);
+    presetList = ScanPresetDirectory(builtInDir, true) + ScanPresetDirectory(userDir, false);
 }
 
 int MilkdropPresets::indexOf(const QString& name) const {
     for (int i = 0; i < size(); ++i) {
-        if (m_presets[i].name == name) {
+        if (presetList[i].name == name) {
             return i;
         }
     }
@@ -44,7 +44,7 @@ QByteArray MilkdropPresets::data(int index) const {
     if (index < 0 || index >= size()) {
         return {};
     }
-    QFile f(m_presets[index].path);
+    QFile f(presetList[index].path);
     if (!f.open(QIODevice::ReadOnly)) {
         return {};
     }

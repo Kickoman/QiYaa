@@ -25,21 +25,21 @@ public:
     ~SkinnedWindow() override;
 
     void setSkin(const Skins::Skin* skin);
-    const Skins::Skin& skin() const { return *m_skin; }
+    const Skins::Skin& skin() const { return *currentSkin; }
 
     // Zoom factor: 1 = original 275px wide, 2 = "double size", 1.5 = in between.
     // Clamped to [1, 4] and rounded to 0.05.
     void setScale(double scale);
-    double scale() const { return m_scale; }
+    double scale() const { return scaleFactor; }
     static bool IsIntegerScale(double s) { return std::abs(s - std::round(s)) < 1e-6; }
 
     // Size in skin pixels (before scaling). Resizable windows (playlist) change it.
-    QSize skinSize() const { return m_skinSize; }
+    QSize skinSize() const { return skinPixelSize; }
     void setSkinSize(QSize size);
 
     // When true, dragging this window also drags every window docked to it
     // (Winamp: the main window pulls the equalizer and playlist along).
-    void setDragsDockedWindows(bool on) { m_dragsDocked = on; }
+    void setDragsDockedWindows(bool on) { dragsDocked = on; }
 
     // Secondary windows (EQ, playlist): no own taskbar button on Windows.
     void setSecondary();
@@ -53,7 +53,7 @@ public:
     QList<SkinnedWindow*> dockedWindows() const;
 
     // Winamp's "window shade": the window collapses to a 14 px strip.
-    bool isShaded() const { return m_shaded; }
+    bool isShaded() const { return shadeEnabled; }
     virtual void setShaded(bool shaded) { Q_UNUSED(shaded); }
 
     // true when the platform lets us position windows (X11, Windows, macOS, XWayland).
@@ -107,19 +107,19 @@ protected:
 private:
     void applySize();
 
-    const Skins::Skin* m_skin;
-    QSize m_skinSize;
-    double m_scale = 1.0;
-    bool m_dragsDocked = false;
-    bool m_shaded = false;
-    QImage m_buffer;  // intermediate image for fractional scales
-    int m_wheelAccum = 0;
+    const Skins::Skin* currentSkin;
+    QSize skinPixelSize;
+    double scaleFactor = 1.0;
+    bool dragsDocked = false;
+    bool shadeEnabled = false;
+    QImage buffer;  // intermediate image for fractional scales
+    int wheelAccum = 0;
 
     // Drag state.
-    bool m_dragging = false;
-    QPoint m_pressGlobal;
-    QRect m_groupStartBounds;
-    QList<std::pair<QPointer<SkinnedWindow>, QPoint>> m_group;  // window, start position
+    bool dragging = false;
+    QPoint pressGlobal;
+    QRect groupStartBounds;
+    QList<std::pair<QPointer<SkinnedWindow>, QPoint>> dragGroup;  // window, start position
 };
 
 }  // namespace Ui
