@@ -9,10 +9,10 @@
 #include <algorithm>
 #include <cmath>
 
-namespace qiyaa {
+namespace Ui {
 
-using Sheet = Skin::Sheet;
-namespace G = sprites::gen;
+using Sheet = Skins::Skin::Sheet;
+using Skins::GenWindowSprites;
 
 namespace {
 constexpr QSize kMinSize{275, 116};
@@ -25,7 +25,7 @@ bool contains(const QRect& r, QPoint p) {
 }
 }  // namespace
 
-GenWindow::GenWindow(const Skin* skin, const QString& title, QWidget* parent)
+GenWindow::GenWindow(const Skins::Skin* skin, const QString& title, QWidget* parent)
     : SkinnedWindow(skin, kMinSize, parent)
     , m_title(title) { }
 
@@ -47,18 +47,20 @@ QRect GenWindow::contentRect() const {
 }
 
 void GenWindow::paintFrame(QPainter& p) {
-    const Skin& sk = skin();
+    const Skins::Skin& sk = skin();
     const int w = skinSize().width(), h = skinSize().height();
     const bool active = isActiveWindow();
 
     // Top: fill everything, then corners, ends and the title in the middle.
-    const QRect centerFill = active ? G::kTopCenterFillSelected : G::kTopCenterFill;
+    const QRect centerFill = active ? Skins::GenWindowSprites::kTopCenterFillSelected
+                                    : Skins::GenWindowSprites::kTopCenterFill;
     for (int x = 0; x < w; x += 25) {
         sk.draw(p, Sheet::Gen, centerFill, {x, 0});
     }
     const int titleW = sk.genTextWidth(m_title) + 7;  // 4 px left + 3 px right padding
     const int fill = std::max(0, (w - 100 - titleW) / 2);
-    const QRect lrFill = active ? G::kTopLeftRightFillSelected : G::kTopLeftRightFill;
+    const QRect lrFill = active ? Skins::GenWindowSprites::kTopLeftRightFillSelected
+                                : Skins::GenWindowSprites::kTopLeftRightFill;
     for (int x = 25; x < 25 + fill; x += 25) {
         sk.draw(p, Sheet::Gen, lrFill.adjusted(0, 0, std::min(0, 25 + fill - x - 25), 0), {x, 0});
     }
@@ -66,33 +68,55 @@ void GenWindow::paintFrame(QPainter& p) {
     for (int x = rightFillX; x < w - 25; x += 25) {
         sk.draw(p, Sheet::Gen, lrFill.adjusted(0, 0, std::min(0, w - 25 - x - 25), 0), {x, 0});
     }
-    sk.draw(p, Sheet::Gen, active ? G::kTopLeftSelected : G::kTopLeft, {0, 0});
-    sk.draw(p, Sheet::Gen, active ? G::kTopLeftEndSelected : G::kTopLeftEnd, {25 + fill, 0});
+    sk.draw(
+        p, Sheet::Gen,
+        active ? Skins::GenWindowSprites::kTopLeftSelected : Skins::GenWindowSprites::kTopLeft,
+        {0, 0}
+    );
+    sk.draw(
+        p, Sheet::Gen,
+        active ? Skins::GenWindowSprites::kTopLeftEndSelected
+               : Skins::GenWindowSprites::kTopLeftEnd,
+        {25 + fill, 0}
+    );
     sk.drawGenText(p, {25 + fill + 25 + 4, 4}, m_title, active);
     sk.draw(
-        p, Sheet::Gen, active ? G::kTopRightEndSelected : G::kTopRightEnd,
+        p, Sheet::Gen,
+        active ? Skins::GenWindowSprites::kTopRightEndSelected
+               : Skins::GenWindowSprites::kTopRightEnd,
         {25 + fill + 25 + titleW, 0}
     );
-    sk.draw(p, Sheet::Gen, active ? G::kTopRightSelected : G::kTopRight, {w - 25, 0});
+    sk.draw(
+        p, Sheet::Gen,
+        active ? Skins::GenWindowSprites::kTopRightSelected : Skins::GenWindowSprites::kTopRight,
+        {w - 25, 0}
+    );
     if (m_drag == Drag::Close) {
-        sk.draw(p, Sheet::Gen, G::kCloseSelected, {w - 11, 3});
+        sk.draw(p, Sheet::Gen, Skins::GenWindowSprites::kCloseSelected, {w - 11, 3});
     }
 
     // Sides: tiles, with the bottom pieces anchored to the bottom.
     for (int y = kTopH; y < h - kBottomH; y += 29) {
         const int tile = std::min(29, h - kBottomH - y);
-        sk.draw(p, Sheet::Gen, G::kMiddleLeft.adjusted(0, 0, 0, tile - 29), {0, y});
-        sk.draw(p, Sheet::Gen, G::kMiddleRight.adjusted(0, 0, 0, tile - 29), {w - kRightW, y});
+        sk.draw(
+            p, Sheet::Gen, Skins::GenWindowSprites::kMiddleLeft.adjusted(0, 0, 0, tile - 29), {0, y}
+        );
+        sk.draw(
+            p, Sheet::Gen, Skins::GenWindowSprites::kMiddleRight.adjusted(0, 0, 0, tile - 29),
+            {w - kRightW, y}
+        );
     }
-    sk.draw(p, Sheet::Gen, G::kMiddleLeftBottom, {0, h - kBottomH - 24});
-    sk.draw(p, Sheet::Gen, G::kMiddleRightBottom, {w - kRightW, h - kBottomH - 24});
+    sk.draw(p, Sheet::Gen, Skins::GenWindowSprites::kMiddleLeftBottom, {0, h - kBottomH - 24});
+    sk.draw(
+        p, Sheet::Gen, Skins::GenWindowSprites::kMiddleRightBottom, {w - kRightW, h - kBottomH - 24}
+    );
 
     // Bottom.
     for (int x = 125; x < w - 125; x += 25) {
-        sk.draw(p, Sheet::Gen, G::kBottomFill, {x, h - kBottomH});
+        sk.draw(p, Sheet::Gen, Skins::GenWindowSprites::kBottomFill, {x, h - kBottomH});
     }
-    sk.draw(p, Sheet::Gen, G::kBottomLeft, {0, h - kBottomH});
-    sk.draw(p, Sheet::Gen, G::kBottomRight, {w - 125, h - kBottomH});
+    sk.draw(p, Sheet::Gen, Skins::GenWindowSprites::kBottomLeft, {0, h - kBottomH});
+    sk.draw(p, Sheet::Gen, Skins::GenWindowSprites::kBottomRight, {w - 125, h - kBottomH});
 }
 
 void GenWindow::paintSkin(QPainter& p) {
@@ -158,4 +182,4 @@ void GenWindow::closeEvent(QCloseEvent* e) {
     Q_EMIT closeRequested();
 }
 
-}  // namespace qiyaa
+}  // namespace Ui

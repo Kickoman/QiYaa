@@ -12,7 +12,7 @@
 #include <QString>
 #include <QStringList>
 
-namespace qiyaa::yandex {
+namespace Yandex {
 
 struct NamedRef {
     QString id;
@@ -125,4 +125,4 @@ private:
     QSet<QString> m_stationFeedbackSessions;  // sessions whose session-feedback endpoint failed
 };
 
-}  // namespace qiyaa::yandex
+}  // namespace Yandex

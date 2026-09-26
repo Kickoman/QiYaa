@@ -3,7 +3,7 @@
 #include <QDir>
 #include <QStandardPaths>
 
-namespace qiyaa::paths {
+namespace App {
 
 QString configDir() {
     // GenericConfigLocation: ~/.config, %LOCALAPPDATA%, ~/Library/Preferences
@@ -35,4 +35,4 @@ QStringList yaampDataDirs() {
     return out;
 }
 
-}  // namespace qiyaa::paths
+}  // namespace App

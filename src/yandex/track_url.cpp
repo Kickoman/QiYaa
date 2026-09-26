@@ -3,7 +3,7 @@
 #include <QCryptographicHash>
 #include <QJsonDocument>
 
-namespace qiyaa::yandex {
+namespace Yandex {
 
 namespace {
 constexpr char kSignSalt[] = "XGRlBW9FXlekgbPrRHuSiA";
@@ -72,4 +72,4 @@ QUrl buildTrackUrl(const DownloadInfo& info) {
                     .arg(info.host, QString::fromLatin1(sign), info.ts, info.path));
 }
 
-}  // namespace qiyaa::yandex
+}  // namespace Yandex

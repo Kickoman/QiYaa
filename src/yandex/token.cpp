@@ -9,7 +9,7 @@
 #include <QRegularExpression>
 #include <QUrlQuery>
 
-namespace qiyaa::yandex {
+namespace Yandex {
 
 QString normalizeToken(const QByteArray& raw) {
     QString s = QString::fromUtf8(raw).trimmed();
@@ -49,13 +49,13 @@ TokenSource findToken() {
     }
 
     // Our own file wins, even when empty (= the user logged out).
-    const QString own = paths::configDir() + QStringLiteral("/token");
+    const QString own = App::configDir() + QStringLiteral("/token");
     if (QFile f(own); f.open(QIODevice::ReadOnly)) {
         const QString t = normalizeToken(f.read(64 * 1024));
         return t.isEmpty() ? TokenSource{} : TokenSource{t, own};
     }
 
-    for (const QString& dir : paths::yaampDataDirs()) {
+    for (const QString& dir : App::yaampDataDirs()) {
         const QString path = dir + QStringLiteral("/token.json");
         QFile f(path);
         if (!f.open(QIODevice::ReadOnly)) {
@@ -69,14 +69,14 @@ TokenSource findToken() {
 }
 
 void forgetToken() {
-    QFile f(paths::configDir() + QStringLiteral("/token"));
+    QFile f(App::configDir() + QStringLiteral("/token"));
     if (f.open(QIODevice::WriteOnly | QIODevice::Truncate)) {
         f.setPermissions(QFileDevice::ReadOwner | QFileDevice::WriteOwner);
     }
 }
 
 bool saveToken(const QString& token) {
-    QFile f(paths::configDir() + QStringLiteral("/token"));
+    QFile f(App::configDir() + QStringLiteral("/token"));
     if (!f.open(QIODevice::WriteOnly | QIODevice::Truncate)) {
         return false;
     }
@@ -84,4 +84,4 @@ bool saveToken(const QString& token) {
     return f.write(token.toUtf8()) > 0;
 }
 
-}  // namespace qiyaa::yandex
+}  // namespace Yandex

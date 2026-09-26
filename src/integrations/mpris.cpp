@@ -11,7 +11,7 @@
 #include <algorithm>
 #include <cmath>
 
-namespace qiyaa {
+namespace Integrations {
 
 namespace {
 const QString kObjectPath = QStringLiteral("/org/mpris/MediaPlayer2");
@@ -118,7 +118,7 @@ QString Mpris::playbackStatus() const {
 }
 
 QVariantMap Mpris::metadata() const {
-    const yandex::Track* t = m_controls->player()->currentTrack();
+    const Yandex::Track* t = m_controls->player()->currentTrack();
     if (!t) {
         return {
             {QStringLiteral("mpris:trackid"),
@@ -269,4 +269,4 @@ void MprisPlayerAdaptor::SetPosition(const QDBusObjectPath& trackId, qlonglong p
     m_mpris->controls()->seekTo(positionUs / 1e6);
 }
 
-}  // namespace qiyaa
+}  // namespace Integrations

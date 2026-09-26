@@ -8,7 +8,7 @@
 #include <cmath>
 #include <numbers>
 
-namespace qiyaa::vis {
+namespace Vis {
 
 // ------------------------------------------------------------------ Analyzer
 
@@ -71,7 +71,7 @@ const std::vector<float>& Analyzer::analyze(std::span<const float> mono) {
 
 namespace {
 
-QColor visColor(const Skin& skin, int i) {
+QColor visColor(const Skins::Skin& skin, int i) {
     const auto& c = skin.visColors();
     return i < c.size() ? c[i] : QColor(Qt::green);
 }
@@ -118,7 +118,7 @@ public:
         }
     }
 
-    void render(QPainter& p, const QRect& area, const Skin& skin) const override {
+    void render(QPainter& p, const QRect& area, const Skins::Skin& skin) const override {
         const int h = area.height();
         for (int b = 0; b < kBars; ++b) {
             const int x = area.x() + b * 4;
@@ -160,7 +160,7 @@ public:
         }
     }
 
-    void render(QPainter& p, const QRect& area, const Skin& skin) const override {
+    void render(QPainter& p, const QRect& area, const Skins::Skin& skin) const override {
         if (m_ys[0] < 0) {
             return;
         }
@@ -197,4 +197,4 @@ std::unique_ptr<Visualizer> makeOscilloscope() {
     return std::make_unique<Oscilloscope>();
 }
 
-}  // namespace qiyaa::vis
+}  // namespace Vis

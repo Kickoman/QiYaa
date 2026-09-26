@@ -15,16 +15,14 @@
 #include <QTemporaryDir>
 #include <QTest>
 
-using namespace qiyaa;
-
 namespace {
 const QString kService = QStringLiteral("org.mpris.MediaPlayer2.qiyaatest");
 const QString kPath = QStringLiteral("/org/mpris/MediaPlayer2");
 
-QList<yandex::Track> tracks(int n) {
-    QList<yandex::Track> out;
+QList<Yandex::Track> tracks(int n) {
+    QList<Yandex::Track> out;
     for (int i = 0; i < n; ++i) {
-        yandex::Track t;
+        Yandex::Track t;
         t.id = QString::number(100 + i);
         t.albumId = QStringLiteral("7");
         t.title = QStringLiteral("Песня %1").arg(i + 1);
@@ -53,13 +51,13 @@ class TestMpris : public QObject {
 private:
     QTemporaryDir tmp;
     QNetworkAccessManager nam;
-    std::unique_ptr<yandex::ApiClient> api;
-    std::unique_ptr<yandex::Library> lib;
-    std::unique_ptr<audio::AudioEngine> engine;
-    std::unique_ptr<Player> player;
-    std::unique_ptr<CoverCache> covers;
-    std::unique_ptr<MediaControls> controls;
-    std::unique_ptr<Mpris> mpris;
+    std::unique_ptr<Yandex::ApiClient> api;
+    std::unique_ptr<Yandex::Library> lib;
+    std::unique_ptr<Audio::AudioEngine> engine;
+    std::unique_ptr<Core::Player> player;
+    std::unique_ptr<Core::CoverCache> covers;
+    std::unique_ptr<Integrations::MediaControls> controls;
+    std::unique_ptr<Integrations::Mpris> mpris;
     int volume = 50;
     int raised = 0;
     QString gdbus;
@@ -84,14 +82,14 @@ private Q_SLOTS:
             QSKIP("no D-Bus session bus (run under dbus-run-session)");
         }
         gdbus = QStandardPaths::findExecutable(QStringLiteral("gdbus"));
-        api = std::make_unique<yandex::ApiClient>(&nam);
+        api = std::make_unique<Yandex::ApiClient>(&nam);
         api->setBaseUrl(QStringLiteral("http://127.0.0.1:9")
         );  // nothing listens: link requests fail fast
-        lib = std::make_unique<yandex::Library>(api.get());
-        engine = std::make_unique<audio::AudioEngine>();
-        player = std::make_unique<Player>(lib.get(), engine.get());
-        covers = std::make_unique<CoverCache>(nullptr, tmp.path());
-        MediaControls::Hooks hooks;
+        lib = std::make_unique<Yandex::Library>(api.get());
+        engine = std::make_unique<Audio::AudioEngine>();
+        player = std::make_unique<Core::Player>(lib.get(), engine.get());
+        covers = std::make_unique<Core::CoverCache>(nullptr, tmp.path());
+        Integrations::MediaControls::Hooks hooks;
         hooks.volume = [this] { return volume; };
         hooks.setVolume = [this](int v
                           ) {  // like MainWindow::setVolume, which the app wires to volumeChanged
@@ -102,8 +100,8 @@ private Q_SLOTS:
             Q_EMIT controls->volumeChanged();
         };
         hooks.raise = [this] { ++raised; };
-        controls = std::make_unique<MediaControls>(player.get(), covers.get(), hooks);
-        mpris = std::make_unique<Mpris>(controls.get(), QStringLiteral("qiyaatest"));
+        controls = std::make_unique<Integrations::MediaControls>(player.get(), covers.get(), hooks);
+        mpris = std::make_unique<Integrations::Mpris>(controls.get(), QStringLiteral("qiyaatest"));
         QVERIFY(mpris->isRegistered());
         QCOMPARE(mpris->serviceName(), kService);
         player->setQueue(tracks(3), QStringLiteral("T"), false);
@@ -235,7 +233,7 @@ private Q_SLOTS:
         QDBusConnection second =
             QDBusConnection::connectToBus(QDBusConnection::SessionBus, QStringLiteral("second"));
         {
-            Mpris other(controls.get(), QStringLiteral("qiyaatest"), second);
+            Integrations::Mpris other(controls.get(), QStringLiteral("qiyaatest"), second);
             QVERIFY(other.isRegistered());
             QVERIFY(other.serviceName().startsWith(kService + QStringLiteral(".instance")));
         }

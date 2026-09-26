@@ -15,11 +15,11 @@
 #include <winrt/Windows.Media.h>
 #include <winrt/Windows.Storage.Streams.h>
 
-namespace qiyaa {
+namespace Integrations {
 
-namespace wm = winrt::Windows::Media;
-namespace wf = winrt::Windows::Foundation;
-namespace wss = winrt::Windows::Storage::Streams;
+namespace WinMedia = winrt::Windows::Media;
+namespace WinFoundation = winrt::Windows::Foundation;
+namespace WinStreams = winrt::Windows::Storage::Streams;
 
 namespace {
 winrt::hstring toH(const QString& s) {
@@ -28,7 +28,7 @@ winrt::hstring toH(const QString& s) {
 }  // namespace
 
 struct Smtc::Impl {
-    wm::SystemMediaTransportControls controls{nullptr};
+    WinMedia::SystemMediaTransportControls controls{nullptr};
     winrt::event_token buttonToken{};
 };
 
@@ -39,10 +39,11 @@ Smtc::Smtc(MediaControls* controls, QWidget* window, QObject* parent)
     try {
         // Qt has already initialised COM on this thread; that's fine for WinRT.
         auto interop = winrt::get_activation_factory<
-            wm::SystemMediaTransportControls, ISystemMediaTransportControlsInterop>();
+            WinMedia::SystemMediaTransportControls, ISystemMediaTransportControlsInterop>();
         const HWND hwnd = reinterpret_cast<HWND>(window->winId());
         winrt::check_hresult(interop->GetForWindow(
-            hwnd, winrt::guid_of<wm::SystemMediaTransportControls>(), winrt::put_abi(d->controls)
+            hwnd, winrt::guid_of<WinMedia::SystemMediaTransportControls>(),
+            winrt::put_abi(d->controls)
         ));
         d->controls.IsEnabled(true);
         d->controls.IsPlayEnabled(true);
@@ -55,8 +56,8 @@ Smtc::Smtc(MediaControls* controls, QWidget* window, QObject* parent)
         QPointer<Smtc> self(this);
         d->buttonToken = d->controls.ButtonPressed(
             [self](
-                const wm::SystemMediaTransportControls&,
-                const wm::SystemMediaTransportControlsButtonPressedEventArgs& args
+                const WinMedia::SystemMediaTransportControls&,
+                const WinMedia::SystemMediaTransportControlsButtonPressedEventArgs& args
             ) {
                 const int button = static_cast<int>(args.Button());
                 QMetaObject::invokeMethod(
@@ -100,12 +101,12 @@ bool Smtc::isActive() const {
 }
 
 void Smtc::handleButton(int button) {
-    switch (static_cast<wm::SystemMediaTransportControlsButton>(button)) {
-        case wm::SystemMediaTransportControlsButton::Play: m_controls->play(); break;
-        case wm::SystemMediaTransportControlsButton::Pause: m_controls->pause(); break;
-        case wm::SystemMediaTransportControlsButton::Stop: m_controls->stop(); break;
-        case wm::SystemMediaTransportControlsButton::Next: m_controls->next(); break;
-        case wm::SystemMediaTransportControlsButton::Previous: m_controls->previous(); break;
+    switch (static_cast<WinMedia::SystemMediaTransportControlsButton>(button)) {
+        case WinMedia::SystemMediaTransportControlsButton::Play: m_controls->play(); break;
+        case WinMedia::SystemMediaTransportControlsButton::Pause: m_controls->pause(); break;
+        case WinMedia::SystemMediaTransportControlsButton::Stop: m_controls->stop(); break;
+        case WinMedia::SystemMediaTransportControlsButton::Next: m_controls->next(); break;
+        case WinMedia::SystemMediaTransportControlsButton::Previous: m_controls->previous(); break;
         default: break;
     }
 }
@@ -117,13 +118,13 @@ void Smtc::updateStatus() {
     try {
         switch (m_controls->status()) {
             case MediaControls::Status::Playing:
-                d->controls.PlaybackStatus(wm::MediaPlaybackStatus::Playing);
+                d->controls.PlaybackStatus(WinMedia::MediaPlaybackStatus::Playing);
                 break;
             case MediaControls::Status::Paused:
-                d->controls.PlaybackStatus(wm::MediaPlaybackStatus::Paused);
+                d->controls.PlaybackStatus(WinMedia::MediaPlaybackStatus::Paused);
                 break;
             case MediaControls::Status::Stopped:
-                d->controls.PlaybackStatus(wm::MediaPlaybackStatus::Stopped);
+                d->controls.PlaybackStatus(WinMedia::MediaPlaybackStatus::Stopped);
                 break;
         }
     } catch (const winrt::hresult_error&) {
@@ -137,12 +138,12 @@ void Smtc::updateMetadata() {
     try {
         auto updater = d->controls.DisplayUpdater();
         updater.ClearAll();  // also drops the previous track's cover
-        const yandex::Track* t = m_controls->player()->currentTrack();
+        const Yandex::Track* t = m_controls->player()->currentTrack();
         if (!t) {
             updater.Update();
             return;
         }
-        updater.Type(wm::MediaPlaybackType::Music);
+        updater.Type(WinMedia::MediaPlaybackType::Music);
         auto music = updater.MusicProperties();
         music.Title(toH(t->title));
         music.Artist(toH(t->artists.join(QStringLiteral(", "))));
@@ -150,9 +151,9 @@ void Smtc::updateMetadata() {
         // The https URL: SMTC fetches it itself, and file:// URIs aren't accepted here.
         const QUrl art = m_controls->remoteArtUrl();
         if (!art.isEmpty()) {
-            updater.Thumbnail(
-                wss::RandomAccessStreamReference::CreateFromUri(wf::Uri(toH(art.toString())))
-            );
+            updater.Thumbnail(WinStreams::RandomAccessStreamReference::CreateFromUri(
+                WinFoundation::Uri(toH(art.toString()))
+            ));
         }
         updater.Update();
     } catch (const winrt::hresult_error& e) {
@@ -162,4 +163,4 @@ void Smtc::updateMetadata() {
     }
 }
 
-}  // namespace qiyaa
+}  // namespace Integrations

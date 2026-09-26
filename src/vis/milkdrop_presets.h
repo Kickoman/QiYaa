@@ -6,7 +6,7 @@
 #include <QList>
 #include <QString>
 
-namespace qiyaa {
+namespace Vis {
 
 class MilkdropPresets {
 public:
@@ -35,4 +35,4 @@ private:
     QList<Preset> m_presets;
 };
 
-}  // namespace qiyaa
+}  // namespace Vis

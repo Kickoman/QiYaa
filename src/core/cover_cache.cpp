@@ -8,7 +8,7 @@
 #include <QPointer>
 #include <QStandardPaths>
 
-namespace qiyaa {
+namespace Core {
 
 namespace {
 constexpr int kMemoryItems = 30;
@@ -100,4 +100,4 @@ QImage CoverCache::get(const QUrl& url) {
     return {};
 }
 
-}  // namespace qiyaa
+}  // namespace Core

@@ -9,11 +9,11 @@ class QLineEdit;
 class QNetworkAccessManager;
 class QPushButton;
 
-namespace qiyaa {
-
-namespace yandex {
+namespace Yandex {
 class DeviceLogin;
-}
+}  // namespace Yandex
+
+namespace Ui {
 
 class LoginDialog : public QDialog {
     Q_OBJECT
@@ -34,7 +34,7 @@ private:
     void fitToContents();
     void tryPasted();
 
-    yandex::DeviceLogin* m_device;
+    Yandex::DeviceLogin* m_device;
     QLabel* m_code;
     QLabel* m_deviceStatus;
     QPushButton* m_openDevice;
@@ -44,4 +44,4 @@ private:
     QString m_token;
 };
 
-}  // namespace qiyaa
+}  // namespace Ui

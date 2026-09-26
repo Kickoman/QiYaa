@@ -11,7 +11,7 @@
 
 class QNetworkAccessManager;
 
-namespace qiyaa {
+namespace Core {
 
 class CoverCache : public QObject {
     Q_OBJECT
@@ -39,4 +39,4 @@ private:
     QSet<QUrl> m_pending;
 };
 
-}  // namespace qiyaa
+}  // namespace Core

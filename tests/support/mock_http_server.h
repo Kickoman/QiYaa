@@ -14,6 +14,8 @@
 
 #include <functional>
 
+namespace Tests {
+
 struct MockRequest {
     QByteArray method;
     QString path;  // without query
@@ -150,3 +152,5 @@ private:
     QList<PrefixRoute> m_prefixRoutes;
     QList<MockRequest> m_requests;
 };
+
+}  // namespace Tests

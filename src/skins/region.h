@@ -7,7 +7,7 @@
 #include <QRegion>
 #include <QString>
 
-namespace qiyaa {
+namespace Skins {
 
 // Section name (lower-case: "normal", "windowshade", "equalizer", "equalizerws")
 // -> list of polygons.
@@ -18,4 +18,4 @@ RegionData parseRegionTxt(const QByteArray& text);
 // Builds a mask region from polygons. Empty list -> empty region (= no mask).
 QRegion regionFromPolygons(const QList<QPolygon>& polygons);
 
-}  // namespace qiyaa
+}  // namespace Skins

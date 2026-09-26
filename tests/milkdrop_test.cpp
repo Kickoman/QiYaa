@@ -14,8 +14,6 @@
 #include <QTemporaryDir>
 #include <QTest>
 
-using namespace qiyaa;
-
 namespace {
 // A tiny valid Milkdrop preset: a waveform and some zoom, no shaders.
 QByteArray simplePreset(double zoom) {
@@ -34,8 +32,8 @@ class TestMilkdrop : public QObject {
     Q_OBJECT
 private:
     QTemporaryDir builtIn, user;
-    Skin skin = Skin::builtinBase();
-    audio::AudioEngine engine;  // not initialised: silence
+    Skins::Skin skin = Skins::Skin::builtinBase();
+    Audio::AudioEngine engine;  // not initialised: silence
 
 private Q_SLOTS:
     void initTestCase() {
@@ -47,7 +45,7 @@ private Q_SLOTS:
     }
 
     void presetsAreListedInOrder() {
-        MilkdropPresets p;
+        Vis::MilkdropPresets p;
         p.load(builtIn.path(), user.path());
         QCOMPARE(p.size(), 4);
         QCOMPARE(p.at(0).name, QStringLiteral("A-first"));
@@ -66,7 +64,7 @@ private Q_SLOTS:
     }
 
     void builtInPresetsAreBundled() {
-        MilkdropPresets p;
+        Vis::MilkdropPresets p;
         p.load(QStringLiteral(":/milkdrop"), {});
         QVERIFY2(p.size() >= 50, qPrintable(QString::number(p.size())));
         for (int i = 0; i < p.size(); ++i) {
@@ -75,9 +73,9 @@ private Q_SLOTS:
     }
 
     void windowSwitchesPresets() {
-        MilkdropWindow w(&engine, builtIn.path(), user.path(), &skin);
+        Ui::MilkdropWindow w(&engine, builtIn.path(), user.path(), &skin);
         QVERIFY(!w.view());  // nothing OpenGL before it's shown
-        QSignalSpy changed(&w, &MilkdropWindow::presetChanged);
+        QSignalSpy changed(&w, &Ui::MilkdropWindow::presetChanged);
         w.setShuffle(false);
         w.selectPreset(0);
         QCOMPARE(w.currentPreset(), QStringLiteral("A-first"));
@@ -108,7 +106,7 @@ private Q_SLOTS:
     }
 
     void blackPresetsAreSkippedAndRemembered() {
-        MilkdropWindow w(&engine, builtIn.path(), user.path(), &skin);
+        Ui::MilkdropWindow w(&engine, builtIn.path(), user.path(), &skin);
         w.setShuffle(false);
         w.selectPreset(0);
         w.onStaysBlack();  // A-first shows nothing on this "GPU"
@@ -149,7 +147,7 @@ private Q_SLOTS:
         QCOMPARE(w.currentPreset(), QStringLiteral("mine"));
 
         // Restored from the settings.
-        MilkdropWindow w2(&engine, builtIn.path(), user.path(), &skin);
+        Ui::MilkdropWindow w2(&engine, builtIn.path(), user.path(), &skin);
         w2.setBlackPresets({"c-third"});
         QVERIFY(w2.isBlack(2));
         QVERIFY(!w2.isBlack(0));
@@ -163,7 +161,7 @@ private Q_SLOTS:
                 simplePreset(1.0)
             );
         }
-        MilkdropWindow w(&engine, many.path(), {}, &skin);
+        Ui::MilkdropWindow w(&engine, many.path(), {}, &skin);
         w.setShuffle(false);
         w.selectPreset(0);
         for (int i = 0; i < 12; ++i) {
@@ -177,14 +175,14 @@ private Q_SLOTS:
     void rendersWithProjectM() {
         // The whole path on real OpenGL: Qt window + projectM + a real preset
         // with warp and composite shaders (bright even without sound).
-        MilkdropWindow w(&engine, QStringLiteral(":/milkdrop"), user.path(), &skin);
+        Ui::MilkdropWindow w(&engine, QStringLiteral(":/milkdrop"), user.path(), &skin);
         w.setSizeSteps({2, 4});
         w.setLocked(true);
         w.selectPreset(QStringLiteral("Geometric - RetroTrilogy(Final)"));
         QCOMPARE(w.currentPreset(), QStringLiteral("Geometric - RetroTrilogy(Final)"));
         w.show();
         QVERIFY(QTest::qWaitForWindowExposed(&w));
-        MilkdropView* v = w.view();
+        Vis::MilkdropView* v = w.view();
         if (!v && qEnvironmentVariableIsSet("QIYAA_EXPECT_GL")) {
             QFAIL(qPrintable("no OpenGL: " + w.failure()));
         }
@@ -209,7 +207,7 @@ private Q_SLOTS:
         QElapsedTimer t;
         t.start();
         do {
-            QSignalSpy captured(v, &MilkdropView::frameCaptured);
+            QSignalSpy captured(v, &Vis::MilkdropView::frameCaptured);
             v->captureNextFrame();
             QVERIFY(captured.wait(5000));
             img = captured.first().first().value<QImage>();
@@ -259,10 +257,10 @@ private Q_SLOTS:
             dir.filePath("white.milk"),
             "[preset00]\nfDecay=0.9\nob_size=0.5\nob_r=1\nob_g=1\nob_b=1\nob_a=1\n"
         );
-        MilkdropWindow w(&engine, dir.path(), {}, &skin);
+        Ui::MilkdropWindow w(&engine, dir.path(), {}, &skin);
         w.show();
         QVERIFY(QTest::qWaitForWindowExposed(&w));
-        MilkdropView* v = w.view();
+        Vis::MilkdropView* v = w.view();
         if (!v && qEnvironmentVariableIsSet("QIYAA_EXPECT_GL")) {
             QFAIL(qPrintable("no OpenGL: " + w.failure()));
         }
@@ -274,8 +272,8 @@ private Q_SLOTS:
             QSKIP("no OpenGL 3.3 here");
         }
         v->setBlackWatchTiming(300, 150, 3);
-        QSignalSpy black(v, &MilkdropView::staysBlack);
-        QSignalSpy picture(v, &MilkdropView::drawsPicture);
+        QSignalSpy black(v, &Vis::MilkdropView::staysBlack);
+        QSignalSpy picture(v, &Vis::MilkdropView::drawsPicture);
         w.setLocked(true);
         w.selectPreset(w.presets().indexOf("white"), false);
         v->setBlackWatch(true);
@@ -286,7 +284,7 @@ private Q_SLOTS:
     }
 
     void fullScreenAndBack() {
-        MilkdropWindow w(&engine, builtIn.path(), user.path(), &skin);
+        Ui::MilkdropWindow w(&engine, builtIn.path(), user.path(), &skin);
         w.show();
         QVERIFY(QTest::qWaitForWindowExposed(&w));
         if (!w.view()) {

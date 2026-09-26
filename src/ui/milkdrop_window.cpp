@@ -19,7 +19,7 @@
 
 #include <algorithm>
 
-namespace qiyaa {
+namespace Ui {
 
 namespace {
 constexpr int kHistory = 100;
@@ -28,10 +28,10 @@ constexpr int kFpsIdle = 20;
 }  // namespace
 
 MilkdropWindow::MilkdropWindow(
-    audio::AudioEngine* engine,
+    Audio::AudioEngine* engine,
     const QString& builtInDir,
     const QString& userDir,
-    const Skin* skin,
+    const Skins::Skin* skin,
     QWidget* parent
 )
     : GenWindow(skin, QStringLiteral("MILKDROP"), parent)
@@ -49,13 +49,13 @@ void MilkdropWindow::ensureView() {
         return;
     }
     m_viewTried = true;
-    m_glProblem = MilkdropView::openGLProblem();
+    m_glProblem = Vis::MilkdropView::openGLProblem();
     if (!m_glProblem.isEmpty()) {
         qWarning("Milkdrop unavailable: %s", qPrintable(m_glProblem));
         update();
         return;
     }
-    m_view = new MilkdropView(m_engine);
+    m_view = new Vis::MilkdropView(m_engine);
     m_container = QWidget::createWindowContainer(m_view, this);
     m_container->setFocusPolicy(Qt::ClickFocus);
     wireView(m_view);
@@ -77,11 +77,11 @@ QString MilkdropWindow::currentPreset() const {
                                                           : QString();
 }
 
-void MilkdropWindow::wireView(MilkdropView* view) {
+void MilkdropWindow::wireView(Vis::MilkdropView* view) {
     view->setTextureSearchPaths({m_userDir, m_userDir + QStringLiteral("/textures")});
     view->setPresetDuration(m_seconds);
     view->setLocked(m_locked);
-    connect(view, &MilkdropView::ready, this, [this, view] {
+    connect(view, &Vis::MilkdropView::ready, this, [this, view] {
         if (m_current < 0 && !m_presets.isEmpty()) {
             m_current = followingPreset();
         }
@@ -92,7 +92,7 @@ void MilkdropWindow::wireView(MilkdropView* view) {
             Q_EMIT presetChanged(currentPreset(), false);
         }
     });
-    connect(view, &MilkdropView::failed, this, [this, view](const QString& reason) {
+    connect(view, &Vis::MilkdropView::failed, this, [this, view](const QString& reason) {
         qWarning("Milkdrop unavailable: %s", qPrintable(reason));
         if (view == m_view) {
             m_container->hide();
@@ -102,16 +102,16 @@ void MilkdropWindow::wireView(MilkdropView* view) {
         }
         update();
     });
-    connect(view, &MilkdropView::switchRequested, this, &MilkdropWindow::onSwitchRequested);
-    connect(view, &MilkdropView::presetFailed, this, &MilkdropWindow::onPresetFailed);
-    connect(view, &MilkdropView::staysBlack, this, &MilkdropWindow::onStaysBlack);
-    connect(view, &MilkdropView::drawsPicture, this, [this] { m_blackInARow = 0; });
+    connect(view, &Vis::MilkdropView::switchRequested, this, &MilkdropWindow::onSwitchRequested);
+    connect(view, &Vis::MilkdropView::presetFailed, this, &MilkdropWindow::onPresetFailed);
+    connect(view, &Vis::MilkdropView::staysBlack, this, &MilkdropWindow::onStaysBlack);
+    connect(view, &Vis::MilkdropView::drawsPicture, this, [this] { m_blackInARow = 0; });
     view->setBlackWatch(m_playing && m_blackInARow <= 5);
-    connect(view, &MilkdropView::doubleClicked, this, [this] {
+    connect(view, &Vis::MilkdropView::doubleClicked, this, [this] {
         setFullScreenMode(!isFullScreenMode());
     });
-    connect(view, &MilkdropView::contextMenuRequested, this, &MilkdropWindow::showMenu);
-    connect(view, &MilkdropView::keyPressed, this, &MilkdropWindow::handleKey);
+    connect(view, &Vis::MilkdropView::contextMenuRequested, this, &MilkdropWindow::showMenu);
+    connect(view, &Vis::MilkdropView::keyPressed, this, &MilkdropWindow::handleKey);
 }
 
 void MilkdropWindow::selectPreset(int index, bool smooth, bool byUser) {
@@ -129,7 +129,7 @@ void MilkdropWindow::selectPreset(int index, bool smooth, bool byUser) {
         }
     }
     m_current = index;
-    if (MilkdropView* v = m_fullView ? m_fullView.get() : m_view) {
+    if (Vis::MilkdropView* v = m_fullView ? m_fullView.get() : m_view) {
         v->loadPreset(milk, smooth);
     }
     Q_EMIT presetChanged(currentPreset(), byUser);
@@ -257,7 +257,7 @@ void MilkdropWindow::setFullScreenMode(bool on) {
         if (!m_view || !m_view->failure().isEmpty()) {
             return;
         }
-        m_fullView = std::make_unique<MilkdropView>(m_engine);
+        m_fullView = std::make_unique<Vis::MilkdropView>(m_engine);
         wireView(m_fullView.get());
         m_fullView->setTitle(QStringLiteral("QiYaa: Milkdrop"));
         m_fullView->setCursor(Qt::BlankCursor);
@@ -269,7 +269,7 @@ void MilkdropWindow::setFullScreenMode(bool on) {
         m_fullView->requestActivate();
     } else {
         // Possibly called from one of its own event handlers: delete it later.
-        MilkdropView* v = m_fullView.release();
+        Vis::MilkdropView* v = m_fullView.release();
         v->setRendering(false);
         v->hide();
         v->deleteLater();
@@ -333,7 +333,7 @@ void MilkdropWindow::onStaysBlack() {
     if (name.isEmpty()) {
         return;
     }
-    const MilkdropView* v = m_fullView ? m_fullView.get() : m_view;
+    const Vis::MilkdropView* v = m_fullView ? m_fullView.get() : m_view;
     qWarning(
         "Milkdrop: \"%s\" shows only black here (%s), skipping it", qPrintable(name),
         v ? qPrintable(v->glInfo()) : "?"
@@ -542,4 +542,4 @@ void MilkdropWindow::hideEvent(QHideEvent* e) {
     updateRendering();
 }
 
-}  // namespace qiyaa
+}  // namespace Ui

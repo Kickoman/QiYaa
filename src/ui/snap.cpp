@@ -5,7 +5,7 @@
 #include <limits>
 #include <optional>
 
-namespace qiyaa::snap {
+namespace Ui {
 namespace {
 
 // QRect::right()/bottom() are inclusive (x + w - 1). webamp uses exclusive edges,
@@ -275,4 +275,4 @@ QPoint resolveDragPosition(
     return clampInside(r, screen);
 }
 
-}  // namespace qiyaa::snap
+}  // namespace Ui

@@ -10,16 +10,18 @@
 #include <memory>
 #include <vector>
 
-namespace qiyaa {
-
+namespace Core {
 class Player;
+}  // namespace Core
+
+namespace Ui {
 
 class MainWindow : public SkinnedWindow {
     Q_OBJECT
 public:
     enum class VisMode { Spectrum, Oscilloscope, Off };
 
-    MainWindow(Player* player, const Skin* skin, QWidget* parent = nullptr);
+    MainWindow(Core::Player* player, const Skins::Skin* skin, QWidget* parent = nullptr);
     ~MainWindow() override;
 
     void setVolume(int v);
@@ -107,7 +109,7 @@ private:
     Element hitTestShaded(QPoint p) const;
     QString miniTimeText() const;
 
-    Player* m_player;
+    Core::Player* m_player;
     QTimer m_timer;
     QElapsedTimer m_blink;
     QElapsedTimer m_lastFullRepaint;
@@ -126,10 +128,10 @@ private:
     QElapsedTimer m_marqueeStep;
 
     VisMode m_visMode = VisMode::Spectrum;
-    std::unique_ptr<vis::Visualizer> m_vis;
-    vis::Analyzer m_analyzer;
+    std::unique_ptr<Vis::Visualizer> m_vis;
+    Vis::Analyzer m_analyzer;
     std::vector<float> m_visL, m_visR, m_visMono;
     bool m_visActive = false;
 };
 
-}  // namespace qiyaa
+}  // namespace Ui

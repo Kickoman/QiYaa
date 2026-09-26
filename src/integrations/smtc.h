@@ -8,7 +8,7 @@
 
 class QWidget;
 
-namespace qiyaa {
+namespace Integrations {
 
 class MediaControls;
 
@@ -31,4 +31,4 @@ private:
     MediaControls* m_controls;
 };
 
-}  // namespace qiyaa
+}  // namespace Integrations

@@ -15,19 +15,19 @@
 
 class QNetworkReply;
 
-namespace qiyaa {
+namespace Core {
 
 class Player : public QObject {
     Q_OBJECT
 public:
     // Asked to append more tracks when the queue is about to run out (endless waves).
-    using MoreFn = std::function<void(std::function<void(const QList<yandex::Track>&)> done)>;
+    using MoreFn = std::function<void(std::function<void(const QList<Yandex::Track>&)> done)>;
     // What happened to a track of the queue (used for wave feedback).
     enum class TrackEvent { Started, Finished, Skipped };
     using EventFn =
-        std::function<void(TrackEvent event, const yandex::Track& track, double playedSeconds)>;
+        std::function<void(TrackEvent event, const Yandex::Track& track, double playedSeconds)>;
 
-    Player(yandex::Library* library, audio::AudioEngine* engine, QObject* parent = nullptr);
+    Player(Yandex::Library* library, Audio::AudioEngine* engine, QObject* parent = nullptr);
 
     // Loading a source is asynchronous; only the latest request may replace the
     // queue. Take a ticket before the request, check it in the callback.
@@ -36,13 +36,13 @@ public:
 
     // Replaces the queue. `autoplay` starts the first track right away.
     void setQueue(
-        const QList<yandex::Track>& tracks,
+        const QList<Yandex::Track>& tracks,
         const QString& title,
         bool autoplay,
         MoreFn more = {},
         EventFn events = {}
     );
-    void appendTracks(const QList<yandex::Track>& tracks);
+    void appendTracks(const QList<Yandex::Track>& tracks);
     void removeTracks(QList<int> indices);
     void clearQueue();
 
@@ -63,14 +63,14 @@ public:
     bool shuffle() const { return m_shuffle; }
     bool repeat() const { return m_repeat; }
 
-    const QList<yandex::Track>& playlist() const { return m_playlist; }
+    const QList<Yandex::Track>& playlist() const { return m_playlist; }
     const QString& queueTitle() const { return m_title; }
     int currentIndex() const { return m_index; }
-    const yandex::Track* currentTrack() const;
+    const Yandex::Track* currentTrack() const;
     int currentBitrate() const { return m_bitrate; }
     double durationSeconds() const;
-    audio::AudioEngine* engine() const { return m_engine; }
-    yandex::Library* library() const { return m_library; }
+    Audio::AudioEngine* engine() const { return m_engine; }
+    Yandex::Library* library() const { return m_library; }
     // Index of the track already downloading in the background to follow the
     // current one without a gap (-1 if none yet).
     int preloadedIndex() const { return m_preload && m_preload->stream ? m_preload->index : -1; }
@@ -85,7 +85,7 @@ Q_SIGNALS:
     void seeked(double seconds);
 
 private:
-    using StreamId = audio::AudioEngine::StreamId;
+    using StreamId = Audio::AudioEngine::StreamId;
     // The next track, resolved and downloading into a queued engine stream.
     struct Preload {
         int index = -1;
@@ -102,7 +102,7 @@ private:
     void downloadFinished(StreamId stream, bool failed, const QString& error);
     void abortDownload();
     // Reports the start of `track` (it is current and its audio is on the way).
-    void trackStarted(const yandex::Track& track, int bitrate);
+    void trackStarted(const Yandex::Track& track, int bitrate);
     // What plays after the current track: in order (-1 at the end of a finite
     // queue, or of an endless one that is still loading), or at random.
     int sequentialNext() const;
@@ -117,14 +117,14 @@ private:
     // Seconds of the open track actually heard (seeks don't count).
     double playedSeconds();
 
-    yandex::Library* m_library;
-    audio::AudioEngine* m_engine;
-    QList<yandex::Track> m_playlist;
+    Yandex::Library* m_library;
+    Audio::AudioEngine* m_engine;
+    QList<Yandex::Track> m_playlist;
     QString m_title;
     MoreFn m_more;
     EventFn m_events;
     // The track whose Started was reported and that hasn't finished/skipped yet.
-    std::optional<yandex::Track> m_openTrack;
+    std::optional<Yandex::Track> m_openTrack;
     EventFn m_openTrackEvents;
     double m_played = 0;
     double m_lastPosition = 0;
@@ -147,4 +147,4 @@ private:
     quint64 m_preloadGen = 0;
 };
 
-}  // namespace qiyaa
+}  // namespace Core

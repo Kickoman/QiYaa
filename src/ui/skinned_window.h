@@ -12,18 +12,20 @@
 
 #include <cmath>
 
-namespace qiyaa {
-
+namespace Skins {
 class Skin;
+}  // namespace Skins
+
+namespace Ui {
 
 class SkinnedWindow : public QWidget {
     Q_OBJECT
 public:
-    SkinnedWindow(const Skin* skin, QSize skinSize, QWidget* parent = nullptr);
+    SkinnedWindow(const Skins::Skin* skin, QSize skinSize, QWidget* parent = nullptr);
     ~SkinnedWindow() override;
 
-    void setSkin(const Skin* skin);
-    const Skin& skin() const { return *m_skin; }
+    void setSkin(const Skins::Skin* skin);
+    const Skins::Skin& skin() const { return *m_skin; }
 
     // Zoom factor: 1 = original 275px wide, 2 = "double size", 1.5 = in between.
     // Clamped to [1, 4] and rounded to 0.05.
@@ -105,7 +107,7 @@ protected:
 private:
     void applySize();
 
-    const Skin* m_skin;
+    const Skins::Skin* m_skin;
     QSize m_skinSize;
     double m_scale = 1.0;
     bool m_dragsDocked = false;
@@ -120,4 +122,4 @@ private:
     QList<std::pair<QPointer<SkinnedWindow>, QPoint>> m_group;  // window, start position
 };
 
-}  // namespace qiyaa
+}  // namespace Ui

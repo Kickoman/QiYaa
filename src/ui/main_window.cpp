@@ -13,12 +13,11 @@
 #include <algorithm>
 #include <cmath>
 
-namespace qiyaa {
+namespace Ui {
 
-using audio::AudioEngine;
-using Sheet = Skin::Sheet;
-namespace S = sprites;
-namespace L = sprites::main;
+using Audio::AudioEngine;
+using Sheet = Skins::Skin::Sheet;
+using Skins::MainWindowSprites;
 
 namespace {
 
@@ -41,8 +40,8 @@ bool contains(const QRect& r, QPoint p) {
 
 }  // namespace
 
-MainWindow::MainWindow(Player* player, const Skin* skin, QWidget* parent)
-    : SkinnedWindow(skin, L::kSize, parent)
+MainWindow::MainWindow(Core::Player* player, const Skins::Skin* skin, QWidget* parent)
+    : SkinnedWindow(skin, Skins::MainWindowSprites::kSize, parent)
     , m_player(player)
     , m_analyzer(kVisSamples) {
     setWindowTitle(QStringLiteral("QiYaa"));
@@ -57,16 +56,16 @@ MainWindow::MainWindow(Player* player, const Skin* skin, QWidget* parent)
     setVisMode(VisMode::Spectrum);
 
     connect(&m_timer, &QTimer::timeout, this, &MainWindow::tick);
-    connect(m_player->engine(), &AudioEngine::stateChanged, this, [this] {
+    connect(m_player->engine(), &Audio::AudioEngine::stateChanged, this, [this] {
         refreshTimer();
         update();
     });
-    connect(m_player, &Player::currentTrackChanged, this, [this] {
+    connect(m_player, &Core::Player::currentTrackChanged, this, [this] {
         m_marqueeOffset = 0;
         refreshTimer();
         update();
     });
-    connect(m_player, &Player::statusMessage, this, &MainWindow::setStatusText);
+    connect(m_player, &Core::Player::statusMessage, this, &MainWindow::setStatusText);
     refreshTimer();
 }
 
@@ -85,8 +84,8 @@ void MainWindow::setPlButton(bool on) {
 void MainWindow::setVisMode(VisMode mode) {
     m_visMode = mode;
     switch (mode) {
-        case VisMode::Spectrum: m_vis = vis::makeSpectrum(); break;
-        case VisMode::Oscilloscope: m_vis = vis::makeOscilloscope(); break;
+        case VisMode::Spectrum: m_vis = Vis::makeSpectrum(); break;
+        case VisMode::Oscilloscope: m_vis = Vis::makeOscilloscope(); break;
         case VisMode::Off: m_vis.reset(); break;
     }
     refreshTimer();
@@ -117,7 +116,7 @@ void MainWindow::setShaded(bool shaded) {
     if (shaded == isShaded()) {
         return;
     }
-    applyShade(shaded, shaded ? QSize(275, 14) : L::kSize);
+    applyShade(shaded, shaded ? QSize(275, 14) : Skins::MainWindowSprites::kSize);
     refreshTimer();
     update();
 }
@@ -149,16 +148,19 @@ void MainWindow::refreshTimer() {
     // Only tick when something on screen actually changes: playback, a blinking
     // pause, a pending status text, or a marquee that has to scroll.
     const auto st = m_player->engine()->state();
-    const bool playing = st == AudioEngine::State::Playing || st == AudioEngine::State::Buffering;
+    const bool playing =
+        st == Audio::AudioEngine::State::Playing || st == Audio::AudioEngine::State::Buffering;
     m_visActive = playing && m_vis && isVisible() && !isMinimized() && !isShaded();
     int interval = 0;
     if (m_visActive) {
         interval = kVisFrameMs;
     } else if (playing) {
         interval = kFullRepaintMs;
-    } else if (st == AudioEngine::State::Paused) {
+    } else if (st == Audio::AudioEngine::State::Paused) {
         interval = 250;
-    } else if (!m_status.isEmpty() || Skin::textWidth(marqueeText()) > L::kMarquee.width()) {
+    } else if (!m_status.isEmpty()
+               || Skins::Skin::textWidth(marqueeText())
+                   > Skins::MainWindowSprites::kMarquee.width()) {
         interval = kMarqueeStepMs;
     }
 
@@ -179,7 +181,7 @@ void MainWindow::updateVis() {
         m_visMono[i] = 0.5f * (m_visL[i] + m_visR[i]);
     }
     const auto& spectrum = m_analyzer.analyze(m_visMono);
-    vis::VisFrame frame;
+    Vis::VisFrame frame;
     frame.left = m_visL;
     frame.right = m_visR;
     frame.spectrum = spectrum;
@@ -208,7 +210,7 @@ void MainWindow::tick() {
         m_lastFullRepaint.restart();
         update();
     } else {
-        updateSkinRect(L::kVisualizer);
+        updateSkinRect(Skins::MainWindowSprites::kVisualizer);
     }
 }
 
@@ -275,10 +277,10 @@ void MainWindow::drawButton(
 
 void MainWindow::drawTime(QPainter& p) const {
     const auto st = m_player->engine()->state();
-    if (st == AudioEngine::State::Stopped) {
+    if (st == Audio::AudioEngine::State::Stopped) {
         return;
     }
-    if (st == AudioEngine::State::Paused && (m_blink.elapsed() / 1000) % 2 == 1) {
+    if (st == Audio::AudioEngine::State::Paused && (m_blink.elapsed() / 1000) % 2 == 1) {
         return;
     }
 
@@ -289,9 +291,15 @@ void MainWindow::drawTime(QPainter& p) const {
     if (remaining) {
         // Minus sign: its own digit-sized cell in nums_ex.bmp, a 5x1 dash in numbers.bmp.
         if (skin().numbersAreExtended()) {
-            skin().draw(p, Sheet::Numbers, S::kMinusSignEx, L::kTime + QPoint(-1, 0));
+            skin().draw(
+                p, Sheet::Numbers, Skins::kMinusSignEx,
+                Skins::MainWindowSprites::kTime + QPoint(-1, 0)
+            );
         } else {
-            skin().draw(p, Sheet::Numbers, S::kMinusSign, L::kTime + QPoint(-1, 6));
+            skin().draw(
+                p, Sheet::Numbers, Skins::kMinusSign,
+                Skins::MainWindowSprites::kTime + QPoint(-1, 6)
+            );
         }
     }
     const int mm = std::min(secs / 60, 99);
@@ -299,16 +307,19 @@ void MainWindow::drawTime(QPainter& p) const {
     const int digits[4] = {mm / 10, mm % 10, ss / 10, ss % 10};
     const int offsets[4] = {9, 21, 39, 51};
     for (int i = 0; i < 4; ++i) {
-        skin().draw(p, Sheet::Numbers, S::digit(digits[i]), L::kTime + QPoint(offsets[i], 0));
+        skin().draw(
+            p, Sheet::Numbers, Skins::digit(digits[i]),
+            Skins::MainWindowSprites::kTime + QPoint(offsets[i], 0)
+        );
     }
 }
 
 QString MainWindow::miniTimeText() const {
     const auto st = m_player->engine()->state();
-    if (st == AudioEngine::State::Stopped) {
+    if (st == Audio::AudioEngine::State::Stopped) {
         return {};
     }
-    if (st == AudioEngine::State::Paused && (m_blink.elapsed() / 1000) % 2 == 1) {
+    if (st == Audio::AudioEngine::State::Paused && (m_blink.elapsed() / 1000) % 2 == 1) {
         return {};
     }
     const double pos = m_player->engine()->positionSeconds();
@@ -322,18 +333,28 @@ QString MainWindow::miniTimeText() const {
 }
 
 void MainWindow::paintShaded(QPainter& p) {
-    const Skin& sk = skin();
+    const Skins::Skin& sk = skin();
     sk.draw(
-        p, Sheet::TitleBar, isActiveWindow() ? S::kShadeBackgroundSelected : S::kShadeBackground,
-        {0, 0}
+        p, Sheet::TitleBar,
+        isActiveWindow() ? Skins::kShadeBackgroundSelected : Skins::kShadeBackground, {0, 0}
     );
-    drawButton(p, Element::Options, L::kOptions, S::kOptionsButton, S::kOptionsButtonDown);
-    drawButton(p, Element::Minimize, L::kMinimize, S::kMinimizeButton, S::kMinimizeButtonDown);
+    drawButton(
+        p, Element::Options, Skins::MainWindowSprites::kOptions, Skins::kOptionsButton,
+        Skins::kOptionsButtonDown
+    );
+    drawButton(
+        p, Element::Minimize, Skins::MainWindowSprites::kMinimize, Skins::kMinimizeButton,
+        Skins::kMinimizeButtonDown
+    );
     const bool shadeDown = m_pressed == Element::Shade && m_pressedInside;
     sk.draw(
-        p, Sheet::TitleBar, shadeDown ? S::kShadeButtonShadedDown : S::kShadeButtonShaded, L::kShade
+        p, Sheet::TitleBar, shadeDown ? Skins::kShadeButtonShadedDown : Skins::kShadeButtonShaded,
+        Skins::MainWindowSprites::kShade
     );
-    drawButton(p, Element::Close, L::kClose, S::kCloseButton, S::kCloseButtonDown);
+    drawButton(
+        p, Element::Close, Skins::MainWindowSprites::kClose, Skins::kCloseButton,
+        Skins::kCloseButtonDown
+    );
 
     // Mini time (right-aligned in 5 characters, like Winamp).
     const QString t = miniTimeText().rightJustified(5, u' ');
@@ -341,14 +362,14 @@ void MainWindow::paintShaded(QPainter& p) {
 
     // Mini position bar.
     const double dur = m_player->durationSeconds();
-    if (m_player->engine()->state() != AudioEngine::State::Stopped && dur > 0) {
+    if (m_player->engine()->state() != Audio::AudioEngine::State::Stopped && dur > 0) {
         const double frac = m_seekPreview >= 0
             ? m_seekPreview
             : std::clamp(m_player->engine()->positionSeconds() / dur, 0.0, 1.0);
         const int x = int(std::lround(frac * (17 - 3)));
-        const QRect thumb = x == 0 ? S::kShadePositionThumbLeft
-            : x >= 14              ? S::kShadePositionThumbRight
-                                   : S::kShadePositionThumb;
+        const QRect thumb = x == 0 ? Skins::kShadePositionThumbLeft
+            : x >= 14              ? Skins::kShadePositionThumbRight
+                                   : Skins::kShadePositionThumb;
         sk.draw(p, Sheet::TitleBar, thumb, QPoint(226 + x, 4));
     }
 }
@@ -357,54 +378,74 @@ void MainWindow::paintSkin(QPainter& p) {
     if (isShaded()) {
         return paintShaded(p);
     }
-    const Skin& sk = skin();
+    const Skins::Skin& sk = skin();
     const auto st = m_player->engine()->state();
-    const bool stopped = st == AudioEngine::State::Stopped;
+    const bool stopped = st == Audio::AudioEngine::State::Stopped;
 
-    sk.draw(p, Sheet::Main, S::kMainBackground, {0, 0});
-    sk.draw(p, Sheet::TitleBar, isActiveWindow() ? S::kTitleBarSelected : S::kTitleBar, {0, 0});
-    drawButton(p, Element::Options, L::kOptions, S::kOptionsButton, S::kOptionsButtonDown);
-    drawButton(p, Element::Minimize, L::kMinimize, S::kMinimizeButton, S::kMinimizeButtonDown);
-    drawButton(p, Element::Shade, L::kShade, S::kShadeButton, S::kShadeButtonDown);
-    drawButton(p, Element::Close, L::kClose, S::kCloseButton, S::kCloseButtonDown);
-    sk.draw(p, Sheet::TitleBar, S::kClutterBar, L::kClutter);
+    sk.draw(p, Sheet::Main, Skins::kMainBackground, {0, 0});
+    sk.draw(
+        p, Sheet::TitleBar, isActiveWindow() ? Skins::kTitleBarSelected : Skins::kTitleBar, {0, 0}
+    );
+    drawButton(
+        p, Element::Options, Skins::MainWindowSprites::kOptions, Skins::kOptionsButton,
+        Skins::kOptionsButtonDown
+    );
+    drawButton(
+        p, Element::Minimize, Skins::MainWindowSprites::kMinimize, Skins::kMinimizeButton,
+        Skins::kMinimizeButtonDown
+    );
+    drawButton(
+        p, Element::Shade, Skins::MainWindowSprites::kShade, Skins::kShadeButton,
+        Skins::kShadeButtonDown
+    );
+    drawButton(
+        p, Element::Close, Skins::MainWindowSprites::kClose, Skins::kCloseButton,
+        Skins::kCloseButtonDown
+    );
+    sk.draw(p, Sheet::TitleBar, Skins::kClutterBar, Skins::MainWindowSprites::kClutter);
 
     // Status: play/pause/stop indicator + time.
-    const QRect indicator = st == AudioEngine::State::Paused ? S::kPausedIndicator
-        : stopped                                            ? S::kStoppedIndicator
-                                                             : S::kPlayingIndicator;
-    sk.draw(p, Sheet::PlayPaus, indicator, L::kPlayPause);
-    if (!stopped && st != AudioEngine::State::Paused) {
+    const QRect indicator = st == Audio::AudioEngine::State::Paused ? Skins::kPausedIndicator
+        : stopped                                                   ? Skins::kStoppedIndicator
+                                                                    : Skins::kPlayingIndicator;
+    sk.draw(p, Sheet::PlayPaus, indicator, Skins::MainWindowSprites::kPlayPause);
+    if (!stopped && st != Audio::AudioEngine::State::Paused) {
         // Little LED: green while playing, red while waiting for data.
-        const bool buffering = st == AudioEngine::State::Buffering;
+        const bool buffering = st == Audio::AudioEngine::State::Buffering;
         sk.draw(
-            p, Sheet::PlayPaus, QRect(buffering ? 36 : 39, 0, 3, 9), L::kPlayPause - QPoint(2, 0)
+            p, Sheet::PlayPaus, QRect(buffering ? 36 : 39, 0, 3, 9),
+            Skins::MainWindowSprites::kPlayPause - QPoint(2, 0)
         );
     }
     drawTime(p);
 
     // Visualization (drawn over the background, only while playing).
-    if (m_vis && (st == AudioEngine::State::Playing || st == AudioEngine::State::Buffering)) {
+    if (m_vis
+        && (st == Audio::AudioEngine::State::Playing || st == Audio::AudioEngine::State::Buffering
+        )) {
         p.save();
-        p.setClipRect(L::kVisualizer);
-        m_vis->render(p, L::kVisualizer, sk);
+        p.setClipRect(Skins::MainWindowSprites::kVisualizer);
+        m_vis->render(p, Skins::MainWindowSprites::kVisualizer, sk);
         p.restore();
     }
 
     // Marquee.
     {
         p.save();
-        p.setClipRect(L::kMarquee);
+        p.setClipRect(Skins::MainWindowSprites::kMarquee);
         QString text = marqueeText();
         const bool scroll = m_status.isEmpty() && m_pressed == Element::None
-            && Skin::textWidth(text) > L::kMarquee.width();
+            && Skins::Skin::textWidth(text) > Skins::MainWindowSprites::kMarquee.width();
         if (scroll) {
             const QString loop = text + kMarqueeSeparator;
             const int n = int(loop.size());
             const int off = n ? m_marqueeOffset % n : 0;
             text = loop.mid(off) + loop.left(off) + loop;
         }
-        sk.drawText(p, L::kMarquee.topLeft(), text, L::kMarquee.width() + S::kCharW);
+        sk.drawText(
+            p, Skins::MainWindowSprites::kMarquee.topLeft(), text,
+            Skins::MainWindowSprites::kMarquee.width() + Skins::kCharW
+        );
         p.restore();
     }
 
@@ -414,84 +455,119 @@ void MainWindow::paintSkin(QPainter& p) {
         const int khz = (m_player->engine()->sourceSampleRate() + 500) / 1000;
         if (kbps > 0) {
             const QString t = QString::number(kbps).rightJustified(3, u' ').right(3);
-            sk.drawText(p, L::kKbps, t);
+            sk.drawText(p, Skins::MainWindowSprites::kKbps, t);
         }
         if (khz > 0) {
-            sk.drawText(p, L::kKhz, QString::number(khz).rightJustified(2, u' ').right(2));
+            sk.drawText(
+                p, Skins::MainWindowSprites::kKhz,
+                QString::number(khz).rightJustified(2, u' ').right(2)
+            );
         }
     }
     const int ch = stopped ? 0 : m_player->engine()->sourceChannels();
-    sk.draw(p, Sheet::MonoSter, ch == 1 ? S::kMonoSelected : S::kMono, L::kMono);
-    sk.draw(p, Sheet::MonoSter, ch >= 2 ? S::kStereoSelected : S::kStereo, L::kStereo);
+    sk.draw(
+        p, Sheet::MonoSter, ch == 1 ? Skins::kMonoSelected : Skins::kMono,
+        Skins::MainWindowSprites::kMono
+    );
+    sk.draw(
+        p, Sheet::MonoSter, ch >= 2 ? Skins::kStereoSelected : Skins::kStereo,
+        Skins::MainWindowSprites::kStereo
+    );
 
     // Volume.
     {
         const int frame = int(std::lround(m_volume / 100.0 * 28));
-        const int offset = std::max(0, (frame - 1) * S::kSliderFrameStep);
-        sk.draw(
-            p, Sheet::Volume, QRect(0, offset, L::kVolume.width(), S::kSliderFrameH),
-            L::kVolume.topLeft()
-        );
-        const int x =
-            int(std::lround(m_volume / 100.0 * (L::kVolume.width() - S::kVolumeThumb.width())));
+        const int offset = std::max(0, (frame - 1) * Skins::kSliderFrameStep);
         sk.draw(
             p, Sheet::Volume,
-            m_pressed == Element::Volume ? S::kVolumeThumbSelected : S::kVolumeThumb,
-            L::kVolume.topLeft() + QPoint(x, 1)
+            QRect(0, offset, Skins::MainWindowSprites::kVolume.width(), Skins::kSliderFrameH),
+            Skins::MainWindowSprites::kVolume.topLeft()
+        );
+        const int x = int(std::lround(
+            m_volume / 100.0
+            * (Skins::MainWindowSprites::kVolume.width() - Skins::kVolumeThumb.width())
+        ));
+        sk.draw(
+            p, Sheet::Volume,
+            m_pressed == Element::Volume ? Skins::kVolumeThumbSelected : Skins::kVolumeThumb,
+            Skins::MainWindowSprites::kVolume.topLeft() + QPoint(x, 1)
         );
     }
     // Balance.
     {
-        const int offset = int(std::abs(m_balance) / 100.0 * 27) * S::kSliderFrameStep;
+        const int offset = int(std::abs(m_balance) / 100.0 * 27) * Skins::kSliderFrameStep;
         sk.draw(
-            p, Sheet::Balance, QRect(9, offset, L::kBalance.width(), S::kSliderFrameH),
-            L::kBalance.topLeft()
+            p, Sheet::Balance,
+            QRect(9, offset, Skins::MainWindowSprites::kBalance.width(), Skins::kSliderFrameH),
+            Skins::MainWindowSprites::kBalance.topLeft()
         );
         const int x = int(std::lround(
-            (m_balance + 100) / 200.0 * (L::kBalance.width() - S::kBalanceThumb.width())
+            (m_balance + 100) / 200.0
+            * (Skins::MainWindowSprites::kBalance.width() - Skins::kBalanceThumb.width())
         ));
         sk.draw(
             p, Sheet::Balance,
-            m_pressed == Element::Balance ? S::kBalanceThumbSelected : S::kBalanceThumb,
-            L::kBalance.topLeft() + QPoint(x, 1)
+            m_pressed == Element::Balance ? Skins::kBalanceThumbSelected : Skins::kBalanceThumb,
+            Skins::MainWindowSprites::kBalance.topLeft() + QPoint(x, 1)
         );
     }
 
     // EQ / PL toggles.
-    auto toggle = [&](Element e, const S::ToggleSprite& spr, bool on, QPoint at) {
+    auto toggle = [&](Element e, const Skins::ToggleSprite& spr, bool on, QPoint at) {
         const bool down = m_pressed == e && m_pressedInside;
         sk.draw(
             p, Sheet::ShufRep,
             on ? (down ? spr.onPressed : spr.on) : (down ? spr.offPressed : spr.off), at
         );
     };
-    toggle(Element::EqToggle, S::kEqButton, m_eqOn, L::kEqButton);
-    toggle(Element::PlToggle, S::kPlButton, m_plOn, L::kPlButton);
+    toggle(Element::EqToggle, Skins::kEqButton, m_eqOn, Skins::MainWindowSprites::kEqButton);
+    toggle(Element::PlToggle, Skins::kPlButton, m_plOn, Skins::MainWindowSprites::kPlButton);
 
     // Position bar.
-    sk.draw(p, Sheet::PosBar, S::kPositionBackground, L::kPosition.topLeft());
+    sk.draw(
+        p, Sheet::PosBar, Skins::kPositionBackground, Skins::MainWindowSprites::kPosition.topLeft()
+    );
     const double dur = m_player->durationSeconds();
     if (!stopped && dur > 0) {
         const double frac = m_seekPreview >= 0
             ? m_seekPreview
             : std::clamp(m_player->engine()->positionSeconds() / dur, 0.0, 1.0);
-        const int x = int(frac * (L::kPosition.width() - S::kPositionThumb.width()));
+        const int x =
+            int(frac * (Skins::MainWindowSprites::kPosition.width() - Skins::kPositionThumb.width())
+            );
         sk.draw(
             p, Sheet::PosBar,
-            m_pressed == Element::Position ? S::kPositionThumbSelected : S::kPositionThumb,
-            L::kPosition.topLeft() + QPoint(x, 0)
+            m_pressed == Element::Position ? Skins::kPositionThumbSelected : Skins::kPositionThumb,
+            Skins::MainWindowSprites::kPosition.topLeft() + QPoint(x, 0)
         );
     }
 
     // Transport.
-    drawButton(p, Element::Previous, L::kPrevious, S::kPrevious.normal, S::kPrevious.pressed);
-    drawButton(p, Element::Play, L::kPlay, S::kPlay.normal, S::kPlay.pressed);
-    drawButton(p, Element::Pause, L::kPause, S::kPause.normal, S::kPause.pressed);
-    drawButton(p, Element::Stop, L::kStop, S::kStop.normal, S::kStop.pressed);
-    drawButton(p, Element::Next, L::kNext, S::kNext.normal, S::kNext.pressed);
-    drawButton(p, Element::Eject, L::kEject, S::kEject.normal, S::kEject.pressed);
-    toggle(Element::Shuffle, S::kShuffle, m_player->shuffle(), L::kShuffle);
-    toggle(Element::Repeat, S::kRepeat, m_player->repeat(), L::kRepeat);
+    drawButton(
+        p, Element::Previous, Skins::MainWindowSprites::kPrevious, Skins::kPrevious.normal,
+        Skins::kPrevious.pressed
+    );
+    drawButton(
+        p, Element::Play, Skins::MainWindowSprites::kPlay, Skins::kPlay.normal, Skins::kPlay.pressed
+    );
+    drawButton(
+        p, Element::Pause, Skins::MainWindowSprites::kPause, Skins::kPause.normal,
+        Skins::kPause.pressed
+    );
+    drawButton(
+        p, Element::Stop, Skins::MainWindowSprites::kStop, Skins::kStop.normal, Skins::kStop.pressed
+    );
+    drawButton(
+        p, Element::Next, Skins::MainWindowSprites::kNext, Skins::kNext.normal, Skins::kNext.pressed
+    );
+    drawButton(
+        p, Element::Eject, Skins::MainWindowSprites::kEject, Skins::kEject.normal,
+        Skins::kEject.pressed
+    );
+    toggle(
+        Element::Shuffle, Skins::kShuffle, m_player->shuffle(), Skins::MainWindowSprites::kShuffle
+    );
+    toggle(Element::Repeat, Skins::kRepeat, m_player->repeat(), Skins::MainWindowSprites::kRepeat);
 }
 
 // ------------------------------------------------------------------ input
@@ -502,10 +578,10 @@ MainWindow::Element MainWindow::hitTestShaded(QPoint p) const {
         Element e;
     };
     static const Area areas[] = {
-        {{L::kOptions, QSize(9, 9)}, Element::Options},
-        {{L::kMinimize, QSize(9, 9)}, Element::Minimize},
-        {{L::kShade, QSize(9, 9)}, Element::Shade},
-        {{L::kClose, QSize(9, 9)}, Element::Close},
+        {{Skins::MainWindowSprites::kOptions, QSize(9, 9)}, Element::Options},
+        {{Skins::MainWindowSprites::kMinimize, QSize(9, 9)}, Element::Minimize},
+        {{Skins::MainWindowSprites::kShade, QSize(9, 9)}, Element::Shade},
+        {{Skins::MainWindowSprites::kClose, QSize(9, 9)}, Element::Close},
         {{169, 2, 7, 10}, Element::Previous},
         {{176, 2, 10, 10}, Element::Play},
         {{186, 2, 9, 10}, Element::Pause},
@@ -532,26 +608,26 @@ MainWindow::Element MainWindow::hitTest(QPoint p) const {
         Element e;
     };
     static const Area areas[] = {
-        {{L::kOptions, QSize(9, 9)}, Element::Options},
-        {{L::kMinimize, QSize(9, 9)}, Element::Minimize},
-        {{L::kShade, QSize(9, 9)}, Element::Shade},
-        {{L::kClose, QSize(9, 9)}, Element::Close},
-        {{L::kPrevious, QSize(23, 18)}, Element::Previous},
-        {{L::kPlay, QSize(23, 18)}, Element::Play},
-        {{L::kPause, QSize(23, 18)}, Element::Pause},
-        {{L::kStop, QSize(23, 18)}, Element::Stop},
-        {{L::kNext, QSize(22, 18)}, Element::Next},
-        {{L::kEject, QSize(22, 16)}, Element::Eject},
-        {{L::kShuffle, QSize(47, 15)}, Element::Shuffle},
-        {{L::kRepeat, QSize(28, 15)}, Element::Repeat},
-        {{L::kEqButton, QSize(23, 12)}, Element::EqToggle},
-        {{L::kPlButton, QSize(23, 12)}, Element::PlToggle},
-        {L::kVolume, Element::Volume},
-        {L::kBalance, Element::Balance},
-        {L::kPosition, Element::Position},
-        {L::kMarquee.adjusted(0, -3, 0, 3), Element::Marquee},
-        {L::kVisualizer, Element::Visualizer},
-        {{L::kTime, QSize(63, 13)}, Element::Time},
+        {{Skins::MainWindowSprites::kOptions, QSize(9, 9)}, Element::Options},
+        {{Skins::MainWindowSprites::kMinimize, QSize(9, 9)}, Element::Minimize},
+        {{Skins::MainWindowSprites::kShade, QSize(9, 9)}, Element::Shade},
+        {{Skins::MainWindowSprites::kClose, QSize(9, 9)}, Element::Close},
+        {{Skins::MainWindowSprites::kPrevious, QSize(23, 18)}, Element::Previous},
+        {{Skins::MainWindowSprites::kPlay, QSize(23, 18)}, Element::Play},
+        {{Skins::MainWindowSprites::kPause, QSize(23, 18)}, Element::Pause},
+        {{Skins::MainWindowSprites::kStop, QSize(23, 18)}, Element::Stop},
+        {{Skins::MainWindowSprites::kNext, QSize(22, 18)}, Element::Next},
+        {{Skins::MainWindowSprites::kEject, QSize(22, 16)}, Element::Eject},
+        {{Skins::MainWindowSprites::kShuffle, QSize(47, 15)}, Element::Shuffle},
+        {{Skins::MainWindowSprites::kRepeat, QSize(28, 15)}, Element::Repeat},
+        {{Skins::MainWindowSprites::kEqButton, QSize(23, 12)}, Element::EqToggle},
+        {{Skins::MainWindowSprites::kPlButton, QSize(23, 12)}, Element::PlToggle},
+        {Skins::MainWindowSprites::kVolume, Element::Volume},
+        {Skins::MainWindowSprites::kBalance, Element::Balance},
+        {Skins::MainWindowSprites::kPosition, Element::Position},
+        {Skins::MainWindowSprites::kMarquee.adjusted(0, -3, 0, 3), Element::Marquee},
+        {Skins::MainWindowSprites::kVisualizer, Element::Visualizer},
+        {{Skins::MainWindowSprites::kTime, QSize(63, 13)}, Element::Time},
     };
     for (const Area& a : areas) {
         if (contains(a.rect, p)) {
@@ -575,7 +651,8 @@ bool MainWindow::skinMousePress(QPoint pos, Qt::MouseButton button) {
     if (e == Element::None || e == Element::Marquee) {
         return false;  // marquee drags the window
     }
-    if (e == Element::Position && m_player->engine()->state() == AudioEngine::State::Stopped) {
+    if (e == Element::Position
+        && m_player->engine()->state() == Audio::AudioEngine::State::Stopped) {
         return true;
     }
     m_pressed = e;
@@ -622,15 +699,20 @@ void MainWindow::updateSliderFromMouse(Element e, QPoint p) {
     };
     switch (e) {
         case Element::Volume:
-            setVolume(int(std::lround(fraction(L::kVolume, S::kVolumeThumb.width()) * 100)));
+            setVolume(int(std::lround(
+                fraction(Skins::MainWindowSprites::kVolume, Skins::kVolumeThumb.width()) * 100
+            )));
             break;
         case Element::Balance:
-            setBalance(int(std::lround(fraction(L::kBalance, S::kBalanceThumb.width()) * 200 - 100))
-            );
+            setBalance(int(std::lround(
+                fraction(Skins::MainWindowSprites::kBalance, Skins::kBalanceThumb.width()) * 200
+                - 100
+            )));
             break;
         case Element::Position:
-            m_seekPreview = isShaded() ? fraction(QRect(226, 4, 17, 7), 3)
-                                       : fraction(L::kPosition, S::kPositionThumb.width());
+            m_seekPreview = isShaded()
+                ? fraction(QRect(226, 4, 17, 7), 3)
+                : fraction(Skins::MainWindowSprites::kPosition, Skins::kPositionThumb.width());
             break;
         default: break;
     }
@@ -638,7 +720,9 @@ void MainWindow::updateSliderFromMouse(Element e, QPoint p) {
 
 void MainWindow::activate(Element e) {
     switch (e) {
-        case Element::Options: Q_EMIT menuRequested(globalAt(L::kOptions + QPoint(0, 9))); break;
+        case Element::Options:
+            Q_EMIT menuRequested(globalAt(Skins::MainWindowSprites::kOptions + QPoint(0, 9)));
+            break;
         case Element::Minimize: showMinimized(); break;
         case Element::Shade: setShaded(!isShaded()); break;
         case Element::Close: Q_EMIT closeRequested(); break;
@@ -648,7 +732,7 @@ void MainWindow::activate(Element e) {
         case Element::Stop: m_player->stop(); break;
         case Element::Next: m_player->next(); break;
         case Element::Eject:
-            Q_EMIT sourcesMenuRequested(globalAt(L::kEject + QPoint(0, 16)));
+            Q_EMIT sourcesMenuRequested(globalAt(Skins::MainWindowSprites::kEject + QPoint(0, 16)));
             break;
         case Element::Shuffle: m_player->setShuffle(!m_player->shuffle()); break;
         case Element::Repeat: m_player->setRepeat(!m_player->repeat()); break;
@@ -681,4 +765,4 @@ void MainWindow::contextMenuEvent(QContextMenuEvent* e) {
     Q_EMIT menuRequested(e->globalPos());
 }
 
-}  // namespace qiyaa
+}  // namespace Ui

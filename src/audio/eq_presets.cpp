@@ -2,7 +2,7 @@
 
 #include <QStringDecoder>
 
-namespace qiyaa::audio {
+namespace Audio {
 
 namespace {
 constexpr char kHeader[] = "Winamp EQ library file v1.1";
@@ -93,4 +93,4 @@ QByteArray writeEqf(const QList<EqPreset>& presets) {
     return out;
 }
 
-}  // namespace qiyaa::audio
+}  // namespace Audio

@@ -11,18 +11,16 @@
 #include <QScreen>
 #include <QTest>
 
-using namespace qiyaa;
-
 class TestMainWindow : public QObject {
     Q_OBJECT
 private:
-    Skin skin;
+    Skins::Skin skin;
     QNetworkAccessManager nam;
-    std::unique_ptr<yandex::ApiClient> api;
-    std::unique_ptr<yandex::Library> library;
-    std::unique_ptr<audio::AudioEngine> engine;
-    std::unique_ptr<Player> player;
-    std::unique_ptr<MainWindow> win;
+    std::unique_ptr<Yandex::ApiClient> api;
+    std::unique_ptr<Yandex::Library> library;
+    std::unique_ptr<Audio::AudioEngine> engine;
+    std::unique_ptr<Core::Player> player;
+    std::unique_ptr<Ui::MainWindow> win;
     QRect screen;
 
     void send(QEvent::Type type, QPoint local, Qt::MouseButtons buttons) {
@@ -36,13 +34,13 @@ private:
 
 private Q_SLOTS:
     void initTestCase() {
-        skin = Skin::builtinBase();
+        skin = Skins::Skin::builtinBase();
         QVERIFY(skin.isValid());
-        api = std::make_unique<yandex::ApiClient>(&nam);
-        library = std::make_unique<yandex::Library>(api.get());
-        engine = std::make_unique<audio::AudioEngine>();
-        player = std::make_unique<Player>(library.get(), engine.get());
-        win = std::make_unique<MainWindow>(player.get(), &skin);
+        api = std::make_unique<Yandex::ApiClient>(&nam);
+        library = std::make_unique<Yandex::Library>(api.get());
+        engine = std::make_unique<Audio::AudioEngine>();
+        player = std::make_unique<Core::Player>(library.get(), engine.get());
+        win = std::make_unique<Ui::MainWindow>(player.get(), &skin);
         win->show();
         QVERIFY(QTest::qWaitForWindowExposed(win.get()));
         screen = QGuiApplication::primaryScreen()->availableGeometry();

@@ -9,7 +9,7 @@
 #include <atomic>
 #include <cstdint>
 
-namespace qiyaa::audio {
+namespace Audio {
 
 class VisTap {
 public:
@@ -66,4 +66,4 @@ private:
     std::atomic<uint32_t> m_pos{0};
 };
 
-}  // namespace qiyaa::audio
+}  // namespace Audio

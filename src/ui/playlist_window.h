@@ -6,14 +6,16 @@
 
 #include <QSet>
 
-namespace qiyaa {
-
+namespace Core {
 class Player;
+}  // namespace Core
+
+namespace Ui {
 
 class PlaylistWindow : public SkinnedWindow {
     Q_OBJECT
 public:
-    PlaylistWindow(Player* player, const Skin* skin, QWidget* parent = nullptr);
+    PlaylistWindow(Core::Player* player, const Skins::Skin* skin, QWidget* parent = nullptr);
 
     // Size in resize steps beyond the minimum 275x116 (Winamp's playlist "segments").
     QSize sizeSteps() const { return m_steps; }
@@ -60,7 +62,7 @@ private:
     int miniButtonAt(QPoint p) const;
     void selectRow(int row, Qt::KeyboardModifiers mods);
 
-    Player* m_player;
+    Core::Player* m_player;
     QSize m_steps{0, 4};
     int m_scroll = 0;
     QSet<int> m_selected;
@@ -75,4 +77,4 @@ private:
     int m_pressedButton = -1;
 };
 
-}  // namespace qiyaa
+}  // namespace Ui

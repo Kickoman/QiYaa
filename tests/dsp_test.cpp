@@ -13,9 +13,6 @@
 #include <numbers>
 #include <vector>
 
-using namespace qiyaa;
-using namespace qiyaa::audio;
-
 namespace {
 std::vector<float> stereoSine(double hz, double rate, int frames, float amp = 0.5f) {
     std::vector<float> out(frames * 2);
@@ -40,39 +37,39 @@ class TestDsp : public QObject {
     Q_OBJECT
 private Q_SLOTS:
     void flatIsTransparent() {
-        EqSettings s;
+        Audio::EqSettings s;
         for (double hz : {30.0, 60.0, 1000.0, 10000.0, 18000.0}) {
-            QVERIFY(std::abs(EqualizerDsp::responseDb(s, hz, 44100)) < 0.01);
+            QVERIFY(std::abs(Audio::EqualizerDsp::responseDb(s, hz, 44100)) < 0.01);
         }
     }
 
     void bandBoostHitsItsFrequency() {
-        EqSettings s;
+        Audio::EqSettings s;
         s.bandsDb[4] = 12;  // 1 kHz
-        QVERIFY(std::abs(EqualizerDsp::responseDb(s, 1000, 44100) - 12) < 0.1);
-        QVERIFY(std::abs(EqualizerDsp::responseDb(s, 60, 44100)) < 0.5);
-        QVERIFY(std::abs(EqualizerDsp::responseDb(s, 16000, 44100)) < 0.5);
+        QVERIFY(std::abs(Audio::EqualizerDsp::responseDb(s, 1000, 44100) - 12) < 0.1);
+        QVERIFY(std::abs(Audio::EqualizerDsp::responseDb(s, 60, 44100)) < 0.5);
+        QVERIFY(std::abs(Audio::EqualizerDsp::responseDb(s, 16000, 44100)) < 0.5);
     }
 
     void preampAndDisable() {
-        EqSettings s;
+        Audio::EqSettings s;
         s.preampDb = -6;
-        QVERIFY(std::abs(EqualizerDsp::responseDb(s, 1000, 48000) + 6) < 0.01);
+        QVERIFY(std::abs(Audio::EqualizerDsp::responseDb(s, 1000, 48000) + 6) < 0.01);
         s.enabled = false;
-        QCOMPARE(EqualizerDsp::responseDb(s, 1000, 48000), 0.0);
+        QCOMPARE(Audio::EqualizerDsp::responseDb(s, 1000, 48000), 0.0);
     }
 
     void processingMatchesResponse() {
-        EqualizerDsp eq;
+        Audio::EqualizerDsp eq;
         eq.setSampleRate(44100);
-        EqSettings s;
+        Audio::EqSettings s;
         s.bandsDb[0] = -12;  // 60 Hz cut
         eq.publish(s);
         auto low = stereoSine(60, 44100, 44100);
         auto mid = stereoSine(3000, 44100, 44100);
         const double lowIn = rms(low, 4410), midIn = rms(mid, 4410);
         eq.process(low.data(), 44100);
-        EqualizerDsp eq2;
+        Audio::EqualizerDsp eq2;
         eq2.setSampleRate(44100);
         eq2.publish(s);
         eq2.process(mid.data(), 44100);
@@ -84,11 +81,11 @@ private Q_SLOTS:
 
     void settingsChangeWhileProcessing() {
         // New coefficients are picked up at the next block, no NaNs/blow-ups.
-        EqualizerDsp eq;
+        Audio::EqualizerDsp eq;
         eq.setSampleRate(48000);
         auto buf = stereoSine(440, 48000, 48000);
         for (int block = 0; block < 100; ++block) {
-            EqSettings s;
+            Audio::EqSettings s;
             s.bandsDb[block % 10] = (block % 2 ? 12 : -12);
             eq.publish(s);
             eq.process(buf.data() + (block * 480) * 2, 480);
@@ -99,33 +96,34 @@ private Q_SLOTS:
     }
 
     void presetsLookRight() {
-        const auto presets = builtinEqPresets();
+        const auto presets = Audio::builtinEqPresets();
         QCOMPARE(presets.size(), 17);
-        const auto bass = std::find_if(presets.cbegin(), presets.cend(), [](const EqPreset& p) {
-            return p.name == "Full Bass";
-        });
+        const auto bass =
+            std::find_if(presets.cbegin(), presets.cend(), [](const Audio::EqPreset& p) {
+                return p.name == "Full Bass";
+            });
         QVERIFY(bass != presets.cend());
         QVERIFY(bass->settings.bandsDb[0] > 5);  // boosts lows
         QVERIFY(bass->settings.bandsDb[9] < -5);  // cuts highs
-        QCOMPARE(eqfToDb(1), -12.0);
-        QCOMPARE(eqfToDb(64), 12.0);
+        QCOMPARE(Audio::eqfToDb(1), -12.0);
+        QCOMPARE(Audio::eqfToDb(64), 12.0);
     }
 
     void eqfRoundTrip() {
-        EqPreset p;
+        Audio::EqPreset p;
         p.name = QStringLiteral("My EQ");
-        for (int i = 0; i < kEqBands; ++i) {
+        for (int i = 0; i < Audio::kEqBands; ++i) {
             p.settings.bandsDb[i] = -12.0 + i * 2.6;
         }
         p.settings.preampDb = 3.0;
-        const QByteArray file = writeEqf({p, builtinEqPresets().first()});
+        const QByteArray file = Audio::writeEqf({p, Audio::builtinEqPresets().first()});
         QCOMPARE(file.size(), 31 + 2 * 268);  // header + 2 presets (name 257 + 11 values)
         QVERIFY(file.startsWith("Winamp EQ library file v1.1\x1a!--"));
-        QList<EqPreset> back;
-        QVERIFY(parseEqf(file, &back));
+        QList<Audio::EqPreset> back;
+        QVERIFY(Audio::parseEqf(file, &back));
         QCOMPARE(back.size(), 2);
         QCOMPARE(back[0].name, QStringLiteral("My EQ"));
-        for (int i = 0; i < kEqBands; ++i) {
+        for (int i = 0; i < Audio::kEqBands; ++i) {
             // 64 levels over 24 dB: half a step (0.19 dB) + rounding to 0.1 dB.
             QVERIFY2(
                 std::abs(back[0].settings.bandsDb[i] - p.settings.bandsDb[i]) <= 0.25,
@@ -142,17 +140,17 @@ private Q_SLOTS:
         QByteArray name("max");
         name.append(QByteArray(257 - name.size(), '\0'));
         file += name + QByteArray(10, char(0)) + QByteArray(1, char(63));
-        QList<EqPreset> p;
-        QVERIFY(parseEqf(file, &p));
+        QList<Audio::EqPreset> p;
+        QVERIFY(Audio::parseEqf(file, &p));
         QCOMPARE(p[0].settings.bandsDb[0], 12.0);
         QCOMPARE(p[0].settings.preampDb, -12.0);
-        QVERIFY(!parseEqf("not an eqf", &p));
+        QVERIFY(!Audio::parseEqf("not an eqf", &p));
     }
 
     void graphSplinePassesThroughBands() {
-        EqSettings s;
+        Audio::EqSettings s;
         s.bandsDb[3] = 12;
-        const QList<double> ys = EqualizerWindow::graphCurve(s);
+        const QList<double> ys = Ui::EqualizerWindow::graphCurve(s);
         QCOMPARE(ys.size(), 9 * 12 + 1);
         QVERIFY(std::abs(ys[3 * 12] - 0) < 1e-6);  // +12 dB = top row
         QVERIFY(std::abs(ys[0] - 9) < 1e-6);  // 0 dB = middle
@@ -160,7 +158,7 @@ private Q_SLOTS:
     }
 
     void analyzerFindsTheTone() {
-        vis::Analyzer an(1024);
+        Vis::Analyzer an(1024);
         const double rate = 44100, hz = 1000;
         std::vector<float> mono(1024);
         for (int i = 0; i < 1024; ++i) {
@@ -175,17 +173,17 @@ private Q_SLOTS:
     }
 
     void spectrumAndScopeRender() {
-        const Skin skin = Skin::builtinBase();
-        vis::Analyzer an(1024);
+        const Skins::Skin skin = Skins::Skin::builtinBase();
+        Vis::Analyzer an(1024);
         std::vector<float> l(1024), r(1024), mono(1024);
         for (int i = 0; i < 1024; ++i) {
             l[i] = r[i] = mono[i] =
                 0.8f * float(std::sin(2 * std::numbers::pi * 200 * i / 44100.0));
         }
         const auto& db = an.analyze(mono);
-        vis::VisFrame f{l, r, db, 44100, 1024};
+        Vis::VisFrame f{l, r, db, 44100, 1024};
 
-        for (auto make : {vis::makeSpectrum, vis::makeOscilloscope}) {
+        for (auto make : {Vis::makeSpectrum, Vis::makeOscilloscope}) {
             auto v = make();
             QImage img(76, 16, QImage::Format_ARGB32);
             img.fill(Qt::black);
@@ -210,21 +208,21 @@ private Q_SLOTS:
         f += name;
         f += QByteArray(10, char(31));  // Winamp's own midline.EQF: 64 - 31 = 33
         f += char(255);  // garbage: must not reach the DSP as -85 dB
-        QList<audio::EqPreset> ps;
-        QVERIFY(audio::parseEqf(f, &ps));
-        for (int b = 0; b < audio::kEqBands; ++b) {
+        QList<Audio::EqPreset> ps;
+        QVERIFY(Audio::parseEqf(f, &ps));
+        for (int b = 0; b < Audio::kEqBands; ++b) {
             QCOMPARE(ps[0].settings.bandsDb[b], 0.0);
         }
         QCOMPARE(ps[0].settings.preampDb, -12.0);
         // And flat is written as 31 again.
-        QCOMPARE(audio::writeEqf(ps).mid(31 + 257, 10), QByteArray(10, char(31)));
+        QCOMPARE(Audio::writeEqf(ps).mid(31 + 257, 10), QByteArray(10, char(31)));
     }
 
     void eqfKeepsNonLatinNames() {
-        audio::EqPreset p;
+        Audio::EqPreset p;
         p.name = QStringLiteral("Мой пресет");
-        QList<audio::EqPreset> ps;
-        QVERIFY(audio::parseEqf(audio::writeEqf({p}), &ps));
+        QList<Audio::EqPreset> ps;
+        QVERIFY(Audio::parseEqf(Audio::writeEqf({p}), &ps));
         QCOMPARE(ps[0].name, p.name);
     }
 };

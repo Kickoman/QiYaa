@@ -15,7 +15,7 @@
 
 #include <algorithm>
 
-namespace qiyaa {
+namespace Ui {
 
 namespace {
 constexpr int kDialogWidth = 460;
@@ -23,7 +23,7 @@ constexpr int kDialogWidth = 460;
 
 LoginDialog::LoginDialog(QNetworkAccessManager* nam, QWidget* parent, const QString& oauthBase)
     : QDialog(parent)
-    , m_device(new yandex::DeviceLogin(nam, this)) {
+    , m_device(new Yandex::DeviceLogin(nam, this)) {
     setWindowTitle(QStringLiteral("Вход в Яндекс Музыку"));
     setMinimumWidth(kDialogWidth);
     if (!oauthBase.isEmpty()) {
@@ -90,14 +90,14 @@ LoginDialog::LoginDialog(QNetworkAccessManager* nam, QWidget* parent, const QStr
         QDesktopServices::openUrl(m_verifyUrl);
     });
     connect(openBrowser, &QPushButton::clicked, this, [] {
-        QDesktopServices::openUrl(yandex::DeviceLogin::browserLoginUrl());
+        QDesktopServices::openUrl(Yandex::DeviceLogin::browserLoginUrl());
     });
     connect(use, &QPushButton::clicked, this, &LoginDialog::tryPasted);
     connect(m_paste, &QLineEdit::returnPressed, this, &LoginDialog::tryPasted);
     connect(cancel, &QPushButton::clicked, this, &QDialog::reject);
 
     connect(
-        m_device, &yandex::DeviceLogin::codeReady, this,
+        m_device, &Yandex::DeviceLogin::codeReady, this,
         [this](const QString& code, const QUrl& url) {
             m_code->setText(code);
             m_verifyUrl = url;
@@ -110,8 +110,8 @@ LoginDialog::LoginDialog(QNetworkAccessManager* nam, QWidget* parent, const QStr
             fitToContents();
         }
     );
-    connect(m_device, &yandex::DeviceLogin::succeeded, this, &LoginDialog::finishWith);
-    connect(m_device, &yandex::DeviceLogin::failed, this, [this](const QString& err) {
+    connect(m_device, &Yandex::DeviceLogin::succeeded, this, &LoginDialog::finishWith);
+    connect(m_device, &Yandex::DeviceLogin::failed, this, [this](const QString& err) {
         m_code->setText(QStringLiteral("—"));
         m_openDevice->setEnabled(false);
         m_deviceStatus->setText(
@@ -137,7 +137,7 @@ void LoginDialog::fitToContents() {
 }
 
 void LoginDialog::tryPasted() {
-    const QString token = yandex::normalizeToken(m_paste->text().toUtf8());
+    const QString token = Yandex::normalizeToken(m_paste->text().toUtf8());
     if (token.isEmpty()) {
         m_pasteError->setText(
             QStringLiteral("Не вижу здесь токена. Нужен адрес с «#access_token=…» или сам токен.")
@@ -155,4 +155,4 @@ void LoginDialog::finishWith(const QString& token) {
     accept();
 }
 
-}  // namespace qiyaa
+}  // namespace Ui

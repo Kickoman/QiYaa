@@ -3,17 +3,15 @@
 #include <QDir>
 #include <QTest>
 
-using namespace qiyaa;
-
 class TestSkin : public QObject {
     Q_OBJECT
 private Q_SLOTS:
     void baseSkinLoads() {
-        const Skin s = Skin::builtinBase();
+        const Skins::Skin s = Skins::Skin::builtinBase();
         QVERIFY(s.isValid());
-        QCOMPARE(s.sheet(Skin::Sheet::Main).size(), QSize(275, 116));
-        QVERIFY(!s.sheet(Skin::Sheet::CButtons).isNull());
-        QVERIFY(!s.sheet(Skin::Sheet::Text).isNull());
+        QCOMPARE(s.sheet(Skins::Skin::Sheet::Main).size(), QSize(275, 116));
+        QVERIFY(!s.sheet(Skins::Skin::Sheet::CButtons).isNull());
+        QVERIFY(!s.sheet(Skins::Skin::Sheet::Text).isNull());
         QCOMPARE(s.visColors().size(), 24);
     }
     void allBuiltinSkinsLoad_data() {
@@ -24,18 +22,19 @@ private Q_SLOTS:
     }
     void allBuiltinSkinsLoad() {
         QFETCH(QString, path);
-        const Skin base = Skin::builtinBase();
-        Skin s;
+        const Skins::Skin base = Skins::Skin::builtinBase();
+        Skins::Skin s;
         QString err;
         QVERIFY2(s.loadFromFile(path, &base, &err), qPrintable(err));
         for (auto sheet :
-             {Skin::Sheet::Main, Skin::Sheet::CButtons, Skin::Sheet::TitleBar, Skin::Sheet::Numbers,
-              Skin::Sheet::PosBar, Skin::Sheet::Volume, Skin::Sheet::Balance, Skin::Sheet::Text}) {
+             {Skins::Skin::Sheet::Main, Skins::Skin::Sheet::CButtons, Skins::Skin::Sheet::TitleBar,
+              Skins::Skin::Sheet::Numbers, Skins::Skin::Sheet::PosBar, Skins::Skin::Sheet::Volume,
+              Skins::Skin::Sheet::Balance, Skins::Skin::Sheet::Text}) {
             QVERIFY(!s.sheet(sheet).isNull());
         }
     }
     void garbageIsRejected() {
-        Skin s;
+        Skins::Skin s;
         QString err;
         QVERIFY(!s.loadFromWsz("definitely not a zip", nullptr, &err));
         QVERIFY(!err.isEmpty());

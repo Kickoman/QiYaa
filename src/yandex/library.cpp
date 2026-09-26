@@ -8,7 +8,7 @@
 #include <algorithm>
 #include <cmath>
 
-namespace qiyaa::yandex {
+namespace Yandex {
 
 namespace {
 constexpr int kTracksPerRequest = 250;
@@ -614,4 +614,4 @@ void Library::dislike(const QString& trackId, Callback<bool> cb) {
     );
 }
 
-}  // namespace qiyaa::yandex
+}  // namespace Yandex

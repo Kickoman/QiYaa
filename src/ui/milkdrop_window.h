@@ -11,27 +11,30 @@
 
 #include <memory>
 
-namespace qiyaa {
-
-namespace audio {
+namespace Audio {
 class AudioEngine;
-}
+}  // namespace Audio
+
+namespace Vis {
 class MilkdropView;
+}  // namespace Vis
+
+namespace Ui {
 
 class MilkdropWindow : public GenWindow {
     Q_OBJECT
 public:
     // Presets: built-ins from `builtInDir` (resources), the user's own from `userDir`.
     MilkdropWindow(
-        audio::AudioEngine* engine,
+        Audio::AudioEngine* engine,
         const QString& builtInDir,
         const QString& userDir,
-        const Skin* skin,
+        const Skins::Skin* skin,
         QWidget* parent = nullptr
     );
     ~MilkdropWindow() override;
 
-    const MilkdropPresets& presets() const { return m_presets; }
+    const Vis::MilkdropPresets& presets() const { return m_presets; }
     int currentIndex() const { return m_current; }
     QString currentPreset() const;
     // `byUser`: picked by hand (shown in the main window's marquee) rather
@@ -56,7 +59,7 @@ public:
 
     // Created when the window is first shown (no OpenGL work before that);
     // stays null when OpenGL isn't usable.
-    MilkdropView* view() const { return m_view; }
+    Vis::MilkdropView* view() const { return m_view; }
     QString failure() const;  // why Milkdrop can't show anything
 
     // What the view reports (public for tests).
@@ -86,7 +89,7 @@ protected:
 
 private:
     void ensureView();
-    void wireView(MilkdropView* view);
+    void wireView(Vis::MilkdropView* view);
     void placeView();
     void updateRendering();
     void handleKey(int key, Qt::KeyboardModifiers mods);
@@ -96,15 +99,15 @@ private:
     // the ones known to show black here.
     int followingPreset() const;
 
-    audio::AudioEngine* m_engine;
+    Audio::AudioEngine* m_engine;
     QString m_builtInDir;
     QString m_userDir;
-    MilkdropPresets m_presets;
-    MilkdropView* m_view = nullptr;  // owned by m_container; null without OpenGL
+    Vis::MilkdropPresets m_presets;
+    Vis::MilkdropView* m_view = nullptr;  // owned by m_container; null without OpenGL
     QString m_glProblem;
     bool m_viewTried = false;
     QWidget* m_container = nullptr;
-    std::unique_ptr<MilkdropView> m_fullView;
+    std::unique_ptr<Vis::MilkdropView> m_fullView;
     int m_current = -1;
     QList<int> m_history;  // for "previous" in shuffle mode
     int m_failuresInARow = 0;
@@ -116,4 +119,4 @@ private:
     int m_blackInARow = 0;  // many in a row: the problem isn't the presets
 };
 
-}  // namespace qiyaa
+}  // namespace Ui

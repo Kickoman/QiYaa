@@ -14,7 +14,7 @@
 #include <algorithm>
 #include <cmath>
 
-namespace qiyaa {
+namespace Ui {
 
 namespace {
 QList<SkinnedWindow*>& registry() {
@@ -31,7 +31,7 @@ QList<QRect> screenRects() {
 }
 }  // namespace
 
-SkinnedWindow::SkinnedWindow(const Skin* skin, QSize skinSize, QWidget* parent)
+SkinnedWindow::SkinnedWindow(const Skins::Skin* skin, QSize skinSize, QWidget* parent)
     : QWidget(parent, Qt::Window | Qt::FramelessWindowHint)
     , m_skin(skin)
     , m_skinSize(skinSize) {
@@ -77,7 +77,7 @@ void SkinnedWindow::setSecondary() {
 #endif
 }
 
-void SkinnedWindow::setSkin(const Skin* skin) {
+void SkinnedWindow::setSkin(const Skins::Skin* skin) {
     m_skin = skin;
     applyMask();
     skinChanged();
@@ -117,7 +117,7 @@ void SkinnedWindow::placeAt(QPoint pos) {
         return;
     }
     QRect r(pos, size());
-    move(snap::clampInside(r, snap::pickScreen(r, screenRects())));
+    move(Ui::clampInside(r, Ui::pickScreen(r, screenRects())));
 }
 
 void SkinnedWindow::ensureVisible() {
@@ -152,7 +152,7 @@ void SkinnedWindow::resizeKeepingStack(QSize newSkinSize) {
         return;
     }
     QList<SkinnedWindow*> group{this};
-    for (int i : snap::stackBelow(self, rects, dy, visible)) {
+    for (int i : Ui::stackBelow(self, rects, dy, visible)) {
         all[i]->move(all[i]->pos() + QPoint(0, dy));
         group << all[i];
     }
@@ -172,7 +172,7 @@ void SkinnedWindow::resizeKeepingStack(QSize newSkinSize) {
         }
     }
     const QPoint shift =
-        snap::clampInside(bounds, snap::pickScreen(bounds, screenRects())) - bounds.topLeft();
+        Ui::clampInside(bounds, Ui::pickScreen(bounds, screenRects())) - bounds.topLeft();
     if (!shift.isNull()) {
         for (SkinnedWindow* w : group) {
             w->move(w->pos() + shift);
@@ -195,7 +195,7 @@ QList<SkinnedWindow*> SkinnedWindow::dockedWindows() const {
         rects << w->frameGeometry();
     }
     QList<SkinnedWindow*> out;
-    for (int i : snap::connectedGroup(self, rects)) {
+    for (int i : Ui::connectedGroup(self, rects)) {
         out << visible[i];
     }
     return out;
@@ -235,7 +235,7 @@ void SkinnedWindow::applyMask() {
     for (const QPolygon& poly : *it) {
         scaled << t.map(QPolygonF(poly)).toPolygon();
     }
-    setMask(regionFromPolygons(scaled));
+    setMask(Skins::regionFromPolygons(scaled));
 }
 
 void SkinnedWindow::paintEvent(QPaintEvent*) {
@@ -317,7 +317,7 @@ void SkinnedWindow::mouseMoveEvent(QMouseEvent* e) {
         }
     }
     const QPoint target =
-        snap::resolveDragPosition(m_groupStartBounds.translated(delta), others, screenRects());
+        Ui::resolveDragPosition(m_groupStartBounds.translated(delta), others, screenRects());
     const QPoint applied = target - m_groupStartBounds.topLeft();
     for (const auto& [w, start] : m_group) {
         if (w && w->pos() != start + applied) {
@@ -349,4 +349,4 @@ void SkinnedWindow::changeEvent(QEvent* e) {
     QWidget::changeEvent(e);
 }
 
-}  // namespace qiyaa
+}  // namespace Ui

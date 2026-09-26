@@ -25,7 +25,7 @@
 #include <atomic>
 #include <memory>
 
-namespace qiyaa::audio {
+namespace Audio {
 
 class StreamBuffer;
 
@@ -95,7 +95,7 @@ public:
     void poll();
 
 Q_SIGNALS:
-    void stateChanged(qiyaa::audio::AudioEngine::State state);
+    void stateChanged(Audio::AudioEngine::State state);
     void trackFinished();
     // Playback moved on into the queued stream without a gap; it is current now.
     void trackAdvanced();
@@ -122,4 +122,4 @@ private:
     std::atomic<int> m_sourceChannels{0};
 };
 
-}  // namespace qiyaa::audio
+}  // namespace Audio

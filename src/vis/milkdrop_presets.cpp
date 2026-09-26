@@ -7,7 +7,7 @@
 
 #include <algorithm>
 
-namespace qiyaa {
+namespace Vis {
 
 namespace {
 QList<MilkdropPresets::Preset> scan(const QString& dir, bool builtIn) {
@@ -73,4 +73,4 @@ int MilkdropPresets::random(int current) const {
     return i;
 }
 
-}  // namespace qiyaa
+}  // namespace Vis

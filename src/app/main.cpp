@@ -9,8 +9,6 @@
 
 #include <memory>
 
-using namespace qiyaa;
-
 namespace {
 
 // Wayland doesn't let apps position their own windows, which the Winamp layout
@@ -33,7 +31,7 @@ void choosePlatform() {
 
 // Feeds a local file into the engine in small pieces, like a slow download.
 // Handy for testing audio without a Yandex account.
-void streamLocalFile(audio::AudioEngine* engine, const QString& path) {
+void streamLocalFile(Audio::AudioEngine* engine, const QString& path) {
     auto file = std::make_shared<QFile>(path);
     if (!file->open(QIODevice::ReadOnly)) {
         qWarning("Cannot open %s", qPrintable(path));
@@ -55,7 +53,7 @@ void streamLocalFile(audio::AudioEngine* engine, const QString& path) {
 }
 
 // A few fake tracks, for screenshots and UI testing without an account.
-QList<yandex::Track> demoTracks() {
+QList<Yandex::Track> demoTracks() {
     const std::pair<const char*, int> raw[] = {
         {"Кино - Группа крови", 285},       {"Земфира - Искала", 237},
         {"Сплин - Выхода нет", 227},        {"Björk - Jóga", 305},
@@ -63,10 +61,10 @@ QList<yandex::Track> demoTracks() {
         {"Radiohead - Karma Police", 264},  {"Кино - Кукушка", 395},
         {"Nirvana - Come As You Are", 219},
     };
-    QList<yandex::Track> out;
+    QList<Yandex::Track> out;
     int id = 1;
     for (const auto& [name, secs] : raw) {
-        yandex::Track t;
+        Yandex::Track t;
         const QString s = QString::fromUtf8(name);
         t.id = QString::number(id++);
         t.artists << s.section(QStringLiteral(" - "), 0, 0);
@@ -130,14 +128,14 @@ int main(int argc, char* argv[]) {
     cli.process(app);
 
     const bool screenshot = cli.isSet(screenshotOpt);
-    App::Options opts;
+    App::Application::Options opts;
     opts.skinOverride = cli.value(skinOpt);
     opts.offline = screenshot || cli.isSet(offlineOpt) || cli.isSet(fileOpt);
     // With --play-file, a screenshot is taken after a second of playback (shows the visualizer).
     opts.audio = !screenshot || cli.isSet(fileOpt);
     opts.readOnlySettings = screenshot;  // screenshots never touch the user's settings
     opts.mediaIntegration = !screenshot;
-    App qiyaa(opts);
+    App::Application qiyaa(opts);
 
     qiyaa.start();
     if (cli.isSet(scaleOpt)) {

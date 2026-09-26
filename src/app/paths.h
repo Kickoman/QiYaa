@@ -3,7 +3,7 @@
 #include <QString>
 #include <QStringList>
 
-namespace qiyaa::paths {
+namespace App {
 
 // Our own config directory (created on demand), e.g. ~/.config/QiYaa.
 QString configDir();
@@ -11,4 +11,4 @@ QString configDir();
 // Candidate locations of the old Electron Yaamp data folder (userData).
 QStringList yaampDataDirs();
 
-}  // namespace qiyaa::paths
+}  // namespace App

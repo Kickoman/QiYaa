@@ -16,16 +16,16 @@
 
 struct projectm;  // projectM's opaque instance (projectm_handle)
 
-namespace qiyaa {
-
-namespace audio {
+namespace Audio {
 class AudioEngine;
-}
+}  // namespace Audio
+
+namespace Vis {
 
 class MilkdropView : public QOpenGLWindow {
     Q_OBJECT
 public:
-    explicit MilkdropView(audio::AudioEngine* engine);
+    explicit MilkdropView(Audio::AudioEngine* engine);
     ~MilkdropView() override;
 
     // Why projectM can't run here (no OpenGL, or older than 3.3), or empty if it can.
@@ -88,7 +88,7 @@ private:
     void watchForBlack();
     bool pictureIsBlack();
 
-    audio::AudioEngine* m_engine;
+    Audio::AudioEngine* m_engine;
     ::projectm* m_pm = nullptr;
     QString m_failure;
     QTimer m_timer;
@@ -116,4 +116,4 @@ private:
     unsigned m_probeTex = 0;
 };
 
-}  // namespace qiyaa
+}  // namespace Vis

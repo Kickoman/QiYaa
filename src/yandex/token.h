@@ -4,7 +4,7 @@
 
 #include <QString>
 
-namespace qiyaa::yandex {
+namespace Yandex {
 
 struct TokenSource {
     QString token;
@@ -25,4 +25,4 @@ bool saveToken(const QString& token);
 // re-importing the old Yaamp token.
 void forgetToken();
 
-}  // namespace qiyaa::yandex
+}  // namespace Yandex

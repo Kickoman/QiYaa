@@ -3,31 +3,38 @@
 #include "core/cover_cache.h"
 #include "core/player.h"
 
-namespace qiyaa {
+namespace Integrations {
 
-using audio::AudioEngine;
+using Audio::AudioEngine;
 
 namespace {
 constexpr int kCoverPx = 400;
 }
 
-MediaControls::MediaControls(Player* player, CoverCache* covers, Hooks hooks, QObject* parent)
+MediaControls::MediaControls(
+    Core::Player* player,
+    Core::CoverCache* covers,
+    Hooks hooks,
+    QObject* parent
+)
     : QObject(parent)
     , m_player(player)
     , m_covers(covers)
     , m_hooks(std::move(hooks)) {
-    connect(m_player, &Player::currentTrackChanged, this, [this] {
+    connect(m_player, &Core::Player::currentTrackChanged, this, [this] {
         // Make sure the cover gets downloaded, so artUrl() can become a local file.
         if (const auto* t = m_player->currentTrack(); t && m_covers) {
             m_covers->get(t->coverUrl(kCoverPx));
         }
         Q_EMIT trackChanged();
     });
-    connect(m_player->engine(), &AudioEngine::stateChanged, this, &MediaControls::statusChanged);
-    connect(m_player, &Player::modesChanged, this, &MediaControls::modesChanged);
-    connect(m_player, &Player::seeked, this, &MediaControls::seeked);
+    connect(
+        m_player->engine(), &Audio::AudioEngine::stateChanged, this, &MediaControls::statusChanged
+    );
+    connect(m_player, &Core::Player::modesChanged, this, &MediaControls::modesChanged);
+    connect(m_player, &Core::Player::seeked, this, &MediaControls::seeked);
     if (m_covers) {
-        connect(m_covers, &CoverCache::ready, this, [this](const QUrl& url) {
+        connect(m_covers, &Core::CoverCache::ready, this, [this](const QUrl& url) {
             if (const auto* t = m_player->currentTrack(); t && t->coverUrl(kCoverPx) == url) {
                 Q_EMIT artChanged();
             }
@@ -37,10 +44,10 @@ MediaControls::MediaControls(Player* player, CoverCache* covers, Hooks hooks, QO
 
 MediaControls::Status MediaControls::status() const {
     switch (m_player->engine()->state()) {
-        case AudioEngine::State::Playing:
-        case AudioEngine::State::Buffering: return Status::Playing;
-        case AudioEngine::State::Paused: return Status::Paused;
-        case AudioEngine::State::Stopped: return Status::Stopped;
+        case Audio::AudioEngine::State::Playing:
+        case Audio::AudioEngine::State::Buffering: return Status::Playing;
+        case Audio::AudioEngine::State::Paused: return Status::Paused;
+        case Audio::AudioEngine::State::Stopped: return Status::Stopped;
     }
     return Status::Stopped;
 }
@@ -99,4 +106,4 @@ QUrl MediaControls::artUrl() const {
     return remote;
 }
 
-}  // namespace qiyaa
+}  // namespace Integrations

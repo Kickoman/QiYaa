@@ -5,7 +5,7 @@
 #include <complex>
 #include <numbers>
 
-namespace qiyaa::audio {
+namespace Audio {
 
 namespace {
 // Roughly one octave wide; neighbouring Winamp bands overlap smoothly.
@@ -121,4 +121,4 @@ double EqualizerDsp::responseDb(const EqSettings& s, double hz, double sampleRat
     return 20.0 * std::log10(std::abs(h));
 }
 
-}  // namespace qiyaa::audio
+}  // namespace Audio

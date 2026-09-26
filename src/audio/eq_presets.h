@@ -12,7 +12,7 @@
 #include <array>
 #include <cmath>
 
-namespace qiyaa::audio {
+namespace Audio {
 
 struct EqPreset {
     QString name;
@@ -73,4 +73,4 @@ inline QList<EqPreset> builtinEqPresets() {
     return out;
 }
 
-}  // namespace qiyaa::audio
+}  // namespace Audio

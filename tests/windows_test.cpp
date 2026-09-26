@@ -18,8 +18,7 @@
 #include <QSignalSpy>
 #include <QTest>
 
-using namespace qiyaa;
-using yandex::Track;
+using Yandex::Track;
 
 namespace {
 
@@ -51,10 +50,10 @@ void click(QWidget* w, QPoint local) {
     mouse(w, QEvent::MouseButtonRelease, local, g, Qt::LeftButton, Qt::NoButton);
 }
 
-QList<Track> tracks(int n) {
-    QList<Track> out;
+QList<Yandex::Track> tracks(int n) {
+    QList<Yandex::Track> out;
     for (int i = 0; i < n; ++i) {
-        Track t;
+        Yandex::Track t;
         t.id = QString::number(i + 1);
         t.title = QStringLiteral("Track %1").arg(i + 1);
         t.artists << QStringLiteral("Artist");
@@ -69,10 +68,10 @@ QList<Track> tracks(int n) {
 class TestWindows : public QObject {
     Q_OBJECT
 private:
-    std::unique_ptr<App> app;
-    MainWindow* main = nullptr;
-    EqualizerWindow* eq = nullptr;
-    PlaylistWindow* pl = nullptr;
+    std::unique_ptr<App::Application> app;
+    Ui::MainWindow* main = nullptr;
+    Ui::EqualizerWindow* eq = nullptr;
+    Ui::PlaylistWindow* pl = nullptr;
 
     // Scale tests need the stack to fit on screen (see tests/CMakeLists.txt).
     void requireBigScreen() {
@@ -83,12 +82,12 @@ private:
 
 private Q_SLOTS:
     void init() {
-        App::Options o;
+        App::Application::Options o;
         o.offline = true;
         o.audio = false;
         o.readOnlySettings = true;
         o.mediaIntegration = false;
-        app = std::make_unique<App>(o);
+        app = std::make_unique<App::Application>(o);
         app->start();
         main = app->mainWindow();
         eq = app->equalizerWindow();
@@ -243,7 +242,7 @@ private Q_SLOTS:
     }
 
     void eqSliderDrag() {
-        QSignalSpy changed(eq, &EqualizerWindow::settingsChanged);
+        QSignalSpy changed(eq, &Ui::EqualizerWindow::settingsChanged);
         // Band 60 Hz at x=78, slider top y=38, 51 px travel: top = +12 dB.
         const QPoint top(78 + 7, 38 + 5);
         mouse(
@@ -271,7 +270,7 @@ private Q_SLOTS:
     void loginDialogFitsItsText() {
         QNetworkAccessManager nam;
         // Unreachable OAuth server: the device flow fails fast with a long message.
-        LoginDialog dlg(&nam, nullptr, QStringLiteral("http://127.0.0.1:1"));
+        Ui::LoginDialog dlg(&nam, nullptr, QStringLiteral("http://127.0.0.1:1"));
         dlg.show();
         QVERIFY(QTest::qWaitForWindowExposed(&dlg));
         auto allTextFits = [&dlg] {
@@ -358,7 +357,7 @@ private Q_SLOTS:
     void positionsAreFinalWhenShadeChanges() {
         // The app saves positions on shadeChanged.
         QPoint eqAtSignal;
-        connect(main, &SkinnedWindow::shadeChanged, this, [&] { eqAtSignal = eq->pos(); });
+        connect(main, &Ui::SkinnedWindow::shadeChanged, this, [&] { eqAtSignal = eq->pos(); });
         main->setShaded(true);
         QCOMPARE(eqAtSignal, main->pos() + QPoint(0, 14));
     }
@@ -397,7 +396,7 @@ private Q_SLOTS:
     }
 
     void milkdropWindowFromTheMenu() {
-        MilkdropWindow* md = app->milkdropWindow();
+        Ui::MilkdropWindow* md = app->milkdropWindow();
 #if defined(QIYAA_HAVE_MILKDROP)
         QVERIFY(md);
         QVERIFY(!md->isVisible());  // off by default
@@ -459,18 +458,18 @@ private Q_SLOTS:
     }
 
     void nowPlayingShowsCoverAndDetails() {
-        MockHttpServer server;
+        Tests::MockHttpServer server;
         QImage red(64, 64, QImage::Format_RGB32);
         red.fill(Qt::red);
         QByteArray png;
         QBuffer buf(&png);
         buf.open(QIODevice::WriteOnly);
         red.save(&buf, "PNG");
-        server.on("GET", "/cover/400x400", [png](const MockRequest&) {
-            return MockResponse{200, png};
+        server.on("GET", "/cover/400x400", [png](const Tests::MockRequest&) {
+            return Tests::MockResponse{200, png};
         });
 
-        QList<Track> list = tracks(1);
+        QList<Yandex::Track> list = tracks(1);
         list[0].title = QStringLiteral("Группа крови");
         list[0].artists = {QStringLiteral("Кино")};
         list[0].albumTitle = QStringLiteral("Группа крови");
@@ -478,7 +477,7 @@ private Q_SLOTS:
         list[0].coverUri = server.baseUrl() + QStringLiteral("/cover/%%");
         app->player()->setQueue(list, "A", false);
         app->setNowPlayingVisible(true);
-        NowPlayingWindow* np = app->nowPlayingWindow();
+        Ui::NowPlayingWindow* np = app->nowPlayingWindow();
         QVERIFY(QTest::qWaitForWindowExposed(np));
         QVERIFY(QTest::qWaitFor(
             [&] { return !app->covers()->localFile(list[0].coverUrl(400)).isEmpty(); }, 5000

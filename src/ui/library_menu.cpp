@@ -11,29 +11,29 @@
 
 #include <memory>
 
-namespace qiyaa {
+namespace Ui {
 
-using yandex::Library;
-using yandex::NamedRef;
-using yandex::PlaylistRef;
-using yandex::Station;
-using yandex::Track;
-using yandex::WaveBatch;
+using Yandex::Library;
+using Yandex::NamedRef;
+using Yandex::PlaylistRef;
+using Yandex::Station;
+using Yandex::Track;
+using Yandex::WaveBatch;
 
 namespace {
 
-void status(Player* player, const QString& text) {
+void status(Core::Player* player, const QString& text) {
     Q_EMIT player->statusMessage(text);
 }
 
 // Loads `tracks` into the player as a finite source. Takes a request ticket
 // now, so a slow response can't replace something the user picked later.
-auto queueLoader(Player* player, const QString& title, quint64 ticket = 0) {
+auto queueLoader(Core::Player* player, const QString& title, quint64 ticket = 0) {
     if (ticket == 0) {
         ticket = player->newSourceRequest();
     }
-    QPointer<Player> p(player);
-    return [p, title, ticket](const QList<Track>& tracks, const QString& err) {
+    QPointer<Core::Player> p(player);
+    return [p, title, ticket](const QList<Yandex::Track>& tracks, const QString& err) {
         if (!p || !p->isLatestSourceRequest(ticket)) {
             return;
         }
@@ -51,7 +51,7 @@ auto queueLoader(Player* player, const QString& title, quint64 ticket = 0) {
 template <typename T>
 void lazySubmenu(
     QMenu* sub,
-    std::function<void(Library::Callback<QList<T>>)> load,
+    std::function<void(Yandex::Library::Callback<QList<T>>)> load,
     std::function<void(QMenu*, const QList<T>&)> fill
 ) {
     auto loaded = std::make_shared<bool>(false);
@@ -104,16 +104,14 @@ QString stationTypeTitle(const QString& type) {
 
 }  // namespace
 
-namespace sources {
-
-void playWave(Player* player, const QStringList& seeds, const QString& title) {
-    Library* lib = player->library();
+void playWave(Core::Player* player, const QStringList& seeds, const QString& title) {
+    Yandex::Library* lib = player->library();
     status(player, title + QStringLiteral(": загрузка..."));
-    QPointer<Player> p(player);
+    QPointer<Core::Player> p(player);
     const quint64 ticket = player->newSourceRequest();
     lib->startWave(
         seeds,
-        [p, lib, title, ticket, seeds](const WaveBatch& batch, const QString& err) {
+        [p, lib, title, ticket, seeds](const Yandex::WaveBatch& batch, const QString& err) {
             if (!p || !p->isLatestSourceRequest(ticket)) {
                 return;
             }
@@ -129,13 +127,15 @@ void playWave(Player* player, const QStringList& seeds, const QString& title) {
             auto state = std::make_shared<WaveState>();
             state->session = batch.sessionId;
             state->station = seeds.value(0);
-            for (const Track& t : batch.tracks) {
+            for (const Yandex::Track& t : batch.tracks) {
                 state->batchOfTrack.insert(t.id, batch.batchId);
             }
             currentWaveSeeds() = seeds;
 
             // Endless: ask the session for the next batch, seeded with what we've queued.
-            Player::MoreFn more = [p, lib, state](std::function<void(const QList<Track>&)> done) {
+            Core::Player::MoreFn more = [p, lib, state](
+                                            std::function<void(const QList<Yandex::Track>&)> done
+                                        ) {
                 if (!p) {
                     return;
                 }
@@ -146,11 +146,11 @@ void playWave(Player* player, const QStringList& seeds, const QString& title) {
                 }
                 lib->moreWave(
                     state->session, queue,
-                    [done, state](const WaveBatch& b, const QString& err) {
+                    [done, state](const Yandex::WaveBatch& b, const QString& err) {
                         if (!err.isEmpty()) {
                             qWarning("wave: %s", qPrintable(err));
                         }
-                        for (const Track& t : b.tracks) {
+                        for (const Yandex::Track& t : b.tracks) {
                             state->batchOfTrack.insert(t.id, b.batchId);
                         }
                         done(b.tracks);
@@ -158,52 +158,55 @@ void playWave(Player* player, const QStringList& seeds, const QString& title) {
                 );
             };
             // Feedback makes the wave adapt: what was played through, what was skipped.
-            Player::EventFn events = [lib,
-                                      state](Player::TrackEvent ev, const Track& t, double played) {
-                const yandex::WaveEvent we = ev == Player::TrackEvent::Started
-                    ? yandex::WaveEvent::TrackStarted
-                    : ev == Player::TrackEvent::Finished ? yandex::WaveEvent::TrackFinished
-                                                         : yandex::WaveEvent::Skip;
-                lib->waveFeedback(
-                    state->session, state->station, state->batchOfTrack.value(t.id), we, &t, played
-                );
-            };
+            Core::Player::EventFn events =
+                [lib, state](Core::Player::TrackEvent ev, const Yandex::Track& t, double played) {
+                    const Yandex::WaveEvent we = ev == Core::Player::TrackEvent::Started
+                        ? Yandex::WaveEvent::TrackStarted
+                        : ev == Core::Player::TrackEvent::Finished
+                        ? Yandex::WaveEvent::TrackFinished
+                        : Yandex::WaveEvent::Skip;
+                    lib->waveFeedback(
+                        state->session, state->station, state->batchOfTrack.value(t.id), we, &t,
+                        played
+                    );
+                };
             lib->waveFeedback(
-                state->session, state->station, batch.batchId, yandex::WaveEvent::RadioStarted
+                state->session, state->station, batch.batchId, Yandex::WaveEvent::RadioStarted
             );
             p->setQueue(batch.tracks, title, true, more, events);
         }
     );
 }
 
-void playMyWave(Player* player) {
+void playMyWave(Core::Player* player) {
     playWave(player, {QStringLiteral("user:onyourwave")}, QStringLiteral("Моя волна"));
 }
 
-void playLikes(Player* player, bool autoplay) {
+void playLikes(Core::Player* player, bool autoplay) {
     status(player, QStringLiteral("Мне нравится: загрузка..."));
-    QPointer<Player> p(player);
+    QPointer<Core::Player> p(player);
     const quint64 ticket = player->newSourceRequest();
-    player->library()->likedTracks([p, autoplay,
-                                    ticket](const QList<Track>& tracks, const QString& err) {
-        if (!p || !p->isLatestSourceRequest(ticket)) {
-            return;
+    player->library()->likedTracks(
+        [p, autoplay, ticket](const QList<Yandex::Track>& tracks, const QString& err) {
+            if (!p || !p->isLatestSourceRequest(ticket)) {
+                return;
+            }
+            if (!err.isEmpty()) {
+                return status(p, QStringLiteral("Ошибка: ") + err);
+            }
+            p->setQueue(tracks, QStringLiteral("Мне нравится"), autoplay);
+            status(p, QStringLiteral("Мне нравится: %1 треков").arg(p->playlist().size()));
         }
-        if (!err.isEmpty()) {
-            return status(p, QStringLiteral("Ошибка: ") + err);
-        }
-        p->setQueue(tracks, QStringLiteral("Мне нравится"), autoplay);
-        status(p, QStringLiteral("Мне нравится: %1 треков").arg(p->playlist().size()));
-    });
+    );
 }
 
-void search(Player* player, const QString& text) {
-    Library* lib = player->library();
+void playSearchResults(Core::Player* player, const QString& text) {
+    Yandex::Library* lib = player->library();
     const QString title = QStringLiteral("Поиск: ") + text;
     status(player, title + QStringLiteral("..."));
-    QPointer<Player> p(player);
+    QPointer<Core::Player> p(player);
     const quint64 ticket = player->newSourceRequest();
-    lib->search(text, [p, lib, title, ticket](const yandex::SearchResult& r, const QString& err) {
+    lib->search(text, [p, lib, title, ticket](const Yandex::SearchResult& r, const QString& err) {
         if (!p || !p->isLatestSourceRequest(ticket)) {
             return;
         }
@@ -223,33 +226,30 @@ void search(Player* player, const QString& text) {
     });
 }
 
-}  // namespace sources
-
 void addLibraryActions(
     QMenu* menu,
-    Player* player,
+    Core::Player* player,
     QWidget* dialogParent,
     std::function<void()> loginRequested
 ) {
-    Library* lib = player->library();
+    Yandex::Library* lib = player->library();
     if (!lib->isLoggedIn()) {
         menu->addAction(QStringLiteral("Войти в Яндекс Музыку..."), menu, loginRequested);
         return;
     }
 
-    menu->addAction(QStringLiteral("Моя волна"), menu, [player] { sources::playMyWave(player); });
+    menu->addAction(QStringLiteral("Моя волна"), menu, [player] { Ui::playMyWave(player); });
     menu->addAction(QStringLiteral("Мне нравится"), menu, [player] {
-        sources::playLikes(player, true);
+        Ui::playLikes(player, true);
     });
 
     QMenu* wheel = menu->addMenu(QStringLiteral("Колесо волн"));
-    lazySubmenu<yandex::Wave>(
+    lazySubmenu<Yandex::Wave>(
         wheel, [lib](auto cb) { lib->wheelWaves(currentWaveSeeds(), cb); },
-        [player](QMenu* m, const QList<yandex::Wave>& waves) {
-            for (const yandex::Wave& w : waves) {
-                QAction* a = m->addAction(w.name, m, [player, w] {
-                    sources::playWave(player, w.seeds, w.name);
-                });
+        [player](QMenu* m, const QList<Yandex::Wave>& waves) {
+            for (const Yandex::Wave& w : waves) {
+                QAction* a =
+                    m->addAction(w.name, m, [player, w] { Ui::playWave(player, w.seeds, w.name); });
                 a->setToolTip(w.description);
             }
             m->setToolTipsVisible(true);
@@ -257,10 +257,10 @@ void addLibraryActions(
     );
 
     QMenu* forYou = menu->addMenu(QStringLiteral("Для вас"));
-    lazySubmenu<PlaylistRef>(
+    lazySubmenu<Yandex::PlaylistRef>(
         forYou, [lib](auto cb) { lib->personalPlaylists(cb); },
-        [player, lib](QMenu* m, const QList<PlaylistRef>& items) {
-            for (const PlaylistRef& pl : items) {
+        [player, lib](QMenu* m, const QList<Yandex::PlaylistRef>& items) {
+            for (const Yandex::PlaylistRef& pl : items) {
                 m->addAction(pl.title, m, [player, lib, pl] {
                     lib->playlistTracks(pl, queueLoader(player, pl.title));
                 });
@@ -269,10 +269,10 @@ void addLibraryActions(
     );
 
     QMenu* playlists = menu->addMenu(QStringLiteral("Плейлисты"));
-    lazySubmenu<PlaylistRef>(
+    lazySubmenu<Yandex::PlaylistRef>(
         playlists, [lib](auto cb) { lib->userPlaylists(cb); },
-        [player, lib](QMenu* m, const QList<PlaylistRef>& items) {
-            for (const PlaylistRef& pl : items) {
+        [player, lib](QMenu* m, const QList<Yandex::PlaylistRef>& items) {
+            for (const Yandex::PlaylistRef& pl : items) {
                 QMenu* one = m->addMenu(QStringLiteral("%1 (%2)").arg(pl.title).arg(pl.trackCount));
                 one->addAction(QStringLiteral("Слушать"), one, [player, lib, pl] {
                     lib->playlistTracks(pl, queueLoader(player, pl.title));
@@ -287,10 +287,10 @@ void addLibraryActions(
     );
 
     QMenu* artists = menu->addMenu(QStringLiteral("Исполнители"));
-    lazySubmenu<NamedRef>(
+    lazySubmenu<Yandex::NamedRef>(
         artists, [lib](auto cb) { lib->likedArtists(cb); },
-        [player, lib](QMenu* m, const QList<NamedRef>& items) {
-            for (const NamedRef& a : items) {
+        [player, lib](QMenu* m, const QList<Yandex::NamedRef>& items) {
+            for (const Yandex::NamedRef& a : items) {
                 m->addAction(a.name, m, [player, lib, a] {
                     lib->artistTopTracks(a.id, queueLoader(player, a.name));
                 });
@@ -299,10 +299,10 @@ void addLibraryActions(
     );
 
     QMenu* albums = menu->addMenu(QStringLiteral("Альбомы"));
-    lazySubmenu<NamedRef>(
+    lazySubmenu<Yandex::NamedRef>(
         albums, [lib](auto cb) { lib->likedAlbums(cb); },
-        [player, lib](QMenu* m, const QList<NamedRef>& items) {
-            for (const NamedRef& a : items) {
+        [player, lib](QMenu* m, const QList<Yandex::NamedRef>& items) {
+            for (const Yandex::NamedRef& a : items) {
                 m->addAction(a.name, m, [player, lib, a] {
                     lib->albumTracks(a.id, queueLoader(player, a.name));
                 });
@@ -311,16 +311,16 @@ void addLibraryActions(
     );
 
     QMenu* stations = menu->addMenu(QStringLiteral("Станции"));
-    lazySubmenu<Station>(
+    lazySubmenu<Yandex::Station>(
         stations, [lib](auto cb) { lib->stations(cb); },
-        [player](QMenu* m, const QList<Station>& items) {
+        [player](QMenu* m, const QList<Yandex::Station>& items) {
             QMap<QString, QMenu*> groups;
-            for (const Station& s : items) {
+            for (const Yandex::Station& s : items) {
                 QMenu*& g = groups[s.type];
                 if (!g) {
                     g = m->addMenu(stationTypeTitle(s.type));
                 }
-                g->addAction(s.name, g, [player, s] { sources::playWave(player, {s.id}, s.name); });
+                g->addAction(s.name, g, [player, s] { Ui::playWave(player, {s.id}, s.name); });
             }
         }
     );
@@ -332,13 +332,13 @@ void addLibraryActions(
             QLineEdit::Normal, {}, &ok
         );
         if (ok && !text.trimmed().isEmpty()) {
-            sources::search(player, text.trimmed());
+            Ui::playSearchResults(player, text.trimmed());
         }
     });
 
     // Current track.
     menu->addSeparator();
-    const Track* cur = player->currentTrack();
+    const Yandex::Track* cur = player->currentTrack();
     const QString id = cur ? cur->id : QString();
     const bool liked = cur && lib->isLiked(id);
     QAction* like = menu->addAction(
@@ -374,4 +374,4 @@ void addLibraryActions(
     }
 }
 
-}  // namespace qiyaa
+}  // namespace Ui

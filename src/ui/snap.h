@@ -6,7 +6,7 @@
 #include <QPoint>
 #include <QRect>
 
-namespace qiyaa::snap {
+namespace Ui {
 
 // Distance (in device-independent pixels) at which windows snap together.
 inline constexpr int kSnapDistance = 15;
@@ -51,4 +51,4 @@ QPoint resolveDragPosition(
     int distance = kSnapDistance
 );
 
-}  // namespace qiyaa::snap
+}  // namespace Ui

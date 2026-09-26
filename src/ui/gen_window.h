@@ -4,12 +4,12 @@
 
 #include "ui/skinned_window.h"
 
-namespace qiyaa {
+namespace Ui {
 
 class GenWindow : public SkinnedWindow {
     Q_OBJECT
 public:
-    GenWindow(const Skin* skin, const QString& title, QWidget* parent = nullptr);
+    GenWindow(const Skins::Skin* skin, const QString& title, QWidget* parent = nullptr);
 
     QSize sizeSteps() const { return m_steps; }
     void setSizeSteps(QSize steps);
@@ -42,4 +42,4 @@ private:
     QSize m_dragStartSteps;
 };
 
-}  // namespace qiyaa
+}  // namespace Ui

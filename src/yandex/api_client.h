@@ -17,7 +17,7 @@
 class QNetworkAccessManager;
 class QNetworkReply;
 
-namespace qiyaa::yandex {
+namespace Yandex {
 
 struct Account {
     QString uid;
@@ -98,4 +98,4 @@ private:
     int m_pendingPosts = 0;
 };
 
-}  // namespace qiyaa::yandex
+}  // namespace Yandex

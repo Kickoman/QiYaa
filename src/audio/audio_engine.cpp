@@ -14,7 +14,7 @@
 #include <thread>
 #include <vector>
 
-namespace qiyaa::audio {
+namespace Audio {
 
 namespace {
 
@@ -862,4 +862,4 @@ void AudioEngine::setState(State s) {
     Q_EMIT stateChanged(s);
 }
 
-}  // namespace qiyaa::audio
+}  // namespace Audio

@@ -16,7 +16,7 @@
 class QNetworkAccessManager;
 class QNetworkReply;
 
-namespace qiyaa::yandex {
+namespace Yandex {
 
 class DeviceLogin : public QObject {
     Q_OBJECT
@@ -49,4 +49,4 @@ private:
     qint64 m_deadlineMs = 0;
 };
 
-}  // namespace qiyaa::yandex
+}  // namespace Yandex

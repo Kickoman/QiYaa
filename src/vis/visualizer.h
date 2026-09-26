@@ -12,11 +12,11 @@
 
 class QPainter;
 
-namespace qiyaa {
+namespace Skins {
 class Skin;
-}
+}  // namespace Skins
 
-namespace qiyaa::vis {
+namespace Vis {
 
 struct VisFrame {
     std::span<const float> left, right;  // latest PCM, -1..1
@@ -33,7 +33,7 @@ public:
     // Called once per animation frame with fresh data.
     virtual void update(const VisFrame& frame) = 0;
     // Called whenever the window repaints; must only draw the last state.
-    virtual void render(QPainter& p, const QRect& area, const Skin& skin) const = 0;
+    virtual void render(QPainter& p, const QRect& area, const Skins::Skin& skin) const = 0;
     virtual void reset() { }
 };
 
@@ -56,4 +56,4 @@ private:
     std::vector<float> m_re, m_im, m_db;
 };
 
-}  // namespace qiyaa::vis
+}  // namespace Vis

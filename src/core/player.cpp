@@ -9,20 +9,20 @@
 #include <functional>
 #include <utility>
 
-namespace qiyaa {
+namespace Core {
 
-using audio::AudioEngine;
-using yandex::Track;
+using Audio::AudioEngine;
+using Yandex::Track;
 
 namespace {
 constexpr int kLoadMoreWhenLeft = 2;  // endless sources: fetch more when this many tracks remain
 }
 
-Player::Player(yandex::Library* library, AudioEngine* engine, QObject* parent)
+Player::Player(Yandex::Library* library, Audio::AudioEngine* engine, QObject* parent)
     : QObject(parent)
     , m_library(library)
     , m_engine(engine) {
-    connect(m_engine, &AudioEngine::trackFinished, this, [this] {
+    connect(m_engine, &Audio::AudioEngine::trackFinished, this, [this] {
         // A broken download also drains to the end; that's not "listened to the end".
         if (m_openTrack && m_openTrackEvents) {
             m_openTrackEvents(
@@ -36,7 +36,7 @@ Player::Player(yandex::Library* library, AudioEngine* engine, QObject* parent)
         }
         next();
     });
-    connect(m_engine, &AudioEngine::trackAdvanced, this, [this] {
+    connect(m_engine, &Audio::AudioEngine::trackAdvanced, this, [this] {
         // The engine went on into the preloaded track without a gap.
         if (m_openTrack && m_openTrackEvents) {
             m_openTrackEvents(
@@ -64,7 +64,7 @@ Player::Player(yandex::Library* library, AudioEngine* engine, QObject* parent)
         maybeLoadMore();
         trackStarted(m_playlist[m_index], p.bitrate);
     });
-    connect(m_engine, &AudioEngine::errorOccurred, this, [this](const QString& msg) {
+    connect(m_engine, &Audio::AudioEngine::errorOccurred, this, [this](const QString& msg) {
         Q_EMIT statusMessage(QStringLiteral("Audio error: ") + msg);
     });
     // The engine reports end of track etc. only when polled. Poll here, not in a
@@ -75,8 +75,8 @@ Player::Player(yandex::Library* library, AudioEngine* engine, QObject* parent)
         playedSeconds();  // accumulate while it plays
         Q_EMIT positionTick();
     });
-    connect(m_engine, &AudioEngine::stateChanged, this, [this](AudioEngine::State s) {
-        if (s == AudioEngine::State::Stopped) {
+    connect(m_engine, &Audio::AudioEngine::stateChanged, this, [this](Audio::AudioEngine::State s) {
+        if (s == Audio::AudioEngine::State::Stopped) {
             m_pollTimer.stop();
         } else if (!m_pollTimer.isActive()) {
             m_pollTimer.start();
@@ -85,7 +85,7 @@ Player::Player(yandex::Library* library, AudioEngine* engine, QObject* parent)
 }
 
 void Player::setQueue(
-    const QList<Track>& tracks,
+    const QList<Yandex::Track>& tracks,
     const QString& title,
     bool autoplay,
     MoreFn more,
@@ -94,7 +94,7 @@ void Player::setQueue(
     stop();
     m_events = std::move(events);
     m_playlist.clear();
-    for (const Track& t : tracks) {
+    for (const Yandex::Track& t : tracks) {
         if (t.available) {
             m_playlist << t;
         }
@@ -113,9 +113,9 @@ void Player::setQueue(
     }
 }
 
-void Player::appendTracks(const QList<Track>& tracks) {
+void Player::appendTracks(const QList<Yandex::Track>& tracks) {
     bool added = false;
-    for (const Track& t : tracks) {
+    for (const Yandex::Track& t : tracks) {
         if (t.available) {
             m_playlist << t;
             added = true;
@@ -163,7 +163,7 @@ void Player::clearQueue() {
     setQueue({}, {}, false);
 }
 
-const Track* Player::currentTrack() const {
+const Yandex::Track* Player::currentTrack() const {
     return (m_index >= 0 && m_index < m_playlist.size()) ? &m_playlist[m_index] : nullptr;
 }
 
@@ -174,17 +174,17 @@ double Player::durationSeconds() const {
 
 void Player::play() {
     switch (m_engine->state()) {
-        case AudioEngine::State::Paused: m_engine->resume(); return;
-        case AudioEngine::State::Playing:
+        case Audio::AudioEngine::State::Paused: m_engine->resume(); return;
+        case Audio::AudioEngine::State::Playing:
             playIndex(m_index);
             return;  // Winamp: Play restarts the track
-        case AudioEngine::State::Buffering: return;
-        case AudioEngine::State::Stopped: playIndex(m_index < 0 ? 0 : m_index); return;
+        case Audio::AudioEngine::State::Buffering: return;
+        case Audio::AudioEngine::State::Stopped: playIndex(m_index < 0 ? 0 : m_index); return;
     }
 }
 
 void Player::pause() {
-    if (m_engine->state() == AudioEngine::State::Paused) {
+    if (m_engine->state() == Audio::AudioEngine::State::Paused) {
         m_engine->resume();
     } else {
         m_engine->pause();
@@ -202,7 +202,7 @@ double Player::playedSeconds() {
     const double pos = m_engine->positionSeconds();
     const double step = pos - m_lastPosition;
     // Normal progress between two polls is ~0.1 s; bigger jumps are seeks.
-    if (m_engine->state() == AudioEngine::State::Playing && step > 0 && step < 1.0) {
+    if (m_engine->state() == Audio::AudioEngine::State::Playing && step > 0 && step < 1.0) {
         m_played += step;
     }
     m_lastPosition = pos;
@@ -314,7 +314,7 @@ void Player::maybeLoadMore() {
     m_loadingMore = true;
     const quint64 gen = m_queueGeneration;
     QPointer<Player> self(this);
-    m_more([self, gen](const QList<Track>& tracks) {
+    m_more([self, gen](const QList<Yandex::Track>& tracks) {
         if (!self || gen != self->m_queueGeneration) {
             return;
         }
@@ -346,7 +346,7 @@ void Player::playIndex(int index) {
     m_bitrate = 0;
     m_currentDownloaded = false;
     m_downloadFailed = false;
-    const Track track = m_playlist[index];
+    const Yandex::Track track = m_playlist[index];
 
     // Already downloading in the background (e.g. "next" pressed): start it from there.
     if (m_preload && m_preload->stream && m_preload->trackId == track.id
@@ -368,7 +368,7 @@ void Player::playIndex(int index) {
 
     m_library->api()->resolveTrackUrl(
         track.id,
-        [this, gen, track](const yandex::ResolvedUrl& url, const QString& err) {
+        [this, gen, track](const Yandex::ResolvedUrl& url, const QString& err) {
             if (gen != m_generation) {
                 return;
             }
@@ -383,7 +383,7 @@ void Player::playIndex(int index) {
     );
 }
 
-void Player::trackStarted(const Track& track, int bitrate) {
+void Player::trackStarted(const Yandex::Track& track, int bitrate) {
     m_bitrate = bitrate;
     m_library->api()->reportPlayStarted(
         m_library->account(), track, QUuid::createUuid().toString(QUuid::WithoutBraces)
@@ -450,7 +450,7 @@ void Player::abortDownload() {
 
 void Player::maybePreload() {
     if (m_preload || m_shutDown || !m_currentDownloaded || !m_openTrack
-        || m_engine->state() == AudioEngine::State::Stopped) {
+        || m_engine->state() == Audio::AudioEngine::State::Stopped) {
         return;
     }
     const int index = pickNext();
@@ -465,7 +465,7 @@ void Player::maybePreload() {
     QPointer<Player> self(this);
     m_library->api()->resolveTrackUrl(
         p.trackId,
-        [self, gen = p.gen](const yandex::ResolvedUrl& url, const QString& err) {
+        [self, gen = p.gen](const Yandex::ResolvedUrl& url, const QString& err) {
             if (!self || !self->m_preload || self->m_preload->gen != gen) {
                 return;
             }
@@ -519,4 +519,4 @@ void Player::refreshPreload() {
     maybePreload();
 }
 
-}  // namespace qiyaa
+}  // namespace Core

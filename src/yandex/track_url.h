@@ -7,7 +7,7 @@
 #include <QString>
 #include <QUrl>
 
-namespace qiyaa::yandex {
+namespace Yandex {
 
 // One entry of GET /tracks/{id}/download-info.
 struct DownloadVariant {
@@ -36,4 +36,4 @@ bool parseDownloadInfo(const QByteArray& json, DownloadInfo* out);
 // https://{host}/get-mp3/{md5(SALT + path[1:] + s)}/{ts}{path}
 QUrl buildTrackUrl(const DownloadInfo& info);
 
-}  // namespace qiyaa::yandex
+}  // namespace Yandex

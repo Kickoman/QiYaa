@@ -11,7 +11,7 @@
 #include <QPainter>
 #include <QString>
 
-namespace qiyaa {
+namespace Skins {
 
 class Skin {
 public:
@@ -89,4 +89,4 @@ private:
 
 size_t qHash(Skin::Sheet s, size_t seed = 0) noexcept;
 
-}  // namespace qiyaa
+}  // namespace Skins

@@ -10,8 +10,6 @@
 #include <QNetworkAccessManager>
 #include <QTest>
 
-using namespace qiyaa;
-
 namespace {
 
 const QString kGoldenDir = QStringLiteral(QIYAA_TEST_DATA "/golden");
@@ -52,12 +50,12 @@ QString describeDifference(const QImage& actual, const QImage& expected) {
 class TestScreenshots : public QObject {
     Q_OBJECT
 private:
-    Skin skin;
+    Skins::Skin skin;
     QNetworkAccessManager nam;
-    std::unique_ptr<yandex::ApiClient> api;
-    std::unique_ptr<yandex::Library> library;
-    std::unique_ptr<audio::AudioEngine> engine;
-    std::unique_ptr<Player> player;
+    std::unique_ptr<Yandex::ApiClient> api;
+    std::unique_ptr<Yandex::Library> library;
+    std::unique_ptr<Audio::AudioEngine> engine;
+    std::unique_ptr<Core::Player> player;
 
     void compareWithGolden(QWidget* window, const QString& name) {
         const QImage actual = window->grab().toImage().convertToFormat(QImage::Format_ARGB32);
@@ -83,12 +81,12 @@ private:
 
 private Q_SLOTS:
     void initTestCase() {
-        skin = Skin::builtinBase();
+        skin = Skins::Skin::builtinBase();
         QVERIFY(skin.isValid());
-        api = std::make_unique<yandex::ApiClient>(&nam);
-        library = std::make_unique<yandex::Library>(api.get());
-        engine = std::make_unique<audio::AudioEngine>();
-        player = std::make_unique<Player>(library.get(), engine.get());
+        api = std::make_unique<Yandex::ApiClient>(&nam);
+        library = std::make_unique<Yandex::Library>(api.get());
+        engine = std::make_unique<Audio::AudioEngine>();
+        player = std::make_unique<Core::Player>(library.get(), engine.get());
     }
 
     void mainWindowLooksAsRecorded_data() {
@@ -103,7 +101,7 @@ private Q_SLOTS:
     void mainWindowLooksAsRecorded() {
         QFETCH(double, scale);
         QFETCH(bool, shaded);
-        MainWindow window(player.get(), &skin);
+        Ui::MainWindow window(player.get(), &skin);
         window.setScale(scale);
         window.setShaded(shaded);
         window.show();
@@ -122,7 +120,7 @@ private Q_SLOTS:
     void equalizerLooksAsRecorded() {
         QFETCH(double, scale);
         QFETCH(bool, shaded);
-        EqualizerWindow window(&skin);
+        Ui::EqualizerWindow window(&skin);
         window.setScale(scale);
         window.setShaded(shaded);
         window.show();

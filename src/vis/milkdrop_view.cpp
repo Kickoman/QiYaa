@@ -13,7 +13,7 @@
 #include <array>
 #include <utility>
 
-namespace qiyaa {
+namespace Vis {
 
 namespace {
 constexpr uint32_t kMaxFramesPerFeed = 4096;
@@ -55,7 +55,7 @@ QString MilkdropView::openGLProblem() {
     return problem;
 }
 
-MilkdropView::MilkdropView(audio::AudioEngine* engine)
+MilkdropView::MilkdropView(Audio::AudioEngine* engine)
     : QOpenGLWindow(QOpenGLWindow::NoPartialUpdate)
     , m_engine(engine)
     , m_pcm(kMaxFramesPerFeed * 2) {
@@ -387,4 +387,4 @@ void MilkdropView::keyPressEvent(QKeyEvent* e) {
     Q_EMIT keyPressed(e->key(), e->modifiers());
 }
 
-}  // namespace qiyaa
+}  // namespace Vis

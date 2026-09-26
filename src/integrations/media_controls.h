@@ -9,10 +9,12 @@
 
 #include <functional>
 
-namespace qiyaa {
-
+namespace Core {
 class CoverCache;
 class Player;
+}  // namespace Core
+
+namespace Integrations {
 
 class MediaControls : public QObject {
     Q_OBJECT
@@ -24,9 +26,14 @@ public:
         std::function<void()> quit;
     };
 
-    MediaControls(Player* player, CoverCache* covers, Hooks hooks, QObject* parent = nullptr);
+    MediaControls(
+        Core::Player* player,
+        Core::CoverCache* covers,
+        Hooks hooks,
+        QObject* parent = nullptr
+    );
 
-    Player* player() const { return m_player; }
+    Core::Player* player() const { return m_player; }
     const Hooks& hooks() const { return m_hooks; }
 
     // Commands with the exact semantics media keys expect (Player::pause toggles).
@@ -56,9 +63,9 @@ Q_SIGNALS:
     void volumeChanged();
 
 private:
-    Player* m_player;
-    CoverCache* m_covers;
+    Core::Player* m_player;
+    Core::CoverCache* m_covers;
     Hooks m_hooks;
 };
 
-}  // namespace qiyaa
+}  // namespace Integrations

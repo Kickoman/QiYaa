@@ -9,7 +9,7 @@
 #include <atomic>
 #include <cstdint>
 
-namespace qiyaa::audio {
+namespace Audio {
 
 inline constexpr int kEqBands = 10;
 inline constexpr std::array<double, kEqBands> kEqBandHz = {60,   170,  310,   600,   1000,
@@ -68,4 +68,4 @@ private:
     std::array<std::array<float, 2>, kEqBands> m_z2{};
 };
 
-}  // namespace qiyaa::audio
+}  // namespace Audio

@@ -3,7 +3,7 @@
 #include <QRegularExpression>
 #include <QStringList>
 
-namespace qiyaa {
+namespace Skins {
 namespace {
 
 QList<int> parseInts(const QString& s) {
@@ -91,4 +91,4 @@ QRegion regionFromPolygons(const QList<QPolygon>& polygons) {
     return r;
 }
 
-}  // namespace qiyaa
+}  // namespace Skins

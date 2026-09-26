@@ -10,7 +10,7 @@
 #include <QStringList>
 #include <QVariantMap>
 
-namespace qiyaa {
+namespace Integrations {
 
 class MediaControls;
 
@@ -126,4 +126,4 @@ private:
     Mpris* m_mpris;
 };
 
-}  // namespace qiyaa
+}  // namespace Integrations

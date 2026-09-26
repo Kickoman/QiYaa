@@ -12,7 +12,7 @@
 #include <QRegularExpression>
 #include <miniz.h>
 
-namespace qiyaa {
+namespace Skins {
 
 size_t qHash(Skin::Sheet s, size_t seed) noexcept {
     return ::qHash(static_cast<int>(s), seed);
@@ -221,7 +221,7 @@ QColor textInkColor(const QImage& text) {
     const QRgb bg = text.pixel(text.width() - 1, 0);
     QHash<QRgb, int> counts;
     const int h = std::min(text.height(), 6);
-    const int w = std::min(text.width(), 26 * sprites::kCharW);
+    const int w = std::min(text.width(), 26 * Skins::kCharW);
     for (int y = 0; y < h; ++y) {
         for (int x = 0; x < w; ++x) {
             const QRgb px = text.pixel(x, y);
@@ -338,8 +338,8 @@ void Skin::measureGenLetters() {
         return out;
     };
     const QImage& gen = sheet(Sheet::Gen);
-    m_genLettersSelected = measure(gen, sprites::gen::kLettersYSelected);
-    m_genLetters = measure(gen, sprites::gen::kLettersY);
+    m_genLettersSelected = measure(gen, Skins::GenWindowSprites::kLettersYSelected);
+    m_genLetters = measure(gen, Skins::GenWindowSprites::kLettersY);
 }
 
 int Skin::genTextWidth(const QString& text) const {
@@ -357,7 +357,8 @@ int Skin::genTextWidth(const QString& text) const {
 
 int Skin::drawGenText(QPainter& p, const QPoint& at, const QString& text, bool selected) const {
     const auto& letters = selected ? m_genLettersSelected : m_genLetters;
-    const int y = selected ? sprites::gen::kLettersYSelected : sprites::gen::kLettersY;
+    const int y =
+        selected ? Skins::GenWindowSprites::kLettersYSelected : Skins::GenWindowSprites::kLettersY;
     int x = at.x();
     for (QChar c : text) {
         const int i = c.toUpper().unicode() - u'A';
@@ -366,7 +367,7 @@ int Skin::drawGenText(QPainter& p, const QPoint& at, const QString& text, bool s
         } else if (i >= 0 && i < letters.size()) {
             draw(
                 p, Sheet::Gen,
-                QRect(letters[i].first, y, letters[i].second, sprites::gen::kLetterH),
+                QRect(letters[i].first, y, letters[i].second, Skins::GenWindowSprites::kLetterH),
                 QPoint(x, at.y())
             );
             x += letters[i].second;
@@ -449,7 +450,7 @@ namespace {
 
 CharRender resolveChar(QChar ch) {
     CharRender r;
-    r.advance = sprites::kCharW;
+    r.advance = Skins::kCharW;
     if (fontCell(ch, &r.row, &r.col)) {
         r.kind = CharRender::Cell;
         return r;
@@ -489,7 +490,7 @@ int Skin::textWidth(const QString& text) {
 
 int Skin::drawText(QPainter& p, const QPoint& at, const QString& text, int maxWidth) const {
     const QImage& font = sheet(Sheet::Text);
-    const QRect spaceCell(30 * sprites::kCharW, 0, sprites::kCharW, sprites::kCharH);
+    const QRect spaceCell(30 * Skins::kCharW, 0, Skins::kCharW, Skins::kCharH);
     QColor ink;
     int x = at.x();
     for (QChar ch : text) {
@@ -506,17 +507,16 @@ int Skin::drawText(QPainter& p, const QPoint& at, const QString& text, int maxWi
                 p.drawImage(
                     QPoint(x, at.y()), font,
                     QRect(
-                        r.col * sprites::kCharW, r.row * sprites::kCharH, sprites::kCharW,
-                        sprites::kCharH
+                        r.col * Skins::kCharW, r.row * Skins::kCharH, Skins::kCharW, Skins::kCharH
                     )
                 );
                 break;
             case CharRender::Pixel:
                 // Background from the skin's space glyph, then the ink pixels.
-                for (int bx = 0; bx < r.advance; bx += sprites::kCharW) {
+                for (int bx = 0; bx < r.advance; bx += Skins::kCharW) {
                     p.drawImage(
                         QPoint(x + bx, at.y()), font,
-                        spaceCell.adjusted(0, 0, std::min(0, r.advance - bx - sprites::kCharW), 0)
+                        spaceCell.adjusted(0, 0, std::min(0, r.advance - bx - Skins::kCharW), 0)
                     );
                 }
                 for (int row = 0; row < 6; ++row) {
@@ -531,7 +531,7 @@ int Skin::drawText(QPainter& p, const QPoint& at, const QString& text, int maxWi
                 p.setFont(fallbackFont());
                 p.setPen(ink);
                 p.drawText(
-                    QRect(x, at.y() - 1, r.advance, sprites::kCharH + 2),
+                    QRect(x, at.y() - 1, r.advance, Skins::kCharH + 2),
                     Qt::AlignLeft | Qt::AlignVCenter, QString(ch)
                 );
                 break;
@@ -541,4 +541,4 @@ int Skin::drawText(QPainter& p, const QPoint& at, const QString& text, int maxWi
     return x - at.x();
 }
 
-}  // namespace qiyaa
+}  // namespace Skins

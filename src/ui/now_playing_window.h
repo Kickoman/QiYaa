@@ -4,18 +4,20 @@
 
 #include "ui/gen_window.h"
 
-namespace qiyaa {
-
+namespace Core {
 class CoverCache;
 class Player;
+}  // namespace Core
+
+namespace Ui {
 
 class NowPlayingWindow : public GenWindow {
     Q_OBJECT
 public:
     NowPlayingWindow(
-        Player* player,
-        CoverCache* covers,
-        const Skin* skin,
+        Core::Player* player,
+        Core::CoverCache* covers,
+        const Skins::Skin* skin,
         QWidget* parent = nullptr
     );
 
@@ -27,8 +29,8 @@ protected:
     bool contentMousePress(QPoint pos, Qt::MouseButton button) override;
 
 private:
-    Player* m_player;
-    CoverCache* m_covers;
+    Core::Player* m_player;
+    Core::CoverCache* m_covers;
 };
 
-}  // namespace qiyaa
+}  // namespace Ui

@@ -10,7 +10,7 @@
 #include <QNetworkRequest>
 #include <QPointer>
 
-namespace qiyaa::yandex {
+namespace Yandex {
 
 namespace {
 constexpr int kTimeoutMs = 20000;
@@ -273,4 +273,4 @@ void ApiClient::reportPlayStarted(
     );
 }
 
-}  // namespace qiyaa::yandex
+}  // namespace Yandex

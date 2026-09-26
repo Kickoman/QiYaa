@@ -9,7 +9,7 @@
 #include <QSysInfo>
 #include <QUrlQuery>
 
-namespace qiyaa::yandex {
+namespace Yandex {
 
 namespace {
 // Yandex Music's public OAuth client — the same one Yaamp's login page and
@@ -155,4 +155,4 @@ void DeviceLogin::poll() {
     });
 }
 
-}  // namespace qiyaa::yandex
+}  // namespace Yandex

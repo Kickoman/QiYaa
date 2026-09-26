@@ -10,7 +10,7 @@
 
 #include <algorithm>
 
-namespace qiyaa {
+namespace Ui {
 
 namespace {
 constexpr int kPad = 4;
@@ -18,18 +18,18 @@ constexpr int kCoverPx = 400;  // requested size; drawn scaled
 }  // namespace
 
 NowPlayingWindow::NowPlayingWindow(
-    Player* player,
-    CoverCache* covers,
-    const Skin* skin,
+    Core::Player* player,
+    Core::CoverCache* covers,
+    const Skins::Skin* skin,
     QWidget* parent
 )
     : GenWindow(skin, QStringLiteral("NOW PLAYING"), parent)
     , m_player(player)
     , m_covers(covers) {
     setWindowTitle(QStringLiteral("QiYaa: сейчас играет"));
-    connect(m_player, &Player::currentTrackChanged, this, [this] { update(); });
-    connect(m_player->library(), &yandex::Library::likesChanged, this, [this] { update(); });
-    connect(m_covers, &CoverCache::ready, this, [this](const QUrl& url) {
+    connect(m_player, &Core::Player::currentTrackChanged, this, [this] { update(); });
+    connect(m_player->library(), &Yandex::Library::likesChanged, this, [this] { update(); });
+    connect(m_covers, &Core::CoverCache::ready, this, [this](const QUrl& url) {
         if (const auto* t = m_player->currentTrack(); t && t->coverUrl(kCoverPx) == url) {
             update();
         }
@@ -43,9 +43,9 @@ QRect NowPlayingWindow::coverRect() const {
 }
 
 void NowPlayingWindow::paintContent(QPainter& p, const QRect& area) {
-    const Skin::PlaylistStyle& st = skin().playlistStyle();
+    const Skins::Skin::PlaylistStyle& st = skin().playlistStyle();
     p.fillRect(area, st.normalBg);
-    const yandex::Track* t = m_player->currentTrack();
+    const Yandex::Track* t = m_player->currentTrack();
 
     const QRect cover = coverRect();
     const QImage img = t ? m_covers->get(t->coverUrl(kCoverPx)) : QImage();
@@ -108,7 +108,7 @@ void NowPlayingWindow::paintContent(QPainter& p, const QRect& area) {
 }
 
 bool NowPlayingWindow::contentMousePress(QPoint pos, Qt::MouseButton button) {
-    const yandex::Track* t = m_player->currentTrack();
+    const Yandex::Track* t = m_player->currentTrack();
     if (button != Qt::LeftButton || !t || !coverRect().contains(pos)) {
         return false;
     }
@@ -116,4 +116,4 @@ bool NowPlayingWindow::contentMousePress(QPoint pos, Qt::MouseButton button) {
     return true;
 }
 
-}  // namespace qiyaa
+}  // namespace Ui
