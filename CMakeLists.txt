@@ -148,7 +148,7 @@ if(WIN32 AND MSVC)
         if(QIYAA_HAVE_CPPWINRT)
             target_sources(qiyaa_integrations PRIVATE
                 src/integrations/smtc.cpp src/integrations/smtc.h)
-            target_link_libraries(qiyaa_integrations PRIVATE windowsapp)
+            target_link_libraries(qiyaa_integrations PRIVATE windowsapp Qt6::Widgets)
             target_compile_definitions(qiyaa_integrations PUBLIC QIYAA_HAVE_SMTC)
             message(STATUS "SMTC: enabled")
         else()
