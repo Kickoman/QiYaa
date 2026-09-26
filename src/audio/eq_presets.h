@@ -22,7 +22,8 @@ int DbToEqf(double db);
 // Winamp .eqf / .q1 files: "Winamp EQ library file v1.1" + ^Z + "!--", then
 // per preset a 257-byte zero-padded name and 11 bytes (10 bands + preamp),
 // each stored as 64 - value (value 1..64). Format as in webamp's winamp-eqf.
-bool ParseEqf(const QByteArray& data, QList<EqPreset>* out);
+// Throws Audio::Error when `data` isn't an .eqf file or holds no preset.
+QList<EqPreset> ParseEqf(const QByteArray& data);
 QByteArray WriteEqf(const QList<EqPreset>& presets);
 
 QList<EqPreset> BuiltinEqPresets();

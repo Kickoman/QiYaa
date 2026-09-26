@@ -13,56 +13,59 @@ QList<DownloadVariant> ParseDownloadVariants(const QJsonArray& result) {
     QList<DownloadVariant> out;
     for (const QJsonValue& value : result) {
         const QJsonObject object = value.toObject();
-        DownloadVariant d;
-        d.codec = object.value(QStringLiteral("codec")).toString();
-        d.bitrateKbps = object.value(QStringLiteral("bitrateInKbps")).toInt();
-        d.preview = object.value(QStringLiteral("preview")).toBool();
-        d.downloadInfoUrl = QUrl(object.value(QStringLiteral("downloadInfoUrl")).toString());
-        if (d.downloadInfoUrl.isValid()) {
-            out.append(d);
+        DownloadVariant variant;
+        variant.codec = object.value(QStringLiteral("codec")).toString();
+        variant.bitrateKbps = object.value(QStringLiteral("bitrateInKbps")).toInt();
+        variant.preview = object.value(QStringLiteral("preview")).toBool();
+        variant.downloadInfoUrl = QUrl(object.value(QStringLiteral("downloadInfoUrl")).toString());
+        if (variant.downloadInfoUrl.isValid()) {
+            out.append(variant);
         }
     }
     return out;
 }
 
-bool PickBestVariant(const QList<DownloadVariant>& variants, DownloadVariant* out) {
+std::optional<DownloadVariant> PickBestVariant(const QList<DownloadVariant>& variants) {
     const DownloadVariant* best = nullptr;
-    for (const DownloadVariant& v : variants) {
-        if (v.codec != QLatin1String("mp3") || v.preview) {
+    for (const DownloadVariant& variant : variants) {
+        if (variant.codec != QLatin1String("mp3") || variant.preview) {
             continue;
         }
-        if (!best || v.bitrateKbps > best->bitrateKbps) {
-            best = &v;
+        if (!best || variant.bitrateKbps > best->bitrateKbps) {
+            best = &variant;
         }
     }
     if (!best && !variants.isEmpty()) {
         best = &variants.first();
     }
     if (!best) {
-        return false;
+        return std::nullopt;
     }
-    *out = *best;
-    return true;
+    return *best;
 }
 
-bool ParseDownloadInfo(const QByteArray& json, DownloadInfo* out) {
-    QJsonParseError err{};
-    const QJsonDocument doc = QJsonDocument::fromJson(json, &err);
-    if (err.error != QJsonParseError::NoError || !doc.isObject()) {
-        return false;
+std::optional<DownloadInfo> ParseDownloadInfo(const QByteArray& json) {
+    QJsonParseError parseError{};
+    const QJsonDocument document = QJsonDocument::fromJson(json, &parseError);
+    if (parseError.error != QJsonParseError::NoError || !document.isObject()) {
+        return std::nullopt;
     }
-    const QJsonObject object = doc.object();
-    auto str = [&](const char* key) {
+    const QJsonObject object = document.object();
+    auto text = [&](const char* key) {
         const QJsonValue value = object.value(QLatin1String(key));
         return value.isString() ? value.toString()
             : value.isDouble()  ? QString::number(qint64(value.toDouble()))
                                 : QString();
     };
-    out->host = str("host");
-    out->path = str("path");
-    out->ts = str("ts");
-    out->s = str("s");
-    return !out->host.isEmpty() && out->path.startsWith(u'/') && !out->s.isEmpty();
+    DownloadInfo info;
+    info.host = text("host");
+    info.path = text("path");
+    info.ts = text("ts");
+    info.s = text("s");
+    if (info.host.isEmpty() || !info.path.startsWith(u'/') || info.s.isEmpty()) {
+        return std::nullopt;
+    }
+    return info;
 }
 
 QUrl BuildTrackUrl(const DownloadInfo& info) {

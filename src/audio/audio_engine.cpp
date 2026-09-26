@@ -59,6 +59,10 @@ public:
         cursorRow = 0;
     }
     // Completely downloaded (successfully or not): reading it never waits.
+    size_t size() const {
+        std::lock_guard lock(mutex);
+        return bytes.size();
+    }
     bool finished() const {
         std::lock_guard lock(mutex);
         return isFinished;
@@ -489,9 +493,9 @@ AudioEngine::~AudioEngine() {
     }
 }
 
-bool AudioEngine::init(QString* error) {
+AudioEngine::InitResult AudioEngine::init() {
     if (d->deviceReady) {
-        return true;
+        return {true, {}};
     }
     ma_device_config cfg = ma_device_config_init(ma_device_type_playback);
     cfg.playback.format = ma_format_f32;
@@ -547,10 +551,13 @@ bool AudioEngine::init(QString* error) {
         ma_context_uninit(&d->context);
     }
     if (!opened) {
-        if (error) {
-            *error = QStringLiteral("cannot open audio output device");
+        QStringList tried;
+        for (ma_backend backend : candidates) {
+            tried << QString::fromLatin1(ma_get_backend_name(backend));
         }
-        return false;
+        return {
+            false, QStringLiteral("no audio output device opens (tried %1)").arg(tried.join(u", "))
+        };
     }
     d->deviceReady = true;
     d->sampleRate = d->device.sampleRate;
@@ -559,13 +566,15 @@ bool AudioEngine::init(QString* error) {
             ma_format_f32, kChannels, d->sampleRate * kRingSeconds, nullptr, nullptr, &d->ring
         )
         != MA_SUCCESS) {
-        if (error) {
-            *error = QStringLiteral("cannot allocate ring buffer");
-        }
-        return false;
+        return {
+            false,
+            QStringLiteral("cannot allocate a %1-second ring buffer at %2 Hz")
+                .arg(kRingSeconds)
+                .arg(d->sampleRate)
+        };
     }
     d->ringReady = true;
-    return true;  // the device is started by beginStream()
+    return {true, {}};  // the device is started by beginStream()
 }
 
 QString AudioEngine::backendName() const {
@@ -801,8 +810,14 @@ void AudioEngine::updateGains() {
 
 void AudioEngine::poll() {
     if (d->decoderFailed.exchange(false)) {
+        const std::shared_ptr<StreamBuffer> buffer = streams.value(current);
+        const qulonglong received = buffer ? buffer->size() : 0;
         stop();
-        Q_EMIT errorOccurred(QStringLiteral("cannot decode audio stream"));
+        Q_EMIT errorOccurred(
+            QStringLiteral("cannot decode the audio stream: %1 bytes received, not mp3, flac or wav"
+            )
+                .arg(received)
+        );
         return;
     }
     // The queued stream turned out undecodable: forget it (the UI starts the next track itself).

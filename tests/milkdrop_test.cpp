@@ -63,6 +63,28 @@ private Q_SLOTS:
         QCOMPARE(presets.size(), 3);
     }
 
+    void namesDifferingInCaseKeepAFixedOrder() {
+        QTemporaryDir directory;
+        WriteFile(directory.filePath("b.milk"), SimplePreset(1.0));
+        WriteFile(directory.filePath("B.milk"), SimplePreset(1.0));
+        WriteFile(directory.filePath("a.milk"), SimplePreset(1.0));
+        Vis::MilkdropPresets presets;
+        presets.load(directory.path(), {});
+        QCOMPARE(presets.size(), 3);
+        QCOMPARE(presets.at(0).name, QStringLiteral("a"));
+        QCOMPARE(presets.at(1).name, QStringLiteral("B"));  // ties are broken by the path
+        QCOMPARE(presets.at(2).name, QStringLiteral("b"));
+    }
+
+    void oversizedPresetIsNotRead() {
+        QTemporaryDir directory;
+        WriteFile(directory.filePath("huge.milk"), QByteArray(1024 * 1024 + 1, 'x'));
+        Vis::MilkdropPresets presets;
+        presets.load(directory.path(), {});
+        QCOMPARE(presets.size(), 1);
+        QVERIFY(presets.data(0).isEmpty());
+    }
+
     void builtInPresetsAreBundled() {
         Vis::MilkdropPresets presets;
         presets.load(QStringLiteral(":/milkdrop"), {});

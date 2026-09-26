@@ -547,7 +547,9 @@ void Library::startWave(const QStringList& seeds, TCallback<WaveBatch> callback)
             }
             const WaveBatch b = ParseWaveBatch(result);
             if (b.sessionId.isEmpty()) {
-                return callback({}, QStringLiteral("no radio session"));
+                return callback(
+                    {}, QStringLiteral("/rotor/session/new: the reply has no radioSessionId")
+                );
             }
             callback(b, {});
         }

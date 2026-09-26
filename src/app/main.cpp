@@ -7,9 +7,15 @@
 #include <QIcon>
 #include <QTimer>
 
+#include <cstdio>
+#include <exception>
 #include <memory>
 
 namespace {
+
+constexpr int kSuccess = 0;
+constexpr int kFailure = 1;
+constexpr int kInternalError = 2;
 
 // Wayland doesn't let apps position their own windows, which the Winamp layout
 // (several snapped windows) depends on. Unless the user explicitly chose a
@@ -54,7 +60,7 @@ void StreamLocalFile(Audio::AudioEngine* engine, const QString& path) {
 
 // A few fake tracks, for screenshots and UI testing without an account.
 QList<Yandex::Track> DemoTracks() {
-    const std::pair<const char*, int> raw[] = {
+    const std::pair<const char*, int> samples[] = {
         {"Кино - Группа крови", 285},       {"Земфира - Искала", 237},
         {"Сплин - Выхода нет", 227},        {"Björk - Jóga", 305},
         {"Daft Punk - Digital Love", 301},  {"Мумий Тролль - Владивосток 2000", 164},
@@ -63,21 +69,19 @@ QList<Yandex::Track> DemoTracks() {
     };
     QList<Yandex::Track> out;
     int id = 1;
-    for (const auto& [name, secs] : raw) {
+    for (const auto& [name, seconds] : samples) {
         Yandex::Track track;
-        const QString s = QString::fromUtf8(name);
+        const QString text = QString::fromUtf8(name);
         track.id = QString::number(id++);
-        track.artists << s.section(QStringLiteral(" - "), 0, 0);
-        track.title = s.section(QStringLiteral(" - "), 1);
-        track.durationMs = secs * 1000;
+        track.artists << text.section(QStringLiteral(" - "), 0, 0);
+        track.title = text.section(QStringLiteral(" - "), 1);
+        track.durationMs = seconds * 1000;
         out << track;
     }
     return out;
 }
 
-}  // namespace
-
-int main(int argc, char* argv[]) {
+int Run(int& argc, char* argv[]) {
     ChoosePlatform();
     QApplication app(argc, argv);
     QApplication::setApplicationName(QStringLiteral("QiYaa"));
@@ -93,74 +97,90 @@ int main(int argc, char* argv[]) {
     QApplication::setApplicationVersion(QStringLiteral(QIYAA_VERSION));
     QApplication::setQuitOnLastWindowClosed(false);  // closing the EQ/playlist must not quit
 
-    QCommandLineParser cli;
-    cli.setApplicationDescription(QStringLiteral("Winamp-style Yandex Music player"));
-    cli.addHelpOption();
-    cli.addVersionOption();
-    QCommandLineOption screenshotOpt(
+    QCommandLineParser commandLine;
+    commandLine.setApplicationDescription(QStringLiteral("Winamp-style Yandex Music player"));
+    commandLine.addHelpOption();
+    commandLine.addVersionOption();
+    QCommandLineOption screenshotOption(
         QStringLiteral("screenshot"), QStringLiteral("Render the windows to <png> and exit."),
         QStringLiteral("png")
     );
-    QCommandLineOption skinOpt(
+    QCommandLineOption skinOption(
         QStringLiteral("skin"), QStringLiteral("Use skin <wsz> for this run."),
         QStringLiteral("wsz")
     );
-    QCommandLineOption fileOpt(
+    QCommandLineOption fileOption(
         QStringLiteral("play-file"),
         QStringLiteral("Play a local audio file instead of Yandex Music."), QStringLiteral("path")
     );
-    QCommandLineOption offlineOpt(
+    QCommandLineOption offlineOption(
         QStringLiteral("offline"), QStringLiteral("Don't connect to Yandex Music.")
     );
-    QCommandLineOption textOpt(
+    QCommandLineOption textOption(
         QStringLiteral("text"), QStringLiteral("Show <text> in the marquee."),
         QStringLiteral("text")
     );
-    QCommandLineOption demoOpt(
+    QCommandLineOption demoOption(
         QStringLiteral("demo"),
         QStringLiteral("Fill the playlist with sample entries (UI testing).")
     );
-    QCommandLineOption scaleOpt(
+    QCommandLineOption scaleOption(
         QStringLiteral("scale"), QStringLiteral("Window size for this run, e.g. 1.5."),
         QStringLiteral("factor")
     );
-    cli.addOptions({screenshotOpt, skinOpt, fileOpt, offlineOpt, textOpt, demoOpt, scaleOpt});
-    cli.process(app);
+    commandLine.addOptions(
+        {screenshotOption, skinOption, fileOption, offlineOption, textOption, demoOption,
+         scaleOption}
+    );
+    commandLine.process(app);
 
-    const bool screenshot = cli.isSet(screenshotOpt);
-    App::Application::Options opts;
-    opts.skinOverride = cli.value(skinOpt);
-    opts.offline = screenshot || cli.isSet(offlineOpt) || cli.isSet(fileOpt);
+    const bool screenshot = commandLine.isSet(screenshotOption);
+    App::Application::Options options;
+    options.skinOverride = commandLine.value(skinOption);
+    options.offline =
+        screenshot || commandLine.isSet(offlineOption) || commandLine.isSet(fileOption);
     // With --play-file, a screenshot is taken after a second of playback (shows the visualizer).
-    opts.audio = !screenshot || cli.isSet(fileOpt);
-    opts.readOnlySettings = screenshot;  // screenshots never touch the user's settings
-    opts.mediaIntegration = !screenshot;
-    App::Application qiyaa(opts);
+    options.audio = !screenshot || commandLine.isSet(fileOption);
+    options.readOnlySettings = screenshot;  // screenshots never touch the user's settings
+    options.mediaIntegration = !screenshot;
+    App::Application application(options);
 
-    qiyaa.start();
-    if (cli.isSet(scaleOpt)) {
-        qiyaa.setScale(cli.value(scaleOpt).toDouble(), /*persist=*/false);
+    application.start();
+    if (commandLine.isSet(scaleOption)) {
+        application.setScale(commandLine.value(scaleOption).toDouble(), /*persist=*/false);
     }
-    if (cli.isSet(demoOpt)) {
-        qiyaa.player()->setQueue(DemoTracks(), QStringLiteral("Demo"), false);
+    if (commandLine.isSet(demoOption)) {
+        application.player()->setQueue(DemoTracks(), QStringLiteral("Demo"), false);
     }
-    if (cli.isSet(textOpt)) {
-        qiyaa.mainWindow()->setStatusText(cli.value(textOpt));
+    if (commandLine.isSet(textOption)) {
+        application.mainWindow()->setStatusText(commandLine.value(textOption));
     }
 
-    if (screenshot && !cli.isSet(fileOpt)) {
+    if (screenshot && !commandLine.isSet(fileOption)) {
         QApplication::processEvents();
-        return qiyaa.snapshot().save(cli.value(screenshotOpt)) ? 0 : 1;
+        return application.snapshot().save(commandLine.value(screenshotOption)) ? kSuccess
+                                                                                : kFailure;
     }
 
-    if (cli.isSet(fileOpt)) {
-        StreamLocalFile(qiyaa.engine(), cli.value(fileOpt));
+    if (commandLine.isSet(fileOption)) {
+        StreamLocalFile(application.engine(), commandLine.value(fileOption));
     }
     if (screenshot) {
         QTimer::singleShot(1500, &app, [&] {
-            const bool ok = qiyaa.snapshot().save(cli.value(screenshotOpt));
-            QApplication::exit(ok ? 0 : 1);
+            const bool ok = application.snapshot().save(commandLine.value(screenshotOption));
+            QApplication::exit(ok ? kSuccess : kFailure);
         });
     }
     return app.exec();
+}
+
+}  // namespace
+
+int main(int argc, char* argv[]) {
+    try {
+        return Run(argc, argv);
+    } catch (const std::exception& error) {
+        std::fprintf(stderr, "QiYaa: internal error: %s\n", error.what());
+        return kInternalError;
+    }
 }

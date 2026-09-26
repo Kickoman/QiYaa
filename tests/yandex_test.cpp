@@ -44,20 +44,20 @@ private Q_SLOTS:
                                     "\"downloadInfoUrl\":\"https://x/d?sign=1\"}\n"
                                     "        ]")
                 .array();
-        Yandex::DownloadVariant v;
-        QVERIFY(Yandex::PickBestVariant(Yandex::ParseDownloadVariants(arr), &v));
-        QCOMPARE(v.bitrateKbps, 320);
-        QCOMPARE(v.downloadInfoUrl.path(), QStringLiteral("/d"));
+        const std::optional<Yandex::DownloadVariant> best =
+            Yandex::PickBestVariant(Yandex::ParseDownloadVariants(arr));
+        QVERIFY(best);
+        QCOMPARE(best->bitrateKbps, 320);
+        QCOMPARE(best->downloadInfoUrl.path(), QStringLiteral("/d"));
+        QVERIFY(!Yandex::PickBestVariant({}));
     }
     void parsesDownloadInfoJson() {
-        Yandex::DownloadInfo info;
-        QVERIFY(Yandex::ParseDownloadInfo(
-            "{\"s\":\"abc\",\"ts\":\"0005\",\"path\":\"/p/"
-            "q\",\"host\":\"h.net\",\"regional-host\":[]}",
-            &info
-        ));
-        QCOMPARE(info.host, QStringLiteral("h.net"));
-        QVERIFY(!Yandex::ParseDownloadInfo("<xml/>", &info));
+        const std::optional<Yandex::DownloadInfo> info =
+            Yandex::ParseDownloadInfo("{\"s\":\"abc\",\"ts\":\"0005\",\"path\":\"/p/"
+                                      "q\",\"host\":\"h.net\",\"regional-host\":[]}");
+        QVERIFY(info);
+        QCOMPARE(info->host, QStringLiteral("h.net"));
+        QVERIFY(!Yandex::ParseDownloadInfo("<xml/>"));
     }
     void normalizesTokens() {
         QCOMPARE(

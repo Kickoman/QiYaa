@@ -1,5 +1,6 @@
 #include "skins/skin.h"
 
+#include "skins/error.h"
 #include "skins/sprites.h"
 
 #include <QBuffer>
@@ -12,6 +13,8 @@
 #include <QRegularExpression>
 #include <miniz.h>
 
+#include <string>
+
 namespace Skins {
 
 size_t qHash(Skin::Sheet sheet, size_t seed) noexcept {
@@ -20,18 +23,28 @@ size_t qHash(Skin::Sheet sheet, size_t seed) noexcept {
 
 namespace {
 
+constexpr qint64 kMaxArchiveBytes = 64 * 1024 * 1024;
+constexpr mz_uint kMaxEntries = 4096;
+constexpr mz_uint64 kMaxEntryBytes = 32 * 1024 * 1024;
+constexpr qint64 kMaxTotalBytes = 64 * 1024 * 1024;
+
 // Reads all files of a zip into memory, keyed by lower-case base name
 // ("main.bmp"). Skins often put files in a sub-folder and use random case.
-QHash<QString, QByteArray> ReadZip(const QByteArray& zip, QString* error) {
+QHash<QString, QByteArray> ReadZip(const QByteArray& zip) {
     QHash<QString, QByteArray> files;
     mz_zip_archive archive{};
     if (!mz_zip_reader_init_mem(&archive, zip.constData(), size_t(zip.size()), 0)) {
-        if (error) {
-            *error = QStringLiteral("not a zip archive");
-        }
-        return files;
+        throw Skins::Error("not a zip archive (" + std::to_string(zip.size()) + " bytes)");
     }
     const mz_uint count = mz_zip_reader_get_num_files(&archive);
+    if (count > kMaxEntries) {
+        mz_zip_reader_end(&archive);
+        throw Skins::Error(
+            "the archive lists " + std::to_string(count) + " files; a skin has at most "
+            + std::to_string(kMaxEntries)
+        );
+    }
+    qint64 total = 0;
     for (mz_uint i = 0; i < count; ++i) {
         if (mz_zip_reader_is_file_a_directory(&archive, i)) {
             continue;
@@ -44,9 +57,11 @@ QHash<QString, QByteArray> ReadZip(const QByteArray& zip, QString* error) {
         if (files.contains(name)) {
             continue;  // first one wins
         }
-        if (st.m_uncomp_size > 32u * 1024u * 1024u) {
-            continue;  // sanity limit
+        if (st.m_uncomp_size > kMaxEntryBytes
+            || total + qint64(st.m_uncomp_size) > kMaxTotalBytes) {
+            continue;
         }
+        total += qint64(st.m_uncomp_size);
         size_t size = 0;
         void* data = mz_zip_reader_extract_to_heap(&archive, i, &size, 0);
         if (!data) {
@@ -243,13 +258,35 @@ QColor TextInkColor(const QImage& text) {
 
 }  // namespace
 
-bool Skin::loadFromWsz(const QByteArray& zip, const Skin* fallback, QString* error) {
-    const QHash<QString, QByteArray> files = ReadZip(zip, error);
+Skin Skin::LoadWsz(const QByteArray& archive, const Skin* fallback) {
+    Skin skin;
+    skin.loadArchive(archive, fallback);
+    return skin;
+}
+
+Skin Skin::LoadFile(const QString& path, const Skin* fallback) {
+    QFile file(path);
+    if (!file.open(QIODevice::ReadOnly)) {
+        throw Error((path + QStringLiteral(": ") + file.errorString()).toStdString());
+    }
+    if (file.size() > kMaxArchiveBytes) {
+        throw Error((path
+                     + QStringLiteral(": %1 bytes, more than the %2 a skin may have")
+                           .arg(file.size())
+                           .arg(kMaxArchiveBytes))
+                        .toStdString());
+    }
+    try {
+        return LoadWsz(file.readAll(), fallback);
+    } catch (const Error& error) {
+        throw Error(path.toStdString() + ": " + error.what());
+    }
+}
+
+void Skin::loadArchive(const QByteArray& archive, const Skin* fallback) {
+    const QHash<QString, QByteArray> files = ReadZip(archive);
     if (files.isEmpty()) {
-        if (error && error->isEmpty()) {
-            *error = QStringLiteral("empty archive");
-        }
-        return false;
+        throw Error("the archive holds no files");
     }
 
     auto load = [&](Sheet sheet, std::initializer_list<const char*> names) {
@@ -309,12 +346,8 @@ bool Skin::loadFromWsz(const QByteArray& zip, const Skin* fallback, QString* err
     }
 
     if (!isValid()) {
-        if (error) {
-            *error = QStringLiteral("main.bmp is missing or unreadable");
-        }
-        return false;
+        throw Error("main.bmp is missing or cannot be decoded");
     }
-    return true;
 }
 
 void Skin::measureGenLetters() {
@@ -415,24 +448,8 @@ Skin::PlaylistStyle Skin::ParsePlaylistStyle(const QByteArray& text) {
     return style;
 }
 
-bool Skin::loadFromFile(const QString& path, const Skin* fallback, QString* error) {
-    QFile file(path);
-    if (!file.open(QIODevice::ReadOnly)) {
-        if (error) {
-            *error = file.errorString();
-        }
-        return false;
-    }
-    return loadFromWsz(file.readAll(), fallback, error);
-}
-
 Skin Skin::BuiltinBase() {
-    Skin skin;
-    QString err;
-    if (!skin.loadFromFile(QStringLiteral(":/skins/base-2.91.wsz"), nullptr, &err)) {
-        qWarning("Built-in skin failed to load: %s", qPrintable(err));
-    }
-    return skin;
+    return LoadFile(QStringLiteral(":/skins/base-2.91.wsz"));
 }
 
 const QImage& Skin::sheet(Sheet sheet) const {

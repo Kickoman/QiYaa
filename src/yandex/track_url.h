@@ -7,6 +7,8 @@
 #include <QString>
 #include <QUrl>
 
+#include <optional>
+
 namespace Yandex {
 
 // One entry of GET /tracks/{id}/download-info.
@@ -27,11 +29,11 @@ struct DownloadInfo {
 
 QList<DownloadVariant> ParseDownloadVariants(const QJsonArray& result);
 
-// Best full (non-preview) mp3; falls back to the first entry. Returns false if empty.
-bool PickBestVariant(const QList<DownloadVariant>& variants, DownloadVariant* out);
+// Best full (non-preview) mp3; falls back to the first entry. nullopt when empty.
+std::optional<DownloadVariant> PickBestVariant(const QList<DownloadVariant>& variants);
 
-// Parses the JSON body of the download-info XML/JSON endpoint.
-bool ParseDownloadInfo(const QByteArray& json, DownloadInfo* out);
+// The JSON body of the download-info endpoint; nullopt when it isn't usable.
+std::optional<DownloadInfo> ParseDownloadInfo(const QByteArray& json);
 
 // https://{host}/get-mp3/{md5(SALT + path[1:] + s)}/{ts}{path}
 QUrl BuildTrackUrl(const DownloadInfo& info);

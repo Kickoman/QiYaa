@@ -63,6 +63,7 @@ endfunction()
 
 qiyaa_add_module(audio
     src/audio/audio_engine.cpp  src/audio/audio_engine.h
+    src/audio/error.h
     src/audio/eq_presets.cpp    src/audio/eq_presets.h
     src/audio/equalizer.cpp     src/audio/equalizer.h
     src/audio/vis_tap.cpp       src/audio/vis_tap.h)
@@ -77,6 +78,7 @@ qiyaa_add_module(yandex
 target_link_libraries(qiyaa_yandex PUBLIC Qt6::Core Qt6::Network)
 
 qiyaa_add_module(skins
+    src/skins/error.h
     src/skins/region.cpp        src/skins/region.h
     src/skins/skin.cpp          src/skins/skin.h
     src/skins/sprites.h)

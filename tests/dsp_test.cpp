@@ -1,6 +1,7 @@
 // Equalizer filters, presets, FFT analyzer and visualizers.
 #include "audio/eq_presets.h"
 #include "audio/equalizer.h"
+#include "audio/error.h"
 #include "skins/skin.h"
 #include "ui/equalizer_window.h"
 #include "vis/visualizer.h"
@@ -119,8 +120,7 @@ private Q_SLOTS:
         const QByteArray file = Audio::WriteEqf({preset, Audio::BuiltinEqPresets().first()});
         QCOMPARE(file.size(), 31 + 2 * 268);  // header + 2 presets (name 257 + 11 values)
         QVERIFY(file.startsWith("Winamp EQ library file v1.1\x1a!--"));
-        QList<Audio::EqPreset> back;
-        QVERIFY(Audio::ParseEqf(file, &back));
+        const QList<Audio::EqPreset> back = Audio::ParseEqf(file);
         QCOMPARE(back.size(), 2);
         QCOMPARE(back[0].name, QStringLiteral("My EQ"));
         for (int i = 0; i < Audio::kEqBands; ++i) {
@@ -140,11 +140,22 @@ private Q_SLOTS:
         QByteArray name("max");
         name.append(QByteArray(257 - name.size(), '\0'));
         file += name + QByteArray(10, char(0)) + QByteArray(1, char(63));
-        QList<Audio::EqPreset> preset;
-        QVERIFY(Audio::ParseEqf(file, &preset));
+        const QList<Audio::EqPreset> preset = Audio::ParseEqf(file);
         QCOMPARE(preset[0].settings.bandsDb[0], 12.0);
         QCOMPARE(preset[0].settings.preampDb, -12.0);
-        QVERIFY(!Audio::ParseEqf("not an eqf", &preset));
+    }
+
+    void eqfParserRejectsWhatIsNotAPreset() {
+        QVERIFY_THROWS_EXCEPTION(Audio::Error, Audio::ParseEqf("not an eqf"));
+        // The header alone: a library without presets.
+        QVERIFY_THROWS_EXCEPTION(
+            Audio::Error, Audio::ParseEqf(QByteArray("Winamp EQ library file v1.1\x1a!--", 31))
+        );
+        try {
+            Audio::ParseEqf("not an eqf");
+        } catch (const Audio::Error& error) {
+            QVERIFY2(QByteArray(error.what()).contains("10 bytes"), error.what());
+        }
     }
 
     void graphSplinePassesThroughBands() {
@@ -208,10 +219,9 @@ private Q_SLOTS:
         f += name;
         f += QByteArray(10, char(31));  // Winamp's own midline.EQF: 64 - 31 = 33
         f += char(255);  // garbage: must not reach the DSP as -85 dB
-        QList<Audio::EqPreset> presets;
-        QVERIFY(Audio::ParseEqf(f, &presets));
-        for (int value = 0; value < Audio::kEqBands; ++value) {
-            QCOMPARE(presets[0].settings.bandsDb[value], 0.0);
+        const QList<Audio::EqPreset> presets = Audio::ParseEqf(f);
+        for (int band = 0; band < Audio::kEqBands; ++band) {
+            QCOMPARE(presets[0].settings.bandsDb[band], 0.0);
         }
         QCOMPARE(presets[0].settings.preampDb, -12.0);
         // And flat is written as 31 again.
@@ -221,8 +231,7 @@ private Q_SLOTS:
     void eqfKeepsNonLatinNames() {
         Audio::EqPreset preset;
         preset.name = QStringLiteral("Мой пресет");
-        QList<Audio::EqPreset> presets;
-        QVERIFY(Audio::ParseEqf(Audio::WriteEqf({preset}), &presets));
+        const QList<Audio::EqPreset> presets = Audio::ParseEqf(Audio::WriteEqf({preset}));
         QCOMPARE(presets[0].name, preset.name);
     }
 };

@@ -1,6 +1,9 @@
+#include "skins/error.h"
 #include "skins/skin.h"
 
 #include <QDir>
+#include <QFile>
+#include <QTemporaryDir>
 #include <QTest>
 
 class TestSkin : public QObject {
@@ -23,9 +26,7 @@ private Q_SLOTS:
     void allBuiltinSkinsLoad() {
         QFETCH(QString, path);
         const Skins::Skin base = Skins::Skin::BuiltinBase();
-        Skins::Skin skin;
-        QString err;
-        QVERIFY2(skin.loadFromFile(path, &base, &err), qPrintable(err));
+        const Skins::Skin skin = Skins::Skin::LoadFile(path, &base);
         for (auto sheet :
              {Skins::Skin::Sheet::Main, Skins::Skin::Sheet::CButtons, Skins::Skin::Sheet::TitleBar,
               Skins::Skin::Sheet::Numbers, Skins::Skin::Sheet::PosBar, Skins::Skin::Sheet::Volume,
@@ -34,10 +35,29 @@ private Q_SLOTS:
         }
     }
     void garbageIsRejected() {
-        Skins::Skin skin;
-        QString err;
-        QVERIFY(!skin.loadFromWsz("definitely not a zip", nullptr, &err));
-        QVERIFY(!err.isEmpty());
+        QVERIFY_THROWS_EXCEPTION(Skins::Error, Skins::Skin::LoadWsz("definitely not a zip"));
+    }
+
+    void failuresNameTheFileAndTheProblem() {
+        QTemporaryDir directory;
+        const QString path = directory.filePath(QStringLiteral("broken.wsz"));
+        QFile file(path);
+        QVERIFY(file.open(QIODevice::WriteOnly));
+        file.write("definitely not a zip");
+        file.close();
+        try {
+            Skins::Skin::LoadFile(path);
+            QFAIL("a broken skin loaded");
+        } catch (const Skins::Error& error) {
+            const QString message = QString::fromUtf8(error.what());
+            QVERIFY2(message.startsWith(path), error.what());
+            QVERIFY2(
+                message.contains(QStringLiteral("not a zip archive (20 bytes)")), error.what()
+            );
+        }
+        QVERIFY_THROWS_EXCEPTION(
+            Skins::Error, Skins::Skin::LoadFile(path + QStringLiteral(".missing"))
+        );
     }
 };
 

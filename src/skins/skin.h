@@ -44,10 +44,10 @@ public:
 
     // Loads a .wsz from memory. Missing sheets are taken from `fallback` (normally
     // the built-in base skin). Returns false and fills `error` if the archive is unusable.
-    bool
-    loadFromWsz(const QByteArray& zip, const Skin* fallback = nullptr, QString* error = nullptr);
-    bool
-    loadFromFile(const QString& path, const Skin* fallback = nullptr, QString* error = nullptr);
+    // Both throw Skins::Error when the skin can't be used. Bitmaps the skin
+    // doesn't have come from `fallback`, as in Winamp.
+    static Skin LoadWsz(const QByteArray& archive, const Skin* fallback = nullptr);
+    static Skin LoadFile(const QString& path, const Skin* fallback = nullptr);
 
     // Built-in default skin from Qt resources.
     static Skin BuiltinBase();
@@ -83,6 +83,7 @@ private:
     // x offset and width of each gen.bmp letter A-Z (same for both rows in practice).
     QList<std::pair<int, int>> genLetters;
     QList<std::pair<int, int>> genLettersSelected;
+    void loadArchive(const QByteArray& archive, const Skin* fallback);
     void measureGenLetters();
     bool numbersEx = false;
 };

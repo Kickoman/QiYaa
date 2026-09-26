@@ -4,6 +4,7 @@
 #include "audio/equalizer.h"
 #include "core/cover_cache.h"
 #include "integrations/media_controls.h"
+#include "skins/error.h"
 
 #include <QAction>
 #include <QActionGroup>
@@ -82,9 +83,8 @@ Application::Application(const Options& options, QObject* parent)
     , yandexLibrary(&apiClient)
     , corePlayer(&yandexLibrary, &audioEngine) {
     if (startOptions.audio) {
-        QString err;
-        if (!audioEngine.init(&err)) {
-            qWarning("Audio: %s", qPrintable(err));
+        if (const Audio::AudioEngine::InitResult audio = audioEngine.init(); !audio.ok) {
+            qWarning("Audio: %s", qPrintable(audio.message));
         } else {
             qInfo("Audio backend: %s", qPrintable(audioEngine.backendName()));
         }
@@ -94,9 +94,10 @@ Application::Application(const Options& options, QObject* parent)
         ? settings.value(QStringLiteral("skin")).toString()
         : options.skinOverride;
     if (!skinPath.isEmpty()) {
-        auto s = std::make_unique<Skins::Skin>();
-        if (s->loadFromFile(skinPath, &baseSkin)) {
-            currentSkin = std::move(s);
+        try {
+            currentSkin = std::make_unique<Skins::Skin>(Skins::Skin::LoadFile(skinPath, &baseSkin));
+        } catch (const Skins::Error& error) {
+            qWarning("Skin: %s; using the built-in one", error.what());
         }
     }
 
@@ -482,17 +483,20 @@ void Application::logout() {
 }
 
 bool Application::loadSkin(const QString& path) {
-    auto s = std::make_unique<Skins::Skin>();
-    QString err;
-    if (!s->loadFromFile(path, &baseSkin, &err)) {
-        mainWindowInstance->setStatusText(QStringLiteral("Не удалось загрузить скин: ") + err);
+    std::unique_ptr<Skins::Skin> skin;
+    try {
+        skin = std::make_unique<Skins::Skin>(Skins::Skin::LoadFile(path, &baseSkin));
+    } catch (const Skins::Error& error) {
+        mainWindowInstance->setStatusText(
+            QStringLiteral("Не удалось загрузить скин: ") + QString::fromUtf8(error.what())
+        );
         return false;
     }
     // Swap after the windows point at the new skin.
     for (Ui::SkinnedWindow* window : windows()) {
-        window->setSkin(s.get());
+        window->setSkin(skin.get());
     }
-    currentSkin = std::move(s);
+    currentSkin = std::move(skin);
     settings.setValue(QStringLiteral("skin"), path);
     return true;
 }

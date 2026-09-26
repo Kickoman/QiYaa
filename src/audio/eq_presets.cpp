@@ -1,10 +1,13 @@
 #include "audio/eq_presets.h"
 
+#include "audio/error.h"
+
 #include <QStringDecoder>
 
 #include <algorithm>
 #include <array>
 #include <cmath>
+#include <string>
 
 namespace Audio {
 
@@ -81,9 +84,12 @@ QByteArray EncodeName(const QString& name) {
 }
 }  // namespace
 
-bool ParseEqf(const QByteArray& data, QList<EqPreset>* out) {
+QList<EqPreset> ParseEqf(const QByteArray& data) {
     if (!data.startsWith(kHeader) || data.size() < kHeaderLength + 4) {
-        return false;
+        throw Error(
+            "not a Winamp EQ file: " + std::to_string(data.size())
+            + " bytes that do not start with \"" + kHeader + "\""
+        );
     }
     qsizetype i = kHeaderLength + 4;  // skip ^Z "!--"
     QList<EqPreset> presets;
@@ -102,10 +108,13 @@ bool ParseEqf(const QByteArray& data, QList<EqPreset>* out) {
         presets << preset;
     }
     if (presets.isEmpty()) {
-        return false;
+        throw Error(
+            "Winamp EQ file of " + std::to_string(data.size())
+            + " bytes holds no preset (one takes " + std::to_string(kNameLength + kValues)
+            + " bytes after the " + std::to_string(kHeaderLength + 4) + "-byte header)"
+        );
     }
-    *out = presets;
-    return true;
+    return presets;
 }
 
 QByteArray WriteEqf(const QList<EqPreset>& presets) {

@@ -38,8 +38,12 @@ public:
     explicit AudioEngine(QObject* parent = nullptr);
     ~AudioEngine() override;
 
-    // Opens the default output device. Safe to call once; returns false on failure.
-    bool init(QString* error = nullptr);
+    struct InitResult {
+        bool ok = false;
+        QString message;
+    };
+    // Opens the default output device. Calling it again after success does nothing.
+    InitResult init();
     QString backendName() const;
 
     using TStreamId = quint64;  // 0 = none

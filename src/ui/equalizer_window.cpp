@@ -1,6 +1,7 @@
 #include "ui/equalizer_window.h"
 
 #include "audio/eq_presets.h"
+#include "audio/error.h"
 #include "skins/skin.h"
 #include "skins/sprites.h"
 
@@ -27,6 +28,9 @@ using TSheet = Skins::Skin::Sheet;
 using Skins::EqualizerSprites;
 
 namespace {
+
+// A preset library of a thousand presets is 268 KB.
+constexpr qint64 kMaxEqfBytes = 1024 * 1024;
 
 constexpr int kElNone = 0, kElClose = 1, kElOn = 2, kElAuto = 3, kElPresets = 4, kElPreamp = 5,
               kElBand0 = 6;
@@ -499,9 +503,21 @@ void EqualizerWindow::loadEqf() {
         return;
     }
     QFile file(path);
+    if (!file.open(QIODevice::ReadOnly)) {
+        Q_EMIT statusText(QStringLiteral("EQ: не удалось открыть файл: ") + file.errorString());
+        return;
+    }
+    if (file.size() > kMaxEqfBytes) {
+        Q_EMIT statusText(
+            QStringLiteral("EQ: файл больше %1 КБ — это не пресет").arg(kMaxEqfBytes / 1024)
+        );
+        return;
+    }
     QList<Audio::EqPreset> presets;
-    if (!file.open(QIODevice::ReadOnly) || !Audio::ParseEqf(file.readAll(), &presets)) {
-        Q_EMIT statusText(QStringLiteral("EQ: не удалось прочитать файл"));
+    try {
+        presets = Audio::ParseEqf(file.readAll());
+    } catch (const Audio::Error& error) {
+        Q_EMIT statusText(QStringLiteral("EQ: ") + QString::fromUtf8(error.what()));
         return;
     }
     if (presets.size() == 1) {

@@ -551,7 +551,7 @@ private:
     };
     bool setUpAudio(AudioRig& rig, const QList<int>& ids) {
         QFile file(QStringLiteral(QIYAA_TEST_DATA "/sine440_3s.mp3"));
-        if (!file.open(QIODevice::ReadOnly) || !rig.engine.init()) {
+        if (!file.open(QIODevice::ReadOnly) || !rig.engine.init().ok) {
             return false;
         }
         rig.engine.setVolume(0);

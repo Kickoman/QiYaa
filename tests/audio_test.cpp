@@ -43,9 +43,8 @@ private:
 
 private Q_SLOTS:
     void initTestCase() {
-        QString err;
-        if (!engine.init(&err)) {
-            QSKIP(qPrintable("no audio output: " + err));
+        if (const Audio::AudioEngine::InitResult audio = engine.init(); !audio.ok) {
+            QSKIP(qPrintable("no audio output: " + audio.message));
         }
         engine.setVolume(0);  // silence, in case this runs on a real device
         QFile file(QStringLiteral(QIYAA_TEST_DATA "/sine440_3s.mp3"));
@@ -106,6 +105,8 @@ private Q_SLOTS:
         engine.finishData();
         pumpUntil([&] { return errors.count() > 0; }, 3000);
         QCOMPARE(errors.count(), 1);
+        const QString message = errors.first().first().toString();
+        QVERIFY2(message.contains(QStringLiteral("20000 bytes")), qPrintable(message));
         QCOMPARE(engine.state(), Audio::AudioEngine::State::Stopped);
     }
 

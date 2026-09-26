@@ -125,11 +125,18 @@ void ApiClient::handleJson(QNetworkReply* reply, TJsonCallback callback) {
             if (msg.isEmpty()) {
                 msg = reply->errorString();
             }
-            callback({}, QStringLiteral("HTTP %1: %2").arg(status).arg(msg));
+            callback(
+                {}, QStringLiteral("HTTP %1 from %2: %3").arg(status).arg(reply->url().path(), msg)
+            );
             return;
         }
         if (!doc.isObject()) {
-            callback({}, QStringLiteral("unexpected response"));
+            callback(
+                {},
+                QStringLiteral("%1: the %2-byte reply is not a JSON object")
+                    .arg(reply->url().path())
+                    .arg(body.size())
+            );
             return;
         }
         // Most endpoints wrap the payload in {"result": ...}; some newer ones don't.
@@ -219,36 +226,48 @@ void ApiClient::resolveTrackUrl(const QString& trackId, TCallback<ResolvedUrl> c
     QPointer<ApiClient> self(this);
     getJson(
         QStringLiteral("/tracks/%1/download-info").arg(id), {},
-        [self, callback](const QJsonValue& result, const QString& error) {
+        [self, callback, id](const QJsonValue& result, const QString& error) {
             if (!self) {
                 return;
             }
             if (!error.isEmpty()) {
                 return callback({}, error);
             }
-            DownloadVariant best;
-            if (!PickBestVariant(ParseDownloadVariants(result.toArray()), &best)) {
-                return callback({}, QStringLiteral("no download variants"));
+            const QJsonArray variants = result.toArray();
+            const std::optional<DownloadVariant> best =
+                PickBestVariant(ParseDownloadVariants(variants));
+            if (!best) {
+                return callback(
+                    {},
+                    QStringLiteral("track %1: none of %2 download variants has a usable link")
+                        .arg(id)
+                        .arg(variants.size())
+                );
             }
 
-            QUrl infoUrl = best.downloadInfoUrl;
+            QUrl infoUrl = best->downloadInfoUrl;
             QUrlQuery query(infoUrl);
             query.addQueryItem(QStringLiteral("format"), QStringLiteral("json"));
             infoUrl.setQuery(query);
 
             QNetworkReply* reply =
                 self->networkManager->get(MakeRequest(infoUrl, self->accessToken));
-            const int bitrate = best.bitrateKbps;
+            const int bitrate = best->bitrateKbps;
             connect(reply, &QNetworkReply::finished, self, [reply, callback, bitrate] {
                 reply->deleteLater();
                 if (reply->error() != QNetworkReply::NoError) {
                     return callback({}, QStringLiteral("download-info: ") + reply->errorString());
                 }
-                DownloadInfo info;
-                if (!ParseDownloadInfo(reply->readAll(), &info)) {
-                    return callback({}, QStringLiteral("download-info: unexpected response"));
+                const QByteArray body = reply->readAll();
+                const std::optional<DownloadInfo> info = ParseDownloadInfo(body);
+                if (!info) {
+                    return callback(
+                        {},
+                        QStringLiteral("download-info: no host, path and s in a %1-byte reply")
+                            .arg(body.size())
+                    );
                 }
-                callback(ResolvedUrl{BuildTrackUrl(info), bitrate}, {});
+                callback(ResolvedUrl{BuildTrackUrl(*info), bitrate}, {});
             });
         }
     );
