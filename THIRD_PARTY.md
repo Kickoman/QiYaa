@@ -19,25 +19,25 @@ and [GLM](https://github.com/g-truc/glm) (MIT). On Windows it uses [GLEW](https:
 
 | Component | Version | License | Location |
 |---|---|---|---|
-| [miniaudio](https://github.com/mackron/miniaudio) — David Reid | 0.11.25 (`9634bed`) | Public domain / MIT-0 | `third_party/miniaudio/` |
-| [miniz](https://github.com/richgel999/miniz) — Rich Geldreich, RAD Game Tools, Valve | 3.1.2 (`77d0dce`) | MIT | `third_party/miniz/` |
+| [miniaudio](https://github.com/mackron/miniaudio) — David Reid | 0.11.25 (`9634bed`) | Public domain / MIT-0 | `contrib/miniaudio/` |
+| [miniz](https://github.com/richgel999/miniz) — Rich Geldreich, RAD Game Tools, Valve | 3.1.2 (`77d0dce`) | MIT | `contrib/miniz/` |
 
 ## Code and data derived from other projects
 
 **webamp** — https://github.com/captbaritone/webamp — MIT License, Copyright (c) 2015 Jordan Eldredge.
-Sprite coordinates and window layouts for the main, equalizer and playlist windows (`src/skin/SkinSprites.h`),
-the TEXT.BMP font map (`src/skin/Skin.cpp`), `region.txt` and `pledit.txt` parsing rules, window snapping
-(`src/ui/Snap.cpp`), the EQ graph spline (`src/ui/EqualizerWindow.cpp`, itself adapted from
+Sprite coordinates and window layouts for the main, equalizer and playlist windows (`src/skins/sprites.h`),
+the TEXT.BMP font map (`src/skins/skin.cpp`), `region.txt` and `pledit.txt` parsing rules, window snapping
+(`src/ui/snap.cpp`), the EQ graph spline (`src/ui/equalizer_window.cpp`, itself adapted from
 [morganherlocker/cubic-spline](https://github.com/morganherlocker/cubic-spline), MIT), the analyzer's bar/peak
-behaviour (`src/vis/Visualizers.cpp`), Winamp's built-in EQ presets (`src/audio/EqPresets.h`), the windowshade sprites
-of `titlebar.bmp`/`eq_ex.bmp`/`pledit.bmp`, the `gen.bmp` frame and bitmap-font layout (`src/ui/GenWindow.cpp`, `src/skin/Skin.cpp`)
-and the `.eqf` file layout (`src/audio/EqPresets.cpp`, after webamp's `winamp-eqf` package) are ported from webamp.
+behaviour (`src/vis/visualizers.cpp`), Winamp's built-in EQ presets (`src/audio/eq_presets.h`), the windowshade sprites
+of `titlebar.bmp`/`eq_ex.bmp`/`pledit.bmp`, the `gen.bmp` frame and bitmap-font layout (`src/ui/gen_window.cpp`, `src/skins/skin.cpp`)
+and the `.eqf` file layout (`src/audio/eq_presets.cpp`, after webamp's `winamp-eqf` package) are ported from webamp.
 
 **Yaamp** — https://github.com/Kickoman/yaamp (fork of https://github.com/umnik1/yaamp) — MIT License, Copyright (c) 2025 Maksim Chingin.
 Product idea, the set of Yandex Music features and the bundled skin selection come from Yaamp.
 
-**yandex-music-client** — https://github.com/umnik1/yandex-music-client — the track-link signing scheme (`src/yandex/TrackUrl.cpp`)
-and the endpoint shapes used in `src/yandex/Library.cpp`.
+**yandex-music-client** — https://github.com/umnik1/yandex-music-client — the track-link signing scheme (`src/yandex/track_url.cpp`)
+and the endpoint shapes used in `src/yandex/library.cpp`.
 
 **Milkdrop presets** — `resources/milkdrop/`: 150 presets from the projectM team's
 ["Cream of the Crop" collection](https://github.com/projectM-visualizer/presets-cream-of-the-crop) (curated by ISOSCELES; authors are named in

@@ -19,16 +19,16 @@ qt_standard_project_setup()
 
 # ---------------------------------------------------------------- third party
 add_library(qiyaa_miniz STATIC
-    third_party/miniz/miniz.c
-    third_party/miniz/miniz_tdef.c
-    third_party/miniz/miniz_tinfl.c
-    third_party/miniz/miniz_zip.c)
-target_include_directories(qiyaa_miniz PUBLIC third_party/miniz)
+    contrib/miniz/miniz.c
+    contrib/miniz/miniz_tdef.c
+    contrib/miniz/miniz_tinfl.c
+    contrib/miniz/miniz_zip.c)
+target_include_directories(qiyaa_miniz PUBLIC contrib/miniz)
 target_compile_definitions(qiyaa_miniz PUBLIC MINIZ_NO_ZLIB_COMPATIBLE_NAMES MINIZ_NO_TIME)
 set_target_properties(qiyaa_miniz PROPERTIES POSITION_INDEPENDENT_CODE ON)
 
 add_library(qiyaa_miniaudio STATIC src/audio/miniaudio_impl.c)
-target_include_directories(qiyaa_miniaudio PUBLIC third_party/miniaudio)
+target_include_directories(qiyaa_miniaudio PUBLIC contrib/miniaudio)
 # Only what we need: playback + mp3/flac/wav decoders. No encoders, no generation.
 target_compile_definitions(qiyaa_miniaudio PUBLIC
     MA_NO_ENCODING MA_NO_GENERATION MA_NO_VORBIS)
@@ -46,34 +46,34 @@ endif()
 # ---------------------------------------------------------------- core library
 # Everything except main() lives here so that tests can link against it.
 add_library(qiyaa_core STATIC
-    src/app/App.cpp              src/app/App.h
-    src/app/Paths.cpp            src/app/Paths.h
-    src/skin/Skin.cpp            src/skin/Skin.h
-    src/skin/SkinSprites.h
-    src/skin/Region.cpp          src/skin/Region.h
-    src/ui/Snap.cpp              src/ui/Snap.h
-    src/ui/SkinnedWindow.cpp     src/ui/SkinnedWindow.h
-    src/ui/MainWindow.cpp        src/ui/MainWindow.h
-    src/ui/EqualizerWindow.cpp   src/ui/EqualizerWindow.h
-    src/ui/PlaylistWindow.cpp    src/ui/PlaylistWindow.h
-    src/ui/LibraryMenu.cpp       src/ui/LibraryMenu.h
-    src/ui/LoginDialog.cpp       src/ui/LoginDialog.h
-    src/ui/GenWindow.cpp         src/ui/GenWindow.h
-    src/ui/NowPlayingWindow.cpp  src/ui/NowPlayingWindow.h
-    src/vis/Visualizer.h         src/vis/Visualizers.cpp
-    src/yandex/TrackUrl.cpp      src/yandex/TrackUrl.h
-    src/yandex/ApiClient.cpp     src/yandex/ApiClient.h
-    src/yandex/Library.cpp       src/yandex/Library.h
-    src/yandex/OAuth.cpp         src/yandex/OAuth.h
-    src/yandex/Token.cpp         src/yandex/Token.h
-    src/audio/AudioEngine.cpp    src/audio/AudioEngine.h
-    src/audio/Equalizer.cpp      src/audio/Equalizer.h
-    src/audio/VisTap.h
-    src/audio/EqPresets.cpp      src/audio/EqPresets.h
-    src/core/Player.cpp          src/core/Player.h
-    src/core/CoverCache.cpp      src/core/CoverCache.h
-    src/integrations/MediaControls.cpp src/integrations/MediaControls.h
-    src/vis/MilkdropPresets.cpp  src/vis/MilkdropPresets.h
+    src/app/application.cpp              src/app/application.h
+    src/app/paths.cpp            src/app/paths.h
+    src/skins/skin.cpp            src/skins/skin.h
+    src/skins/sprites.h
+    src/skins/region.cpp          src/skins/region.h
+    src/ui/snap.cpp              src/ui/snap.h
+    src/ui/skinned_window.cpp     src/ui/skinned_window.h
+    src/ui/main_window.cpp        src/ui/main_window.h
+    src/ui/equalizer_window.cpp   src/ui/equalizer_window.h
+    src/ui/playlist_window.cpp    src/ui/playlist_window.h
+    src/ui/library_menu.cpp       src/ui/library_menu.h
+    src/ui/login_dialog.cpp       src/ui/login_dialog.h
+    src/ui/gen_window.cpp         src/ui/gen_window.h
+    src/ui/now_playing_window.cpp  src/ui/now_playing_window.h
+    src/vis/visualizer.h         src/vis/visualizers.cpp
+    src/yandex/track_url.cpp      src/yandex/track_url.h
+    src/yandex/api_client.cpp     src/yandex/api_client.h
+    src/yandex/library.cpp       src/yandex/library.h
+    src/yandex/oauth.cpp         src/yandex/oauth.h
+    src/yandex/token.cpp         src/yandex/token.h
+    src/audio/audio_engine.cpp    src/audio/audio_engine.h
+    src/audio/equalizer.cpp      src/audio/equalizer.h
+    src/audio/vis_tap.h
+    src/audio/eq_presets.cpp      src/audio/eq_presets.h
+    src/core/player.cpp          src/core/player.h
+    src/core/cover_cache.cpp      src/core/cover_cache.h
+    src/integrations/media_controls.cpp src/integrations/media_controls.h
+    src/vis/milkdrop_presets.cpp  src/vis/milkdrop_presets.h
 )
 target_include_directories(qiyaa_core PUBLIC src)
 target_link_libraries(qiyaa_core PUBLIC
@@ -85,7 +85,7 @@ target_compile_definitions(qiyaa_core PUBLIC QT_NO_KEYWORDS)
 if(UNIX AND NOT APPLE)
     find_package(Qt6 6.4 QUIET COMPONENTS DBus)
     if(Qt6DBus_FOUND)
-        target_sources(qiyaa_core PRIVATE src/integrations/Mpris.cpp src/integrations/Mpris.h)
+        target_sources(qiyaa_core PRIVATE src/integrations/mpris.cpp src/integrations/mpris.h)
         target_link_libraries(qiyaa_core PUBLIC Qt6::DBus)
         target_compile_definitions(qiyaa_core PUBLIC QIYAA_HAVE_MPRIS)
         set(QIYAA_HAVE_MPRIS ON)
@@ -102,7 +102,7 @@ if(WIN32 AND MSVC)
         check_include_file_cxx("winrt/Windows.Media.h" QIYAA_HAVE_CPPWINRT)
         unset(CMAKE_REQUIRED_FLAGS)
         if(QIYAA_HAVE_CPPWINRT)
-            target_sources(qiyaa_core PRIVATE src/integrations/Smtc.cpp src/integrations/Smtc.h)
+            target_sources(qiyaa_core PRIVATE src/integrations/smtc.cpp src/integrations/smtc.h)
             target_link_libraries(qiyaa_core PUBLIC windowsapp)
             target_compile_definitions(qiyaa_core PUBLIC QIYAA_HAVE_SMTC)
             message(STATUS "SMTC: enabled")
@@ -140,8 +140,8 @@ if(QIYAA_WITH_MILKDROP)
     endif()
     if(TARGET Qt6::OpenGL AND TARGET libprojectM::projectM)
         target_sources(qiyaa_core PRIVATE
-            src/vis/MilkdropView.cpp     src/vis/MilkdropView.h
-            src/ui/MilkdropWindow.cpp    src/ui/MilkdropWindow.h)
+            src/vis/milkdrop_view.cpp     src/vis/milkdrop_view.h
+            src/ui/milkdrop_window.cpp    src/ui/milkdrop_window.h)
         target_link_libraries(qiyaa_core PUBLIC Qt6::OpenGL libprojectM::projectM)
         target_compile_definitions(qiyaa_core PUBLIC QIYAA_HAVE_MILKDROP)
         file(GLOB QIYAA_MILK_PRESETS CONFIGURE_DEPENDS ${CMAKE_CURRENT_SOURCE_DIR}/resources/milkdrop/*.milk)

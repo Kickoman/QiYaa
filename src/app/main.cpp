@@ -1,5 +1,5 @@
-#include "app/App.h"
-#include "ui/MainWindow.h"
+#include "app/application.h"
+#include "ui/main_window.h"
 
 #include <QApplication>
 #include <QCommandLineParser>
