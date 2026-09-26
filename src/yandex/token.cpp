@@ -1,7 +1,5 @@
 #include "yandex/token.h"
 
-#include "app/paths.h"
-
 #include <QFile>
 #include <QJsonArray>
 #include <QJsonDocument>
@@ -43,20 +41,18 @@ QString NormalizeToken(const QByteArray& raw) {
     return valid.match(s).hasMatch() ? s : QString();
 }
 
-TokenSource FindToken() {
+TokenSource FindToken(const QString& tokenFile, const QStringList& importFiles) {
     if (const QString env = NormalizeToken(qgetenv("QIYAA_TOKEN")); !env.isEmpty()) {
         return {env, QStringLiteral("environment variable QIYAA_TOKEN")};
     }
 
     // Our own file wins, even when empty (= the user logged out).
-    const QString own = App::ConfigDir() + QStringLiteral("/token");
-    if (QFile file(own); file.open(QIODevice::ReadOnly)) {
+    if (QFile file(tokenFile); file.open(QIODevice::ReadOnly)) {
         const QString t = NormalizeToken(file.read(64 * 1024));
-        return t.isEmpty() ? TokenSource{} : TokenSource{t, own};
+        return t.isEmpty() ? TokenSource{} : TokenSource{t, tokenFile};
     }
 
-    for (const QString& dir : App::YaampDataDirs()) {
-        const QString path = dir + QStringLiteral("/token.json");
+    for (const QString& path : importFiles) {
         QFile file(path);
         if (!file.open(QIODevice::ReadOnly)) {
             continue;
@@ -68,15 +64,15 @@ TokenSource FindToken() {
     return {};
 }
 
-void ForgetToken() {
-    QFile file(App::ConfigDir() + QStringLiteral("/token"));
+void ForgetToken(const QString& tokenFile) {
+    QFile file(tokenFile);
     if (file.open(QIODevice::WriteOnly | QIODevice::Truncate)) {
         file.setPermissions(QFileDevice::ReadOwner | QFileDevice::WriteOwner);
     }
 }
 
-bool SaveToken(const QString& token) {
-    QFile file(App::ConfigDir() + QStringLiteral("/token"));
+bool SaveToken(const QString& tokenFile, const QString& token) {
+    QFile file(tokenFile);
     if (!file.open(QIODevice::WriteOnly | QIODevice::Truncate)) {
         return false;
     }

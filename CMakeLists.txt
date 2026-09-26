@@ -43,51 +43,93 @@ elseif(UNIX)
     target_link_libraries(qiyaa_miniaudio PUBLIC m)
 endif()
 
-# ---------------------------------------------------------------- core library
-# Everything except main() lives here so that tests can link against it.
-add_library(qiyaa_core STATIC
-    src/app/application.cpp              src/app/application.h
-    src/app/paths.cpp            src/app/paths.h
-    src/skins/skin.cpp            src/skins/skin.h
-    src/skins/sprites.h
-    src/skins/region.cpp          src/skins/region.h
-    src/ui/snap.cpp              src/ui/snap.h
-    src/ui/skinned_window.cpp     src/ui/skinned_window.h
-    src/ui/main_window.cpp        src/ui/main_window.h
-    src/ui/equalizer_window.cpp   src/ui/equalizer_window.h
-    src/ui/playlist_window.cpp    src/ui/playlist_window.h
-    src/ui/library_menu.cpp       src/ui/library_menu.h
-    src/ui/login_dialog.cpp       src/ui/login_dialog.h
-    src/ui/gen_window.cpp         src/ui/gen_window.h
-    src/ui/now_playing_window.cpp  src/ui/now_playing_window.h
-    src/vis/visualizer.h         src/vis/visualizers.cpp
-    src/yandex/track_url.cpp      src/yandex/track_url.h
-    src/yandex/api_client.cpp     src/yandex/api_client.h
-    src/yandex/library.cpp       src/yandex/library.h
-    src/yandex/oauth.cpp         src/yandex/oauth.h
-    src/yandex/token.cpp         src/yandex/token.h
-    src/audio/audio_engine.cpp    src/audio/audio_engine.h
-    src/audio/equalizer.cpp      src/audio/equalizer.h
-    src/audio/vis_tap.cpp         src/audio/vis_tap.h
-    src/audio/eq_presets.cpp      src/audio/eq_presets.h
-    src/core/player.cpp          src/core/player.h
-    src/core/cover_cache.cpp      src/core/cover_cache.h
-    src/integrations/media_controls.cpp src/integrations/media_controls.h
-    src/vis/milkdrop_presets.cpp  src/vis/milkdrop_presets.h
-)
-target_include_directories(qiyaa_core PUBLIC src)
-target_link_libraries(qiyaa_core PUBLIC
-    Qt6::Core Qt6::Gui Qt6::Widgets Qt6::Network
-    qiyaa_miniz qiyaa_miniaudio)
-target_compile_definitions(qiyaa_core PUBLIC QT_NO_KEYWORDS)
+# ---------------------------------------------------------------- modules
+# One static library per folder of src/. Dependencies point one way:
+#   audio, yandex, skins  ->  vis, core  ->  ui, integrations  ->  app  ->  qiyaa (main)
+function(qiyaa_target_defaults target)
+    target_compile_definitions(${target} PUBLIC QT_NO_KEYWORDS)
+    if(MSVC)
+        target_compile_options(${target} PRIVATE /W4 /utf-8)
+    else()
+        target_compile_options(${target} PRIVATE -Wall -Wextra -Wshadow)
+    endif()
+endfunction()
+
+function(qiyaa_add_module name)
+    add_library(qiyaa_${name} STATIC ${ARGN})
+    target_include_directories(qiyaa_${name} PUBLIC ${CMAKE_CURRENT_SOURCE_DIR}/src)
+    qiyaa_target_defaults(qiyaa_${name})
+endfunction()
+
+qiyaa_add_module(audio
+    src/audio/audio_engine.cpp  src/audio/audio_engine.h
+    src/audio/eq_presets.cpp    src/audio/eq_presets.h
+    src/audio/equalizer.cpp     src/audio/equalizer.h
+    src/audio/vis_tap.cpp       src/audio/vis_tap.h)
+target_link_libraries(qiyaa_audio PUBLIC Qt6::Core PRIVATE qiyaa_miniaudio)
+
+qiyaa_add_module(yandex
+    src/yandex/api_client.cpp   src/yandex/api_client.h
+    src/yandex/library.cpp      src/yandex/library.h
+    src/yandex/oauth.cpp        src/yandex/oauth.h
+    src/yandex/token.cpp        src/yandex/token.h
+    src/yandex/track_url.cpp    src/yandex/track_url.h)
+target_link_libraries(qiyaa_yandex PUBLIC Qt6::Core Qt6::Network)
+
+qiyaa_add_module(skins
+    src/skins/region.cpp        src/skins/region.h
+    src/skins/skin.cpp          src/skins/skin.h
+    src/skins/sprites.h)
+target_link_libraries(qiyaa_skins PUBLIC Qt6::Gui PRIVATE qiyaa_miniz)
+qt_add_resources(qiyaa_skins "skins"
+    PREFIX "/skins"
+    BASE resources/skins
+    FILES
+        resources/skins/base-2.91.wsz
+        resources/skins/Green-Dimension-V2.wsz
+        resources/skins/MacOSXAqua1-5.wsz
+        resources/skins/Skinner_Atlas.wsz
+        resources/skins/TopazAmp1-2.wsz
+        resources/skins/Vizor1-01.wsz
+        resources/skins/XMMS-Turquoise.wsz
+        resources/skins/ZaxonRemake1-0.wsz)
+
+qiyaa_add_module(vis
+    src/vis/milkdrop_presets.cpp src/vis/milkdrop_presets.h
+    src/vis/visualizer.h        src/vis/visualizers.cpp)
+target_link_libraries(qiyaa_vis PUBLIC Qt6::Gui PRIVATE qiyaa_audio qiyaa_skins)
+
+qiyaa_add_module(core
+    src/core/cover_cache.cpp    src/core/cover_cache.h
+    src/core/player.cpp         src/core/player.h)
+target_link_libraries(qiyaa_core PUBLIC qiyaa_audio qiyaa_yandex Qt6::Gui Qt6::Network)
+
+qiyaa_add_module(ui
+    src/ui/equalizer_window.cpp src/ui/equalizer_window.h
+    src/ui/gen_window.cpp       src/ui/gen_window.h
+    src/ui/library_menu.cpp     src/ui/library_menu.h
+    src/ui/login_dialog.cpp     src/ui/login_dialog.h
+    src/ui/main_window.cpp      src/ui/main_window.h
+    src/ui/now_playing_window.cpp src/ui/now_playing_window.h
+    src/ui/playlist_window.cpp  src/ui/playlist_window.h
+    src/ui/skinned_window.cpp   src/ui/skinned_window.h
+    src/ui/snap.cpp             src/ui/snap.h)
+target_link_libraries(qiyaa_ui
+    PUBLIC qiyaa_audio qiyaa_vis Qt6::Widgets
+    PRIVATE qiyaa_core qiyaa_skins qiyaa_yandex)
+
+qiyaa_add_module(integrations
+    src/integrations/media_controls.cpp src/integrations/media_controls.h)
+target_link_libraries(qiyaa_integrations PUBLIC Qt6::Gui PRIVATE qiyaa_core)
 
 # System media integration: MPRIS on Linux/BSD (needs Qt D-Bus), SMTC on Windows.
 if(UNIX AND NOT APPLE)
     find_package(Qt6 6.4 QUIET COMPONENTS DBus)
     if(Qt6DBus_FOUND)
-        target_sources(qiyaa_core PRIVATE src/integrations/mpris.cpp src/integrations/mpris.h)
-        target_link_libraries(qiyaa_core PUBLIC Qt6::DBus)
-        target_compile_definitions(qiyaa_core PUBLIC QIYAA_HAVE_MPRIS)
+        target_sources(qiyaa_integrations PRIVATE
+            src/integrations/mpris.cpp src/integrations/mpris.h)
+        target_link_libraries(qiyaa_integrations PUBLIC Qt6::DBus)
+        target_compile_definitions(qiyaa_integrations PUBLIC QIYAA_HAVE_MPRIS)
         set(QIYAA_HAVE_MPRIS ON)
         message(STATUS "MPRIS: enabled")
     else()
@@ -102,9 +144,10 @@ if(WIN32 AND MSVC)
         check_include_file_cxx("winrt/Windows.Media.h" QIYAA_HAVE_CPPWINRT)
         unset(CMAKE_REQUIRED_FLAGS)
         if(QIYAA_HAVE_CPPWINRT)
-            target_sources(qiyaa_core PRIVATE src/integrations/smtc.cpp src/integrations/smtc.h)
-            target_link_libraries(qiyaa_core PUBLIC windowsapp)
-            target_compile_definitions(qiyaa_core PUBLIC QIYAA_HAVE_SMTC)
+            target_sources(qiyaa_integrations PRIVATE
+                src/integrations/smtc.cpp src/integrations/smtc.h)
+            target_link_libraries(qiyaa_integrations PRIVATE windowsapp)
+            target_compile_definitions(qiyaa_integrations PUBLIC QIYAA_HAVE_SMTC)
             message(STATUS "SMTC: enabled")
         else()
             message(STATUS "SMTC: disabled (C++/WinRT headers not found)")
@@ -139,13 +182,12 @@ if(QIYAA_WITH_MILKDROP)
         set(QIYAA_PROJECTM_FETCHED ON)
     endif()
     if(TARGET Qt6::OpenGL AND TARGET libprojectM::projectM)
-        target_sources(qiyaa_core PRIVATE
-            src/vis/milkdrop_view.cpp     src/vis/milkdrop_view.h
-            src/ui/milkdrop_window.cpp    src/ui/milkdrop_window.h)
-        target_link_libraries(qiyaa_core PUBLIC Qt6::OpenGL libprojectM::projectM)
-        target_compile_definitions(qiyaa_core PUBLIC QIYAA_HAVE_MILKDROP)
+        target_sources(qiyaa_vis PRIVATE src/vis/milkdrop_view.cpp src/vis/milkdrop_view.h)
+        target_sources(qiyaa_ui PRIVATE src/ui/milkdrop_window.cpp src/ui/milkdrop_window.h)
+        target_link_libraries(qiyaa_vis PUBLIC Qt6::OpenGL PRIVATE libprojectM::projectM)
+        target_compile_definitions(qiyaa_vis PUBLIC QIYAA_HAVE_MILKDROP)
         file(GLOB QIYAA_MILK_PRESETS CONFIGURE_DEPENDS ${CMAKE_CURRENT_SOURCE_DIR}/resources/milkdrop/*.milk)
-        qt_add_resources(qiyaa_core "milkdrop" PREFIX "/milkdrop" BASE resources/milkdrop FILES ${QIYAA_MILK_PRESETS})
+        qt_add_resources(qiyaa_vis "milkdrop" PREFIX "/milkdrop" BASE resources/milkdrop FILES ${QIYAA_MILK_PRESETS})
         set(QIYAA_HAVE_MILKDROP ON)
         list(LENGTH QIYAA_MILK_PRESETS _n)
         message(STATUS "Milkdrop: enabled (${_n} built-in presets)")
@@ -159,26 +201,13 @@ if(QIYAA_REQUIRE_MILKDROP AND NOT QIYAA_HAVE_MILKDROP)
     message(FATAL_ERROR "Milkdrop was required but can't be built (see above)")
 endif()
 
-if(MSVC)
-    target_compile_options(qiyaa_core PRIVATE /W4 /utf-8)
-else()
-    target_compile_options(qiyaa_core PRIVATE -Wall -Wextra)
-endif()
-
-qt_add_resources(qiyaa_core "skins"
-    PREFIX "/skins"
-    BASE resources/skins
-    FILES
-        resources/skins/base-2.91.wsz
-        resources/skins/Green-Dimension-V2.wsz
-        resources/skins/MacOSXAqua1-5.wsz
-        resources/skins/Skinner_Atlas.wsz
-        resources/skins/TopazAmp1-2.wsz
-        resources/skins/Vizor1-01.wsz
-        resources/skins/XMMS-Turquoise.wsz
-        resources/skins/ZaxonRemake1-0.wsz)
-
-qt_add_resources(qiyaa_core "icons"
+qiyaa_add_module(app
+    src/app/application.cpp     src/app/application.h
+    src/app/paths.cpp           src/app/paths.h)
+target_link_libraries(qiyaa_app
+    PUBLIC qiyaa_audio qiyaa_core qiyaa_skins qiyaa_yandex
+    PRIVATE qiyaa_integrations qiyaa_ui qiyaa_vis)
+qt_add_resources(qiyaa_app "icons"
     PREFIX "/icons"
     BASE resources/icons
     FILES
@@ -201,7 +230,8 @@ elseif(APPLE)
     list(APPEND QIYAA_APP_SOURCES resources/icons/qiyaa.icns)
 endif()
 qt_add_executable(qiyaa WIN32 MACOSX_BUNDLE ${QIYAA_APP_SOURCES})
-target_link_libraries(qiyaa PRIVATE qiyaa_core)
+target_link_libraries(qiyaa PRIVATE qiyaa_app qiyaa_ui)
+qiyaa_target_defaults(qiyaa)
 target_compile_definitions(qiyaa PRIVATE QIYAA_VERSION="${PROJECT_VERSION}")
 set_target_properties(qiyaa PROPERTIES
     OUTPUT_NAME QiYaa

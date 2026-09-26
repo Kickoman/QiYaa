@@ -35,4 +35,16 @@ QStringList YaampDataDirs() {
     return out;
 }
 
+QString TokenFile() {
+    return ConfigDir() + QStringLiteral("/token");
+}
+
+QStringList YaampTokenFiles() {
+    QStringList out;
+    for (const QString& directory : YaampDataDirs()) {
+        out << directory + QStringLiteral("/token.json");
+    }
+    return out;
+}
+
 }  // namespace App

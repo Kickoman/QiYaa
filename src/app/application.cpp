@@ -434,7 +434,7 @@ void Application::start() {
     if (startOptions.offline) {
         return;
     }
-    const Yandex::TokenSource token = Yandex::FindToken();
+    const Yandex::TokenSource token = Yandex::FindToken(TokenFile(), YaampTokenFiles());
     if (token.token.isEmpty()) {
         mainWindowInstance->setStatusText(QStringLiteral("Войдите: правый клик → Войти"));
         QTimer::singleShot(0, this, &Application::login);
@@ -457,7 +457,7 @@ void Application::applyToken(const QString& token, bool save) {
             return;
         }
         if (save) {
-            Yandex::SaveToken(token);
+            Yandex::SaveToken(TokenFile(), token);
         }
         mainWindowInstance->setStatusText(QStringLiteral("Привет, %1!").arg(acc.displayName));
         if (corePlayer.playlist().isEmpty()) {
@@ -477,7 +477,7 @@ void Application::login() {
 void Application::logout() {
     corePlayer.clearQueue();
     yandexLibrary.logout();
-    Yandex::ForgetToken();
+    Yandex::ForgetToken(TokenFile());
     mainWindowInstance->setStatusText(QStringLiteral("Вы вышли из аккаунта"));
 }
 
