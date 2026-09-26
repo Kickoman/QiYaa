@@ -370,20 +370,20 @@ bool MilkdropView::pictureIsBlack() {
     return true;
 }
 
-void MilkdropView::mouseDoubleClickEvent(QMouseEvent* e) {
-    if (e->button() == Qt::LeftButton) {
+void MilkdropView::mouseDoubleClickEvent(QMouseEvent* event) {
+    if (event->button() == Qt::LeftButton) {
         Q_EMIT doubleClicked();
     }
 }
 
-void MilkdropView::mousePressEvent(QMouseEvent* e) {
-    if (e->button() == Qt::RightButton) {
-        Q_EMIT contextMenuRequested(e->globalPosition().toPoint());
+void MilkdropView::mousePressEvent(QMouseEvent* event) {
+    if (event->button() == Qt::RightButton) {
+        Q_EMIT contextMenuRequested(event->globalPosition().toPoint());
     }
 }
 
-void MilkdropView::keyPressEvent(QKeyEvent* e) {
-    Q_EMIT keyPressed(e->key(), e->modifiers());
+void MilkdropView::keyPressEvent(QKeyEvent* event) {
+    Q_EMIT keyPressed(event->key(), event->modifiers());
 }
 
 }  // namespace Vis

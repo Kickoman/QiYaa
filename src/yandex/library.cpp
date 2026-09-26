@@ -27,17 +27,17 @@ QString Library::userPath(const QString& rest) const {
     return QStringLiteral("/users/%1/%2").arg(accountData.uid, rest);
 }
 
-void Library::connectAccount(TCallback<Account> cb) {
+void Library::connectAccount(TCallback<Account> callback) {
     QPointer<Library> self(this);
-    apiClient->accountStatus([self, cb](const Account& acc, const QString& err) {
+    apiClient->accountStatus([self, callback](const Account& acc, const QString& error) {
         if (!self) {
             return;
         }
-        if (err.isEmpty()) {
+        if (error.isEmpty()) {
             self->accountData = acc;
             Q_EMIT self->accountChanged();
         }
-        cb(acc, err);
+        callback(acc, error);
     });
 }
 
@@ -51,11 +51,11 @@ void Library::logout() {
 
 QList<Track> Library::ParseTrackArray(const QJsonArray& arr) {
     QList<Track> out;
-    for (const QJsonValue& v : arr) {
-        const QJsonObject o = v.toObject();
+    for (const QJsonValue& value : arr) {
+        const QJsonObject object = value.toObject();
         // Some endpoints wrap tracks: {"track": {...}} or {"id":..., "track": {...}}.
-        const QJsonValue inner = o.value(QStringLiteral("track"));
-        out << ApiClient::ParseTrack(inner.isObject() ? inner : v);
+        const QJsonValue inner = object.value(QStringLiteral("track"));
+        out << ApiClient::ParseTrack(inner.isObject() ? inner : value);
     }
     return out;
 }
@@ -69,52 +69,56 @@ WaveBatch Library::ParseWaveBatch(const QJsonValue& result) {
     return b;
 }
 
-void Library::tracksByIds(const QStringList& ids, TCallback<QList<Track>> cb) {
-    tracksChunk(ids, {}, std::move(cb));
+void Library::tracksByIds(const QStringList& ids, TCallback<QList<Track>> callback) {
+    tracksChunk(ids, {}, std::move(callback));
 }
 
-void Library::tracksChunk(QStringList remaining, QList<Track> acc, TCallback<QList<Track>> cb) {
+void Library::tracksChunk(
+    QStringList remaining,
+    QList<Track> acc,
+    TCallback<QList<Track>> callback
+) {
     if (remaining.isEmpty()) {
-        return cb(acc, {});
+        return callback(acc, {});
     }
     const QStringList chunk = remaining.mid(0, kTracksPerRequest);
     remaining = remaining.mid(chunk.size());
     QPointer<Library> self(this);
     apiClient->tracks(
         chunk,
-        [self, remaining, acc, cb](const QList<Track>& tracks, const QString& err) mutable {
+        [self, remaining, acc, callback](const QList<Track>& tracks, const QString& error) mutable {
             if (!self) {
                 return;
             }
-            if (!err.isEmpty()) {
-                return cb(acc, err);
+            if (!error.isEmpty()) {
+                return callback(acc, error);
             }
             acc += tracks;
-            self->tracksChunk(remaining, acc, cb);
+            self->tracksChunk(remaining, acc, callback);
         }
     );
 }
 
-void Library::likedTracks(TCallback<QList<Track>> cb) {
+void Library::likedTracks(TCallback<QList<Track>> callback) {
     QPointer<Library> self(this);
     apiClient->getJson(
         userPath(QStringLiteral("likes/tracks")), {},
-        [self, cb](const QJsonValue& r, const QString& err) {
+        [self, callback](const QJsonValue& result, const QString& error) {
             if (!self) {
                 return;
             }
-            if (!err.isEmpty()) {
-                return cb({}, err);
+            if (!error.isEmpty()) {
+                return callback({}, error);
             }
             QStringList ids;
             self->likedIds.clear();
-            const QJsonArray arr = r.toObject()
+            const QJsonArray arr = result.toObject()
                                        .value(QStringLiteral("library"))
                                        .toObject()
                                        .value(QStringLiteral("tracks"))
                                        .toArray();
-            for (const QJsonValue& v : arr) {
-                const QString id = StringField(v.toObject(), "id");
+            for (const QJsonValue& value : arr) {
+                const QString id = StringField(value.toObject(), "id");
                 if (id.isEmpty()) {
                     continue;
                 }
@@ -122,95 +126,106 @@ void Library::likedTracks(TCallback<QList<Track>> cb) {
                 self->likedIds.insert(id);
             }
             Q_EMIT self->likesChanged();
-            self->tracksByIds(ids, cb);
+            self->tracksByIds(ids, callback);
         }
     );
 }
 
-void Library::userPlaylists(TCallback<QList<PlaylistRef>> cb) {
+void Library::userPlaylists(TCallback<QList<PlaylistRef>> callback) {
     apiClient->getJson(
         userPath(QStringLiteral("playlists/list")), {},
-        [cb](const QJsonValue& r, const QString& err) {
-            if (!err.isEmpty()) {
-                return cb({}, err);
+        [callback](const QJsonValue& result, const QString& error) {
+            if (!error.isEmpty()) {
+                return callback({}, error);
             }
             QList<PlaylistRef> out;
-            for (const QJsonValue& v : r.toArray()) {
-                const QJsonObject o = v.toObject();
-                PlaylistRef p;
-                p.ownerUid = StringField(o, "uid");
-                if (p.ownerUid.isEmpty()) {
-                    p.ownerUid = StringField(o.value(QStringLiteral("owner")).toObject(), "uid");
+            for (const QJsonValue& value : result.toArray()) {
+                const QJsonObject object = value.toObject();
+                PlaylistRef playlist;
+                playlist.ownerUid = StringField(object, "uid");
+                if (playlist.ownerUid.isEmpty()) {
+                    playlist.ownerUid =
+                        StringField(object.value(QStringLiteral("owner")).toObject(), "uid");
                 }
-                p.kind = StringField(o, "kind");
-                p.title = o.value(QStringLiteral("title")).toString();
-                p.trackCount = o.value(QStringLiteral("trackCount")).toInt();
-                if (!p.kind.isEmpty()) {
-                    out << p;
+                playlist.kind = StringField(object, "kind");
+                playlist.title = object.value(QStringLiteral("title")).toString();
+                playlist.trackCount = object.value(QStringLiteral("trackCount")).toInt();
+                if (!playlist.kind.isEmpty()) {
+                    out << playlist;
                 }
             }
-            cb(out, {});
+            callback(out, {});
         }
     );
 }
 
-void Library::tracksFromItems(const QJsonArray& items, TCallback<QList<Track>> cb) {
+void Library::tracksFromItems(const QJsonArray& items, TCallback<QList<Track>> callback) {
     // Items usually embed full track objects; fall back to fetching by id.
     const QList<Track> embedded = ParseTrackArray(items);
-    const bool complete = std::all_of(embedded.cbegin(), embedded.cend(), [](const Track& t) {
-        return !t.title.isEmpty();
+    const bool complete = std::all_of(embedded.cbegin(), embedded.cend(), [](const Track& track) {
+        return !track.title.isEmpty();
     });
     if (complete) {
-        return cb(embedded, {});
+        return callback(embedded, {});
     }
     QStringList ids;
-    for (const QJsonValue& v : items) {
-        ids << (v.isObject() ? StringField(v.toObject(), "id") : ApiClient::IdString(v));
+    for (const QJsonValue& value : items) {
+        ids
+            << (value.isObject() ? StringField(value.toObject(), "id") : ApiClient::IdString(value)
+               );
     }
-    tracksByIds(ids, cb);
+    tracksByIds(ids, callback);
 }
 
-void Library::playlistTracks(const PlaylistRef& playlist, TCallback<QList<Track>> cb) {
+void Library::playlistTracks(const PlaylistRef& playlist, TCallback<QList<Track>> callback) {
     QPointer<Library> self(this);
     const QString path =
         QStringLiteral("/users/%1/playlists/%2").arg(playlist.ownerUid, playlist.kind);
-    apiClient->getJson(path, {}, [self, cb](const QJsonValue& r, const QString& err) {
+    apiClient->getJson(path, {}, [self, callback](const QJsonValue& result, const QString& error) {
         if (!self) {
             return;
         }
-        if (!err.isEmpty()) {
-            return cb({}, err);
+        if (!error.isEmpty()) {
+            return callback({}, error);
         }
-        self->tracksFromItems(r.toObject().value(QStringLiteral("tracks")).toArray(), cb);
+        self->tracksFromItems(
+            result.toObject().value(QStringLiteral("tracks")).toArray(), callback
+        );
     });
 }
 
-void Library::playlistRecommendations(const PlaylistRef& playlist, TCallback<QList<Track>> cb) {
+void Library::playlistRecommendations(
+    const PlaylistRef& playlist,
+    TCallback<QList<Track>> callback
+) {
     QPointer<Library> self(this);
     const QString path = QStringLiteral("/users/%1/playlists/%2/recommendations")
                              .arg(playlist.ownerUid, playlist.kind);
-    apiClient->getJson(path, {}, [self, cb](const QJsonValue& r, const QString& err) {
+    apiClient->getJson(path, {}, [self, callback](const QJsonValue& result, const QString& error) {
         if (!self) {
             return;
         }
-        if (!err.isEmpty()) {
-            return cb({}, err);
+        if (!error.isEmpty()) {
+            return callback({}, error);
         }
-        self->tracksFromItems(r.toObject().value(QStringLiteral("tracks")).toArray(), cb);
+        self->tracksFromItems(
+            result.toObject().value(QStringLiteral("tracks")).toArray(), callback
+        );
     });
 }
 
-void Library::personalPlaylists(TCallback<QList<PlaylistRef>> cb) {
-    QUrlQuery q;
-    q.addQueryItem(QStringLiteral("blocks"), QStringLiteral("personalplaylists"));
+void Library::personalPlaylists(TCallback<QList<PlaylistRef>> callback) {
+    QUrlQuery query;
+    query.addQueryItem(QStringLiteral("blocks"), QStringLiteral("personalplaylists"));
     apiClient->getJson(
-        QStringLiteral("/landing3"), q,
-        [cb](const QJsonValue& r, const QString& err) {
-            if (!err.isEmpty()) {
-                return cb({}, err);
+        QStringLiteral("/landing3"), query,
+        [callback](const QJsonValue& result, const QString& error) {
+            if (!error.isEmpty()) {
+                return callback({}, error);
             }
             QList<PlaylistRef> out;
-            for (const QJsonValue& block : r.toObject().value(QStringLiteral("blocks")).toArray()) {
+            for (const QJsonValue& block :
+                 result.toObject().value(QStringLiteral("blocks")).toArray()) {
                 for (const QJsonValue& e :
                      block.toObject().value(QStringLiteral("entities")).toArray()) {
                     // entity.data is a "generated playlist" whose .data is the playlist itself.
@@ -218,26 +233,26 @@ void Library::personalPlaylists(TCallback<QList<PlaylistRef>> cb) {
                     if (pl.value(QStringLiteral("data")).isObject()) {
                         pl = pl.value(QStringLiteral("data")).toObject();
                     }
-                    PlaylistRef p;
-                    p.ownerUid = StringField(pl, "uid");
-                    if (p.ownerUid.isEmpty()) {
-                        p.ownerUid =
+                    PlaylistRef playlist;
+                    playlist.ownerUid = StringField(pl, "uid");
+                    if (playlist.ownerUid.isEmpty()) {
+                        playlist.ownerUid =
                             StringField(pl.value(QStringLiteral("owner")).toObject(), "uid");
                     }
-                    p.kind = StringField(pl, "kind");
-                    p.title = pl.value(QStringLiteral("title")).toString();
-                    p.trackCount = pl.value(QStringLiteral("trackCount")).toInt();
-                    if (!p.ownerUid.isEmpty() && !p.kind.isEmpty()) {
-                        out << p;
+                    playlist.kind = StringField(pl, "kind");
+                    playlist.title = pl.value(QStringLiteral("title")).toString();
+                    playlist.trackCount = pl.value(QStringLiteral("trackCount")).toInt();
+                    if (!playlist.ownerUid.isEmpty() && !playlist.kind.isEmpty()) {
+                        out << playlist;
                     }
                 }
             }
-            cb(out, {});
+            callback(out, {});
         }
     );
 }
 
-void Library::wheelWaves(const QStringList& seeds, TCallback<QList<Wave>> cb) {
+void Library::wheelWaves(const QStringList& seeds, TCallback<QList<Wave>> callback) {
     const QJsonObject body{
         {QStringLiteral("context"),
          QJsonObject{
@@ -249,13 +264,14 @@ void Library::wheelWaves(const QStringList& seeds, TCallback<QList<Wave>> cb) {
     };
     apiClient->postJson(
         QStringLiteral("/wheel/new"), body,
-        [cb](const QJsonValue& r, const QString& err) {
-            if (!err.isEmpty()) {
-                return cb({}, err);
+        [callback](const QJsonValue& result, const QString& error) {
+            if (!error.isEmpty()) {
+                return callback({}, error);
             }
             QList<Wave> out;
-            for (const QJsonValue& v : r.toObject().value(QStringLiteral("items")).toArray()) {
-                const QJsonObject item = v.toObject();
+            for (const QJsonValue& value :
+                 result.toObject().value(QStringLiteral("items")).toArray()) {
+                const QJsonObject item = value.toObject();
                 const QJsonObject wave = item.value(QStringLiteral("data"))
                                              .toObject()
                                              .value(QStringLiteral("wave"))
@@ -274,13 +290,13 @@ void Library::wheelWaves(const QStringList& seeds, TCallback<QList<Wave>> cb) {
                     out << w;
                 }
             }
-            cb(out, {});
+            callback(out, {});
         }
     );
 }
 
-QString Library::WaveEventName(WaveEvent e) {
-    switch (e) {
+QString Library::WaveEventName(WaveEvent event) {
+    switch (event) {
         case WaveEvent::RadioStarted: return QStringLiteral("radioStarted");
         case WaveEvent::TrackStarted: return QStringLiteral("trackStarted");
         case WaveEvent::TrackFinished: return QStringLiteral("trackFinished");
@@ -327,11 +343,11 @@ void Library::waveFeedback(
         self->apiClient->postJson(
             path, ev,
             [type = ev.value(QStringLiteral("type")).toString()](
-                const QJsonValue&, const QString& err
+                const QJsonValue&, const QString& error
             ) {
-                if (!err.isEmpty()) {
+                if (!error.isEmpty()) {
                     qWarning(
-                        "wave feedback (station) %s failed: %s", qPrintable(type), qPrintable(err)
+                        "wave feedback (station) %s failed: %s", qPrintable(type), qPrintable(error)
                     );
                 }
             }
@@ -347,19 +363,19 @@ void Library::waveFeedback(
     }
     apiClient->postJson(
         QStringLiteral("/rotor/session/%1/feedback").arg(sessionId), body,
-        [self, sessionId, viaStation](const QJsonValue&, const QString& err) {
-            if (!self || err.isEmpty()) {
+        [self, sessionId, viaStation](const QJsonValue&, const QString& error) {
+            if (!self || error.isEmpty()) {
                 return;
             }
             // Only a refusal (4xx) means "wrong endpoint"; a timeout or a
             // 5xx may have been delivered, and re-sending would count twice.
-            if (!err.startsWith(QLatin1String("HTTP 4"))) {
-                qWarning("wave feedback failed: %s", qPrintable(err));
+            if (!error.startsWith(QLatin1String("HTTP 4"))) {
+                qWarning("wave feedback failed: %s", qPrintable(error));
                 return;
             }
             qInfo(
                 "wave feedback: session endpoint failed (%s), using the station endpoint",
-                qPrintable(err)
+                qPrintable(error)
             );
             self->stationFeedbackSessions.insert(sessionId);
             viaStation();
@@ -367,136 +383,141 @@ void Library::waveFeedback(
     );
 }
 
-void Library::likedArtists(TCallback<QList<NamedRef>> cb) {
+void Library::likedArtists(TCallback<QList<NamedRef>> callback) {
     apiClient->getJson(
         userPath(QStringLiteral("likes/artists")), {},
-        [cb](const QJsonValue& r, const QString& err) {
-            if (!err.isEmpty()) {
-                return cb({}, err);
+        [callback](const QJsonValue& result, const QString& error) {
+            if (!error.isEmpty()) {
+                return callback({}, error);
             }
             QList<NamedRef> out;
-            for (const QJsonValue& v : r.toArray()) {
-                QJsonObject o = v.toObject();
-                if (o.value(QStringLiteral("artist")).isObject()) {
-                    o = o.value(QStringLiteral("artist")).toObject();
+            for (const QJsonValue& value : result.toArray()) {
+                QJsonObject object = value.toObject();
+                if (object.value(QStringLiteral("artist")).isObject()) {
+                    object = object.value(QStringLiteral("artist")).toObject();
                 }
-                const NamedRef a{StringField(o, "id"), o.value(QStringLiteral("name")).toString()};
+                const NamedRef a{
+                    StringField(object, "id"), object.value(QStringLiteral("name")).toString()
+                };
                 if (!a.id.isEmpty()) {
                     out << a;
                 }
             }
-            cb(out, {});
+            callback(out, {});
         }
     );
 }
 
-void Library::artistTopTracks(const QString& artistId, TCallback<QList<Track>> cb) {
+void Library::artistTopTracks(const QString& artistId, TCallback<QList<Track>> callback) {
     QPointer<Library> self(this);
     apiClient->getJson(
         QStringLiteral("/artists/%1/track-ids-by-rating").arg(artistId), {},
-        [self, cb](const QJsonValue& r, const QString& err) {
+        [self, callback](const QJsonValue& result, const QString& error) {
             if (!self) {
                 return;
             }
-            if (!err.isEmpty()) {
-                return cb({}, err);
+            if (!error.isEmpty()) {
+                return callback({}, error);
             }
             QStringList ids;
-            for (const QJsonValue& v : r.toObject().value(QStringLiteral("tracks")).toArray()) {
-                ids << ApiClient::IdString(v);
+            for (const QJsonValue& value :
+                 result.toObject().value(QStringLiteral("tracks")).toArray()) {
+                ids << ApiClient::IdString(value);
             }
-            self->tracksByIds(ids.mid(0, kArtistTopLimit), cb);
+            self->tracksByIds(ids.mid(0, kArtistTopLimit), callback);
         }
     );
 }
 
-void Library::likedAlbums(TCallback<QList<NamedRef>> cb) {
+void Library::likedAlbums(TCallback<QList<NamedRef>> callback) {
     QPointer<Library> self(this);
     apiClient->getJson(
         userPath(QStringLiteral("likes/albums")), {},
-        [self, cb](const QJsonValue& r, const QString& err) {
+        [self, callback](const QJsonValue& result, const QString& error) {
             if (!self) {
                 return;
             }
-            if (!err.isEmpty()) {
-                return cb({}, err);
+            if (!error.isEmpty()) {
+                return callback({}, error);
             }
             QStringList ids;
-            for (const QJsonValue& v : r.toArray()) {
-                QJsonObject o = v.toObject();
-                if (o.value(QStringLiteral("album")).isObject()) {
-                    o = o.value(QStringLiteral("album")).toObject();
+            for (const QJsonValue& value : result.toArray()) {
+                QJsonObject object = value.toObject();
+                if (object.value(QStringLiteral("album")).isObject()) {
+                    object = object.value(QStringLiteral("album")).toObject();
                 }
-                const QString id = StringField(o, "id");
+                const QString id = StringField(object, "id");
                 if (!id.isEmpty()) {
                     ids << id;
                 }
             }
             if (ids.isEmpty()) {
-                return cb({}, {});
+                return callback({}, {});
             }
             self->apiClient->postForm(
                 QStringLiteral("/albums"), {{QStringLiteral("album-ids"), ids.join(u',')}},
-                [cb](const QJsonValue& r, const QString& err) {
-                    if (!err.isEmpty()) {
-                        return cb({}, err);
+                [callback](const QJsonValue& albums, const QString& albumsError) {
+                    if (!albumsError.isEmpty()) {
+                        return callback({}, albumsError);
                     }
                     QList<NamedRef> out;
-                    for (const QJsonValue& v : r.toArray()) {
-                        const QJsonObject o = v.toObject();
-                        if (o.value(QStringLiteral("type")).toString()
+                    for (const QJsonValue& value : albums.toArray()) {
+                        const QJsonObject object = value.toObject();
+                        if (object.value(QStringLiteral("type")).toString()
                             == QLatin1String("podcast")) {
                             continue;
                         }
-                        const QJsonArray artists = o.value(QStringLiteral("artists")).toArray();
-                        QString name = o.value(QStringLiteral("title")).toString();
+                        const QJsonArray artists =
+                            object.value(QStringLiteral("artists")).toArray();
+                        QString name = object.value(QStringLiteral("title")).toString();
                         if (!artists.isEmpty()) {
                             name =
                                 artists.first().toObject().value(QStringLiteral("name")).toString()
                                 + QStringLiteral(" - ") + name;
                         }
-                        out << NamedRef{StringField(o, "id"), name};
+                        out << NamedRef{StringField(object, "id"), name};
                     }
-                    cb(out, {});
+                    callback(out, {});
                 }
             );
         }
     );
 }
 
-void Library::albumTracks(const QString& albumId, TCallback<QList<Track>> cb) {
+void Library::albumTracks(const QString& albumId, TCallback<QList<Track>> callback) {
     apiClient->getJson(
         QStringLiteral("/albums/%1/with-tracks").arg(albumId), {},
-        [cb, albumId](const QJsonValue& r, const QString& err) {
-            if (!err.isEmpty()) {
-                return cb({}, err);
+        [callback, albumId](const QJsonValue& result, const QString& error) {
+            if (!error.isEmpty()) {
+                return callback({}, error);
             }
             QList<Track> out;
-            for (const QJsonValue& vol : r.toObject().value(QStringLiteral("volumes")).toArray()) {
-                for (Track t : ParseTrackArray(vol.toArray())) {
-                    if (t.albumId.isEmpty()) {
-                        t.albumId = albumId;
+            for (const QJsonValue& vol :
+                 result.toObject().value(QStringLiteral("volumes")).toArray()) {
+                for (Track track : ParseTrackArray(vol.toArray())) {
+                    if (track.albumId.isEmpty()) {
+                        track.albumId = albumId;
                     }
-                    out << t;
+                    out << track;
                 }
             }
-            cb(out, {});
+            callback(out, {});
         }
     );
 }
 
-void Library::stations(TCallback<QList<Station>> cb) {
-    QUrlQuery q;
-    q.addQueryItem(QStringLiteral("language"), QStringLiteral("ru"));
+void Library::stations(TCallback<QList<Station>> callback) {
+    QUrlQuery query;
+    query.addQueryItem(QStringLiteral("language"), QStringLiteral("ru"));
     apiClient->getJson(
-        QStringLiteral("/rotor/stations/list"), q,
-        [cb](const QJsonValue& r, const QString& err) {
-            if (!err.isEmpty()) {
-                return cb({}, err);
+        QStringLiteral("/rotor/stations/list"), query,
+        [callback](const QJsonValue& result, const QString& error) {
+            if (!error.isEmpty()) {
+                return callback({}, error);
             }
             QList<Station> out;
-            for (const QJsonValue& v : r.toArray()) {
-                const QJsonObject st = v.toObject().value(QStringLiteral("station")).toObject();
+            for (const QJsonValue& value : result.toArray()) {
+                const QJsonObject st = value.toObject().value(QStringLiteral("station")).toObject();
                 const QJsonObject id = st.value(QStringLiteral("id")).toObject();
                 Station s;
                 s.type = id.value(QStringLiteral("type")).toString();
@@ -506,12 +527,12 @@ void Library::stations(TCallback<QList<Station>> cb) {
                     out << s;
                 }
             }
-            cb(out, {});
+            callback(out, {});
         }
     );
 }
 
-void Library::startWave(const QStringList& seeds, TCallback<WaveBatch> cb) {
+void Library::startWave(const QStringList& seeds, TCallback<WaveBatch> callback) {
     QJsonObject body{
         {QStringLiteral("seeds"), QJsonArray::fromStringList(seeds)},
         {QStringLiteral("includeTracksInResponse"), true},
@@ -520,15 +541,15 @@ void Library::startWave(const QStringList& seeds, TCallback<WaveBatch> cb) {
     };
     apiClient->postJson(
         QStringLiteral("/rotor/session/new"), body,
-        [cb](const QJsonValue& r, const QString& err) {
-            if (!err.isEmpty()) {
-                return cb({}, err);
+        [callback](const QJsonValue& result, const QString& error) {
+            if (!error.isEmpty()) {
+                return callback({}, error);
             }
-            const WaveBatch b = ParseWaveBatch(r);
+            const WaveBatch b = ParseWaveBatch(result);
             if (b.sessionId.isEmpty()) {
-                return cb({}, QStringLiteral("no radio session"));
+                return callback({}, QStringLiteral("no radio session"));
             }
-            cb(b, {});
+            callback(b, {});
         }
     );
 }
@@ -536,63 +557,67 @@ void Library::startWave(const QStringList& seeds, TCallback<WaveBatch> cb) {
 void Library::moreWave(
     const QString& sessionId,
     const QStringList& queue,
-    TCallback<WaveBatch> cb
+    TCallback<WaveBatch> callback
 ) {
     QJsonObject body{{QStringLiteral("queue"), QJsonArray::fromStringList(queue)}};
     apiClient->postJson(
         QStringLiteral("/rotor/session/%1/tracks").arg(sessionId), body,
-        [cb, sessionId](const QJsonValue& r, const QString& err) {
-            if (!err.isEmpty()) {
-                return cb({}, err);
+        [callback, sessionId](const QJsonValue& result, const QString& error) {
+            if (!error.isEmpty()) {
+                return callback({}, error);
             }
-            WaveBatch b = ParseWaveBatch(r);
+            WaveBatch b = ParseWaveBatch(result);
             if (b.sessionId.isEmpty()) {
                 b.sessionId = sessionId;
             }
-            cb(b, {});
+            callback(b, {});
         }
     );
 }
 
-void Library::search(const QString& text, TCallback<SearchResult> cb) {
-    QUrlQuery q;
-    q.addQueryItem(QStringLiteral("text"), text);
-    q.addQueryItem(QStringLiteral("type"), QStringLiteral("all"));
-    q.addQueryItem(QStringLiteral("page"), QStringLiteral("0"));
-    apiClient->getJson(QStringLiteral("/search"), q, [cb](const QJsonValue& r, const QString& err) {
-        if (!err.isEmpty()) {
-            return cb({}, err);
+void Library::search(const QString& text, TCallback<SearchResult> callback) {
+    QUrlQuery query;
+    query.addQueryItem(QStringLiteral("text"), text);
+    query.addQueryItem(QStringLiteral("type"), QStringLiteral("all"));
+    query.addQueryItem(QStringLiteral("page"), QStringLiteral("0"));
+    apiClient->getJson(
+        QStringLiteral("/search"), query,
+        [callback](const QJsonValue& result, const QString& error) {
+            if (!error.isEmpty()) {
+                return callback({}, error);
+            }
+            const QJsonObject object = result.toObject();
+            SearchResult res;
+            const QJsonObject best = object.value(QStringLiteral("best")).toObject();
+            res.bestType = best.value(QStringLiteral("type")).toString();
+            const QJsonObject item = best.value(QStringLiteral("result")).toObject();
+            res.bestId = StringField(item, "id");
+            res.bestName = item.value(
+                                   item.contains(QStringLiteral("name")) ? QStringLiteral("name")
+                                                                         : QStringLiteral("title")
+            )
+                               .toString();
+            res.tracks = ParseTrackArray(object.value(QStringLiteral("tracks"))
+                                             .toObject()
+                                             .value(QStringLiteral("results"))
+                                             .toArray());
+            callback(res, {});
         }
-        const QJsonObject o = r.toObject();
-        SearchResult res;
-        const QJsonObject best = o.value(QStringLiteral("best")).toObject();
-        res.bestType = best.value(QStringLiteral("type")).toString();
-        const QJsonObject item = best.value(QStringLiteral("result")).toObject();
-        res.bestId = StringField(item, "id");
-        res.bestName = item.value(
-                               item.contains(QStringLiteral("name")) ? QStringLiteral("name")
-                                                                     : QStringLiteral("title")
-        )
-                           .toString();
-        res.tracks = ParseTrackArray(
-            o.value(QStringLiteral("tracks")).toObject().value(QStringLiteral("results")).toArray()
-        );
-        cb(res, {});
-    });
+    );
 }
 
-void Library::setLiked(const QString& trackId, bool liked, TCallback<bool> cb) {
+void Library::setLiked(const QString& trackId, bool liked, TCallback<bool> callback) {
     QPointer<Library> self(this);
     const QString path = userPath(
         liked ? QStringLiteral("likes/tracks/add-multiple") : QStringLiteral("likes/tracks/remove")
     );
     apiClient->postForm(
         path, {{QStringLiteral("track-ids"), trackId}},
-        [self, trackId, liked, cb](const QJsonValue&, const QString& err) {
+        [self, trackId, liked, callback](const QJsonValue&, const QString& error) {
             if (!self) {
                 return;
             }
-            if (err.isEmpty()) {
+            if (error.isEmpty()) {
                 if (liked) {
                     self->likedIds.insert(trackId);
                 } else {
@@ -600,24 +625,24 @@ void Library::setLiked(const QString& trackId, bool liked, TCallback<bool> cb) {
                 }
                 Q_EMIT self->likesChanged();
             }
-            cb(err.isEmpty(), err);
+            callback(error.isEmpty(), error);
         }
     );
 }
 
-void Library::dislike(const QString& trackId, TCallback<bool> cb) {
+void Library::dislike(const QString& trackId, TCallback<bool> callback) {
     QPointer<Library> self(this);
     apiClient->postForm(
         userPath(QStringLiteral("dislikes/tracks/add-multiple")),
         {{QStringLiteral("track-ids"), trackId}},
-        [self, trackId, cb](const QJsonValue&, const QString& err) {
+        [self, trackId, callback](const QJsonValue&, const QString& error) {
             if (!self) {
                 return;
             }
-            if (err.isEmpty() && self->likedIds.remove(trackId)) {
+            if (error.isEmpty() && self->likedIds.remove(trackId)) {
                 Q_EMIT self->likesChanged();
             }
-            cb(err.isEmpty(), err);
+            callback(error.isEmpty(), error);
         }
     );
 }

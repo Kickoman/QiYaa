@@ -33,9 +33,9 @@ private:
     }
 
     void pumpUntil(const std::function<bool()>& cond, int timeoutMs) {
-        QElapsedTimer t;
-        t.start();
-        while (!cond() && t.elapsed() < timeoutMs) {
+        QElapsedTimer timer;
+        timer.start();
+        while (!cond() && timer.elapsed() < timeoutMs) {
             engine.poll();
             QTest::qWait(20);
         }
@@ -48,9 +48,9 @@ private Q_SLOTS:
             QSKIP(qPrintable("no audio output: " + err));
         }
         engine.setVolume(0);  // silence, in case this runs on a real device
-        QFile f(QStringLiteral(QIYAA_TEST_DATA "/sine440_3s.mp3"));
-        QVERIFY(f.open(QIODevice::ReadOnly));
-        mp3 = f.readAll();
+        QFile file(QStringLiteral(QIYAA_TEST_DATA "/sine440_3s.mp3"));
+        QVERIFY(file.open(QIODevice::ReadOnly));
+        mp3 = file.readAll();
         qInfo("backend: %s", qPrintable(engine.backendName()));
     }
 
@@ -318,14 +318,14 @@ private Q_SLOTS:
             queueWhole(mp3);
             QTest::qWait(150);  // chained
             engine.clearQueued();
-            QElapsedTimer t;
-            t.start();
+            QElapsedTimer timer;
+            timer.start();
             if (round == 0) {
                 engine.stop();
             } else {
                 engine.beginStream();
             }
-            QVERIFY2(t.elapsed() < 1000, qPrintable(QString::number(t.elapsed())));
+            QVERIFY2(timer.elapsed() < 1000, qPrintable(QString::number(timer.elapsed())));
         }
         engine.stop();
     }
@@ -336,10 +336,10 @@ private Q_SLOTS:
         const auto b = engine.queueStream();
         engine.appendData(b, mp3.left(70000 < mp3.size() ? 70000 : mp3.size() / 2));
         QTest::qWait(300);
-        QElapsedTimer t;
-        t.start();
+        QElapsedTimer timer;
+        timer.start();
         engine.stop();
-        QVERIFY(t.elapsed() < 1000);
+        QVERIFY(timer.elapsed() < 1000);
         QCOMPARE(engine.state(), Audio::AudioEngine::State::Stopped);
     }
 };

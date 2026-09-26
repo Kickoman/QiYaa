@@ -42,77 +42,78 @@ QRect NowPlayingWindow::coverRect() const {
     return {a.x(), a.y(), side, side};
 }
 
-void NowPlayingWindow::paintContent(QPainter& p, const QRect& area) {
-    const Skins::Skin::PlaylistStyle& st = skin().playlistStyle();
-    p.fillRect(area, st.normalBg);
-    const Yandex::Track* t = corePlayer->currentTrack();
+void NowPlayingWindow::paintContent(QPainter& painter, const QRect& area) {
+    const Skins::Skin::PlaylistStyle& style = skin().playlistStyle();
+    painter.fillRect(area, style.normalBg);
+    const Yandex::Track* track = corePlayer->currentTrack();
 
     const QRect cover = coverRect();
-    const QImage img = t ? coverCache->get(t->coverUrl(kCoverPx)) : QImage();
-    if (!img.isNull()) {
-        p.save();
-        p.setRenderHint(QPainter::SmoothPixmapTransform, true);  // a photo, not pixel art
-        p.drawImage(cover, img);
-        p.restore();
+    const QImage image = track ? coverCache->get(track->coverUrl(kCoverPx)) : QImage();
+    if (!image.isNull()) {
+        painter.save();
+        painter.setRenderHint(QPainter::SmoothPixmapTransform, true);  // a photo, not pixel art
+        painter.drawImage(cover, image);
+        painter.restore();
     } else {
-        p.setPen(st.normal);
-        p.drawRect(cover.adjusted(0, 0, -1, -1));
+        painter.setPen(style.normal);
+        painter.drawRect(cover.adjusted(0, 0, -1, -1));
     }
 
     const QRect text(
         cover.right() + 1 + kPad * 2, cover.y(), area.right() - cover.right() - kPad * 3,
         cover.height()
     );
-    QFont font(st.font);
+    QFont font(style.font);
     font.setPixelSize(9);
     QFont bold = font;
     bold.setBold(true);
     bold.setPixelSize(11);
     int y = text.y();
-    auto line = [&](const QFont& f, const QColor& c, const QString& s) {
-        if (s.isEmpty()) {
+    auto line = [&](const QFont& f, const QColor& c, const QString& content) {
+        if (content.isEmpty()) {
             return;
         }
         const QFontMetrics fm(f);
         if (y + fm.height() > text.bottom() + 1) {
             return;
         }
-        p.setFont(f);
-        p.setPen(c);
-        p.drawText(
+        painter.setFont(f);
+        painter.setPen(c);
+        painter.drawText(
             QRect(text.x(), y, text.width(), fm.height()), Qt::AlignLeft | Qt::AlignVCenter,
-            fm.elidedText(s, Qt::ElideRight, text.width())
+            fm.elidedText(content, Qt::ElideRight, text.width())
         );
         y += fm.height() + 1;
     };
-    if (!t) {
-        line(font, st.normal, QStringLiteral("Ничего не играет"));
+    if (!track) {
+        line(font, style.normal, QStringLiteral("Ничего не играет"));
         return;
     }
-    line(bold, st.current, t->title);
-    line(font, st.normal, t->artists.join(QStringLiteral(", ")));
+    line(bold, style.current, track->title);
+    line(font, style.normal, track->artists.join(QStringLiteral(", ")));
     y += 3;
-    QString album = t->albumTitle;
-    if (t->year > 0) {
-        album += album.isEmpty() ? QString::number(t->year) : QStringLiteral(" (%1)").arg(t->year);
+    QString album = track->albumTitle;
+    if (track->year > 0) {
+        album += album.isEmpty() ? QString::number(track->year)
+                                 : QStringLiteral(" (%1)").arg(track->year);
     }
-    line(font, st.normal, album);
-    const int secs = int(t->durationMs / 1000);
+    line(font, style.normal, album);
+    const int secs = int(track->durationMs / 1000);
     line(
-        font, st.normal,
+        font, style.normal,
         QStringLiteral("%1:%2").arg(secs / 60).arg(secs % 60, 2, 10, QLatin1Char('0'))
     );
-    if (corePlayer->library()->isLiked(t->id)) {
-        line(font, st.current, QStringLiteral("♥ В «Мне нравится»"));
+    if (corePlayer->library()->isLiked(track->id)) {
+        line(font, style.current, QStringLiteral("♥ В «Мне нравится»"));
     }
 }
 
 bool NowPlayingWindow::contentMousePress(QPoint pos, Qt::MouseButton button) {
-    const Yandex::Track* t = corePlayer->currentTrack();
-    if (button != Qt::LeftButton || !t || !coverRect().contains(pos)) {
+    const Yandex::Track* track = corePlayer->currentTrack();
+    if (button != Qt::LeftButton || !track || !coverRect().contains(pos)) {
         return false;
     }
-    QDesktopServices::openUrl(t->webUrl());
+    QDesktopServices::openUrl(track->webUrl());
     return true;
 }
 

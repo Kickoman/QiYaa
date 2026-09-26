@@ -37,29 +37,29 @@ Q_SIGNALS:
     void sourcesMenuRequested(QPoint globalPos);
 
 protected:
-    void closeEvent(QCloseEvent* e) override;
-    void paintSkin(QPainter& p) override;
+    void closeEvent(QCloseEvent* event) override;
+    void paintSkin(QPainter& painter) override;
     bool isDragArea(QPoint pos) const override;
     bool skinMousePress(QPoint pos, Qt::MouseButton button) override;
     void skinMouseMove(QPoint pos) override;
     void skinMouseRelease(QPoint pos, Qt::MouseButton button) override;
     bool skinMouseDoubleClick(QPoint pos, Qt::MouseButton button) override;
-    void wheelEvent(QWheelEvent* e) override;
-    void keyPressEvent(QKeyEvent* e) override;
-    void contextMenuEvent(QContextMenuEvent* e) override;
+    void wheelEvent(QWheelEvent* event) override;
+    void keyPressEvent(QKeyEvent* event) override;
+    void contextMenuEvent(QContextMenuEvent* event) override;
 
 private:
     enum class Drag { None, Scroll, Resize, Close, Shade, Button };
     QSize fullSkinSize() const;
-    void paintShaded(QPainter& p);
+    void paintShaded(QPainter& painter);
     QRect listRect() const;
     QRect scrollHandleRect() const;
     int maxScroll() const;
-    void drawTiles(QPainter& p) const;
-    void drawRows(QPainter& p) const;
-    void drawBottomInfo(QPainter& p) const;
+    void drawTiles(QPainter& painter) const;
+    void drawRows(QPainter& painter) const;
+    void drawBottomInfo(QPainter& painter) const;
     void popupAt(QMenu* menu, QPoint skinPos);
-    int miniButtonAt(QPoint p) const;
+    int miniButtonAt(QPoint point) const;
     void selectRow(int row, Qt::KeyboardModifiers mods);
 
     Core::Player* corePlayer;

@@ -13,7 +13,7 @@ public:
     explicit EqualizerWindow(const Skins::Skin* skin, QWidget* parent = nullptr);
 
     const Audio::EqSettings& settings() const { return equalizerSettings; }
-    void setSettings(const Audio::EqSettings& s);
+    void setSettings(const Audio::EqSettings& settings);
     bool autoOn() const { return autoEnabled; }
     void setShaded(bool shaded) override;
     // Volume/balance shown in shade mode (they belong to the main window).
@@ -24,7 +24,7 @@ public:
     }
 
     // Spline through the band values, as drawn in the little graph (for tests).
-    static QList<double> GraphCurve(const Audio::EqSettings& s);
+    static QList<double> GraphCurve(const Audio::EqSettings& settings);
 
 Q_SIGNALS:
     void settingsChanged(const Audio::EqSettings& settings);
@@ -34,8 +34,8 @@ Q_SIGNALS:
     void balanceRequested(int balance);
 
 protected:
-    void closeEvent(QCloseEvent* e) override;
-    void paintSkin(QPainter& p) override;
+    void closeEvent(QCloseEvent* event) override;
+    void paintSkin(QPainter& painter) override;
     bool isDragArea(QPoint pos) const override;
     bool skinMousePress(QPoint pos, Qt::MouseButton button) override;
     void skinMouseMove(QPoint pos) override;
@@ -44,21 +44,21 @@ protected:
     QString regionSection() const override {
         return isShaded() ? QStringLiteral("equalizerws") : QStringLiteral("equalizer");
     }
-    void wheelEvent(QWheelEvent* e) override;
+    void wheelEvent(QWheelEvent* event) override;
 
 private:
     // Element ids: see EqualizerWindow.cpp (kElClose, ..., kElBand0 + band).
-    int hitTest(QPoint p) const;
+    int hitTest(QPoint point) const;
     double* valueFor(int element);
-    void setFromMouse(int element, QPoint p);
+    void setFromMouse(int element, QPoint point);
     void changed(int element);
-    void drawSlider(QPainter& p, QPoint at, double db, bool active) const;
-    void drawGraph(QPainter& p) const;
+    void drawSlider(QPainter& painter, QPoint at, double db, bool active) const;
+    void drawGraph(QPainter& painter) const;
     void showPresets();
     void applyPreset(const Audio::EqPreset& preset);
     void loadEqf();
     void saveEqf();
-    void paintShaded(QPainter& p);
+    void paintShaded(QPainter& painter);
 
     Audio::EqSettings equalizerSettings;
     bool autoEnabled = false;

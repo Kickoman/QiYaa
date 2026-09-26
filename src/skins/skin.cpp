@@ -14,8 +14,8 @@
 
 namespace Skins {
 
-size_t qHash(Skin::Sheet s, size_t seed) noexcept {
-    return ::qHash(static_cast<int>(s), seed);
+size_t qHash(Skin::Sheet sheet, size_t seed) noexcept {
+    return ::qHash(static_cast<int>(sheet), seed);
 }
 
 namespace {
@@ -65,11 +65,11 @@ QImage DecodeImage(const QByteArray& bytes) {
     buf.open(QIODevice::ReadOnly);
     QImageReader reader(&buf);
     reader.setDecideFormatFromContent(true);
-    QImage img = reader.read();
-    if (img.isNull()) {
-        return img;
+    QImage image = reader.read();
+    if (image.isNull()) {
+        return image;
     }
-    return img.convertToFormat(QImage::Format_ARGB32_Premultiplied);
+    return image.convertToFormat(QImage::Format_ARGB32_Premultiplied);
 }
 
 QList<QColor> ParseVisColors(const QByteArray& text) {
@@ -252,20 +252,20 @@ bool Skin::loadFromWsz(const QByteArray& zip, const Skin* fallback, QString* err
         return false;
     }
 
-    auto load = [&](Sheet s, std::initializer_list<const char*> names) {
+    auto load = [&](Sheet sheet, std::initializer_list<const char*> names) {
         for (const char* n : names) {
             const auto it = files.constFind(QString::fromLatin1(n));
             if (it == files.cend()) {
                 continue;
             }
-            QImage img = DecodeImage(*it);
-            if (!img.isNull()) {
-                sheets.insert(s, img);
+            QImage image = DecodeImage(*it);
+            if (!image.isNull()) {
+                sheets.insert(sheet, image);
                 return true;
             }
         }
-        if (fallback && !fallback->sheet(s).isNull()) {
-            sheets.insert(s, fallback->sheet(s));
+        if (fallback && !fallback->sheet(sheet).isNull()) {
+            sheets.insert(sheet, fallback->sheet(sheet));
         }
         return false;
     };
@@ -320,16 +320,16 @@ bool Skin::loadFromWsz(const QByteArray& zip, const Skin* fallback, QString* err
 void Skin::measureGenLetters() {
     // Letters sit side by side, separated by one column of the background
     // colour (taken from x=0). Port of webamp's genGenTextSprites().
-    auto measure = [](const QImage& img, int y) {
+    auto measure = [](const QImage& image, int y) {
         QList<std::pair<int, int>> out;
-        if (img.isNull() || y >= img.height()) {
+        if (image.isNull() || y >= image.height()) {
             return out;
         }
-        const QRgb bg = img.pixel(0, y);
+        const QRgb bg = image.pixel(0, y);
         int x = 1;
         for (int i = 0; i < 26; ++i) {
             int next = x;
-            while (next < img.width() && img.pixel(next, y) != bg) {
+            while (next < image.width() && image.pixel(next, y) != bg) {
                 ++next;
             }
             out.append({x, next - x});
@@ -344,9 +344,9 @@ void Skin::measureGenLetters() {
 
 int Skin::genTextWidth(const QString& text) const {
     int w = 0;
-    for (QChar c : text) {
-        const int i = c.toUpper().unicode() - u'A';
-        if (c == u' ') {
+    for (QChar character : text) {
+        const int i = character.toUpper().unicode() - u'A';
+        if (character == u' ') {
             w += 5;
         } else if (i >= 0 && i < genLetters.size()) {
             w += genLetters[i].second;
@@ -355,18 +355,19 @@ int Skin::genTextWidth(const QString& text) const {
     return w;
 }
 
-int Skin::drawGenText(QPainter& p, const QPoint& at, const QString& text, bool selected) const {
+int Skin::drawGenText(QPainter& painter, const QPoint& at, const QString& text, bool selected)
+    const {
     const auto& letters = selected ? genLettersSelected : genLetters;
     const int y =
         selected ? Skins::GenWindowSprites::kLettersYSelected : Skins::GenWindowSprites::kLettersY;
     int x = at.x();
-    for (QChar c : text) {
-        const int i = c.toUpper().unicode() - u'A';
-        if (c == u' ') {
+    for (QChar character : text) {
+        const int i = character.toUpper().unicode() - u'A';
+        if (character == u' ') {
             x += 5;
         } else if (i >= 0 && i < letters.size()) {
             draw(
-                p, Sheet::Gen,
+                painter, Sheet::Gen,
                 QRect(letters[i].first, y, letters[i].second, Skins::GenWindowSprites::kLetterH),
                 QPoint(x, at.y())
             );
@@ -377,7 +378,7 @@ int Skin::drawGenText(QPainter& p, const QPoint& at, const QString& text, bool s
 }
 
 Skin::PlaylistStyle Skin::ParsePlaylistStyle(const QByteArray& text) {
-    PlaylistStyle st;
+    PlaylistStyle style;
     static const QRegularExpression line(QStringLiteral("^\\s*([A-Za-z]+)\\s*=\\s*(.*?)\\s*$"));
     for (const QByteArray& raw : text.split('\n')) {
         const auto m = line.match(QString::fromLatin1(raw).remove(u'\r'));
@@ -388,7 +389,7 @@ Skin::PlaylistStyle Skin::ParsePlaylistStyle(const QByteArray& text) {
         QString value = m.captured(2);
         if (key == QLatin1String("font")) {
             if (!value.isEmpty()) {
-                st.font = value;
+                style.font = value;
             }
             continue;
         }
@@ -400,50 +401,50 @@ Skin::PlaylistStyle Skin::ParsePlaylistStyle(const QByteArray& text) {
             continue;
         }
         if (key == QLatin1String("normal")) {
-            st.normal = c;
+            style.normal = c;
         } else if (key == QLatin1String("current")) {
-            st.current = c;
+            style.current = c;
         } else if (key == QLatin1String("normalbg")) {
-            st.normalBg = c;
+            style.normalBg = c;
         } else if (key == QLatin1String("selectedbg")) {
-            st.selectedBg = c;
+            style.selectedBg = c;
         }
     }
-    return st;
+    return style;
 }
 
 bool Skin::loadFromFile(const QString& path, const Skin* fallback, QString* error) {
-    QFile f(path);
-    if (!f.open(QIODevice::ReadOnly)) {
+    QFile file(path);
+    if (!file.open(QIODevice::ReadOnly)) {
         if (error) {
-            *error = f.errorString();
+            *error = file.errorString();
         }
         return false;
     }
-    return loadFromWsz(f.readAll(), fallback, error);
+    return loadFromWsz(file.readAll(), fallback, error);
 }
 
 Skin Skin::BuiltinBase() {
-    Skin s;
+    Skin skin;
     QString err;
-    if (!s.loadFromFile(QStringLiteral(":/skins/base-2.91.wsz"), nullptr, &err)) {
+    if (!skin.loadFromFile(QStringLiteral(":/skins/base-2.91.wsz"), nullptr, &err)) {
         qWarning("Built-in skin failed to load: %s", qPrintable(err));
     }
-    return s;
+    return skin;
 }
 
-const QImage& Skin::sheet(Sheet s) const {
+const QImage& Skin::sheet(Sheet sheet) const {
     static const QImage empty;
-    const auto it = sheets.constFind(s);
+    const auto it = sheets.constFind(sheet);
     return it == sheets.cend() ? empty : *it;
 }
 
-void Skin::draw(QPainter& p, Sheet s, const QRect& src, const QPoint& dst) const {
-    const QImage& img = sheet(s);
-    if (img.isNull()) {
+void Skin::draw(QPainter& painter, Sheet bitmap, const QRect& src, const QPoint& dst) const {
+    const QImage& image = sheet(bitmap);
+    if (image.isNull()) {
         return;
     }
-    p.drawImage(dst, img, src);
+    painter.drawImage(dst, image, src);
 }
 
 namespace {
@@ -488,7 +489,7 @@ int Skin::TextWidth(const QString& text) {
     return w;
 }
 
-int Skin::drawText(QPainter& p, const QPoint& at, const QString& text, int maxWidth) const {
+int Skin::drawText(QPainter& painter, const QPoint& at, const QString& text, int maxWidth) const {
     const QImage& font = sheet(Sheet::Text);
     const QRect spaceCell(30 * Skins::kCharW, 0, Skins::kCharW, Skins::kCharH);
     QColor ink;
@@ -504,7 +505,7 @@ int Skin::drawText(QPainter& p, const QPoint& at, const QString& text, int maxWi
 
         switch (r.kind) {
             case CharRender::Cell:
-                p.drawImage(
+                painter.drawImage(
                     QPoint(x, at.y()), font,
                     QRect(
                         r.col * Skins::kCharW, r.row * Skins::kCharH, Skins::kCharW, Skins::kCharH
@@ -514,7 +515,7 @@ int Skin::drawText(QPainter& p, const QPoint& at, const QString& text, int maxWi
             case CharRender::Pixel:
                 // Background from the skin's space glyph, then the ink pixels.
                 for (int bx = 0; bx < r.advance; bx += Skins::kCharW) {
-                    p.drawImage(
+                    painter.drawImage(
                         QPoint(x + bx, at.y()), font,
                         spaceCell.adjusted(0, 0, std::min(0, r.advance - bx - Skins::kCharW), 0)
                     );
@@ -522,15 +523,15 @@ int Skin::drawText(QPainter& p, const QPoint& at, const QString& text, int maxWi
                 for (int row = 0; row < 6; ++row) {
                     for (int col = 0; col < r.glyph->width; ++col) {
                         if (r.glyph->rows[row][col] == '#') {
-                            p.fillRect(x + col, at.y() + row, 1, 1, ink);
+                            painter.fillRect(x + col, at.y() + row, 1, 1, ink);
                         }
                     }
                 }
                 break;
             case CharRender::SystemFont:
-                p.setFont(FallbackFont());
-                p.setPen(ink);
-                p.drawText(
+                painter.setFont(FallbackFont());
+                painter.setPen(ink);
+                painter.drawText(
                     QRect(x, at.y() - 1, r.advance, Skins::kCharH + 2),
                     Qt::AlignLeft | Qt::AlignVCenter, QString(ch)
                 );

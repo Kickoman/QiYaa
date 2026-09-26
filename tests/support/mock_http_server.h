@@ -58,12 +58,12 @@ public:
     }
 
     // Exact "METHOD /path" match.
-    void on(const QByteArray& method, const QString& path, THandler h) {
-        routes[method + ' ' + path.toUtf8()] = std::move(h);
+    void on(const QByteArray& method, const QString& path, THandler handler) {
+        routes[method + ' ' + path.toUtf8()] = std::move(handler);
     }
     // Any path starting with `prefix` (when no exact route matches).
-    void onPrefix(const QByteArray& method, const QString& prefix, THandler h) {
-        prefixRoutes.append({method, prefix, std::move(h)});
+    void onPrefix(const QByteArray& method, const QString& prefix, THandler handler) {
+        prefixRoutes.append({method, prefix, std::move(handler)});
     }
     void
     json(const QByteArray& method, const QString& path, const QByteArray& body, int status = 200) {

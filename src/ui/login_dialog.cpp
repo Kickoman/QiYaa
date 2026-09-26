@@ -111,11 +111,11 @@ LoginDialog::LoginDialog(QNetworkAccessManager* nam, QWidget* parent, const QStr
         }
     );
     connect(device, &Yandex::DeviceLogin::succeeded, this, &LoginDialog::finishWith);
-    connect(device, &Yandex::DeviceLogin::failed, this, [this](const QString& err) {
+    connect(device, &Yandex::DeviceLogin::failed, this, [this](const QString& error) {
         codeLabel->setText(QStringLiteral("—"));
         openDevice->setEnabled(false);
         deviceStatus->setText(
-            QStringLiteral("Вход по коду не удался: %1. Воспользуйтесь способом 2.").arg(err)
+            QStringLiteral("Вход по коду не удался: %1. Воспользуйтесь способом 2.").arg(error)
         );
         fitToContents();
     });

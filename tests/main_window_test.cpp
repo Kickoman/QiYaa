@@ -131,8 +131,8 @@ private Q_SLOTS:
         send(QEvent::MouseButtonRelease, shuffle, Qt::NoButton);
         QCOMPARE(player->shuffle(), !before);
         // Renders without artifacts at the edges (sharp-bilinear path).
-        const QImage img = win->grab().toImage();
-        QCOMPARE(img.size(), QSize(413, 174));
+        const QImage image = win->grab().toImage();
+        QCOMPARE(image.size(), QSize(413, 174));
         win->setScale(1.3333);  // rounded to 0.05 steps
         QCOMPARE(win->scale(), 1.35);
         win->setScale(1);

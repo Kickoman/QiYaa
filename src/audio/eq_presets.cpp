@@ -59,16 +59,16 @@ bool ParseEqf(const QByteArray& data, QList<EqPreset>* out) {
     while (i + kNameLen + kValues <= data.size()) {
         const QByteArray rawName = data.mid(i, kNameLen);
         const qsizetype nul = rawName.indexOf('\0');
-        EqPreset p;
-        p.name = DecodeName(nul >= 0 ? rawName.left(nul) : rawName);
+        EqPreset preset;
+        preset.name = DecodeName(nul >= 0 ? rawName.left(nul) : rawName);
         i += kNameLen;
         auto value = [&](int k) { return 64 - int(quint8(data[i + k])); };
-        for (int b = 0; b < kEqBands; ++b) {
-            p.settings.bandsDb[b] = std::round(EqfToDb(value(b)) * 10) / 10;
+        for (int band = 0; band < kEqBands; ++band) {
+            preset.settings.bandsDb[band] = std::round(EqfToDb(value(band)) * 10) / 10;
         }
-        p.settings.preampDb = std::round(EqfToDb(value(kEqBands)) * 10) / 10;
+        preset.settings.preampDb = std::round(EqfToDb(value(kEqBands)) * 10) / 10;
         i += kValues;
-        presets << p;
+        presets << preset;
     }
     if (presets.isEmpty()) {
         return false;
@@ -81,14 +81,14 @@ QByteArray WriteEqf(const QList<EqPreset>& presets) {
     QByteArray out(kHeader);
     out += char(26);
     out += "!--";
-    for (const EqPreset& p : presets) {
-        QByteArray name = EncodeName(p.name);
+    for (const EqPreset& preset : presets) {
+        QByteArray name = EncodeName(preset.name);
         name.append(QByteArray(kNameLen - name.size(), '\0'));
         out += name;
-        for (int b = 0; b < kEqBands; ++b) {
-            out += char(64 - DbToEqf(p.settings.bandsDb[b]));
+        for (int band = 0; band < kEqBands; ++band) {
+            out += char(64 - DbToEqf(preset.settings.bandsDb[band]));
         }
-        out += char(64 - DbToEqf(p.settings.preampDb));
+        out += char(64 - DbToEqf(preset.settings.preampDb));
     }
     return out;
 }

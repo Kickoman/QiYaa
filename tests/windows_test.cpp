@@ -23,7 +23,7 @@ using Yandex::Track;
 namespace {
 
 void SendMouseEvent(
-    QWidget* w,
+    QWidget* widget,
     QEvent::Type type,
     QPoint local,
     QPoint global,
@@ -31,36 +31,38 @@ void SendMouseEvent(
     Qt::MouseButtons buttons
 ) {
     QMouseEvent e(type, QPointF(local), QPointF(global), button, buttons, Qt::NoModifier);
-    QCoreApplication::sendEvent(w, &e);
+    QCoreApplication::sendEvent(widget, &e);
 }
 
 // Press at `local` (window pixels) and move the cursor by `delta`.
-void Drag(QWidget* w, QPoint local, QPoint delta) {
-    const QPoint g = w->mapToGlobal(local);
-    SendMouseEvent(w, QEvent::MouseButtonPress, local, g, Qt::LeftButton, Qt::LeftButton);
+void Drag(QWidget* widget, QPoint local, QPoint delta) {
+    const QPoint g = widget->mapToGlobal(local);
+    SendMouseEvent(widget, QEvent::MouseButtonPress, local, g, Qt::LeftButton, Qt::LeftButton);
     // Local coordinates are relative to the window's position at press time,
     // which is what Qt reports while the window follows the cursor.
-    SendMouseEvent(w, QEvent::MouseMove, local + delta, g + delta, Qt::NoButton, Qt::LeftButton);
     SendMouseEvent(
-        w, QEvent::MouseButtonRelease, local + delta, g + delta, Qt::LeftButton, Qt::NoButton
+        widget, QEvent::MouseMove, local + delta, g + delta, Qt::NoButton, Qt::LeftButton
+    );
+    SendMouseEvent(
+        widget, QEvent::MouseButtonRelease, local + delta, g + delta, Qt::LeftButton, Qt::NoButton
     );
 }
 
-void Click(QWidget* w, QPoint local) {
-    const QPoint g = w->mapToGlobal(local);
-    SendMouseEvent(w, QEvent::MouseButtonPress, local, g, Qt::LeftButton, Qt::LeftButton);
-    SendMouseEvent(w, QEvent::MouseButtonRelease, local, g, Qt::LeftButton, Qt::NoButton);
+void Click(QWidget* widget, QPoint local) {
+    const QPoint g = widget->mapToGlobal(local);
+    SendMouseEvent(widget, QEvent::MouseButtonPress, local, g, Qt::LeftButton, Qt::LeftButton);
+    SendMouseEvent(widget, QEvent::MouseButtonRelease, local, g, Qt::LeftButton, Qt::NoButton);
 }
 
 QList<Yandex::Track> MakeTracks(int n) {
     QList<Yandex::Track> out;
     for (int i = 0; i < n; ++i) {
-        Yandex::Track t;
-        t.id = QString::number(i + 1);
-        t.title = QStringLiteral("Track %1").arg(i + 1);
-        t.artists << QStringLiteral("Artist");
-        t.durationMs = 60000 + i * 1000;
-        out << t;
+        Yandex::Track track;
+        track.id = QString::number(i + 1);
+        track.title = QStringLiteral("Track %1").arg(i + 1);
+        track.artists << QStringLiteral("Artist");
+        track.durationMs = 60000 + i * 1000;
+        out << track;
     }
     return out;
 }
@@ -144,12 +146,12 @@ private Q_SLOTS:
         // Stack at 400% is 1856 px tall: taller than the 1440 px test screen.
         app->setScale(4.0);
         const QRect screen = QGuiApplication::primaryScreen()->availableGeometry();
-        for (QWidget* w :
+        for (QWidget* widget :
              {static_cast<QWidget*>(main), static_cast<QWidget*>(eq), static_cast<QWidget*>(pl)}) {
-            const QRect r = w->frameGeometry();
-            QVERIFY2(screen.contains(r.topLeft()), qPrintable(w->windowTitle()));
-            if (r.width() <= screen.width() && r.height() <= screen.height()) {
-                QVERIFY(screen.contains(r));
+            const QRect rect = widget->frameGeometry();
+            QVERIFY2(screen.contains(rect.topLeft()), qPrintable(widget->windowTitle()));
+            if (rect.width() <= screen.width() && rect.height() <= screen.height()) {
+                QVERIFY(screen.contains(rect));
             }
         }
     }
@@ -496,9 +498,9 @@ private Q_SLOTS:
     }
 
     void snapshotContainsAllWindows() {
-        const QImage img = app->snapshot();
-        QCOMPARE(img.width(), 275);
-        QCOMPARE(img.height(), 116 + 116 + 232);
+        const QImage image = app->snapshot();
+        QCOMPARE(image.width(), 275);
+        QCOMPARE(image.height(), 116 + 116 + 232);
     }
 };
 

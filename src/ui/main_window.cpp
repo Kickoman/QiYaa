@@ -33,9 +33,9 @@ QString FormatTime(double seconds) {
     return QStringLiteral("%1:%2").arg(s / 60).arg(s % 60, 2, 10, QLatin1Char('0'));
 }
 
-bool Contains(const QRect& r, QPoint p) {
-    return p.x() >= r.x() && p.y() >= r.y() && p.x() < r.x() + r.width()
-        && p.y() < r.y() + r.height();
+bool Contains(const QRect& rect, QPoint point) {
+    return point.x() >= rect.x() && point.y() >= rect.y() && point.x() < rect.x() + rect.width()
+        && point.y() < rect.y() + rect.height();
 }
 
 }  // namespace
@@ -101,10 +101,10 @@ QPoint MainWindow::globalAt(QPoint skinPos) const {
     return mapToGlobal(QPoint(qRound(skinPos.x() * scale()), qRound(skinPos.y() * scale())));
 }
 
-void MainWindow::setVolume(int v) {
-    v = std::clamp(v, 0, 100);
-    const bool changed = v != volumePercent;
-    volumePercent = v;
+void MainWindow::setVolume(int value) {
+    value = std::clamp(value, 0, 100);
+    const bool changed = value != volumePercent;
+    volumePercent = value;
     corePlayer->engine()->setVolume(volumePercent);
     update();
     if (changed) {
@@ -121,13 +121,13 @@ void MainWindow::setShaded(bool shaded) {
     update();
 }
 
-void MainWindow::setBalance(int b) {
-    b = std::clamp(b, -100, 100);
-    if (std::abs(b) < 8) {
-        b = 0;  // Winamp snaps to centre
+void MainWindow::setBalance(int value) {
+    value = std::clamp(value, -100, 100);
+    if (std::abs(value) < 8) {
+        value = 0;  // Winamp snaps to centre
     }
-    const bool changed = b != balancePercent;
-    balancePercent = b;
+    const bool changed = value != balancePercent;
+    balancePercent = value;
     corePlayer->engine()->setBalance(balancePercent);
     update();
     if (changed) {
@@ -214,17 +214,17 @@ void MainWindow::tick() {
     }
 }
 
-void MainWindow::changeEvent(QEvent* e) {
-    SkinnedWindow::changeEvent(e);
-    if (e->type() == QEvent::WindowStateChange) {
+void MainWindow::changeEvent(QEvent* event) {
+    SkinnedWindow::changeEvent(event);
+    if (event->type() == QEvent::WindowStateChange) {
         refreshTimer();
         Q_EMIT minimizedChanged(isMinimized());
     }
 }
 
-void MainWindow::closeEvent(QCloseEvent* e) {
+void MainWindow::closeEvent(QCloseEvent* event) {
     // Alt+F4 / window manager close on the main window quits, like Winamp.
-    e->accept();
+    event->accept();
     Q_EMIT closeRequested();
 }
 
@@ -261,21 +261,21 @@ QString MainWindow::marqueeText() const {
 }
 
 void MainWindow::drawButton(
-    QPainter& p,
-    Element e,
+    QPainter& painter,
+    Element element,
     const QPoint& at,
     const QRect& normal,
     const QRect& pressed
 ) const {
-    const bool down = pressedElement == e && pressedInside;
-    const TSheet sheet = (e == Element::Options || e == Element::Minimize || e == Element::Shade
-                          || e == Element::Close)
+    const bool down = pressedElement == element && pressedInside;
+    const TSheet sheet = (element == Element::Options || element == Element::Minimize
+                          || element == Element::Shade || element == Element::Close)
         ? TSheet::TitleBar
         : TSheet::CButtons;
-    skin().draw(p, sheet, down ? pressed : normal, at);
+    skin().draw(painter, sheet, down ? pressed : normal, at);
 }
 
-void MainWindow::drawTime(QPainter& p) const {
+void MainWindow::drawTime(QPainter& painter) const {
     const auto st = corePlayer->engine()->state();
     if (st == Audio::AudioEngine::State::Stopped) {
         return;
@@ -292,12 +292,12 @@ void MainWindow::drawTime(QPainter& p) const {
         // Minus sign: its own digit-sized cell in nums_ex.bmp, a 5x1 dash in numbers.bmp.
         if (skin().numbersAreExtended()) {
             skin().draw(
-                p, TSheet::Numbers, Skins::kMinusSignEx,
+                painter, TSheet::Numbers, Skins::kMinusSignEx,
                 Skins::MainWindowSprites::kTime + QPoint(-1, 0)
             );
         } else {
             skin().draw(
-                p, TSheet::Numbers, Skins::kMinusSign,
+                painter, TSheet::Numbers, Skins::kMinusSign,
                 Skins::MainWindowSprites::kTime + QPoint(-1, 6)
             );
         }
@@ -308,7 +308,7 @@ void MainWindow::drawTime(QPainter& p) const {
     const int offsets[4] = {9, 21, 39, 51};
     for (int i = 0; i < 4; ++i) {
         skin().draw(
-            p, TSheet::Numbers, Skins::DigitSprite(digits[i]),
+            painter, TSheet::Numbers, Skins::DigitSprite(digits[i]),
             Skins::MainWindowSprites::kTime + QPoint(offsets[i], 0)
         );
     }
@@ -332,33 +332,34 @@ QString MainWindow::miniTimeText() const {
         .arg(secs % 60, 2, 10, QLatin1Char('0'));
 }
 
-void MainWindow::paintShaded(QPainter& p) {
-    const Skins::Skin& sk = skin();
-    sk.draw(
-        p, TSheet::TitleBar,
+void MainWindow::paintShaded(QPainter& painter) {
+    const Skins::Skin& activeSkin = skin();
+    activeSkin.draw(
+        painter, TSheet::TitleBar,
         isActiveWindow() ? Skins::kShadeBackgroundSelected : Skins::kShadeBackground, {0, 0}
     );
     drawButton(
-        p, Element::Options, Skins::MainWindowSprites::kOptions, Skins::kOptionsButton,
+        painter, Element::Options, Skins::MainWindowSprites::kOptions, Skins::kOptionsButton,
         Skins::kOptionsButtonDown
     );
     drawButton(
-        p, Element::Minimize, Skins::MainWindowSprites::kMinimize, Skins::kMinimizeButton,
+        painter, Element::Minimize, Skins::MainWindowSprites::kMinimize, Skins::kMinimizeButton,
         Skins::kMinimizeButtonDown
     );
     const bool shadeDown = pressedElement == Element::Shade && pressedInside;
-    sk.draw(
-        p, TSheet::TitleBar, shadeDown ? Skins::kShadeButtonShadedDown : Skins::kShadeButtonShaded,
+    activeSkin.draw(
+        painter, TSheet::TitleBar,
+        shadeDown ? Skins::kShadeButtonShadedDown : Skins::kShadeButtonShaded,
         Skins::MainWindowSprites::kShade
     );
     drawButton(
-        p, Element::Close, Skins::MainWindowSprites::kClose, Skins::kCloseButton,
+        painter, Element::Close, Skins::MainWindowSprites::kClose, Skins::kCloseButton,
         Skins::kCloseButtonDown
     );
 
     // Mini time (right-aligned in 5 characters, like Winamp).
     const QString t = miniTimeText().rightJustified(5, u' ');
-    sk.drawText(p, {127, 4}, t, 25);
+    activeSkin.drawText(painter, {127, 4}, t, 25);
 
     // Mini position bar.
     const double dur = corePlayer->durationSeconds();
@@ -370,69 +371,72 @@ void MainWindow::paintShaded(QPainter& p) {
         const QRect thumb = x == 0 ? Skins::kShadePositionThumbLeft
             : x >= 14              ? Skins::kShadePositionThumbRight
                                    : Skins::kShadePositionThumb;
-        sk.draw(p, TSheet::TitleBar, thumb, QPoint(226 + x, 4));
+        activeSkin.draw(painter, TSheet::TitleBar, thumb, QPoint(226 + x, 4));
     }
 }
 
-void MainWindow::paintSkin(QPainter& p) {
+void MainWindow::paintSkin(QPainter& painter) {
     if (isShaded()) {
-        return paintShaded(p);
+        return paintShaded(painter);
     }
-    const Skins::Skin& sk = skin();
+    const Skins::Skin& activeSkin = skin();
     const auto st = corePlayer->engine()->state();
     const bool stopped = st == Audio::AudioEngine::State::Stopped;
 
-    sk.draw(p, TSheet::Main, Skins::kMainBackground, {0, 0});
-    sk.draw(
-        p, TSheet::TitleBar, isActiveWindow() ? Skins::kTitleBarSelected : Skins::kTitleBar, {0, 0}
+    activeSkin.draw(painter, TSheet::Main, Skins::kMainBackground, {0, 0});
+    activeSkin.draw(
+        painter, TSheet::TitleBar, isActiveWindow() ? Skins::kTitleBarSelected : Skins::kTitleBar,
+        {0, 0}
     );
     drawButton(
-        p, Element::Options, Skins::MainWindowSprites::kOptions, Skins::kOptionsButton,
+        painter, Element::Options, Skins::MainWindowSprites::kOptions, Skins::kOptionsButton,
         Skins::kOptionsButtonDown
     );
     drawButton(
-        p, Element::Minimize, Skins::MainWindowSprites::kMinimize, Skins::kMinimizeButton,
+        painter, Element::Minimize, Skins::MainWindowSprites::kMinimize, Skins::kMinimizeButton,
         Skins::kMinimizeButtonDown
     );
     drawButton(
-        p, Element::Shade, Skins::MainWindowSprites::kShade, Skins::kShadeButton,
+        painter, Element::Shade, Skins::MainWindowSprites::kShade, Skins::kShadeButton,
         Skins::kShadeButtonDown
     );
     drawButton(
-        p, Element::Close, Skins::MainWindowSprites::kClose, Skins::kCloseButton,
+        painter, Element::Close, Skins::MainWindowSprites::kClose, Skins::kCloseButton,
         Skins::kCloseButtonDown
     );
-    sk.draw(p, TSheet::TitleBar, Skins::kClutterBar, Skins::MainWindowSprites::kClutter);
+    activeSkin.draw(
+        painter, TSheet::TitleBar, Skins::kClutterBar, Skins::MainWindowSprites::kClutter
+    );
 
     // Status: play/pause/stop indicator + time.
     const QRect indicator = st == Audio::AudioEngine::State::Paused ? Skins::kPausedIndicator
         : stopped                                                   ? Skins::kStoppedIndicator
                                                                     : Skins::kPlayingIndicator;
-    sk.draw(p, TSheet::PlayPaus, indicator, Skins::MainWindowSprites::kPlayPause);
+    activeSkin.draw(painter, TSheet::PlayPaus, indicator, Skins::MainWindowSprites::kPlayPause);
     if (!stopped && st != Audio::AudioEngine::State::Paused) {
         // Little LED: green while playing, red while waiting for data.
         const bool buffering = st == Audio::AudioEngine::State::Buffering;
-        sk.draw(
-            p, TSheet::PlayPaus, QRect(buffering ? 36 : 39, 0, 3, 9),
+        activeSkin.draw(
+            painter, TSheet::PlayPaus, QRect(buffering ? 36 : 39, 0, 3, 9),
             Skins::MainWindowSprites::kPlayPause - QPoint(2, 0)
         );
     }
-    drawTime(p);
+    drawTime(painter);
 
     // Visualization (drawn over the background, only while playing).
     if (visualizer
         && (st == Audio::AudioEngine::State::Playing || st == Audio::AudioEngine::State::Buffering
         )) {
-        p.save();
-        p.setClipRect(Skins::MainWindowSprites::kVisualizer);
-        visualizer->render(p, Skins::MainWindowSprites::kVisualizer, sk);
-        p.restore();
+        painter.save();
+        painter.setClipRect(Skins::MainWindowSprites::kVisualizer);
+        visualizer->render(painter, Skins::MainWindowSprites::kVisualizer, activeSkin);
+        painter.restore();
     }
 
     // Marquee.
     {
-        p.save();
-        p.setClipRect(Skins::MainWindowSprites::kMarquee);
+        painter.save();
+        painter.setClipRect(Skins::MainWindowSprites::kMarquee);
         QString text = marqueeText();
         const bool scroll = statusText.isEmpty() && pressedElement == Element::None
             && Skins::Skin::TextWidth(text) > Skins::MainWindowSprites::kMarquee.width();
@@ -442,11 +446,11 @@ void MainWindow::paintSkin(QPainter& p) {
             const int off = n ? marqueeOffset % n : 0;
             text = loop.mid(off) + loop.left(off) + loop;
         }
-        sk.drawText(
-            p, Skins::MainWindowSprites::kMarquee.topLeft(), text,
+        activeSkin.drawText(
+            painter, Skins::MainWindowSprites::kMarquee.topLeft(), text,
             Skins::MainWindowSprites::kMarquee.width() + Skins::kCharW
         );
-        p.restore();
+        painter.restore();
     }
 
     // kbps / kHz / mono-stereo.
@@ -455,22 +459,22 @@ void MainWindow::paintSkin(QPainter& p) {
         const int khz = (corePlayer->engine()->sourceSampleRate() + 500) / 1000;
         if (kbps > 0) {
             const QString t = QString::number(kbps).rightJustified(3, u' ').right(3);
-            sk.drawText(p, Skins::MainWindowSprites::kKbps, t);
+            activeSkin.drawText(painter, Skins::MainWindowSprites::kKbps, t);
         }
         if (khz > 0) {
-            sk.drawText(
-                p, Skins::MainWindowSprites::kKhz,
+            activeSkin.drawText(
+                painter, Skins::MainWindowSprites::kKhz,
                 QString::number(khz).rightJustified(2, u' ').right(2)
             );
         }
     }
     const int ch = stopped ? 0 : corePlayer->engine()->sourceChannels();
-    sk.draw(
-        p, TSheet::MonoSter, ch == 1 ? Skins::kMonoSelected : Skins::kMono,
+    activeSkin.draw(
+        painter, TSheet::MonoSter, ch == 1 ? Skins::kMonoSelected : Skins::kMono,
         Skins::MainWindowSprites::kMono
     );
-    sk.draw(
-        p, TSheet::MonoSter, ch >= 2 ? Skins::kStereoSelected : Skins::kStereo,
+    activeSkin.draw(
+        painter, TSheet::MonoSter, ch >= 2 ? Skins::kStereoSelected : Skins::kStereo,
         Skins::MainWindowSprites::kStereo
     );
 
@@ -478,8 +482,8 @@ void MainWindow::paintSkin(QPainter& p) {
     {
         const int frame = int(std::lround(volumePercent / 100.0 * 28));
         const int offset = std::max(0, (frame - 1) * Skins::kSliderFrameStep);
-        sk.draw(
-            p, TSheet::Volume,
+        activeSkin.draw(
+            painter, TSheet::Volume,
             QRect(0, offset, Skins::MainWindowSprites::kVolume.width(), Skins::kSliderFrameH),
             Skins::MainWindowSprites::kVolume.topLeft()
         );
@@ -487,8 +491,8 @@ void MainWindow::paintSkin(QPainter& p) {
             volumePercent / 100.0
             * (Skins::MainWindowSprites::kVolume.width() - Skins::kVolumeThumb.width())
         ));
-        sk.draw(
-            p, TSheet::Volume,
+        activeSkin.draw(
+            painter, TSheet::Volume,
             pressedElement == Element::Volume ? Skins::kVolumeThumbSelected : Skins::kVolumeThumb,
             Skins::MainWindowSprites::kVolume.topLeft() + QPoint(x, 1)
         );
@@ -496,8 +500,8 @@ void MainWindow::paintSkin(QPainter& p) {
     // Balance.
     {
         const int offset = int(std::abs(balancePercent) / 100.0 * 27) * Skins::kSliderFrameStep;
-        sk.draw(
-            p, TSheet::Balance,
+        activeSkin.draw(
+            painter, TSheet::Balance,
             QRect(9, offset, Skins::MainWindowSprites::kBalance.width(), Skins::kSliderFrameH),
             Skins::MainWindowSprites::kBalance.topLeft()
         );
@@ -505,8 +509,8 @@ void MainWindow::paintSkin(QPainter& p) {
             (balancePercent + 100) / 200.0
             * (Skins::MainWindowSprites::kBalance.width() - Skins::kBalanceThumb.width())
         ));
-        sk.draw(
-            p, TSheet::Balance,
+        activeSkin.draw(
+            painter, TSheet::Balance,
             pressedElement == Element::Balance ? Skins::kBalanceThumbSelected
                                                : Skins::kBalanceThumb,
             Skins::MainWindowSprites::kBalance.topLeft() + QPoint(x, 1)
@@ -514,10 +518,10 @@ void MainWindow::paintSkin(QPainter& p) {
     }
 
     // EQ / PL toggles.
-    auto toggle = [&](Element e, const Skins::ToggleSprite& spr, bool on, QPoint at) {
-        const bool down = pressedElement == e && pressedInside;
-        sk.draw(
-            p, TSheet::ShufRep,
+    auto toggle = [&](Element element, const Skins::ToggleSprite& spr, bool on, QPoint at) {
+        const bool down = pressedElement == element && pressedInside;
+        activeSkin.draw(
+            painter, TSheet::ShufRep,
             on ? (down ? spr.onPressed : spr.on) : (down ? spr.offPressed : spr.off), at
         );
     };
@@ -525,8 +529,9 @@ void MainWindow::paintSkin(QPainter& p) {
     toggle(Element::PlToggle, Skins::kPlButton, plOn, Skins::MainWindowSprites::kPlButton);
 
     // Position bar.
-    sk.draw(
-        p, TSheet::PosBar, Skins::kPositionBackground, Skins::MainWindowSprites::kPosition.topLeft()
+    activeSkin.draw(
+        painter, TSheet::PosBar, Skins::kPositionBackground,
+        Skins::MainWindowSprites::kPosition.topLeft()
     );
     const double dur = corePlayer->durationSeconds();
     if (!stopped && dur > 0) {
@@ -536,8 +541,8 @@ void MainWindow::paintSkin(QPainter& p) {
         const int x =
             int(frac * (Skins::MainWindowSprites::kPosition.width() - Skins::kPositionThumb.width())
             );
-        sk.draw(
-            p, TSheet::PosBar,
+        activeSkin.draw(
+            painter, TSheet::PosBar,
             pressedElement == Element::Position ? Skins::kPositionThumbSelected
                                                 : Skins::kPositionThumb,
             Skins::MainWindowSprites::kPosition.topLeft() + QPoint(x, 0)
@@ -546,24 +551,27 @@ void MainWindow::paintSkin(QPainter& p) {
 
     // Transport.
     drawButton(
-        p, Element::Previous, Skins::MainWindowSprites::kPrevious, Skins::kPrevious.normal,
+        painter, Element::Previous, Skins::MainWindowSprites::kPrevious, Skins::kPrevious.normal,
         Skins::kPrevious.pressed
     );
     drawButton(
-        p, Element::Play, Skins::MainWindowSprites::kPlay, Skins::kPlay.normal, Skins::kPlay.pressed
+        painter, Element::Play, Skins::MainWindowSprites::kPlay, Skins::kPlay.normal,
+        Skins::kPlay.pressed
     );
     drawButton(
-        p, Element::Pause, Skins::MainWindowSprites::kPause, Skins::kPause.normal,
+        painter, Element::Pause, Skins::MainWindowSprites::kPause, Skins::kPause.normal,
         Skins::kPause.pressed
     );
     drawButton(
-        p, Element::Stop, Skins::MainWindowSprites::kStop, Skins::kStop.normal, Skins::kStop.pressed
+        painter, Element::Stop, Skins::MainWindowSprites::kStop, Skins::kStop.normal,
+        Skins::kStop.pressed
     );
     drawButton(
-        p, Element::Next, Skins::MainWindowSprites::kNext, Skins::kNext.normal, Skins::kNext.pressed
+        painter, Element::Next, Skins::MainWindowSprites::kNext, Skins::kNext.normal,
+        Skins::kNext.pressed
     );
     drawButton(
-        p, Element::Eject, Skins::MainWindowSprites::kEject, Skins::kEject.normal,
+        painter, Element::Eject, Skins::MainWindowSprites::kEject, Skins::kEject.normal,
         Skins::kEject.pressed
     );
     toggle(
@@ -576,10 +584,10 @@ void MainWindow::paintSkin(QPainter& p) {
 
 // ------------------------------------------------------------------ input
 
-MainWindow::Element MainWindow::hitTestShaded(QPoint p) const {
+MainWindow::Element MainWindow::hitTestShaded(QPoint point) const {
     struct Area {
         QRect rect;
-        Element e;
+        Element element;
     };
     static const Area areas[] = {
         {{Skins::MainWindowSprites::kOptions, QSize(9, 9)}, Element::Options},
@@ -595,21 +603,21 @@ MainWindow::Element MainWindow::hitTestShaded(QPoint p) const {
         {{226, 4, 17, 7}, Element::Position},
         {{127, 4, 25, 6}, Element::Time},
     };
-    for (const Area& a : areas) {
-        if (Contains(a.rect, p)) {
-            return a.e;
+    for (const Area& area : areas) {
+        if (Contains(area.rect, point)) {
+            return area.element;
         }
     }
     return Element::None;
 }
 
-MainWindow::Element MainWindow::hitTest(QPoint p) const {
+MainWindow::Element MainWindow::hitTest(QPoint point) const {
     if (isShaded()) {
-        return hitTestShaded(p);
+        return hitTestShaded(point);
     }
     struct Area {
         QRect rect;
-        Element e;
+        Element element;
     };
     static const Area areas[] = {
         {{Skins::MainWindowSprites::kOptions, QSize(9, 9)}, Element::Options},
@@ -633,35 +641,35 @@ MainWindow::Element MainWindow::hitTest(QPoint p) const {
         {Skins::MainWindowSprites::kVisualizer, Element::Visualizer},
         {{Skins::MainWindowSprites::kTime, QSize(63, 13)}, Element::Time},
     };
-    for (const Area& a : areas) {
-        if (Contains(a.rect, p)) {
-            return a.e;
+    for (const Area& area : areas) {
+        if (Contains(area.rect, point)) {
+            return area.element;
         }
     }
     return Element::None;
 }
 
-bool MainWindow::isDragArea(QPoint p) const {
+bool MainWindow::isDragArea(QPoint point) const {
     // Winamp lets you drag the main window by any spot that isn't a control.
-    const Element e = hitTest(p);
-    return e == Element::None || e == Element::Marquee;
+    const Element element = hitTest(point);
+    return element == Element::None || element == Element::Marquee;
 }
 
 bool MainWindow::skinMousePress(QPoint pos, Qt::MouseButton button) {
     if (button != Qt::LeftButton) {
         return false;
     }
-    const Element e = hitTest(pos);
-    if (e == Element::None || e == Element::Marquee) {
+    const Element element = hitTest(pos);
+    if (element == Element::None || element == Element::Marquee) {
         return false;  // marquee drags the window
     }
-    if (e == Element::Position
+    if (element == Element::Position
         && corePlayer->engine()->state() == Audio::AudioEngine::State::Stopped) {
         return true;
     }
-    pressedElement = e;
+    pressedElement = element;
     pressedInside = true;
-    updateSliderFromMouse(e, pos);
+    updateSliderFromMouse(element, pos);
     update();
     return true;
 }
@@ -683,25 +691,26 @@ void MainWindow::skinMouseRelease(QPoint pos, Qt::MouseButton button) {
     if (button != Qt::LeftButton || pressedElement == Element::None) {
         return;
     }
-    const Element e = pressedElement;
-    const bool inside = hitTest(pos) == e;
-    if (e == Element::Position && seekPreview >= 0) {
+    const Element element = pressedElement;
+    const bool inside = hitTest(pos) == element;
+    if (element == Element::Position && seekPreview >= 0) {
         corePlayer->seekFraction(seekPreview);
     }
     pressedElement = Element::None;
     seekPreview = -1;
-    if (inside && e != Element::Volume && e != Element::Balance && e != Element::Position) {
-        activate(e);
+    if (inside && element != Element::Volume && element != Element::Balance
+        && element != Element::Position) {
+        activate(element);
     }
     update();
 }
 
-void MainWindow::updateSliderFromMouse(Element e, QPoint p) {
-    auto fraction = [&](const QRect& r, int thumbW) {
-        const double x = p.x() - r.x() - thumbW / 2.0;
-        return std::clamp(x / double(r.width() - thumbW), 0.0, 1.0);
+void MainWindow::updateSliderFromMouse(Element element, QPoint point) {
+    auto fraction = [&](const QRect& rect, int thumbW) {
+        const double x = point.x() - rect.x() - thumbW / 2.0;
+        return std::clamp(x / double(rect.width() - thumbW), 0.0, 1.0);
     };
-    switch (e) {
+    switch (element) {
         case Element::Volume:
             setVolume(int(std::lround(
                 fraction(Skins::MainWindowSprites::kVolume, Skins::kVolumeThumb.width()) * 100
@@ -722,8 +731,8 @@ void MainWindow::updateSliderFromMouse(Element e, QPoint p) {
     }
 }
 
-void MainWindow::activate(Element e) {
-    switch (e) {
+void MainWindow::activate(Element element) {
+    switch (element) {
         case Element::Options:
             Q_EMIT menuRequested(globalAt(Skins::MainWindowSprites::kOptions + QPoint(0, 9)));
             break;
@@ -748,8 +757,8 @@ void MainWindow::activate(Element e) {
     }
 }
 
-void MainWindow::wheelEvent(QWheelEvent* e) {
-    const int steps = wheelSteps(e);
+void MainWindow::wheelEvent(QWheelEvent* event) {
+    const int steps = wheelSteps(event);
     if (steps != 0) {
         setVolume(volumePercent + steps * 4);
         setStatusText(QStringLiteral("VOLUME: %1%").arg(volumePercent));
@@ -765,8 +774,8 @@ bool MainWindow::skinMouseDoubleClick(QPoint pos, Qt::MouseButton button) {
     return true;
 }
 
-void MainWindow::contextMenuEvent(QContextMenuEvent* e) {
-    Q_EMIT menuRequested(e->globalPos());
+void MainWindow::contextMenuEvent(QContextMenuEvent* event) {
+    Q_EMIT menuRequested(event->globalPos());
 }
 
 }  // namespace Ui

@@ -64,13 +64,13 @@ QList<Yandex::Track> DemoTracks() {
     QList<Yandex::Track> out;
     int id = 1;
     for (const auto& [name, secs] : raw) {
-        Yandex::Track t;
+        Yandex::Track track;
         const QString s = QString::fromUtf8(name);
-        t.id = QString::number(id++);
-        t.artists << s.section(QStringLiteral(" - "), 0, 0);
-        t.title = s.section(QStringLiteral(" - "), 1);
-        t.durationMs = secs * 1000;
-        out << t;
+        track.id = QString::number(id++);
+        track.artists << s.section(QStringLiteral(" - "), 0, 0);
+        track.title = s.section(QStringLiteral(" - "), 1);
+        track.durationMs = secs * 1000;
+        out << track;
     }
     return out;
 }

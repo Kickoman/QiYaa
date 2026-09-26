@@ -413,11 +413,11 @@ private Q_SLOTS:
     }
 
     void waveFeedbackFallsBackToStationEndpoint() {
-        Yandex::Track t =
+        Yandex::Track track =
             Yandex::ApiClient::ParseTrack(QJsonDocument::fromJson(TrackJson(5, "T", 50)).object());
         // Session endpoint works: only it is used.
         server.result("POST", "/rotor/session/OK1/feedback", "\"ok\"");
-        lib.waveFeedback("OK1", "user:onyourwave", "B1", Yandex::WaveEvent::TrackStarted, &t);
+        lib.waveFeedback("OK1", "user:onyourwave", "B1", Yandex::WaveEvent::TrackStarted, &track);
         QVERIFY(QTest::qWaitFor(
             [&] { return server.last("/rotor/session/OK1/feedback") != nullptr; }, 3000
         ));
@@ -442,14 +442,14 @@ private Q_SLOTS:
             }
             return n;
         };
-        lib.waveFeedback("BAD", "user:onyourwave", "B2", Yandex::WaveEvent::Skip, &t, 12.34);
+        lib.waveFeedback("BAD", "user:onyourwave", "B2", Yandex::WaveEvent::Skip, &track, 12.34);
         QVERIFY(QTest::qWaitFor([&] { return stationCalls() == 1; }, 3000));
         const Tests::MockRequest* st = server.last("/rotor/station/user:onyourwave/feedback");
         QCOMPARE(st->query.queryItemValue("batch-id"), QStringLiteral("B2"));
         const QJsonObject ev = QJsonDocument::fromJson(st->body).object();
         QCOMPARE(ev.value("type").toString(), QStringLiteral("skip"));
         QCOMPARE(ev.value("totalPlayedSeconds").toDouble(), 12.3);
-        lib.waveFeedback("BAD", "user:onyourwave", "B2", Yandex::WaveEvent::TrackStarted, &t);
+        lib.waveFeedback("BAD", "user:onyourwave", "B2", Yandex::WaveEvent::TrackStarted, &track);
         QVERIFY(QTest::qWaitFor([&] { return stationCalls() == 2; }, 3000));
         int sessionCalls = 0;
         for (qsizetype i = before; i < server.requests().size(); ++i) {
@@ -459,14 +459,14 @@ private Q_SLOTS:
     }
 
     void waveFeedbackDoesNotResendAfterServerError() {
-        Yandex::Track t =
+        Yandex::Track track =
             Yandex::ApiClient::ParseTrack(QJsonDocument::fromJson(TrackJson(5, "T", 50)).object());
         server.json("POST", "/rotor/session/S500/feedback", J("{'error':'oops'}"), 503);
         const auto before = server.requests().size();
         bool settled = false;
         const int pending = api.pendingPosts();
         auto c = connect(&api, &Yandex::ApiClient::postsSettled, this, [&] { settled = true; });
-        lib.waveFeedback("S500", "user:onyourwave", "B1", Yandex::WaveEvent::Skip, &t, 3);
+        lib.waveFeedback("S500", "user:onyourwave", "B1", Yandex::WaveEvent::Skip, &track, 3);
         QCOMPARE(api.pendingPosts(), pending + 1);
         QVERIFY(QTest::qWaitFor([&] { return settled; }, 3000));
         disconnect(c);
@@ -478,7 +478,7 @@ private Q_SLOTS:
 
     void postsSettleOnlyAfterTheFallback() {
         // Quitting waits for postsSettled; it must cover the station re-send.
-        Yandex::Track t =
+        Yandex::Track track =
             Yandex::ApiClient::ParseTrack(QJsonDocument::fromJson(TrackJson(5, "T", 50)).object());
         server.json(
             "POST", "/rotor/session/S404/feedback", J("{'error':{'message':'not found'}}"), 404
@@ -496,7 +496,7 @@ private Q_SLOTS:
         auto c = connect(&api, &Yandex::ApiClient::postsSettled, this, [&] {
             stationCallsAtSettle = stationCalls();
         });
-        lib.waveFeedback("S404", "user:x", "B1", Yandex::WaveEvent::Skip, &t, 3);
+        lib.waveFeedback("S404", "user:x", "B1", Yandex::WaveEvent::Skip, &track, 3);
         QVERIFY(QTest::qWaitFor([&] { return stationCallsAtSettle >= 0; }, 3000));
         QCOMPARE(stationCallsAtSettle, 1);
         QCOMPARE(api.pendingPosts(), 0);
@@ -527,8 +527,8 @@ private Q_SLOTS:
         QStringList log;
         player.setQueue(
             tracks, "W", false, {},
-            [&](Core::Player::TrackEvent e, const Yandex::Track& t, double) {
-                log << QStringLiteral("%1:%2").arg(int(e)).arg(t.id);
+            [&](Core::Player::TrackEvent event, const Yandex::Track& track, double) {
+                log << QStringLiteral("%1:%2").arg(int(event)).arg(track.id);
             }
         );
         player.playIndex(0);
@@ -550,13 +550,13 @@ private:
         Core::Player player{&lib, &engine};
     };
     bool setUpAudio(AudioRig& rig, const QList<int>& ids) {
-        QFile f(QStringLiteral(QIYAA_TEST_DATA "/sine440_3s.mp3"));
-        if (!f.open(QIODevice::ReadOnly) || !rig.engine.init()) {
+        QFile file(QStringLiteral(QIYAA_TEST_DATA "/sine440_3s.mp3"));
+        if (!file.open(QIODevice::ReadOnly) || !rig.engine.init()) {
             return false;
         }
         rig.engine.setVolume(0);
         rig.api.setBaseUrl(server.baseUrl());
-        const QByteArray mp3 = f.readAll();
+        const QByteArray mp3 = file.readAll();
         for (int id : ids) {
             server.result(
                 "GET", QStringLiteral("/tracks/%1/download-info").arg(id),
@@ -601,8 +601,8 @@ private Q_SLOTS:
         QStringList log;
         rig.player.setQueue(
             NumberedTracks({11, 12, 13}), "A", false, {},
-            [&](Core::Player::TrackEvent e, const Yandex::Track& t, double) {
-                log << QStringLiteral("%1:%2").arg(int(e)).arg(t.id);
+            [&](Core::Player::TrackEvent event, const Yandex::Track& track, double) {
+                log << QStringLiteral("%1:%2").arg(int(event)).arg(track.id);
             }
         );
         QSignalSpy advanced(&rig.engine, &Audio::AudioEngine::trackAdvanced);

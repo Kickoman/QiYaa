@@ -6,10 +6,10 @@
 namespace Skins {
 namespace {
 
-QList<int> ParseInts(const QString& s) {
+QList<int> ParseInts(const QString& text) {
     static const QRegularExpression sep(QStringLiteral("[\\s,]+"));
     QList<int> out;
-    for (const QString& part : s.split(sep, Qt::SkipEmptyParts)) {
+    for (const QString& part : text.split(sep, Qt::SkipEmptyParts)) {
         bool ok = false;
         const int v = part.toInt(&ok);
         if (ok) {

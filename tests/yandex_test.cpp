@@ -87,12 +87,12 @@ private Q_SLOTS:
                                     "            "
                                     "\"artists\":[{\"name\":\"A\"},{\"name\":\"B\"}],\"albums\":[{"
                                     "\"id\":777}],\"durationMs\":201000,\"available\":true}");
-        const Yandex::Track t = Yandex::ApiClient::ParseTrack(doc.object());
-        QCOMPARE(t.id, QStringLiteral("12345"));
-        QCOMPARE(t.albumId, QStringLiteral("777"));
-        QCOMPARE(t.displayTitle(), QStringLiteral("A, B - Song (Live)"));
-        QCOMPARE(t.durationMs, 201000);
-        QVERIFY(t.coverUrl().isEmpty());
+        const Yandex::Track track = Yandex::ApiClient::ParseTrack(doc.object());
+        QCOMPARE(track.id, QStringLiteral("12345"));
+        QCOMPARE(track.albumId, QStringLiteral("777"));
+        QCOMPARE(track.displayTitle(), QStringLiteral("A, B - Song (Live)"));
+        QCOMPARE(track.durationMs, 201000);
+        QVERIFY(track.coverUrl().isEmpty());
     }
     void parsesAlbumDetailsAndCover() {
         const auto doc = QJsonDocument::fromJson(
@@ -100,11 +100,11 @@ private Q_SLOTS:
             "\"year\":1989,\"genre\":\"rusrock\",\"coverUri\":\"avatars.yandex.net/"
             "get-music-content/1/a/%%\"}]}"
         );
-        const Yandex::Track t = Yandex::ApiClient::ParseTrack(doc.object());
-        QCOMPARE(t.albumTitle, QStringLiteral("Звезда"));
-        QCOMPARE(t.year, 1989);
+        const Yandex::Track track = Yandex::ApiClient::ParseTrack(doc.object());
+        QCOMPARE(track.albumTitle, QStringLiteral("Звезда"));
+        QCOMPARE(track.year, 1989);
         QCOMPARE(
-            t.coverUrl(200).toString(),
+            track.coverUrl(200).toString(),
             QStringLiteral("https://avatars.yandex.net/get-music-content/1/a/200x200")
         );
     }

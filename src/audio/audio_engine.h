@@ -103,7 +103,7 @@ Q_SIGNALS:
 
 private:
     struct Impl;
-    void setState(State s);
+    void setState(State state);
     void updateGains();
     void startDecoder();  // on current, with a fresh ring
     void dropStreams();

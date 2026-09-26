@@ -25,7 +25,7 @@ public:
     QRect coverRect() const;
 
 protected:
-    void paintContent(QPainter& p, const QRect& area) override;
+    void paintContent(QPainter& painter, const QRect& area) override;
     bool contentMousePress(QPoint pos, Qt::MouseButton button) override;
 
 private:

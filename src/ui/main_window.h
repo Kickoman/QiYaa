@@ -24,8 +24,8 @@ public:
     MainWindow(Core::Player* player, const Skins::Skin* skin, QWidget* parent = nullptr);
     ~MainWindow() override;
 
-    void setVolume(int v);
-    void setBalance(int b);
+    void setVolume(int value);
+    void setBalance(int value);
     int volume() const { return volumePercent; }
     int balance() const { return balancePercent; }
 
@@ -53,8 +53,8 @@ Q_SIGNALS:
     void balanceChanged(int balance);
 
 protected:
-    void closeEvent(QCloseEvent* e) override;
-    void paintSkin(QPainter& p) override;
+    void closeEvent(QCloseEvent* event) override;
+    void paintSkin(QPainter& painter) override;
     bool isDragArea(QPoint skinPos) const override;
     bool skinMousePress(QPoint pos, Qt::MouseButton button) override;
     void skinMouseMove(QPoint pos) override;
@@ -63,9 +63,9 @@ protected:
         return isShaded() ? QStringLiteral("windowshade") : QStringLiteral("normal");
     }
     bool skinMouseDoubleClick(QPoint pos, Qt::MouseButton button) override;
-    void contextMenuEvent(QContextMenuEvent* e) override;
-    void wheelEvent(QWheelEvent* e) override;
-    void changeEvent(QEvent* e) override;
+    void contextMenuEvent(QContextMenuEvent* event) override;
+    void wheelEvent(QWheelEvent* event) override;
+    void changeEvent(QEvent* event) override;
 
 private:
     enum class Element {
@@ -92,21 +92,25 @@ private:
         Time,
     };
 
-    Element hitTest(QPoint p) const;
-    void activate(Element e);
-    void updateSliderFromMouse(Element e, QPoint p);
+    Element hitTest(QPoint point) const;
+    void activate(Element element);
+    void updateSliderFromMouse(Element element, QPoint point);
     void refreshTimer();
     void tick();
     void updateVis();
     QString marqueeText() const;
     QPoint globalAt(QPoint skinPos) const;
 
-    void
-    drawButton(QPainter& p, Element e, const QPoint& at, const QRect& normal, const QRect& pressed)
-        const;
-    void drawTime(QPainter& p) const;
-    void paintShaded(QPainter& p);
-    Element hitTestShaded(QPoint p) const;
+    void drawButton(
+        QPainter& painter,
+        Element element,
+        const QPoint& at,
+        const QRect& normal,
+        const QRect& pressed
+    ) const;
+    void drawTime(QPainter& painter) const;
+    void paintShaded(QPainter& painter);
+    Element hitTestShaded(QPoint point) const;
     QString miniTimeText() const;
 
     Core::Player* corePlayer;

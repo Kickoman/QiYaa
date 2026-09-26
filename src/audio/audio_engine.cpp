@@ -854,12 +854,12 @@ void AudioEngine::poll() {
     }
 }
 
-void AudioEngine::setState(State s) {
-    if (currentState == s) {
+void AudioEngine::setState(State state) {
+    if (currentState == state) {
         return;
     }
-    currentState = s;
-    Q_EMIT stateChanged(s);
+    currentState = state;
+    Q_EMIT stateChanged(state);
 }
 
 }  // namespace Audio

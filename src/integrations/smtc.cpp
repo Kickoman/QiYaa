@@ -22,8 +22,8 @@ namespace WinFoundation = winrt::Windows::Foundation;
 namespace WinStreams = winrt::Windows::Storage::Streams;
 
 namespace {
-winrt::hstring ToHstring(const QString& s) {
-    return winrt::hstring(s.toStdWString());
+winrt::hstring ToHstring(const QString& text) {
+    return winrt::hstring(text.toStdWString());
 }
 }  // namespace
 
@@ -71,9 +71,10 @@ Smtc::Smtc(MediaControls* controls, QWidget* window, QObject* parent)
                 );
             }
         );
-    } catch (const winrt::hresult_error& e) {
+    } catch (const winrt::hresult_error& error) {
         qWarning(
-            "SMTC unavailable: %s", qPrintable(QString::fromStdWString(std::wstring(e.message())))
+            "SMTC unavailable: %s",
+            qPrintable(QString::fromStdWString(std::wstring(error.message())))
         );
         d->controls = nullptr;
         return;
@@ -140,16 +141,16 @@ void Smtc::updateMetadata() {
     try {
         auto updater = d->controls.DisplayUpdater();
         updater.ClearAll();  // also drops the previous track's cover
-        const Yandex::Track* t = mediaControls->player()->currentTrack();
-        if (!t) {
+        const Yandex::Track* track = mediaControls->player()->currentTrack();
+        if (!track) {
             updater.Update();
             return;
         }
         updater.Type(WinMedia::MediaPlaybackType::Music);
         auto music = updater.MusicProperties();
-        music.Title(ToHstring(t->title));
-        music.Artist(ToHstring(t->artists.join(QStringLiteral(", "))));
-        music.AlbumTitle(ToHstring(t->albumTitle));
+        music.Title(ToHstring(track->title));
+        music.Artist(ToHstring(track->artists.join(QStringLiteral(", "))));
+        music.AlbumTitle(ToHstring(track->albumTitle));
         // The https URL: SMTC fetches it itself, and file:// URIs aren't accepted here.
         const QUrl art = mediaControls->remoteArtUrl();
         if (!art.isEmpty()) {
@@ -158,9 +159,9 @@ void Smtc::updateMetadata() {
             ));
         }
         updater.Update();
-    } catch (const winrt::hresult_error& e) {
+    } catch (const winrt::hresult_error& error) {
         qWarning(
-            "SMTC metadata: %s", qPrintable(QString::fromStdWString(std::wstring(e.message())))
+            "SMTC metadata: %s", qPrintable(QString::fromStdWString(std::wstring(error.message())))
         );
     }
 }

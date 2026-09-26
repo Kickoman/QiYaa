@@ -27,13 +27,14 @@ void EqualizerDsp::setSampleRate(uint32_t rate) {
     }
 }
 
-EqualizerDsp::Coeffs EqualizerDsp::ComputeCoefficients(const EqSettings& s, double sampleRate) {
+EqualizerDsp::Coeffs
+EqualizerDsp::ComputeCoefficients(const EqSettings& settings, double sampleRate) {
     Coeffs c;
-    c.enabled = s.enabled;
-    c.preamp = float(std::pow(10.0, std::clamp(s.preampDb, -kEqMaxDb, kEqMaxDb) / 20.0));
+    c.enabled = settings.enabled;
+    c.preamp = float(std::pow(10.0, std::clamp(settings.preampDb, -kEqMaxDb, kEqMaxDb) / 20.0));
     for (int i = 0; i < kEqBands; ++i) {
-        Biquad& b = c.bands[i];
-        const double db = std::clamp(s.bandsDb[i], -kEqMaxDb, kEqMaxDb);
+        Biquad& filter = c.bands[i];
+        const double db = std::clamp(settings.bandsDb[i], -kEqMaxDb, kEqMaxDb);
         const double f0 = kEqBandHz[i];
         if (std::abs(db) < 0.05 || f0 >= sampleRate * 0.49) {
             continue;  // identity
@@ -44,12 +45,12 @@ EqualizerDsp::Coeffs EqualizerDsp::ComputeCoefficients(const EqSettings& s, doub
         const double alpha = std::sin(w0) / (2.0 * kQ);
         const double cw = std::cos(w0);
         const double a0 = 1.0 + alpha / A;
-        b.b0 = float((1.0 + alpha * A) / a0);
-        b.b1 = float((-2.0 * cw) / a0);
-        b.b2 = float((1.0 - alpha * A) / a0);
-        b.a1 = float((-2.0 * cw) / a0);
-        b.a2 = float((1.0 - alpha / A) / a0);
-        b.identity = false;
+        filter.b0 = float((1.0 + alpha * A) / a0);
+        filter.b1 = float((-2.0 * cw) / a0);
+        filter.b2 = float((1.0 - alpha * A) / a0);
+        filter.a1 = float((-2.0 * cw) / a0);
+        filter.a2 = float((1.0 - alpha / A) / a0);
+        filter.identity = false;
     }
     return c;
 }
@@ -78,8 +79,8 @@ void EqualizerDsp::process(float* frames, uint32_t frameCount) {
     }
 
     for (int band = 0; band < kEqBands; ++band) {
-        const Biquad& b = c.bands[band];
-        if (b.identity) {
+        const Biquad& filter = c.bands[band];
+        if (filter.identity) {
             // Let the state decay so re-enabling a band doesn't pop.
             filterState1[band] = {0, 0};
             filterState2[band] = {0, 0};
@@ -91,9 +92,9 @@ void EqualizerDsp::process(float* frames, uint32_t frameCount) {
             for (uint32_t i = 0; i < frameCount; ++i, p += 2) {
                 // Transposed direct form II.
                 const float x = *p;
-                const float y = b.b0 * x + z1;
-                z1 = b.b1 * x - b.a1 * y + z2;
-                z2 = b.b2 * x - b.a2 * y;
+                const float y = filter.b0 * x + z1;
+                z1 = filter.b1 * x - filter.a1 * y + z2;
+                z2 = filter.b2 * x - filter.a2 * y;
                 *p = y;
             }
             // Flush denormals.
@@ -103,20 +104,20 @@ void EqualizerDsp::process(float* frames, uint32_t frameCount) {
     }
 }
 
-double EqualizerDsp::ResponseDb(const EqSettings& s, double hz, double sampleRate) {
-    const Coeffs c = ComputeCoefficients(s, sampleRate);
+double EqualizerDsp::ResponseDb(const EqSettings& settings, double hz, double sampleRate) {
+    const Coeffs c = ComputeCoefficients(settings, sampleRate);
     if (!c.enabled) {
         return 0.0;
     }
     const std::complex<double> z =
         std::polar(1.0, -2.0 * std::numbers::pi * hz / sampleRate);  // z^-1
     std::complex<double> h = c.preamp;
-    for (const Biquad& b : c.bands) {
-        if (b.identity) {
+    for (const Biquad& filter : c.bands) {
+        if (filter.identity) {
             continue;
         }
-        h *= (double(b.b0) + double(b.b1) * z + double(b.b2) * z * z)
-            / (1.0 + double(b.a1) * z + double(b.a2) * z * z);
+        h *= (double(filter.b0) + double(filter.b1) * z + double(filter.b2) * z * z)
+            / (1.0 + double(filter.a1) * z + double(filter.a2) * z * z);
     }
     return 20.0 * std::log10(std::abs(h));
 }

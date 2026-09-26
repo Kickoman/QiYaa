@@ -10,21 +10,21 @@ namespace {
 
 // QRect::right()/bottom() are inclusive (x + w - 1). webamp uses exclusive edges,
 // so we use our own helpers everywhere.
-int LeftEdge(const QRect& r) {
-    return r.x();
+int LeftEdge(const QRect& rect) {
+    return rect.x();
 }
-int TopEdge(const QRect& r) {
-    return r.y();
+int TopEdge(const QRect& rect) {
+    return rect.y();
 }
-int RightEdge(const QRect& r) {
-    return r.x() + r.width();
+int RightEdge(const QRect& rect) {
+    return rect.x() + rect.width();
 }
-int BottomEdge(const QRect& r) {
-    return r.y() + r.height();
+int BottomEdge(const QRect& rect) {
+    return rect.y() + rect.height();
 }
 
-bool WithinDistance(int a, int b, int d) {
-    return std::abs(a - b) < d;
+bool WithinDistance(int a, int value, int d) {
+    return std::abs(a - value) < d;
 }
 
 bool OverlapX(const QRect& a, const QRect& b, int d) {
@@ -75,33 +75,33 @@ long long DistanceSquared(const QRect& a, const QRect& b) {
 }  // namespace
 
 QPoint SnapToOthers(const QRect& moving, const QList<QRect>& others, int distance) {
-    QPoint p = moving.topLeft();
+    QPoint point = moving.topLeft();
     for (const QRect& other : others) {
         const Snapped s = SnapOne(moving, other, distance);
         if (s.x) {
-            p.setX(*s.x);
+            point.setX(*s.x);
         }
         if (s.y) {
-            p.setY(*s.y);
+            point.setY(*s.y);
         }
     }
-    return p;
+    return point;
 }
 
 QPoint SnapWithin(const QRect& moving, const QRect& screen, int distance) {
-    QPoint p = moving.topLeft();
+    QPoint point = moving.topLeft();
     if (LeftEdge(moving) - distance < LeftEdge(screen)) {
-        p.setX(LeftEdge(screen));
+        point.setX(LeftEdge(screen));
     } else if (RightEdge(moving) + distance > RightEdge(screen)) {
-        p.setX(RightEdge(screen) - moving.width());
+        point.setX(RightEdge(screen) - moving.width());
     }
 
     if (TopEdge(moving) - distance < TopEdge(screen)) {
-        p.setY(TopEdge(screen));
+        point.setY(TopEdge(screen));
     } else if (BottomEdge(moving) + distance > BottomEdge(screen)) {
-        p.setY(BottomEdge(screen) - moving.height());
+        point.setY(BottomEdge(screen) - moving.height());
     }
-    return p;
+    return point;
 }
 
 QRect PickScreen(const QRect& rect, const QList<QRect>& screens) {
@@ -265,14 +265,14 @@ QPoint ResolveDragPosition(
     const QList<QRect>& screens,
     int distance
 ) {
-    QRect r = proposed;
-    r.moveTopLeft(SnapToOthers(r, others, distance));
-    const QRect screen = PickScreen(r, screens);
+    QRect rect = proposed;
+    rect.moveTopLeft(SnapToOthers(rect, others, distance));
+    const QRect screen = PickScreen(rect, screens);
     if (screen.isEmpty()) {
-        return r.topLeft();
+        return rect.topLeft();
     }
-    r.moveTopLeft(SnapWithin(r, screen, distance));
-    return ClampInside(r, screen);
+    rect.moveTopLeft(SnapWithin(rect, screen, distance));
+    return ClampInside(rect, screen);
 }
 
 }  // namespace Ui

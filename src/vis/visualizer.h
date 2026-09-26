@@ -33,7 +33,7 @@ public:
     // Called once per animation frame with fresh data.
     virtual void update(const VisFrame& frame) = 0;
     // Called whenever the window repaints; must only draw the last state.
-    virtual void render(QPainter& p, const QRect& area, const Skins::Skin& skin) const = 0;
+    virtual void render(QPainter& painter, const QRect& area, const Skins::Skin& skin) const = 0;
     virtual void reset() { }
 };
 

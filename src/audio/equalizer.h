@@ -39,7 +39,7 @@ public:
     void process(float* frames, uint32_t frameCount);
 
     // Magnitude response in dB at `hz` for the given settings (used by tests).
-    static double ResponseDb(const EqSettings& s, double hz, double sampleRate);
+    static double ResponseDb(const EqSettings& settings, double hz, double sampleRate);
 
 private:
     struct Biquad {
@@ -52,7 +52,7 @@ private:
         std::array<Biquad, kEqBands> bands{};
     };
 
-    static Coeffs ComputeCoefficients(const EqSettings& s, double sampleRate);
+    static Coeffs ComputeCoefficients(const EqSettings& settings, double sampleRate);
 
     double sampleRate = 44100;
     EqSettings lastSettings;

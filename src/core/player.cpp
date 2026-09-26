@@ -52,17 +52,17 @@ Player::Player(Yandex::Library* library, Audio::AudioEngine* engine, QObject* pa
             i >= 0 ? playIndex(i) : stop();
             return;
         }
-        const Preload p = *std::exchange(preload, std::nullopt);
+        const Preload upcoming = *std::exchange(preload, std::nullopt);
         ++generation;
-        download = p.reply;
-        streamId = p.stream;
-        playingIndex = p.index;
-        currentDownloaded = p.downloadDone && !p.failed;
-        downloadFailed = p.failed;
+        download = upcoming.reply;
+        streamId = upcoming.stream;
+        playingIndex = upcoming.index;
+        currentDownloaded = upcoming.downloadDone && !upcoming.failed;
+        downloadFailed = upcoming.failed;
         waitingForMore = false;
         Q_EMIT currentTrackChanged();
         maybeLoadMore();
-        trackStarted(queuedTracks[playingIndex], p.bitrate);
+        trackStarted(queuedTracks[playingIndex], upcoming.bitrate);
     });
     connect(audioEngine, &Audio::AudioEngine::errorOccurred, this, [this](const QString& msg) {
         Q_EMIT statusMessage(QStringLiteral("Audio error: ") + msg);
@@ -77,8 +77,8 @@ Player::Player(Yandex::Library* library, Audio::AudioEngine* engine, QObject* pa
     });
     connect(
         audioEngine, &Audio::AudioEngine::stateChanged, this,
-        [this](Audio::AudioEngine::State s) {
-            if (s == Audio::AudioEngine::State::Stopped) {
+        [this](Audio::AudioEngine::State state) {
+            if (state == Audio::AudioEngine::State::Stopped) {
                 pollTimer.stop();
             } else if (!pollTimer.isActive()) {
                 pollTimer.start();
@@ -97,9 +97,9 @@ void Player::setQueue(
     stop();
     reportEvent = std::move(events);
     queuedTracks.clear();
-    for (const Yandex::Track& t : tracks) {
-        if (t.available) {
-            queuedTracks << t;
+    for (const Yandex::Track& track : tracks) {
+        if (track.available) {
+            queuedTracks << track;
         }
     }
     titleText = title;
@@ -118,9 +118,9 @@ void Player::setQueue(
 
 void Player::appendTracks(const QList<Yandex::Track>& tracks) {
     bool added = false;
-    for (const Yandex::Track& t : tracks) {
-        if (t.available) {
-            queuedTracks << t;
+    for (const Yandex::Track& track : tracks) {
+        if (track.available) {
+            queuedTracks << track;
             added = true;
         }
     }
@@ -359,14 +359,14 @@ void Player::playIndex(int index) {
     // Already downloading in the background (e.g. "next" pressed): start it from there.
     if (preload && preload->stream && preload->trackId == track.id
         && preload->stream == audioEngine->queuedStream()) {
-        const Preload p = *std::exchange(preload, std::nullopt);
+        const Preload upcoming = *std::exchange(preload, std::nullopt);
         streamId = audioEngine->playQueuedNow();
-        download = p.reply;
-        currentDownloaded = p.downloadDone && !p.failed;
-        downloadFailed = p.failed;
+        download = upcoming.reply;
+        currentDownloaded = upcoming.downloadDone && !upcoming.failed;
+        downloadFailed = upcoming.failed;
         Q_EMIT currentTrackChanged();
         maybeLoadMore();
-        trackStarted(track, p.bitrate);
+        trackStarted(track, upcoming.bitrate);
         return;
     }
     cancelPreload();
@@ -376,12 +376,12 @@ void Player::playIndex(int index) {
 
     yandexLibrary->api()->resolveTrackUrl(
         track.id,
-        [this, gen, track](const Yandex::ResolvedUrl& url, const QString& err) {
+        [this, gen, track](const Yandex::ResolvedUrl& url, const QString& error) {
             if (gen != generation) {
                 return;
             }
-            if (!err.isEmpty()) {
-                Q_EMIT statusMessage(QStringLiteral("Cannot get link: ") + err);
+            if (!error.isEmpty()) {
+                Q_EMIT statusMessage(QStringLiteral("Cannot get link: ") + error);
                 audioEngine->stop();
                 return;
             }
@@ -448,11 +448,11 @@ void Player::downloadFinished(TStreamId stream, bool failed, const QString& erro
 }
 
 void Player::abortDownload() {
-    if (QNetworkReply* r = download) {
+    if (QNetworkReply* reply = download) {
         download.clear();
-        disconnect(r, nullptr, this, nullptr);
-        r->abort();
-        r->deleteLater();
+        disconnect(reply, nullptr, this, nullptr);
+        reply->abort();
+        reply->deleteLater();
     }
 }
 
@@ -465,19 +465,19 @@ void Player::maybePreload() {
     if (index < 0) {
         return;
     }
-    Preload p;
-    p.index = index;
-    p.trackId = queuedTracks[index].id;
-    p.gen = ++preloadGen;
-    preload = p;
+    Preload upcoming;
+    upcoming.index = index;
+    upcoming.trackId = queuedTracks[index].id;
+    upcoming.gen = ++preloadGen;
+    preload = upcoming;
     QPointer<Player> self(this);
     yandexLibrary->api()->resolveTrackUrl(
-        p.trackId,
-        [self, gen = p.gen](const Yandex::ResolvedUrl& url, const QString& err) {
+        upcoming.trackId,
+        [self, gen = upcoming.gen](const Yandex::ResolvedUrl& url, const QString& error) {
             if (!self || !self->preload || self->preload->gen != gen) {
                 return;
             }
-            const TStreamId stream = err.isEmpty() ? self->audioEngine->queueStream() : 0;
+            const TStreamId stream = error.isEmpty() ? self->audioEngine->queueStream() : 0;
             if (!stream) {  // no link (or nothing plays any more): the track starts the usual way
                             // when it's time
                 self->preload.reset();
@@ -494,13 +494,13 @@ void Player::cancelPreload() {
     if (!preload) {
         return;
     }
-    const Preload p = *std::exchange(preload, std::nullopt);
-    if (QNetworkReply* r = p.reply) {
-        disconnect(r, nullptr, this, nullptr);
-        r->abort();
-        r->deleteLater();
+    const Preload upcoming = *std::exchange(preload, std::nullopt);
+    if (QNetworkReply* reply = upcoming.reply) {
+        disconnect(reply, nullptr, this, nullptr);
+        reply->abort();
+        reply->deleteLater();
     }
-    if (p.stream && p.stream == audioEngine->queuedStream()) {
+    if (upcoming.stream && upcoming.stream == audioEngine->queuedStream()) {
         audioEngine->clearQueued();
     }
 }

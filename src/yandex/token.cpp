@@ -20,11 +20,11 @@ QString NormalizeToken(const QByteArray& raw) {
     if (s.startsWith(u'{') || s.startsWith(u'"')) {
         const QJsonDocument doc = QJsonDocument::fromJson(("[" + s + "]").toUtf8());
         if (doc.isArray() && !doc.array().isEmpty()) {
-            const QJsonValue v = doc.array().first();
-            if (v.isString()) {
-                s = v.toString().trimmed();
-            } else if (v.isObject()) {
-                s = v.toObject().value(QStringLiteral("access_token")).toString().trimmed();
+            const QJsonValue value = doc.array().first();
+            if (value.isString()) {
+                s = value.toString().trimmed();
+            } else if (value.isObject()) {
+                s = value.toObject().value(QStringLiteral("access_token")).toString().trimmed();
             }
         }
     }
@@ -50,18 +50,18 @@ TokenSource FindToken() {
 
     // Our own file wins, even when empty (= the user logged out).
     const QString own = App::ConfigDir() + QStringLiteral("/token");
-    if (QFile f(own); f.open(QIODevice::ReadOnly)) {
-        const QString t = NormalizeToken(f.read(64 * 1024));
+    if (QFile file(own); file.open(QIODevice::ReadOnly)) {
+        const QString t = NormalizeToken(file.read(64 * 1024));
         return t.isEmpty() ? TokenSource{} : TokenSource{t, own};
     }
 
     for (const QString& dir : App::YaampDataDirs()) {
         const QString path = dir + QStringLiteral("/token.json");
-        QFile f(path);
-        if (!f.open(QIODevice::ReadOnly)) {
+        QFile file(path);
+        if (!file.open(QIODevice::ReadOnly)) {
             continue;
         }
-        if (const QString t = NormalizeToken(f.read(64 * 1024)); !t.isEmpty()) {
+        if (const QString t = NormalizeToken(file.read(64 * 1024)); !t.isEmpty()) {
             return {t, path};
         }
     }
@@ -69,19 +69,19 @@ TokenSource FindToken() {
 }
 
 void ForgetToken() {
-    QFile f(App::ConfigDir() + QStringLiteral("/token"));
-    if (f.open(QIODevice::WriteOnly | QIODevice::Truncate)) {
-        f.setPermissions(QFileDevice::ReadOwner | QFileDevice::WriteOwner);
+    QFile file(App::ConfigDir() + QStringLiteral("/token"));
+    if (file.open(QIODevice::WriteOnly | QIODevice::Truncate)) {
+        file.setPermissions(QFileDevice::ReadOwner | QFileDevice::WriteOwner);
     }
 }
 
 bool SaveToken(const QString& token) {
-    QFile f(App::ConfigDir() + QStringLiteral("/token"));
-    if (!f.open(QIODevice::WriteOnly | QIODevice::Truncate)) {
+    QFile file(App::ConfigDir() + QStringLiteral("/token"));
+    if (!file.open(QIODevice::WriteOnly | QIODevice::Truncate)) {
         return false;
     }
-    f.setPermissions(QFileDevice::ReadOwner | QFileDevice::WriteOwner);
-    return f.write(token.toUtf8()) > 0;
+    file.setPermissions(QFileDevice::ReadOwner | QFileDevice::WriteOwner);
+    return file.write(token.toUtf8()) > 0;
 }
 
 }  // namespace Yandex

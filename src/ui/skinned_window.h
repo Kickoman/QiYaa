@@ -68,7 +68,7 @@ Q_SIGNALS:
 
 protected:
     // Paint in skin coordinates; the painter is already scaled.
-    virtual void paintSkin(QPainter& p) = 0;
+    virtual void paintSkin(QPainter& painter) = 0;
     // Where a press starts dragging the window (title bar etc.), in skin coordinates.
     virtual bool isDragArea(QPoint skinPos) const = 0;
     // Mouse handling for controls, in skin coordinates. Return true if consumed.
@@ -92,7 +92,7 @@ protected:
     QPoint toSkin(QPointF widgetPos) const;
     // Whole wheel "notches" in this event, accumulating the small deltas that
     // touchpads and smooth-scrolling mice send. Positive = away from the user.
-    int wheelSteps(QWheelEvent* e);
+    int wheelSteps(QWheelEvent* event);
     void applyMask();
     // Repaint only a part of the window, given in skin coordinates.
     void updateSkinRect(const QRect& skinRect);

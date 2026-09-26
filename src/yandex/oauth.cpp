@@ -52,10 +52,10 @@ DeviceLogin::~DeviceLogin() {
 
 QUrl DeviceLogin::BrowserLoginUrl() {
     QUrl url(QStringLiteral("https://oauth.yandex.ru/authorize"));
-    QUrlQuery q;
-    q.addQueryItem(QStringLiteral("response_type"), QStringLiteral("token"));
-    q.addQueryItem(QStringLiteral("client_id"), QString::fromLatin1(kClientId));
-    url.setQuery(q);
+    QUrlQuery query;
+    query.addQueryItem(QStringLiteral("response_type"), QStringLiteral("token"));
+    query.addQueryItem(QStringLiteral("client_id"), QString::fromLatin1(kClientId));
+    url.setQuery(query);
     return url;
 }
 
@@ -82,13 +82,13 @@ void DeviceLogin::start() {
         if (reply->error() == QNetworkReply::OperationCanceledError) {
             return;
         }
-        const QJsonObject o = QJsonDocument::fromJson(reply->readAll()).object();
-        deviceCode = o.value(QStringLiteral("device_code")).toString();
-        const QString userCode = o.value(QStringLiteral("user_code")).toString();
+        const QJsonObject object = QJsonDocument::fromJson(reply->readAll()).object();
+        deviceCode = object.value(QStringLiteral("device_code")).toString();
+        const QString userCode = object.value(QStringLiteral("user_code")).toString();
         if (deviceCode.isEmpty() || userCode.isEmpty()) {
-            QString err = o.value(QStringLiteral("error_description")).toString();
+            QString err = object.value(QStringLiteral("error_description")).toString();
             if (err.isEmpty()) {
-                err = o.value(QStringLiteral("error")).toString();
+                err = object.value(QStringLiteral("error")).toString();
             }
             if (err.isEmpty()) {
                 err = reply->errorString();
@@ -96,12 +96,12 @@ void DeviceLogin::start() {
             Q_EMIT failed(err);
             return;
         }
-        QUrl verify(o.value(QStringLiteral("verification_url")).toString());
+        QUrl verify(object.value(QStringLiteral("verification_url")).toString());
         if (!verify.isValid() || verify.isEmpty()) {
             verify = QUrl(QStringLiteral("https://ya.ru/device"));
         }
-        const int interval = std::max(1, o.value(QStringLiteral("interval")).toInt(5));
-        const int expires = o.value(QStringLiteral("expires_in")).toInt(300);
+        const int interval = std::max(1, object.value(QStringLiteral("interval")).toInt(5));
+        const int expires = object.value(QStringLiteral("expires_in")).toInt(300);
         deadlineMs = QDateTime::currentMSecsSinceEpoch() + expires * 1000LL;
         pollTimer.setInterval(interval * 1000);
         Q_EMIT codeReady(userCode, verify);
@@ -131,14 +131,14 @@ void DeviceLogin::poll() {
         if (reply->error() == QNetworkReply::OperationCanceledError) {
             return;
         }
-        const QJsonObject o = QJsonDocument::fromJson(reply->readAll()).object();
-        const QString token = o.value(QStringLiteral("access_token")).toString();
+        const QJsonObject object = QJsonDocument::fromJson(reply->readAll()).object();
+        const QString token = object.value(QStringLiteral("access_token")).toString();
         if (!token.isEmpty()) {
             deviceCode.clear();
             Q_EMIT succeeded(token);
             return;
         }
-        const QString error = o.value(QStringLiteral("error")).toString();
+        const QString error = object.value(QStringLiteral("error")).toString();
         if (error == QLatin1String("authorization_pending")
             || error == QLatin1String("slow_down")) {
             if (error == QLatin1String("slow_down")) {
@@ -147,7 +147,7 @@ void DeviceLogin::poll() {
             pollTimer.start();
             return;
         }
-        QString desc = o.value(QStringLiteral("error_description")).toString();
+        QString desc = object.value(QStringLiteral("error_description")).toString();
         if (desc.isEmpty()) {
             desc = error.isEmpty() ? reply->errorString() : error;
         }

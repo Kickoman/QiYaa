@@ -49,42 +49,42 @@ private Q_SLOTS:
 
     // Shade mode: which windows follow a height change of window 0.
     void shrinkingPullsUpTheStack() {
-        const QList<QRect> r{{0, 0, 275, 116}, {0, 116, 275, 116}, {0, 232, 275, 232}};
-        QCOMPARE(Ui::StackBelow(0, r, -102), (QList<int>{1, 2}));
+        const QList<QRect> rects{{0, 0, 275, 116}, {0, 116, 275, 116}, {0, 232, 275, 232}};
+        QCOMPARE(Ui::StackBelow(0, rects, -102), (QList<int>{1, 2}));
     }
     void shrinkingLeavesWindowsOthersHold() {
         // Main and EQ side by side, playlist under both: the EQ still holds it.
-        const QList<QRect> r{{0, 0, 275, 116}, {275, 0, 275, 116}, {0, 116, 550, 232}};
-        QVERIFY(Ui::StackBelow(0, r, -102).isEmpty());
+        const QList<QRect> rects{{0, 0, 275, 116}, {275, 0, 275, 116}, {0, 116, 550, 232}};
+        QVERIFY(Ui::StackBelow(0, rects, -102).isEmpty());
         // Playlist under the EQ only: not ours to move at all.
         const QList<QRect> r2{{0, 0, 275, 116}, {275, 0, 275, 116}, {275, 116, 275, 232}};
         QVERIFY(Ui::StackBelow(0, r2, -102).isEmpty());
     }
     void shrinkingDoesNotPullOntoAnotherWindow() {
         // Playlist hangs under main, but moving it up would cover a short window beside main.
-        const QList<QRect> r{{0, 0, 275, 116}, {275, 0, 275, 50}, {0, 116, 400, 100}};
-        QVERIFY(Ui::StackBelow(0, r, -102).isEmpty());
+        const QList<QRect> rects{{0, 0, 275, 116}, {275, 0, 275, 50}, {0, 116, 400, 100}};
+        QVERIFY(Ui::StackBelow(0, rects, -102).isEmpty());
     }
     void growingPushesEverythingInTheWay() {
         // Main and EQ shaded side by side, playlist under both: unshading main pushes it down.
-        const QList<QRect> r{{0, 0, 275, 14}, {275, 0, 275, 14}, {0, 14, 550, 232}};
-        QCOMPARE(Ui::StackBelow(0, r, 102), QList<int>{2});
+        const QList<QRect> rects{{0, 0, 275, 14}, {275, 0, 275, 14}, {0, 14, 550, 232}};
+        QCOMPARE(Ui::StackBelow(0, rects, 102), QList<int>{2});
         // ...and a window further down that the pushed one would run into.
         const QList<QRect> r2{{0, 0, 275, 14}, {0, 14, 275, 100}, {0, 150, 275, 50}};
         QCOMPARE(Ui::StackBelow(0, r2, 102), (QList<int>{1, 2}));
     }
     void hiddenWindowsNeverBlock() {
         // Wide playlist under main; a hidden window overlaps where it would move to.
-        const QList<QRect> r{{0, 0, 275, 116}, {0, 116, 400, 232}, {375, 100, 275, 116}};
-        QVERIFY(Ui::StackBelow(0, r, -102).isEmpty());
-        QCOMPARE(Ui::StackBelow(0, r, -102, {true, true, false}), QList<int>{1});
+        const QList<QRect> rects{{0, 0, 275, 116}, {0, 116, 400, 232}, {375, 100, 275, 116}};
+        QVERIFY(Ui::StackBelow(0, rects, -102).isEmpty());
+        QCOMPARE(Ui::StackBelow(0, rects, -102, {true, true, false}), QList<int>{1});
         // ...nor hold a window up.
         const QList<QRect> r2{{0, 0, 275, 116}, {275, 0, 275, 116}, {0, 116, 550, 232}};
         QCOMPARE(Ui::StackBelow(0, r2, -102, {true, false, true}), QList<int>{2});
     }
     void unrelatedWindowsStay() {
-        const QList<QRect> r{{0, 0, 275, 116}, {600, 116, 275, 116}, {0, 300, 275, 50}};
-        QVERIFY(Ui::StackBelow(0, r, -102).isEmpty());
+        const QList<QRect> rects{{0, 0, 275, 116}, {600, 116, 275, 116}, {0, 300, 275, 50}};
+        QVERIFY(Ui::StackBelow(0, rects, -102).isEmpty());
     }
 };
 

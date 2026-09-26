@@ -20,8 +20,8 @@ const QString kPlayerIface = QStringLiteral("org.mpris.MediaPlayer2.Player");
 QDBusObjectPath TrackPath(const QString& id) {
     // Object paths allow [A-Za-z0-9_] only.
     QString safe;
-    for (QChar c : id) {
-        safe += (c.isLetterOrNumber() && c.unicode() < 128) ? c : u'_';
+    for (QChar character : id) {
+        safe += (character.isLetterOrNumber() && character.unicode() < 128) ? character : u'_';
     }
     return QDBusObjectPath(
         QStringLiteral("/io/github/kickoman/qiyaa/track/")
@@ -118,8 +118,8 @@ QString Mpris::playbackStatus() const {
 }
 
 QVariantMap Mpris::metadata() const {
-    const Yandex::Track* t = mediaControls->player()->currentTrack();
-    if (!t) {
+    const Yandex::Track* track = mediaControls->player()->currentTrack();
+    if (!track) {
         return {
             {QStringLiteral("mpris:trackid"),
              QVariant::fromValue(
@@ -128,14 +128,14 @@ QVariantMap Mpris::metadata() const {
         };
     }
     QVariantMap m{
-        {QStringLiteral("mpris:trackid"), QVariant::fromValue(TrackPath(t->id))},
-        {QStringLiteral("mpris:length"), qlonglong(t->durationMs) * 1000},
-        {QStringLiteral("xesam:title"), t->title},
-        {QStringLiteral("xesam:artist"), t->artists},
-        {QStringLiteral("xesam:url"), t->webUrl().toString()},
+        {QStringLiteral("mpris:trackid"), QVariant::fromValue(TrackPath(track->id))},
+        {QStringLiteral("mpris:length"), qlonglong(track->durationMs) * 1000},
+        {QStringLiteral("xesam:title"), track->title},
+        {QStringLiteral("xesam:artist"), track->artists},
+        {QStringLiteral("xesam:url"), track->webUrl().toString()},
     };
-    if (!t->albumTitle.isEmpty()) {
-        m.insert(QStringLiteral("xesam:album"), t->albumTitle);
+    if (!track->albumTitle.isEmpty()) {
+        m.insert(QStringLiteral("xesam:album"), track->albumTitle);
     }
     if (const QUrl art = mediaControls->artUrl(); !art.isEmpty()) {
         m.insert(QStringLiteral("mpris:artUrl"), art.toString());
@@ -188,10 +188,10 @@ QString MprisPlayerAdaptor::loopStatus() const {
                                                  : QStringLiteral("None");
 }
 
-void MprisPlayerAdaptor::setLoopStatus(const QString& s) {
+void MprisPlayerAdaptor::setLoopStatus(const QString& text) {
     // Winamp repeats the playlist; "Track" is the closest we have.
     mpris->controls()->player()->setRepeat(
-        s != QLatin1String("None")
+        text != QLatin1String("None")
     );  // notifies via modesChanged
 }
 
@@ -212,10 +212,10 @@ double MprisPlayerAdaptor::volume() const {
     return f ? f() / 100.0 : 1.0;
 }
 
-void MprisPlayerAdaptor::setVolume(double v) {
+void MprisPlayerAdaptor::setVolume(double value) {
     // The app emits MediaControls::volumeChanged, which notifies clients.
     if (const auto& f = mpris->controls()->hooks().setVolume) {
-        f(int(std::lround(std::clamp(v, 0.0, 1.0) * 100)));
+        f(int(std::lround(std::clamp(value, 0.0, 1.0) * 100)));
     }
 }
 

@@ -130,8 +130,8 @@ void MilkdropWindow::selectPreset(int index, bool smooth, bool byUser) {
         }
     }
     selectedIndex = index;
-    if (Vis::MilkdropView* v = fullView ? fullView.get() : milkdropView) {
-        v->loadPreset(milk, smooth);
+    if (Vis::MilkdropView* view = fullView ? fullView.get() : milkdropView) {
+        view->loadPreset(milk, smooth);
     }
     Q_EMIT presetChanged(currentPreset(), byUser);
     Q_EMIT settingsChanged();
@@ -262,18 +262,18 @@ void MilkdropWindow::setFullScreenMode(bool on) {
         wireView(fullView.get());
         fullView->setTitle(QStringLiteral("QiYaa: Milkdrop"));
         fullView->setCursor(Qt::BlankCursor);
-        if (QScreen* s = screen()) {
-            fullView->setScreen(s);
-            fullView->setGeometry(s->geometry());
+        if (QScreen* targetScreen = screen()) {
+            fullView->setScreen(targetScreen);
+            fullView->setGeometry(targetScreen->geometry());
         }
         fullView->showFullScreen();
         fullView->requestActivate();
     } else {
         // Possibly called from one of its own event handlers: delete it later.
-        Vis::MilkdropView* v = fullView.release();
-        v->setRendering(false);
-        v->hide();
-        v->deleteLater();
+        Vis::MilkdropView* view = fullView.release();
+        view->setRendering(false);
+        view->hide();
+        view->deleteLater();
         if (selectedIndex >= 0 && milkdropView) {
             milkdropView->loadPreset(presetList.data(selectedIndex), false);
         }
@@ -335,10 +335,10 @@ void MilkdropWindow::onStaysBlack() {
     if (name.isEmpty()) {
         return;
     }
-    const Vis::MilkdropView* v = fullView ? fullView.get() : milkdropView;
+    const Vis::MilkdropView* view = fullView ? fullView.get() : milkdropView;
     qWarning(
         "Milkdrop: \"%s\" shows only black here (%s), skipping it", qPrintable(name),
-        v ? qPrintable(v->glInfo()) : "?"
+        view ? qPrintable(view->glInfo()) : "?"
     );
     // Black one after another: something else is wrong (no sound reaching it,
     // a driver problem), so stop blaming presets.
@@ -427,12 +427,12 @@ void MilkdropWindow::showMenu(const QPoint& globalPos) {
             const QString label = isBlack(i)
                 ? presetList.at(i).name + QStringLiteral("  (здесь чёрный)")
                 : presetList.at(i).name;
-            QAction* a = list->addAction(label, this, [this, i] {
+            QAction* action = list->addAction(label, this, [this, i] {
                 failuresInARow = 0;
                 selectPreset(i);
             });
-            a->setCheckable(true);
-            a->setChecked(i == selectedIndex);
+            action->setCheckable(true);
+            action->setChecked(i == selectedIndex);
         }
     }
     menu->addSeparator();
@@ -452,10 +452,10 @@ void MilkdropWindow::showMenu(const QPoint& globalPos) {
     for (int s : {15, 30, 60, 120, 300}) {
         const QString label =
             s < 60 ? QStringLiteral("%1 с").arg(s) : QStringLiteral("%1 мин").arg(s / 60);
-        QAction* a = every->addAction(label, this, [this, s] { setPresetSeconds(s); });
-        a->setCheckable(true);
-        a->setChecked(s == switchIntervalSeconds);
-        group->addAction(a);
+        QAction* action = every->addAction(label, this, [this, s] { setPresetSeconds(s); });
+        action->setCheckable(true);
+        action->setChecked(s == switchIntervalSeconds);
+        group->addAction(action);
     }
     menu->addSeparator();
     QAction* full = menu->addAction(QStringLiteral("Во весь экран\tF"), this, [this](bool on) {
@@ -493,17 +493,17 @@ void MilkdropWindow::showMenu(const QPoint& globalPos) {
     menu->popup(globalPos);
 }
 
-void MilkdropWindow::paintContent(QPainter& p, const QRect& area) {
-    p.fillRect(area, Qt::black);
+void MilkdropWindow::paintContent(QPainter& painter, const QRect& area) {
+    painter.fillRect(area, Qt::black);
     const QString failure = this->failure();
     if (failure.isEmpty()) {
         return;
     }
-    QFont f = p.font();
+    QFont f = painter.font();
     f.setPixelSize(9);
-    p.setFont(f);
-    p.setPen(QColor(0, 200, 0));
-    p.drawText(
+    painter.setFont(f);
+    painter.setPen(QColor(0, 200, 0));
+    painter.drawText(
         area.adjusted(4, 4, -4, -4), Qt::AlignCenter | Qt::TextWordWrap,
         QStringLiteral("Milkdrop недоступен: %1").arg(failure)
     );
@@ -521,26 +521,26 @@ void MilkdropWindow::placeView() {
     if (!container) {
         return;
     }
-    const QRect r = contentRect();
+    const QRect rect = contentRect();
     const double s = scale();
-    const int left = qRound(r.left() * s), top = qRound(r.top() * s);
-    const int right = qRound((r.right() + 1) * s), bottom = qRound((r.bottom() + 1) * s);
+    const int left = qRound(rect.left() * s), top = qRound(rect.top() * s);
+    const int right = qRound((rect.right() + 1) * s), bottom = qRound((rect.bottom() + 1) * s);
     container->setGeometry(left, top, right - left, bottom - top);
 }
 
-void MilkdropWindow::resizeEvent(QResizeEvent* e) {
-    GenWindow::resizeEvent(e);
+void MilkdropWindow::resizeEvent(QResizeEvent* event) {
+    GenWindow::resizeEvent(event);
     placeView();
 }
 
-void MilkdropWindow::showEvent(QShowEvent* e) {
-    GenWindow::showEvent(e);
+void MilkdropWindow::showEvent(QShowEvent* event) {
+    GenWindow::showEvent(event);
     ensureView();
     updateRendering();
 }
 
-void MilkdropWindow::hideEvent(QHideEvent* e) {
-    GenWindow::hideEvent(e);
+void MilkdropWindow::hideEvent(QHideEvent* event) {
+    GenWindow::hideEvent(event);
     setFullScreenMode(false);
     updateRendering();
 }

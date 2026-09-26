@@ -21,19 +21,19 @@ Q_SIGNALS:
 protected:
     // Inner area in skin coordinates (inside the frame).
     QRect contentRect() const;
-    virtual void paintContent(QPainter& p, const QRect& area) = 0;
+    virtual void paintContent(QPainter& painter, const QRect& area) = 0;
     virtual bool contentMousePress(QPoint, Qt::MouseButton) { return false; }
 
-    void paintSkin(QPainter& p) override;
+    void paintSkin(QPainter& painter) override;
     bool isDragArea(QPoint pos) const override;
     bool skinMousePress(QPoint pos, Qt::MouseButton button) override;
     void skinMouseMove(QPoint pos) override;
     void skinMouseRelease(QPoint pos, Qt::MouseButton button) override;
-    void closeEvent(QCloseEvent* e) override;
+    void closeEvent(QCloseEvent* event) override;
 
 private:
     enum class Drag { None, Close, Resize };
-    void paintFrame(QPainter& p);
+    void paintFrame(QPainter& painter);
 
     QString titleText;
     QSize resizeSteps{0, 0};

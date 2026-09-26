@@ -68,28 +68,28 @@ public:
     void setBaseUrl(const QString& base) { baseUrl = base; }
 
     // Generic requests.
-    void getJson(const QString& path, const QUrlQuery& query, TJsonCallback cb);
-    void postForm(const QString& path, const TForm& form, TJsonCallback cb);
-    void postJson(const QString& path, const QJsonObject& body, TJsonCallback cb);
+    void getJson(const QString& path, const QUrlQuery& query, TJsonCallback callback);
+    void postForm(const QString& path, const TForm& form, TJsonCallback callback);
+    void postJson(const QString& path, const QJsonObject& body, TJsonCallback callback);
 
     // Typed calls used by the player.
-    void accountStatus(TCallback<Account> cb);
-    void tracks(const QStringList& ids, TCallback<QList<Track>> cb);
-    void resolveTrackUrl(const QString& trackId, TCallback<ResolvedUrl> cb);
+    void accountStatus(TCallback<Account> callback);
+    void tracks(const QStringList& ids, TCallback<QList<Track>> callback);
+    void resolveTrackUrl(const QString& trackId, TCallback<ResolvedUrl> callback);
     void reportPlayStarted(const Account& account, const Track& track, const QString& playId);
 
     // POSTs (play reports, wave feedback) still on their way; see postsSettled().
     int pendingPosts() const { return pendingPostCount; }
 
-    static Track ParseTrack(const QJsonValue& v);
-    static QString IdString(const QJsonValue& v);  // ids come as numbers or strings
+    static Track ParseTrack(const QJsonValue& value);
+    static QString IdString(const QJsonValue& value);  // ids come as numbers or strings
 
 Q_SIGNALS:
     // pendingPosts() dropped to 0 (after the callbacks, which may send more).
     void postsSettled();
 
 private:
-    void handleJson(QNetworkReply* reply, TJsonCallback cb);
+    void handleJson(QNetworkReply* reply, TJsonCallback callback);
     void trackPost(QNetworkReply* reply);
 
     QNetworkAccessManager* networkManager;

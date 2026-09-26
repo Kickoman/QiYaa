@@ -39,8 +39,8 @@ QString CoverCache::localFile(const QUrl& url) const {
     return QFile::exists(path) ? path : QString();
 }
 
-void CoverCache::remember(const QUrl& url, const QImage& img) {
-    images.insert(url, img);
+void CoverCache::remember(const QUrl& url, const QImage& image) {
+    images.insert(url, image);
     recentlyUsed.removeAll(url);
     recentlyUsed.append(url);
     while (recentlyUsed.size() > kMemoryItems) {
@@ -59,10 +59,10 @@ QImage CoverCache::get(const QUrl& url) {
     }
     // On disk from an earlier run?
     if (const QString path = localFile(url); !path.isEmpty()) {
-        const QImage img(path);
-        if (!img.isNull()) {
-            remember(url, img);
-            return img;
+        const QImage image(path);
+        if (!image.isNull()) {
+            remember(url, image);
+            return image;
         }
     }
     if (pending.contains(url) || !networkManager) {
@@ -86,15 +86,15 @@ QImage CoverCache::get(const QUrl& url) {
             return;
         }
         const QByteArray bytes = reply->readAll();
-        QImage img;
-        if (!img.loadFromData(bytes)) {
+        QImage image;
+        if (!image.loadFromData(bytes)) {
             return;
         }
-        QFile f(self->pathFor(url));
-        if (f.open(QIODevice::WriteOnly)) {
-            f.write(bytes);
+        QFile file(self->pathFor(url));
+        if (file.open(QIODevice::WriteOnly)) {
+            file.write(bytes);
         }
-        self->remember(url, img);
+        self->remember(url, image);
         Q_EMIT self->ready(url);
     });
     return {};

@@ -19,9 +19,9 @@ constexpr QSize kMinSize{275, 116};
 constexpr int kStepW = 25, kStepH = 29;
 constexpr int kTopH = 20, kBottomH = 14, kLeftW = 11, kRightW = 8;
 
-bool RectContains(const QRect& r, QPoint p) {
-    return p.x() >= r.x() && p.y() >= r.y() && p.x() < r.x() + r.width()
-        && p.y() < r.y() + r.height();
+bool RectContains(const QRect& rect, QPoint point) {
+    return point.x() >= rect.x() && point.y() >= rect.y() && point.x() < rect.x() + rect.width()
+        && point.y() < rect.y() + rect.height();
 }
 }  // namespace
 
@@ -42,92 +42,106 @@ void GenWindow::setSizeSteps(QSize steps) {
 }
 
 QRect GenWindow::contentRect() const {
-    const QSize s = skinSize();
-    return {kLeftW, kTopH, s.width() - kLeftW - kRightW, s.height() - kTopH - kBottomH};
+    const QSize size = skinSize();
+    return {kLeftW, kTopH, size.width() - kLeftW - kRightW, size.height() - kTopH - kBottomH};
 }
 
-void GenWindow::paintFrame(QPainter& p) {
-    const Skins::Skin& sk = skin();
-    const int w = skinSize().width(), h = skinSize().height();
+void GenWindow::paintFrame(QPainter& painter) {
+    const Skins::Skin& activeSkin = skin();
+    const int window = skinSize().width(), h = skinSize().height();
     const bool active = isActiveWindow();
 
     // Top: fill everything, then corners, ends and the title in the middle.
     const QRect centerFill = active ? Skins::GenWindowSprites::kTopCenterFillSelected
                                     : Skins::GenWindowSprites::kTopCenterFill;
-    for (int x = 0; x < w; x += 25) {
-        sk.draw(p, TSheet::Gen, centerFill, {x, 0});
+    for (int x = 0; x < window; x += 25) {
+        activeSkin.draw(painter, TSheet::Gen, centerFill, {x, 0});
     }
-    const int titleW = sk.genTextWidth(titleText) + 7;  // 4 px left + 3 px right padding
-    const int fill = std::max(0, (w - 100 - titleW) / 2);
+    const int titleW = activeSkin.genTextWidth(titleText) + 7;  // 4 px left + 3 px right padding
+    const int fill = std::max(0, (window - 100 - titleW) / 2);
     const QRect lrFill = active ? Skins::GenWindowSprites::kTopLeftRightFillSelected
                                 : Skins::GenWindowSprites::kTopLeftRightFill;
     for (int x = 25; x < 25 + fill; x += 25) {
-        sk.draw(p, TSheet::Gen, lrFill.adjusted(0, 0, std::min(0, 25 + fill - x - 25), 0), {x, 0});
+        activeSkin.draw(
+            painter, TSheet::Gen, lrFill.adjusted(0, 0, std::min(0, 25 + fill - x - 25), 0), {x, 0}
+        );
     }
     const int rightFillX = 25 + fill + 25 + titleW + 25;
-    for (int x = rightFillX; x < w - 25; x += 25) {
-        sk.draw(p, TSheet::Gen, lrFill.adjusted(0, 0, std::min(0, w - 25 - x - 25), 0), {x, 0});
+    for (int x = rightFillX; x < window - 25; x += 25) {
+        activeSkin.draw(
+            painter, TSheet::Gen, lrFill.adjusted(0, 0, std::min(0, window - 25 - x - 25), 0),
+            {x, 0}
+        );
     }
-    sk.draw(
-        p, TSheet::Gen,
+    activeSkin.draw(
+        painter, TSheet::Gen,
         active ? Skins::GenWindowSprites::kTopLeftSelected : Skins::GenWindowSprites::kTopLeft,
         {0, 0}
     );
-    sk.draw(
-        p, TSheet::Gen,
+    activeSkin.draw(
+        painter, TSheet::Gen,
         active ? Skins::GenWindowSprites::kTopLeftEndSelected
                : Skins::GenWindowSprites::kTopLeftEnd,
         {25 + fill, 0}
     );
-    sk.drawGenText(p, {25 + fill + 25 + 4, 4}, titleText, active);
-    sk.draw(
-        p, TSheet::Gen,
+    activeSkin.drawGenText(painter, {25 + fill + 25 + 4, 4}, titleText, active);
+    activeSkin.draw(
+        painter, TSheet::Gen,
         active ? Skins::GenWindowSprites::kTopRightEndSelected
                : Skins::GenWindowSprites::kTopRightEnd,
         {25 + fill + 25 + titleW, 0}
     );
-    sk.draw(
-        p, TSheet::Gen,
+    activeSkin.draw(
+        painter, TSheet::Gen,
         active ? Skins::GenWindowSprites::kTopRightSelected : Skins::GenWindowSprites::kTopRight,
-        {w - 25, 0}
+        {window - 25, 0}
     );
     if (activeDrag == Drag::Close) {
-        sk.draw(p, TSheet::Gen, Skins::GenWindowSprites::kCloseSelected, {w - 11, 3});
+        activeSkin.draw(
+            painter, TSheet::Gen, Skins::GenWindowSprites::kCloseSelected, {window - 11, 3}
+        );
     }
 
     // Sides: tiles, with the bottom pieces anchored to the bottom.
     for (int y = kTopH; y < h - kBottomH; y += 29) {
         const int tile = std::min(29, h - kBottomH - y);
-        sk.draw(
-            p, TSheet::Gen, Skins::GenWindowSprites::kMiddleLeft.adjusted(0, 0, 0, tile - 29),
+        activeSkin.draw(
+            painter, TSheet::Gen, Skins::GenWindowSprites::kMiddleLeft.adjusted(0, 0, 0, tile - 29),
             {0, y}
         );
-        sk.draw(
-            p, TSheet::Gen, Skins::GenWindowSprites::kMiddleRight.adjusted(0, 0, 0, tile - 29),
-            {w - kRightW, y}
+        activeSkin.draw(
+            painter, TSheet::Gen,
+            Skins::GenWindowSprites::kMiddleRight.adjusted(0, 0, 0, tile - 29),
+            {window - kRightW, y}
         );
     }
-    sk.draw(p, TSheet::Gen, Skins::GenWindowSprites::kMiddleLeftBottom, {0, h - kBottomH - 24});
-    sk.draw(
-        p, TSheet::Gen, Skins::GenWindowSprites::kMiddleRightBottom,
-        {w - kRightW, h - kBottomH - 24}
+    activeSkin.draw(
+        painter, TSheet::Gen, Skins::GenWindowSprites::kMiddleLeftBottom, {0, h - kBottomH - 24}
+    );
+    activeSkin.draw(
+        painter, TSheet::Gen, Skins::GenWindowSprites::kMiddleRightBottom,
+        {window - kRightW, h - kBottomH - 24}
     );
 
     // Bottom.
-    for (int x = 125; x < w - 125; x += 25) {
-        sk.draw(p, TSheet::Gen, Skins::GenWindowSprites::kBottomFill, {x, h - kBottomH});
+    for (int x = 125; x < window - 125; x += 25) {
+        activeSkin.draw(
+            painter, TSheet::Gen, Skins::GenWindowSprites::kBottomFill, {x, h - kBottomH}
+        );
     }
-    sk.draw(p, TSheet::Gen, Skins::GenWindowSprites::kBottomLeft, {0, h - kBottomH});
-    sk.draw(p, TSheet::Gen, Skins::GenWindowSprites::kBottomRight, {w - 125, h - kBottomH});
+    activeSkin.draw(painter, TSheet::Gen, Skins::GenWindowSprites::kBottomLeft, {0, h - kBottomH});
+    activeSkin.draw(
+        painter, TSheet::Gen, Skins::GenWindowSprites::kBottomRight, {window - 125, h - kBottomH}
+    );
 }
 
-void GenWindow::paintSkin(QPainter& p) {
+void GenWindow::paintSkin(QPainter& painter) {
     const QRect area = contentRect();
-    p.save();
-    p.setClipRect(area);
-    paintContent(p, area);
-    p.restore();
-    paintFrame(p);
+    painter.save();
+    painter.setClipRect(area);
+    paintContent(painter, area);
+    painter.restore();
+    paintFrame(painter);
 }
 
 bool GenWindow::isDragArea(QPoint pos) const {
@@ -138,14 +152,14 @@ bool GenWindow::skinMousePress(QPoint pos, Qt::MouseButton button) {
     if (button != Qt::LeftButton) {
         return false;
     }
-    const int w = skinSize().width(), h = skinSize().height();
+    const int window = skinSize().width(), h = skinSize().height();
     dragStart = pos;
-    if (RectContains(QRect(w - 11, 3, 9, 9), pos)) {
+    if (RectContains(QRect(window - 11, 3, 9, 9), pos)) {
         activeDrag = Drag::Close;
         update();
         return true;
     }
-    if (RectContains(QRect(w - 20, h - 20, 20, 20), pos)) {
+    if (RectContains(QRect(window - 20, h - 20, 20, 20), pos)) {
         activeDrag = Drag::Resize;
         dragStartSteps = resizeSteps;
         return true;
@@ -179,8 +193,8 @@ void GenWindow::skinMouseRelease(QPoint pos, Qt::MouseButton button) {
     update();
 }
 
-void GenWindow::closeEvent(QCloseEvent* e) {
-    e->ignore();
+void GenWindow::closeEvent(QCloseEvent* event) {
+    event->ignore();
     Q_EMIT closeRequested();
 }
 

@@ -11,13 +11,13 @@ constexpr char kSignSalt[] = "XGRlBW9FXlekgbPrRHuSiA";
 
 QList<DownloadVariant> ParseDownloadVariants(const QJsonArray& result) {
     QList<DownloadVariant> out;
-    for (const QJsonValue& v : result) {
-        const QJsonObject o = v.toObject();
+    for (const QJsonValue& value : result) {
+        const QJsonObject object = value.toObject();
         DownloadVariant d;
-        d.codec = o.value(QStringLiteral("codec")).toString();
-        d.bitrateKbps = o.value(QStringLiteral("bitrateInKbps")).toInt();
-        d.preview = o.value(QStringLiteral("preview")).toBool();
-        d.downloadInfoUrl = QUrl(o.value(QStringLiteral("downloadInfoUrl")).toString());
+        d.codec = object.value(QStringLiteral("codec")).toString();
+        d.bitrateKbps = object.value(QStringLiteral("bitrateInKbps")).toInt();
+        d.preview = object.value(QStringLiteral("preview")).toBool();
+        d.downloadInfoUrl = QUrl(object.value(QStringLiteral("downloadInfoUrl")).toString());
         if (d.downloadInfoUrl.isValid()) {
             out.append(d);
         }
@@ -51,12 +51,12 @@ bool ParseDownloadInfo(const QByteArray& json, DownloadInfo* out) {
     if (err.error != QJsonParseError::NoError || !doc.isObject()) {
         return false;
     }
-    const QJsonObject o = doc.object();
+    const QJsonObject object = doc.object();
     auto str = [&](const char* key) {
-        const QJsonValue v = o.value(QLatin1String(key));
-        return v.isString() ? v.toString()
-            : v.isDouble()  ? QString::number(qint64(v.toDouble()))
-                            : QString();
+        const QJsonValue value = object.value(QLatin1String(key));
+        return value.isString() ? value.toString()
+            : value.isDouble()  ? QString::number(qint64(value.toDouble()))
+                                : QString();
     };
     out->host = str("host");
     out->path = str("path");

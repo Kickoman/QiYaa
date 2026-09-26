@@ -17,8 +17,8 @@ QList<MilkdropPresets::Preset> ScanPresetDirectory(const QString& dir, bool buil
     }
     const QFileInfoList files =
         QDir(dir).entryInfoList({QStringLiteral("*.milk")}, QDir::Files | QDir::Readable);
-    for (const QFileInfo& f : files) {
-        out.append({f.completeBaseName(), f.filePath(), builtIn});
+    for (const QFileInfo& file : files) {
+        out.append({file.completeBaseName(), file.filePath(), builtIn});
     }
     std::sort(out.begin(), out.end(), [](const auto& a, const auto& b) {
         return QString::compare(a.name, b.name, Qt::CaseInsensitive) < 0;
@@ -44,11 +44,11 @@ QByteArray MilkdropPresets::data(int index) const {
     if (index < 0 || index >= size()) {
         return {};
     }
-    QFile f(presetList[index].path);
-    if (!f.open(QIODevice::ReadOnly)) {
+    QFile file(presetList[index].path);
+    if (!file.open(QIODevice::ReadOnly)) {
         return {};
     }
-    return f.readAll();  // QByteArray keeps a terminating NUL after its data
+    return file.readAll();  // QByteArray keeps a terminating NUL after its data
 }
 
 int MilkdropPresets::next(int current) const {

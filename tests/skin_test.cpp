@@ -7,12 +7,12 @@ class TestSkin : public QObject {
     Q_OBJECT
 private Q_SLOTS:
     void baseSkinLoads() {
-        const Skins::Skin s = Skins::Skin::BuiltinBase();
-        QVERIFY(s.isValid());
-        QCOMPARE(s.sheet(Skins::Skin::Sheet::Main).size(), QSize(275, 116));
-        QVERIFY(!s.sheet(Skins::Skin::Sheet::CButtons).isNull());
-        QVERIFY(!s.sheet(Skins::Skin::Sheet::Text).isNull());
-        QCOMPARE(s.visColors().size(), 24);
+        const Skins::Skin skin = Skins::Skin::BuiltinBase();
+        QVERIFY(skin.isValid());
+        QCOMPARE(skin.sheet(Skins::Skin::Sheet::Main).size(), QSize(275, 116));
+        QVERIFY(!skin.sheet(Skins::Skin::Sheet::CButtons).isNull());
+        QVERIFY(!skin.sheet(Skins::Skin::Sheet::Text).isNull());
+        QCOMPARE(skin.visColors().size(), 24);
     }
     void allBuiltinSkinsLoad_data() {
         QTest::addColumn<QString>("path");
@@ -23,20 +23,20 @@ private Q_SLOTS:
     void allBuiltinSkinsLoad() {
         QFETCH(QString, path);
         const Skins::Skin base = Skins::Skin::BuiltinBase();
-        Skins::Skin s;
+        Skins::Skin skin;
         QString err;
-        QVERIFY2(s.loadFromFile(path, &base, &err), qPrintable(err));
+        QVERIFY2(skin.loadFromFile(path, &base, &err), qPrintable(err));
         for (auto sheet :
              {Skins::Skin::Sheet::Main, Skins::Skin::Sheet::CButtons, Skins::Skin::Sheet::TitleBar,
               Skins::Skin::Sheet::Numbers, Skins::Skin::Sheet::PosBar, Skins::Skin::Sheet::Volume,
               Skins::Skin::Sheet::Balance, Skins::Skin::Sheet::Text}) {
-            QVERIFY(!s.sheet(sheet).isNull());
+            QVERIFY(!skin.sheet(sheet).isNull());
         }
     }
     void garbageIsRejected() {
-        Skins::Skin s;
+        Skins::Skin skin;
         QString err;
-        QVERIFY(!s.loadFromWsz("definitely not a zip", nullptr, &err));
+        QVERIFY(!skin.loadFromWsz("definitely not a zip", nullptr, &err));
         QVERIFY(!err.isEmpty());
     }
 };

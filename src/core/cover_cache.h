@@ -30,7 +30,7 @@ Q_SIGNALS:
 
 private:
     QString pathFor(const QUrl& url) const;
-    void remember(const QUrl& url, const QImage& img);
+    void remember(const QUrl& url, const QImage& image);
 
     QNetworkAccessManager* networkManager;
     QString directory;

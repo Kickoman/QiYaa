@@ -92,46 +92,46 @@ public:
         peakFrames.fill(0);
     }
 
-    void update(const VisFrame& f) override {
+    void update(const VisFrame& frame) override {
         // Logarithmic buckets from ~60 Hz to ~16 kHz.
-        const double binHz = double(f.sampleRate) / f.fftSize;
-        const double lo = 60.0, hi = std::min(16000.0, f.sampleRate / 2.0);
-        for (int b = 0; b < kBars; ++b) {
-            const double f0 = lo * std::pow(hi / lo, double(b) / kBars);
-            const double f1 = lo * std::pow(hi / lo, double(b + 1) / kBars);
-            int i0 = std::clamp(int(f0 / binHz), 1, int(f.spectrum.size()) - 1);
-            int i1 = std::clamp(int(std::ceil(f1 / binHz)), i0 + 1, int(f.spectrum.size()));
+        const double binHz = double(frame.sampleRate) / frame.fftSize;
+        const double lo = 60.0, hi = std::min(16000.0, frame.sampleRate / 2.0);
+        for (int value = 0; value < kBars; ++value) {
+            const double f0 = lo * std::pow(hi / lo, double(value) / kBars);
+            const double f1 = lo * std::pow(hi / lo, double(value + 1) / kBars);
+            int i0 = std::clamp(int(f0 / binHz), 1, int(frame.spectrum.size()) - 1);
+            int i1 = std::clamp(int(std::ceil(f1 / binHz)), i0 + 1, int(frame.spectrum.size()));
             float peakDb = kMinDb;
             for (int i = i0; i < i1; ++i) {
-                peakDb = std::max(peakDb, f.spectrum[i]);
+                peakDb = std::max(peakDb, frame.spectrum[i]);
             }
             const float target = std::clamp((peakDb - kMinDb) / (kMaxDb - kMinDb), 0.0f, 1.0f);
             // Bars jump up and fall smoothly, like Winamp's "fast" falloff.
-            bars[b] = std::max(target, bars[b] - 0.07f);
-            float peak = peaks[b] - 0.0004f * peakFrames[b] * peakFrames[b];
-            if (peak < bars[b]) {
-                peak = bars[b];
-                peakFrames[b] = 0;
+            bars[value] = std::max(target, bars[value] - 0.07f);
+            float peak = peaks[value] - 0.0004f * peakFrames[value] * peakFrames[value];
+            if (peak < bars[value]) {
+                peak = bars[value];
+                peakFrames[value] = 0;
             } else {
-                ++peakFrames[b];
+                ++peakFrames[value];
             }
-            peaks[b] = std::max(peak, 0.0f);
+            peaks[value] = std::max(peak, 0.0f);
         }
     }
 
-    void render(QPainter& p, const QRect& area, const Skins::Skin& skin) const override {
+    void render(QPainter& painter, const QRect& area, const Skins::Skin& skin) const override {
         const int h = area.height();
-        for (int b = 0; b < kBars; ++b) {
-            const int x = area.x() + b * 4;
-            const int barH = int(std::ceil(bars[b] * h));
+        for (int value = 0; value < kBars; ++value) {
+            const int x = area.x() + value * 4;
+            const int barH = int(std::ceil(bars[value] * h));
             for (int i = 0; i < barH; ++i) {
                 // Colours 2..17: analyzer gradient from top to bottom.
                 const int colorIndex = 2 + (h - 1 - i) * 16 / h;
-                p.fillRect(x, area.y() + h - 1 - i, 3, 1, VisColor(skin, colorIndex));
+                painter.fillRect(x, area.y() + h - 1 - i, 3, 1, VisColor(skin, colorIndex));
             }
-            const int peakY = int(std::ceil(peaks[b] * h));
+            const int peakY = int(std::ceil(peaks[value] * h));
             if (peakY > 0) {
-                p.fillRect(x, area.y() + h - peakY, 3, 1, VisColor(skin, 23));
+                painter.fillRect(x, area.y() + h - peakY, 3, 1, VisColor(skin, 23));
             }
         }
     }
@@ -149,19 +149,19 @@ public:
     QString name() const override { return QStringLiteral("Осциллограф"); }
     void reset() override { ys.fill(-1); }
 
-    void update(const VisFrame& f) override {
-        const int n = int(f.left.size());
+    void update(const VisFrame& frame) override {
+        const int n = int(frame.left.size());
         // Winamp shows ~576 samples across the 75 px area.
         const int window = std::min(n, 576);
         const int start = n - window;
         for (int x = 0; x < kWidth; ++x) {
             const int i = start + x * window / kWidth;
-            const float v = 0.5f * (f.left[i] + f.right[i]);
+            const float v = 0.5f * (frame.left[i] + frame.right[i]);
             ys[x] = std::clamp(int(std::lround(7.5f - v * 8.0f)), 0, 15);
         }
     }
 
-    void render(QPainter& p, const QRect& area, const Skins::Skin& skin) const override {
+    void render(QPainter& painter, const QRect& area, const Skins::Skin& skin) const override {
         if (ys[0] < 0) {
             return;
         }
@@ -172,7 +172,7 @@ public:
             for (int yy = top; yy <= bottom; ++yy) {
                 // Colours 18..22: from the centre line outwards.
                 const int dist = int(std::abs(yy - 7.5f));
-                p.fillRect(
+                painter.fillRect(
                     area.x() + x, area.y() + yy, 1, 1, VisColor(skin, 18 + std::min(4, dist / 2))
                 );
             }

@@ -75,9 +75,9 @@ protected:
     void initializeGL() override;
     void resizeGL(int w, int h) override;
     void paintGL() override;
-    void mouseDoubleClickEvent(QMouseEvent* e) override;
-    void mousePressEvent(QMouseEvent* e) override;
-    void keyPressEvent(QKeyEvent* e) override;
+    void mouseDoubleClickEvent(QMouseEvent* event) override;
+    void mousePressEvent(QMouseEvent* event) override;
+    void keyPressEvent(QKeyEvent* event) override;
 
 private:
     void applySettings();

@@ -20,9 +20,9 @@ struct EqPreset {
 };
 
 // Winamp's centre notch is 33 (writing 0 dB gives 33 too), so 33 reads as exactly 0 dB.
-inline double EqfToDb(int v) {
-    v = std::clamp(v, 1, 64);
-    return v == 33 ? 0.0 : (double(v) - 1.0) / 63.0 * 24.0 - 12.0;
+inline double EqfToDb(int value) {
+    value = std::clamp(value, 1, 64);
+    return value == 33 ? 0.0 : (double(value) - 1.0) / 63.0 * 24.0 - 12.0;
 }
 
 inline int DbToEqf(double db) {
@@ -62,13 +62,13 @@ inline QList<EqPreset> BuiltinEqPresets() {
     };
     QList<EqPreset> out;
     for (const Raw& r : raw) {
-        EqPreset p;
-        p.name = QString::fromLatin1(r.name);
-        p.settings.preampDb = EqfToDb(r.preamp);
+        EqPreset preset;
+        preset.name = QString::fromLatin1(r.name);
+        preset.settings.preampDb = EqfToDb(r.preamp);
         for (int i = 0; i < kEqBands; ++i) {
-            p.settings.bandsDb[i] = EqfToDb(r.bands[i]);
+            preset.settings.bandsDb[i] = EqfToDb(r.bands[i]);
         }
-        out << p;
+        out << preset;
     }
     return out;
 }

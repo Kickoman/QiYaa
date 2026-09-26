@@ -90,7 +90,7 @@ public:
 
 private:
     void layoutWindows();
-    void installShortcuts(QWidget* w);
+    void installShortcuts(QWidget* widget);
     void showMainMenu(QPoint globalPos);
     void showSourcesMenu(QPoint globalPos);
     void fillWindowActions(QMenu* menu);

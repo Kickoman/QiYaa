@@ -81,11 +81,11 @@ Q_SIGNALS:
     void transportKey(int key);
 
 protected:
-    void paintContent(QPainter& p, const QRect& area) override;
+    void paintContent(QPainter& painter, const QRect& area) override;
     bool contentMousePress(QPoint pos, Qt::MouseButton button) override;
-    void resizeEvent(QResizeEvent* e) override;
-    void showEvent(QShowEvent* e) override;
-    void hideEvent(QHideEvent* e) override;
+    void resizeEvent(QResizeEvent* event) override;
+    void showEvent(QShowEvent* event) override;
+    void hideEvent(QHideEvent* event) override;
 
 private:
     void ensureView();

@@ -96,14 +96,14 @@ public:
 
     QString playbackStatus() const;
     QString loopStatus() const;
-    void setLoopStatus(const QString& s);
+    void setLoopStatus(const QString& text);
     double rate() const { return 1.0; }
     void setRate(double) { }
     bool shuffle() const;
     void setShuffle(bool on);
     QVariantMap metadata() const;
     double volume() const;
-    void setVolume(double v);
+    void setVolume(double value);
     qlonglong position() const;
     bool canControl() const { return true; }
     bool canSeek() const;

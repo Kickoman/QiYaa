@@ -54,19 +54,19 @@ public:
 
     bool isValid() const { return !sheets.value(Sheet::Main).isNull(); }
 
-    const QImage& sheet(Sheet s) const;
+    const QImage& sheet(Sheet sheet) const;
     bool numbersAreExtended() const { return numbersEx; }
 
     // Draws `src` from sheet `s` at `dst` (in skin pixels; painter handles scaling).
-    void draw(QPainter& p, Sheet s, const QRect& src, const QPoint& dst) const;
+    void draw(QPainter& painter, Sheet bitmap, const QRect& src, const QPoint& dst) const;
 
     // Title text of generic windows, from the A-Z letters in GEN.BMP
     // (variable width). Other characters are skipped. Returns the width.
-    int drawGenText(QPainter& p, const QPoint& at, const QString& text, bool selected) const;
+    int drawGenText(QPainter& painter, const QPoint& at, const QString& text, bool selected) const;
     int genTextWidth(const QString& text) const;
 
     // Draws text with the TEXT.BMP font. Returns the width in pixels.
-    int drawText(QPainter& p, const QPoint& at, const QString& text, int maxWidth = -1) const;
+    int drawText(QPainter& painter, const QPoint& at, const QString& text, int maxWidth = -1) const;
     static int TextWidth(const QString& text);
 
     const TRegionData& region() const { return regionData; }
@@ -87,6 +87,6 @@ private:
     bool numbersEx = false;
 };
 
-size_t qHash(Skin::Sheet s, size_t seed = 0) noexcept;
+size_t qHash(Skin::Sheet sheet, size_t seed = 0) noexcept;
 
 }  // namespace Skins
