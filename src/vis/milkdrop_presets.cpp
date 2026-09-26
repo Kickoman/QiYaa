@@ -11,7 +11,6 @@ namespace Vis {
 
 namespace {
 
-// The largest preset of the Cream of the Crop collection is 60 KB.
 constexpr qint64 kMaxPresetBytes = 1024 * 1024;
 
 QList<MilkdropPresets::Preset> ScanPresetDirectory(const QString& dir, bool builtIn) {
@@ -55,7 +54,7 @@ QByteArray MilkdropPresets::data(int index) const {
     if (!file.open(QIODevice::ReadOnly) || file.size() > kMaxPresetBytes) {
         return {};
     }
-    return file.readAll();  // QByteArray keeps a terminating NUL after its data
+    return file.readAll();
 }
 
 int MilkdropPresets::next(int current) const {

@@ -14,7 +14,6 @@ namespace {
 
 const QString kGoldenDir = QStringLiteral(QIYAA_TEST_DATA "/golden");
 
-// Differences as "n pixels differ, first at (x, y): actual #aarrggbb, expected #aarrggbb".
 QString DescribeDifference(const QImage& actual, const QImage& expected) {
     if (actual.size() != expected.size()) {
         return QStringLiteral("size %1x%2, expected %3x%4")

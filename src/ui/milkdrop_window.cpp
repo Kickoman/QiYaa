@@ -43,8 +43,6 @@ MilkdropWindow::MilkdropWindow(
 }
 
 void MilkdropWindow::ensureView() {
-    // Not in the constructor: probing OpenGL loads the GPU driver, which is
-    // wasted on everyone who never opens Milkdrop.
     if (viewTried) {
         return;
     }
@@ -142,7 +140,6 @@ void MilkdropWindow::selectPreset(const QString& name) {
     if (i < 0) {
         return;
     }
-    // Before the view is up this only picks what it starts with.
     if (!milkdropView || !milkdropView->isReady()) {
         selectedIndex = i;
         return;
@@ -164,7 +161,7 @@ void MilkdropWindow::previousPreset() {
         selectedIndex = -1;  // going back: don't record where we came from
         selectPreset(index);
         if (selectedIndex != index) {
-            selectedIndex = keep;  // unreadable: stay
+            selectedIndex = keep;
         }
         return;
     }
@@ -224,7 +221,6 @@ void MilkdropWindow::setPlaying(bool playing) {
         return;
     }
     musicPlaying = playing;
-    // Silence may legitimately fade a preset to black: judge only with music.
     if (milkdropView) {
         milkdropView->setBlackWatch(playing && blackInARow <= 5);
     }
@@ -286,8 +282,6 @@ int MilkdropWindow::followingPreset() const {
         return -1;
     }
     if (shuffleEnabled) {
-        // Draw only from the presets that can be shown (not by retrying random
-        // picks: those can all land on black ones).
         QList<int> candidates;
         for (int i = 0; i < presetList.size(); ++i) {
             if (i != selectedIndex && !isBlack(i)) {
@@ -298,7 +292,7 @@ int MilkdropWindow::followingPreset() const {
             return candidates.at(int(QRandomGenerator::global()->bounded(candidates.size())));
         }
     } else {
-        int index = selectedIndex;  // -1 before the first one: then next() starts at 0
+        int index = selectedIndex;
         const int others = selectedIndex >= 0 ? presetList.size() - 1 : presetList.size();
         for (int n = 0; n < others; ++n) {
             index = presetList.next(index);
@@ -307,7 +301,6 @@ int MilkdropWindow::followingPreset() const {
             }
         }
     }
-    // Every other preset is black: stay on this one if it isn't, else don't get stuck.
     if (selectedIndex >= 0 && !isBlack(selectedIndex)) {
         return selectedIndex;
     }
@@ -340,8 +333,6 @@ void MilkdropWindow::onStaysBlack() {
         "Milkdrop: \"%s\" shows only black here (%s), skipping it", qPrintable(name),
         view ? qPrintable(view->glInfo()) : "?"
     );
-    // Black one after another: something else is wrong (no sound reaching it,
-    // a driver problem), so stop blaming presets.
     if (++blackInARow > 5) {
         qWarning("Milkdrop: many presets in a row stay black; not skipping any more");
         if (milkdropView) {
@@ -363,13 +354,12 @@ void MilkdropWindow::onSwitchRequested(bool hardCut) {
         return;
     }
     failuresInARow = 0;
-    blackInARow = 0;  // this one played its full time without going black
+    blackInARow = 0;
     selectPreset(followingPreset(), !hardCut, false);
 }
 
 void MilkdropWindow::onPresetFailed(const QString& message) {
     qWarning("Milkdrop preset \"%s\" failed: %s", qPrintable(currentPreset()), qPrintable(message));
-    // projectM keeps showing the previous preset; move on to another one.
     if (++failuresInARow >= std::min(10, presetList.size())) {
         return;
     }
@@ -382,7 +372,7 @@ void MilkdropWindow::handleKey(int key, Qt::KeyboardModifiers mods) {
         case Qt::Key_N: nextPreset(); break;
         case Qt::Key_Backspace:
         case Qt::Key_P: previousPreset(); break;
-        case Qt::Key_H:  // hard cut: no blending
+        case Qt::Key_H:
             failuresInARow = 0;
             selectPreset(followingPreset(), false);
             break;
@@ -397,7 +387,7 @@ void MilkdropWindow::handleKey(int key, Qt::KeyboardModifiers mods) {
             }
             break;
         case Qt::Key_Escape: setFullScreenMode(false); break;
-        case Qt::Key_K:  // Ctrl+Shift+K toggles the visualization, as in Winamp
+        case Qt::Key_K:
             if ((mods & Qt::ControlModifier) && (mods & Qt::ShiftModifier)) {
                 setFullScreenMode(false);
                 Q_EMIT closeRequested();

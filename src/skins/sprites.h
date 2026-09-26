@@ -1,6 +1,4 @@
-// Sprite coordinates inside Winamp 2.x skin bitmaps and element positions in the
-// main window. Values taken from webamp (skinSprites.ts, css/main-window.css),
-// MIT, (c) Jordan Eldredge — see THIRD_PARTY.md.
+// Values from webamp's skinSprites.ts and css/main-window.css (MIT, see THIRD_PARTY.md).
 #pragma once
 
 #include <QPoint>
@@ -8,10 +6,8 @@
 
 namespace Skins {
 
-// ------------------------------------------------------------------ MAIN.BMP
 inline constexpr QRect kMainBackground{0, 0, 275, 116};
 
-// ------------------------------------------------------------------ TITLEBAR.BMP
 inline constexpr QRect kTitleBar{27, 15, 275, 14};
 inline constexpr QRect kTitleBarSelected{27, 0, 275, 14};
 inline constexpr QRect kOptionsButton{0, 0, 9, 9};
@@ -23,17 +19,15 @@ inline constexpr QRect kShadeButtonDown{9, 18, 9, 9};
 inline constexpr QRect kCloseButton{18, 0, 9, 9};
 inline constexpr QRect kCloseButtonDown{18, 9, 9, 9};
 inline constexpr QRect kClutterBar{304, 0, 8, 43};
-// Shade ("windowshade") mode of the main window.
 inline constexpr QRect kShadeBackground{27, 42, 275, 14};
 inline constexpr QRect kShadeBackgroundSelected{27, 29, 275, 14};
-inline constexpr QRect kShadeButtonShaded{0, 27, 9, 9};  // shade button while shaded
+inline constexpr QRect kShadeButtonShaded{0, 27, 9, 9};
 inline constexpr QRect kShadeButtonShadedDown{9, 27, 9, 9};
 inline constexpr QRect kShadePositionBackground{0, 36, 17, 7};
 inline constexpr QRect kShadePositionThumb{20, 36, 3, 7};
 inline constexpr QRect kShadePositionThumbLeft{17, 36, 3, 7};
 inline constexpr QRect kShadePositionThumbRight{23, 36, 3, 7};
 
-// ------------------------------------------------------------------ CBUTTONS.BMP
 struct ButtonSprite {
     QRect normal;
     QRect pressed;
@@ -45,19 +39,16 @@ inline constexpr ButtonSprite kStop{{69, 0, 23, 18}, {69, 18, 23, 18}};
 inline constexpr ButtonSprite kNext{{92, 0, 22, 18}, {92, 18, 22, 18}};
 inline constexpr ButtonSprite kEject{{114, 0, 22, 16}, {114, 16, 22, 16}};
 
-// ------------------------------------------------------------------ PLAYPAUS.BMP
 inline constexpr QRect kPlayingIndicator{0, 0, 9, 9};
 inline constexpr QRect kPausedIndicator{9, 0, 9, 9};
 inline constexpr QRect kStoppedIndicator{18, 0, 9, 9};
 inline constexpr QRect kWorkingIndicator{39, 0, 9, 9};
 
-// ------------------------------------------------------------------ MONOSTER.BMP
 inline constexpr QRect kStereo{0, 12, 29, 12};
 inline constexpr QRect kStereoSelected{0, 0, 29, 12};
 inline constexpr QRect kMono{29, 12, 27, 12};
 inline constexpr QRect kMonoSelected{29, 0, 27, 12};
 
-// ------------------------------------------------------------------ NUMBERS.BMP / NUMS_EX.BMP
 inline constexpr int kDigitWidth = 9;
 inline constexpr int kDigitHeight = 13;
 inline constexpr QRect DigitSprite(int d) {
@@ -66,12 +57,10 @@ inline constexpr QRect DigitSprite(int d) {
 inline constexpr QRect kMinusSign{20, 6, 5, 1};  // numbers.bmp
 inline constexpr QRect kMinusSignEx{99, 0, 9, 13};  // nums_ex.bmp
 
-// ------------------------------------------------------------------ POSBAR.BMP
 inline constexpr QRect kPositionBackground{0, 0, 248, 10};
 inline constexpr QRect kPositionThumb{248, 0, 29, 10};
 inline constexpr QRect kPositionThumbSelected{278, 0, 29, 10};
 
-// ------------------------------------------------------------------ SHUFREP.BMP
 struct ToggleSprite {
     QRect off;
     QRect offPressed;
@@ -87,8 +76,6 @@ inline constexpr ToggleSprite
 inline constexpr ToggleSprite
     kPlButton{{23, 61, 23, 12}, {69, 61, 23, 12}, {23, 73, 23, 12}, {69, 73, 23, 12}};
 
-// ------------------------------------------------------------------ VOLUME.BMP / BALANCE.BMP
-// Background is a vertical strip of 28 frames, 15px apart, 13px high.
 inline constexpr int kSliderFrameStep = 15;
 inline constexpr int kSliderFrameHeight = 13;
 inline constexpr QRect kVolumeThumb{15, 422, 14, 11};
@@ -96,17 +83,15 @@ inline constexpr QRect kVolumeThumbSelected{0, 422, 14, 11};
 inline constexpr QRect kBalanceThumb{15, 422, 14, 11};
 inline constexpr QRect kBalanceThumbSelected{0, 422, 14, 11};
 
-// ------------------------------------------------------------------ TEXT.BMP
 inline constexpr int kCharWidth = 5;
 inline constexpr int kCharHeight = 6;
 
-// ------------------------------------------------------------------ EQMAIN.BMP
 struct EqualizerSprites {
     static constexpr QSize kSize{275, 116};
     static constexpr QRect kBackground{0, 0, 275, 116};
     static constexpr QRect kTitleBar{0, 149, 275, 14};
     static constexpr QRect kTitleBarSelected{0, 134, 275, 14};
-    // Slider backgrounds: 28 frames (value low -> high), 14 per row, 15 px apart, rows 65 px apart.
+    // Slider backgrounds: 28 frames (low -> high), 14 per row 15 px apart, rows 65 px apart.
     static constexpr QPoint kSliderFrames{13, 164};
     static constexpr QSize kSliderSize{14, 63};
     static constexpr QRect kThumb{0, 164, 11, 11};
@@ -123,36 +108,30 @@ struct EqualizerSprites {
     static constexpr QRect kPresetsButton{224, 164, 44, 12};
     static constexpr QRect kPresetsButtonSelected{224, 176, 44, 12};
 
-    // Layout.
     static constexpr QPoint kClose{264, 3};
     static constexpr QPoint kOnPosition{14, 18};
     static constexpr QPoint kAutoPosition{40, 18};
     static constexpr QPoint kPresetsPosition{217, 18};
     static constexpr QPoint kGraphPosition{86, 17};
     static constexpr QPoint kPreampPosition{21, 38};
-    static constexpr int kBandsX = 78;  // first band
+    static constexpr int kBandsX = 78;
     static constexpr int kBandStep = 18;
     static constexpr int kSlidersY = 38;
-    static constexpr int kSliderTravel = 62 - 11;  // thumb travel in px
+    static constexpr int kSliderTravel = 62 - 11;
 };
 
-// ------------------------------------------------------------------ EQ_EX.BMP (equalizer shade)
 struct EqualizerShadeSprites {
     static constexpr QRect kShadeBackgroundSelected{0, 0, 275, 14};
     static constexpr QRect kShadeBackground{0, 15, 275, 14};
-    static constexpr QRect kVolumeThumb[3] =
-        {{1, 30, 3, 7}, {4, 30, 3, 7}, {7, 30, 3, 7}};  // left/centre/right
+    static constexpr QRect kVolumeThumb[3] = {{1, 30, 3, 7}, {4, 30, 3, 7}, {7, 30, 3, 7}};
     static constexpr QRect kBalanceThumb[3] = {{11, 30, 3, 7}, {14, 30, 3, 7}, {17, 30, 3, 7}};
-    static constexpr QRect kShadeButtonDown{
-        1, 38, 9, 9
-    };  // normal mode, pressed ("maximize" in webamp)
-    static constexpr QRect kShadeButtonShadedDown{1, 47, 9, 9};  // shade mode, pressed ("minimize")
+    static constexpr QRect kShadeButtonDown{1, 38, 9, 9};
+    static constexpr QRect kShadeButtonShadedDown{1, 47, 9, 9};
     static constexpr QRect kCloseButtonDown{11, 47, 9, 9};
     static constexpr QRect kVolume{61, 4, 97, 7};
     static constexpr QRect kBalance{164, 4, 43, 7};
 };
 
-// ------------------------------------------------------------------ PLEDIT.BMP
 struct PlaylistSprites {
     static constexpr QRect kTopTile{127, 21, 25, 20};
     static constexpr QRect kTopLeft{0, 21, 25, 20};
@@ -187,7 +166,6 @@ struct PlaylistSprites {
     static constexpr int kRowHeight = 13;
 };
 
-// ------------------------------------------------------------------ GEN.BMP (generic windows)
 struct GenWindowSprites {
     static constexpr QRect kTopLeftSelected{0, 0, 25, 20};
     static constexpr QRect kTopLeftEndSelected{26, 0, 25, 20};
@@ -214,7 +192,6 @@ struct GenWindowSprites {
     static constexpr int kLetterHeight = 7;
 };
 
-// ------------------------------------------------------------------ main window layout
 struct MainWindowSprites {
     static constexpr QSize kSize{275, 116};
     static constexpr QRect kTitleBarArea{0, 0, 275, 14};
@@ -224,7 +201,7 @@ struct MainWindowSprites {
     static constexpr QPoint kClose{264, 3};
     static constexpr QPoint kClutter{10, 22};
     static constexpr QPoint kPlayPause{26, 28};
-    static constexpr QPoint kTime{39, 26};  // digits at +9, +21, +39, +51; minus at -1,+6
+    static constexpr QPoint kTime{39, 26};
     static constexpr QRect kVisualizer{24, 43, 76, 16};
     static constexpr QRect kMarquee{111, 27, 155, 6};
     static constexpr QPoint kKbps{111, 43};

@@ -40,7 +40,6 @@ SkinnedWindow::SkinnedWindow(const Skins::Skin* skin, QSize skinSize, QWidget* p
     applySize();
     WindowRegistry().append(this);
 
-    // Monitor unplugged / resolution changed: pull the window back on screen.
     auto recheck = [this] {
         if (isVisible()) {
             ensureVisible();
@@ -129,11 +128,10 @@ void SkinnedWindow::applyShade(bool shaded, QSize newSkinSize) {
     shadeEnabled = shaded;
     resizeKeepingStack(newSkinSize);
     applyMask();  // the region section changes with the mode even if the size doesn't
-    Q_EMIT shadeChanged(shaded);  // last: listeners save positions, which are final now
+    Q_EMIT shadeChanged(shaded);
 }
 
 void SkinnedWindow::resizeKeepingStack(QSize newSkinSize) {
-    // Hidden windows too, so they are still docked when shown again.
     QList<SkinnedWindow*> all;
     QList<QRect> rects;
     QList<bool> visible;
@@ -157,7 +155,6 @@ void SkinnedWindow::resizeKeepingStack(QSize newSkinSize) {
         all[i]->move(all[i]->pos() + QPoint(0, dy));
         group << all[i];
     }
-    // Growing near the bottom of the screen: lift the whole stack back onto it.
     if (dy < 0 || !isVisible()) {
         return;
     }
@@ -231,7 +228,6 @@ void SkinnedWindow::applyMask() {
         clearMask();
         return;
     }
-    // Scale the polygons themselves (not the region) so fractional scales stay accurate.
     const QTransform t = QTransform::fromScale(scaleFactor, scaleFactor);
     QList<QPolygon> scaled;
     for (const QPolygon& poly : *it) {
@@ -243,15 +239,11 @@ void SkinnedWindow::applyMask() {
 void SkinnedWindow::paintEvent(QPaintEvent*) {
     QPainter painter(this);
     if (IsIntegerScale(scaleFactor)) {
-        // Integer scale + no smoothing = crisp pixels.
         painter.setRenderHint(QPainter::SmoothPixmapTransform, false);
         painter.scale(scaleFactor, scaleFactor);
         paintSkin(painter);
         return;
     }
-    // Fractional scale: nearest-neighbour at 1.5x would make some skin pixels 1px
-    // and others 2px wide. Instead draw crisply at the next integer scale that
-    // covers the physical pixels, then scale that down smoothly ("sharp bilinear").
     const int n = int(std::ceil(scaleFactor * devicePixelRatioF() - 1e-6));
     const QSize bufSize = skinPixelSize * n;
     if (buffer.size() != bufSize) {
@@ -277,7 +269,6 @@ void SkinnedWindow::mousePressEvent(QMouseEvent* event) {
     }
 
     if (!CanPositionWindows()) {
-        // Native Wayland: let the compositor move us (no snapping possible).
         if (QWindow* window = windowHandle()) {
             window->startSystemMove();
         }
@@ -303,8 +294,6 @@ void SkinnedWindow::mouseMoveEvent(QMouseEvent* event) {
         skinMouseMove(toSkin(event->position()));
         return;
     }
-    // The whole group moves as one rectangle: it snaps to windows outside the
-    // group and to screen edges, and is clamped to the screen as a unit.
     const QPoint delta = event->globalPosition().toPoint() - pressGlobal;
     QList<QRect> others;
     for (SkinnedWindow* window : WindowRegistry()) {

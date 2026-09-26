@@ -26,8 +26,6 @@ void ShowStatus(Core::Player* player, const QString& text) {
     Q_EMIT player->statusMessage(text);
 }
 
-// Loads `tracks` into the player as a finite source. Takes a request ticket
-// now, so a slow response can't replace something the user picked later.
 auto QueueLoader(Core::Player* player, const QString& title, quint64 ticket = 0) {
     if (ticket == 0) {
         ticket = player->newSourceRequest();
@@ -48,7 +46,6 @@ auto QueueLoader(Core::Player* player, const QString& title, quint64 ticket = 0)
         };
 }
 
-// Fills a submenu when it is first shown. `load` fetches items, `fill` turns them into actions.
 template <typename T>
 void LazySubmenu(
     QMenu* sub,
@@ -83,7 +80,6 @@ void LazySubmenu(
     });
 }
 
-// Seeds of the wave that was started last (the wheel suggests waves around it).
 QStringList& CurrentWaveSeeds() {
     static QStringList seeds{QStringLiteral("user:onyourwave")};
     return seeds;
@@ -120,7 +116,6 @@ void PlayWave(Core::Player* player, const QStringList& seeds, const QString& tit
             if (!error.isEmpty()) {
                 return ShowStatus(guardedPlayer, QStringLiteral("Ошибка волны: ") + error);
             }
-            // Shared by the "more" and feedback callbacks for the life of this queue.
             struct WaveState {
                 QString session;
                 QString station;
@@ -134,7 +129,6 @@ void PlayWave(Core::Player* player, const QStringList& seeds, const QString& tit
             }
             CurrentWaveSeeds() = seeds;
 
-            // Endless: ask the session for the next batch, seeded with what we've queued.
             Core::Player::TMoreFn more = [guardedPlayer, lib, state](
                                              std::function<void(const QList<Yandex::Track>&)> done
                                          ) {
@@ -159,7 +153,6 @@ void PlayWave(Core::Player* player, const QStringList& seeds, const QString& tit
                     }
                 );
             };
-            // Feedback makes the wave adapt: what was played through, what was skipped.
             Core::Player::TEventFn events =
                 [lib,
                  state](Core::Player::TrackEvent ev, const Yandex::Track& track, double played) {
@@ -350,7 +343,6 @@ void AddLibraryActions(
         }
     });
 
-    // Current track.
     menu->addSeparator();
     const Yandex::Track* cur = player->currentTrack();
     const QString id = cur ? cur->id : QString();

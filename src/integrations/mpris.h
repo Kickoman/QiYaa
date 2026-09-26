@@ -1,6 +1,3 @@
-// MPRIS 2 (org.mpris.MediaPlayer2) on the D-Bus session bus: media keys,
-// GNOME/KDE media controls, lock screen, playerctl.
-// https://specifications.freedesktop.org/mpris-spec/latest/
 #pragma once
 
 #include <QDBusAbstractAdaptor>
@@ -17,8 +14,6 @@ class MediaControls;
 class Mpris : public QObject {
     Q_OBJECT
 public:
-    // `serviceSuffix` goes after "org.mpris.MediaPlayer2." (default "qiyaa").
-    // `bus` defaults to the session bus.
     explicit Mpris(
         MediaControls* controls,
         const QString& serviceSuffix = QStringLiteral("qiyaa"),
@@ -43,7 +38,6 @@ private:
     bool registered = false;
 };
 
-// org.mpris.MediaPlayer2
 class MprisRootAdaptor : public QDBusAbstractAdaptor {
     Q_OBJECT
     Q_CLASSINFO("D-Bus Interface", "org.mpris.MediaPlayer2")
@@ -72,7 +66,6 @@ private:
     Mpris* mpris;
 };
 
-// org.mpris.MediaPlayer2.Player
 class MprisPlayerAdaptor : public QDBusAbstractAdaptor {
     Q_OBJECT
     Q_CLASSINFO("D-Bus Interface", "org.mpris.MediaPlayer2.Player")

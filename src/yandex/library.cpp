@@ -53,7 +53,6 @@ QList<Track> Library::ParseTrackArray(const QJsonArray& arr) {
     QList<Track> out;
     for (const QJsonValue& value : arr) {
         const QJsonObject object = value.toObject();
-        // Some endpoints wrap tracks: {"track": {...}} or {"id":..., "track": {...}}.
         const QJsonValue inner = object.value(QStringLiteral("track"));
         out << ApiClient::ParseTrack(inner.isObject() ? inner : value);
     }
@@ -160,7 +159,6 @@ void Library::userPlaylists(TCallback<QList<PlaylistRef>> callback) {
 }
 
 void Library::tracksFromItems(const QJsonArray& items, TCallback<QList<Track>> callback) {
-    // Items usually embed full track objects; fall back to fetching by id.
     const QList<Track> embedded = ParseTrackArray(items);
     const bool complete = std::all_of(embedded.cbegin(), embedded.cend(), [](const Track& track) {
         return !track.title.isEmpty();
@@ -228,7 +226,6 @@ void Library::personalPlaylists(TCallback<QList<PlaylistRef>> callback) {
                  result.toObject().value(QStringLiteral("blocks")).toArray()) {
                 for (const QJsonValue& e :
                      block.toObject().value(QStringLiteral("entities")).toArray()) {
-                    // entity.data is a "generated playlist" whose .data is the playlist itself.
                     QJsonObject pl = e.toObject().value(QStringLiteral("data")).toObject();
                     if (pl.value(QStringLiteral("data")).isObject()) {
                         pl = pl.value(QStringLiteral("data")).toObject();
@@ -367,8 +364,6 @@ void Library::waveFeedback(
             if (!self || error.isEmpty()) {
                 return;
             }
-            // Only a refusal (4xx) means "wrong endpoint"; a timeout or a
-            // 5xx may have been delivered, and re-sending would count twice.
             if (!error.startsWith(QLatin1String("HTTP 4"))) {
                 qWarning("wave feedback failed: %s", qPrintable(error));
                 return;

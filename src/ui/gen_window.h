@@ -1,5 +1,3 @@
-// Winamp's "generic" window frame from GEN.BMP (used by plugins: Media Library,
-// Milkdrop...). Resizable in 25x29 steps; subclasses paint the content area.
 #pragma once
 
 #include "ui/skinned_window.h"
@@ -19,7 +17,6 @@ Q_SIGNALS:
     void sizeStepsChanged(QSize steps);
 
 protected:
-    // Inner area in skin coordinates (inside the frame).
     QRect contentRect() const;
     virtual void paintContent(QPainter& painter, const QRect& area) = 0;
     virtual bool contentMousePress(QPoint, Qt::MouseButton) { return false; }

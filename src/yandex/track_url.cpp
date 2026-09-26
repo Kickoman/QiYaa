@@ -7,7 +7,7 @@ namespace Yandex {
 
 namespace {
 constexpr char kSignSalt[] = "XGRlBW9FXlekgbPrRHuSiA";
-}
+}  // namespace
 
 QList<DownloadVariant> ParseDownloadVariants(const QJsonArray& result) {
     QList<DownloadVariant> out;

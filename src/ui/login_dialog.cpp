@@ -19,7 +19,7 @@ namespace Ui {
 
 namespace {
 constexpr int kDialogWidth = 460;
-}
+}  // namespace
 
 LoginDialog::LoginDialog(QNetworkAccessManager* nam, QWidget* parent, const QString& oauthBase)
     : QDialog(parent)
@@ -32,7 +32,6 @@ LoginDialog::LoginDialog(QNetworkAccessManager* nam, QWidget* parent, const QStr
 
     auto* layout = new QVBoxLayout(this);
 
-    // --- Device code.
     auto* h1 = new QLabel(
         QStringLiteral("<b>Способ 1.</b> Откройте страницу подтверждения в любом браузере "
                        "(можно на телефоне) и введите код:")
@@ -62,7 +61,6 @@ LoginDialog::LoginDialog(QNetworkAccessManager* nam, QWidget* parent, const QStr
     line->setFrameShape(QFrame::HLine);
     layout->addWidget(line);
 
-    // --- Paste.
     auto* h2 = new QLabel(QStringLiteral(
         "<b>Способ 2.</b> Войдите через браузер. После входа Яндекс откроет страницу "
         "<i>music.yandex.ru/#access_token=…</i> — скопируйте её адрес целиком и вставьте сюда "

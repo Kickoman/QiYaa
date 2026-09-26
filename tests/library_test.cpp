@@ -1,5 +1,3 @@
-// Yandex Music layer against a local mock server: request shapes and parsing
-// for every source the menu offers, likes, waves, search and device login.
 #include "core/player.h"
 #include "support/mock_http_server.h"
 #include "ui/library_menu.h"
@@ -30,7 +28,6 @@ QByteArray TrackJson(int id, const char* title, int album = 0) {
     return s + "}";
 }
 
-// Waits for an async callback.
 template <typename T>
 struct Result {
     T value{};
@@ -48,7 +45,6 @@ struct Result {
     }
 };
 
-// Serves the "https" track links (host 127.0.0.1) from the plain-HTTP mock server.
 class LocalNam : public QNetworkAccessManager {
 protected:
     QNetworkReply*
@@ -189,7 +185,7 @@ private Q_SLOTS:
         Result<QList<Yandex::Track>> tracks;
         lib.albumTracks("100", tracks.cb());
         QVERIFY(tracks.wait());
-        QCOMPARE(tracks.value.size(), 2);  // all volumes
+        QCOMPARE(tracks.value.size(), 2);
         QCOMPARE(tracks.value[0].albumId, QStringLiteral("100"));
     }
 
@@ -339,7 +335,6 @@ private Q_SLOTS:
     }
 
     void slowLoadDoesNotReplaceNewerChoice() {
-        // Likes are slow; the user picks a wave meanwhile. The late likes must be ignored.
         Audio::AudioEngine engine;
         Core::Player player(&lib, &engine);
         server.on("GET", "/users/42/likes/tracks", [](const Tests::MockRequest&) {
@@ -395,7 +390,6 @@ private Q_SLOTS:
     }
 
     void wheelOfWavesWithUnwrappedBody() {
-        // /wheel/new answers without the usual {"result": ...} envelope.
         server.json(
             "POST", "/wheel/new",
             J("{'wheelId':'w1','items':[{'type':'WAVE','id':'1','data':{'wave':{'name':'Бодрое','"
@@ -455,7 +449,7 @@ private Q_SLOTS:
         for (qsizetype i = before; i < server.requests().size(); ++i) {
             sessionCalls += server.requests()[i].path == "/rotor/session/BAD/feedback";
         }
-        QCOMPARE(sessionCalls, 1);  // not retried
+        QCOMPARE(sessionCalls, 1);
     }
 
     void waveFeedbackDoesNotResendAfterServerError() {
@@ -470,14 +464,12 @@ private Q_SLOTS:
         QCOMPARE(api.pendingPosts(), pending + 1);
         QVERIFY(QTest::qWaitFor([&] { return settled; }, 3000));
         disconnect(c);
-        // A 5xx may have been counted: no second copy via the station endpoint.
         for (qsizetype i = before; i < server.requests().size(); ++i) {
             QVERIFY(!server.requests()[i].path.startsWith("/rotor/station/"));
         }
     }
 
     void postsSettleOnlyAfterTheFallback() {
-        // Quitting waits for postsSettled; it must cover the station re-send.
         Yandex::Track track =
             Yandex::ApiClient::ParseTrack(QJsonDocument::fromJson(TrackJson(5, "T", 50)).object());
         server.json(
@@ -532,16 +524,15 @@ private Q_SLOTS:
             }
         );
         player.playIndex(0);
-        QVERIFY(QTest::qWaitFor([&] { return log.contains("0:1"); }, 3000));  // Started 1
-        player.playIndex(1);  // Skipped 1
-        QVERIFY(QTest::qWaitFor([&] { return log.contains("0:2"); }, 3000));  // Started 2
+        QVERIFY(QTest::qWaitFor([&] { return log.contains("0:1"); }, 3000));
+        player.playIndex(1);
+        QVERIFY(QTest::qWaitFor([&] { return log.contains("0:2"); }, 3000));
         QCOMPARE(log, (QStringList{"0:1", "2:1", "0:2"}));
-        player.setQueue({}, "", false);  // replacing the queue closes track 2
+        player.setQueue({}, "", false);
         QCOMPARE(log.last(), QStringLiteral("2:2"));
     }
 
 private:
-    // Real playback of short mp3s served by the mock server, for the preload tests.
     struct AudioRig {
         LocalNam nam;
         Yandex::ApiClient api{&nam};
@@ -608,7 +599,6 @@ private Q_SLOTS:
         QSignalSpy advanced(&rig.engine, &Audio::AudioEngine::trackAdvanced);
         QSignalSpy finished(&rig.engine, &Audio::AudioEngine::trackFinished);
         rig.player.playIndex(0);
-        // Once track 11 is downloaded, track 12 is fetched in the background.
         QVERIFY(QTest::qWaitFor([&] { return rig.player.preloadedIndex() == 1; }, 5000));
         QVERIFY(QTest::qWaitFor(
             [&] { return rig.engine.state() == Audio::AudioEngine::State::Playing; }, 3000
@@ -616,17 +606,17 @@ private Q_SLOTS:
         QTest::qWait(300);  // let the preload download complete
         QVERIFY(rig.player.seekTo(2.4));
         QVERIFY(advanced.wait(4000));
-        QCOMPARE(finished.count(), 0);  // no stop between the tracks
+        QCOMPARE(finished.count(), 0);
         QCOMPARE(rig.player.currentIndex(), 1);
-        QCOMPARE(log, (QStringList{"0:11", "1:11", "0:12"}));  // Started, Finished, Started
-        QCOMPARE(requestsTo("/tracks/12/download-info"), 1);  // no second link request
+        QCOMPARE(log, (QStringList{"0:11", "1:11", "0:12"}));
+        QCOMPARE(requestsTo("/tracks/12/download-info"), 1);
         QVERIFY(rig.engine.positionSeconds() < 0.5);
 
         // "Next" takes the preloaded track too.
         QVERIFY(QTest::qWaitFor([&] { return rig.player.preloadedIndex() == 2; }, 5000));
         rig.player.next();
         QCOMPARE(rig.player.currentIndex(), 2);
-        QCOMPARE(log.mid(3), (QStringList{"2:12", "0:13"}));  // Skipped 12, Started 13 right away
+        QCOMPARE(log.mid(3), (QStringList{"2:12", "0:13"}));
         QCOMPARE(requestsTo("/tracks/13/download-info"), 1);
         rig.player.stop();
     }

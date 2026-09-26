@@ -37,7 +37,6 @@ Smtc::Smtc(MediaControls* controls, QWidget* window, QObject* parent)
     , d(std::make_unique<Impl>())
     , mediaControls(controls) {
     try {
-        // Qt has already initialised COM on this thread; that's fine for WinRT.
         auto interop = winrt::get_activation_factory<
             WinMedia::SystemMediaTransportControls, ISystemMediaTransportControlsInterop>();
         const HWND hwnd = reinterpret_cast<HWND>(window->winId());
@@ -140,7 +139,7 @@ void Smtc::updateMetadata() {
     }
     try {
         auto updater = d->controls.DisplayUpdater();
-        updater.ClearAll();  // also drops the previous track's cover
+        updater.ClearAll();
         const Yandex::Track* track = mediaControls->player()->currentTrack();
         if (!track) {
             updater.Update();
@@ -151,7 +150,7 @@ void Smtc::updateMetadata() {
         music.Title(ToHstring(track->title));
         music.Artist(ToHstring(track->artists.join(QStringLiteral(", "))));
         music.AlbumTitle(ToHstring(track->albumTitle));
-        // The https URL: SMTC fetches it itself, and file:// URIs aren't accepted here.
+        // https, not artUrl(): SMTC fetches the thumbnail itself and refuses file:// URIs.
         const QUrl art = mediaControls->remoteArtUrl();
         if (!art.isEmpty()) {
             updater.Thumbnail(WinStreams::RandomAccessStreamReference::CreateFromUri(

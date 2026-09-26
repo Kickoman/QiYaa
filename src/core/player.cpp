@@ -15,15 +15,14 @@ using Audio::AudioEngine;
 using Yandex::Track;
 
 namespace {
-constexpr int kLoadMoreWhenLeft = 2;  // endless sources: fetch more when this many tracks remain
-}
+constexpr int kLoadMoreWhenLeft = 2;
+}  // namespace
 
 Player::Player(Yandex::Library* library, Audio::AudioEngine* engine, QObject* parent)
     : QObject(parent)
     , yandexLibrary(library)
     , audioEngine(engine) {
     connect(audioEngine, &Audio::AudioEngine::trackFinished, this, [this] {
-        // A broken download also drains to the end; that's not "listened to the end".
         if (openTrack && openTrackEvents) {
             openTrackEvents(
                 downloadFailed ? TrackEvent::Skipped : TrackEvent::Finished, *openTrack,
@@ -37,7 +36,6 @@ Player::Player(Yandex::Library* library, Audio::AudioEngine* engine, QObject* pa
         next();
     });
     connect(audioEngine, &Audio::AudioEngine::trackAdvanced, this, [this] {
-        // The engine went on into the preloaded track without a gap.
         if (openTrack && openTrackEvents) {
             openTrackEvents(
                 downloadFailed ? TrackEvent::Skipped : TrackEvent::Finished, *openTrack,
@@ -47,7 +45,6 @@ Player::Player(Yandex::Library* library, Audio::AudioEngine* engine, QObject* pa
         openTrack.reset();
         if (!preload || preload->stream != audioEngine->currentStream()
             || preload->index >= queuedTracks.size()) {
-            // Not ours (can't happen: a cancelled preload never plays). Resync.
             const int i = sequentialNext();
             i >= 0 ? playIndex(i) : stop();
             return;
@@ -67,8 +64,6 @@ Player::Player(Yandex::Library* library, Audio::AudioEngine* engine, QObject* pa
     connect(audioEngine, &Audio::AudioEngine::errorOccurred, this, [this](const QString& msg) {
         Q_EMIT statusMessage(QStringLiteral("Audio error: ") + msg);
     });
-    // The engine reports end of track etc. only when polled. Poll here, not in a
-    // window, so playback continues while the windows are minimised.
     pollTimer.setInterval(100);
     connect(&pollTimer, &QTimer::timeout, this, [this] {
         audioEngine->poll();
@@ -131,7 +126,7 @@ void Player::appendTracks(const QList<Yandex::Track>& tracks) {
         playingIndex = 0;
     }
     Q_EMIT playlistChanged();
-    refreshPreload();  // e.g. more wave tracks: now there is a next one
+    refreshPreload();
 }
 
 void Player::removeTracks(QList<int> indices) {
@@ -272,7 +267,6 @@ void Player::next() {
     if (queuedTracks.isEmpty()) {
         return;
     }
-    // Shuffle picked the preloaded one already; in order it's the next anyway.
     if (preload) {
         return playIndex(preload->index);
     }
@@ -280,7 +274,7 @@ void Player::next() {
     if (i >= 0) {
         return playIndex(i);
     }
-    if (loadMore) {  // endless source still loading: wait for it
+    if (loadMore) {
         stop();
         waitingForMore = true;
         maybeLoadMore();
@@ -356,7 +350,6 @@ void Player::playIndex(int index) {
     downloadFailed = false;
     const Yandex::Track track = queuedTracks[index];
 
-    // Already downloading in the background (e.g. "next" pressed): start it from there.
     if (preload && preload->stream && preload->trackId == track.id
         && preload->stream == audioEngine->queuedStream()) {
         const Preload upcoming = *std::exchange(preload, std::nullopt);
@@ -440,7 +433,7 @@ void Player::downloadFinished(TStreamId stream, bool failed, const QString& erro
             return;
         }
         currentDownloaded = true;
-        maybePreload();  // one download at a time: now the next track
+        maybePreload();
     } else if (preload && preload->stream == stream) {
         preload->downloadDone = true;
         preload->failed = failed;
@@ -478,8 +471,7 @@ void Player::maybePreload() {
                 return;
             }
             const TStreamId stream = error.isEmpty() ? self->audioEngine->queueStream() : 0;
-            if (!stream) {  // no link (or nothing plays any more): the track starts the usual way
-                            // when it's time
+            if (!stream) {
                 self->preload.reset();
                 return;
             }
@@ -508,7 +500,7 @@ void Player::cancelPreload() {
 void Player::refreshPreload() {
     if (preload) {
         int index = -1;
-        if (shuffleEnabled) {  // any position is fine, as long as the track is still there
+        if (shuffleEnabled) {
             for (int i = 0; i < queuedTracks.size() && index < 0; ++i) {
                 if (i != playingIndex && queuedTracks[i].id == preload->trackId) {
                     index = i;

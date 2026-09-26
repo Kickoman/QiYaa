@@ -16,10 +16,10 @@ namespace Tests {
 
 struct MockRequest {
     QByteArray method;
-    QString path;  // without the query
+    QString path;
     QUrlQuery query;
     QByteArray body;
-    QHash<QByteArray, QByteArray> headers;  // lower-case names
+    QHash<QByteArray, QByteArray> headers;
 
     QUrlQuery form() const;
     QString formValue(const QString& key) const;

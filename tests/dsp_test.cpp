@@ -1,4 +1,3 @@
-// Equalizer filters, presets, FFT analyzer and visualizers.
 #include "audio/eq_presets.h"
 #include "audio/equalizer.h"
 #include "audio/error.h"
@@ -81,7 +80,6 @@ private Q_SLOTS:
     }
 
     void settingsChangeWhileProcessing() {
-        // New coefficients are picked up at the next block, no NaNs/blow-ups.
         Audio::EqualizerDsp eq;
         eq.setSampleRate(48000);
         auto buf = StereoSine(440, 48000, 48000);
@@ -104,8 +102,8 @@ private Q_SLOTS:
                 return p.name == "Full Bass";
             });
         QVERIFY(bass != presets.cend());
-        QVERIFY(bass->settings.bandsDb[0] > 5);  // boosts lows
-        QVERIFY(bass->settings.bandsDb[9] < -5);  // cuts highs
+        QVERIFY(bass->settings.bandsDb[0] > 5);
+        QVERIFY(bass->settings.bandsDb[9] < -5);
         QCOMPARE(Audio::EqfToDb(1), -12.0);
         QCOMPARE(Audio::EqfToDb(64), 12.0);
     }
@@ -165,7 +163,7 @@ private Q_SLOTS:
         QCOMPARE(ys.size(), 9 * 12 + 1);
         QVERIFY(std::abs(ys[3 * 12] - 0) < 1e-6);  // +12 dB = top row
         QVERIFY(std::abs(ys[0] - 9) < 1e-6);  // 0 dB = middle
-        QVERIFY(ys[30] < 9 && ys[42] < 9);  // smooth around the peak
+        QVERIFY(ys[30] < 9 && ys[42] < 9);
     }
 
     void analyzerFindsTheTone() {
@@ -224,7 +222,6 @@ private Q_SLOTS:
             QCOMPARE(presets[0].settings.bandsDb[band], 0.0);
         }
         QCOMPARE(presets[0].settings.preampDb, -12.0);
-        // And flat is written as 31 again.
         QCOMPARE(Audio::WriteEqf(presets).mid(31 + 257, 10), QByteArray(10, char(31)));
     }
 

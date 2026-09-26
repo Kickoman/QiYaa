@@ -1,5 +1,3 @@
-// "Now playing": cover, title, artists, album and year of the current track,
-// in a GEN.BMP frame. Click the cover to open the track on music.yandex.ru.
 #pragma once
 
 #include "ui/gen_window.h"
@@ -21,7 +19,6 @@ public:
         QWidget* parent = nullptr
     );
 
-    // Where the cover is drawn (skin coordinates), for tests.
     QRect coverRect() const;
 
 protected:

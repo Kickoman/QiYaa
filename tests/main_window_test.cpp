@@ -1,4 +1,3 @@
-// Drives the real main window on the offscreen platform (one 800x600 screen).
 #include "audio/audio_engine.h"
 #include "core/player.h"
 #include "skins/skin.h"
@@ -74,7 +73,6 @@ private Q_SLOTS:
     void dragSnapsToScreenEdgeAndCannotLeaveScreen() {
         win->placeAt(QPoint(100, 100));
         send(QEvent::MouseButtonPress, {100, 5}, Qt::LeftButton);
-        // Cursor way past the right edge: the window must stop at the edge.
         QMouseEvent far(
             QEvent::MouseMove, QPointF(0, 0), QPointF(5000, 205), Qt::NoButton, Qt::LeftButton,
             Qt::NoModifier
@@ -130,7 +128,6 @@ private Q_SLOTS:
         send(QEvent::MouseButtonPress, shuffle, Qt::LeftButton);
         send(QEvent::MouseButtonRelease, shuffle, Qt::NoButton);
         QCOMPARE(player->shuffle(), !before);
-        // Renders without artifacts at the edges (sharp-bilinear path).
         const QImage image = win->grab().toImage();
         QCOMPARE(image.size(), QSize(413, 174));
         win->setScale(1.3333);  // rounded to 0.05 steps

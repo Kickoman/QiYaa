@@ -22,7 +22,6 @@ QList<int> ParseInts(const QString& text) {
 }  // namespace
 
 TRegionData ParseRegionTxt(const QByteArray& text) {
-    // Simple INI reader: sections, key=value, ';' / '#' / '//' comments, case-insensitive keys.
     QHash<QString, QHash<QString, QString>> ini;
     QString section;
     const QStringList lines =
@@ -59,15 +58,15 @@ TRegionData ParseRegionTxt(const QByteArray& text) {
         }
 
         QList<QPolygon> polygons;
-        qsizetype point = 0;  // index in points (pairs)
+        qsizetype point = 0;
         const qsizetype totalPoints = coords.size() / 2;
         for (int n : counts) {
-            if (n < 3) {  // not a polygon
+            if (n < 3) {
                 point += std::max(n, 0);
                 continue;
             }
             if (point + n > totalPoints) {
-                break;  // author declared more than provided
+                break;
             }
             QPolygon poly;
             poly.reserve(n);

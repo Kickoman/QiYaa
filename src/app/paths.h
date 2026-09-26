@@ -5,15 +5,11 @@
 
 namespace App {
 
-// Our own config directory (created on demand), e.g. ~/.config/QiYaa.
 QString ConfigDir();
 
-// Candidate locations of the old Electron Yaamp data folder (userData).
 QStringList YaampDataDirs();
 
-// <ConfigDir>/token
 QString TokenFile();
-// token.json in each of YaampDataDirs()
 QStringList YaampTokenFiles();
 
 }  // namespace App

@@ -1,4 +1,3 @@
-// The Winamp equalizer window (275x116): ON/AUTO, presets, preamp + 10 bands.
 #pragma once
 
 #include "audio/eq_presets.h"
@@ -16,16 +15,14 @@ public:
     void setSettings(const Audio::EqSettings& settings);
     bool autoOn() const { return autoEnabled; }
     void setShaded(bool shaded) override;
-    // Volume/balance shown in shade mode (they belong to the main window).
     void setMixer(int volume, int balance);
     void setAutoOn(bool on);
 
-    // Spline through the band values, as drawn in the little graph (for tests).
     static QList<double> GraphCurve(const Audio::EqSettings& settings);
 
 Q_SIGNALS:
     void settingsChanged(const Audio::EqSettings& settings);
-    void statusText(const QString& text);  // e.g. "EQ: 60HZ +3.0 DB" for the main marquee
+    void statusText(const QString& text);
     void closeRequested();
     void volumeRequested(int volume);
     void balanceRequested(int balance);
@@ -44,7 +41,6 @@ protected:
     void wheelEvent(QWheelEvent* event) override;
 
 private:
-    // Element ids: see EqualizerWindow.cpp (kElClose, ..., kElBand0 + band).
     int hitTest(QPoint point) const;
     double* valueFor(int element);
     void setFromMouse(int element, QPoint point);
@@ -59,7 +55,7 @@ private:
 
     Audio::EqSettings equalizerSettings;
     bool autoEnabled = false;
-    int pressedElement = 0;  // kElNone
+    int pressedElement = 0;
     bool pressedInside = false;
     int volumePercent = 75;
     int balancePercent = 0;

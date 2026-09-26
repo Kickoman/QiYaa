@@ -1,5 +1,3 @@
-// Streams a small mp3 through the real engine. On machines without a sound card
-// miniaudio falls back to its "Null" backend, which still runs in real time.
 #include "audio/audio_engine.h"
 #include "core/player.h"
 
@@ -19,7 +17,6 @@ private:
     Audio::AudioEngine engine;
     QByteArray mp3;
 
-    // The engine's state, for failure messages.
     QString where(qsizetype advanced, qsizetype finished = -1) const {
         return QStringLiteral("advanced %1, finished %2, at %3 s, %4, current %5, queued %6")
             .arg(advanced)
@@ -46,7 +43,7 @@ private Q_SLOTS:
         if (const Audio::AudioEngine::InitResult audio = engine.init(); !audio.ok) {
             QSKIP(qPrintable("no audio output: " + audio.message));
         }
-        engine.setVolume(0);  // silence, in case this runs on a real device
+        engine.setVolume(0);
         QFile file(QStringLiteral(QIYAA_TEST_DATA "/sine440_3s.mp3"));
         QVERIFY(file.open(QIODevice::ReadOnly));
         mp3 = file.readAll();
@@ -58,7 +55,6 @@ private Q_SLOTS:
         engine.beginStream();
         QCOMPARE(engine.state(), Audio::AudioEngine::State::Buffering);
 
-        // Feed like a slow network: 4 KB every 10 ms.
         for (qsizetype off = 0; off < mp3.size(); off += 4096) {
             engine.appendData(mp3.mid(off, 4096));
             engine.poll();
@@ -75,7 +71,6 @@ private Q_SLOTS:
         QTest::qWait(500);
         QVERIFY2(engine.positionSeconds() > p0 + 0.2, "position does not advance");
 
-        // Seek near the end and wait for the end of the track.
         QVERIFY(engine.seek(2.5));
         pumpUntil([&] { return finished.count() > 0; }, 4000);
         QCOMPARE(finished.count(), 1);
@@ -111,8 +106,7 @@ private Q_SLOTS:
     }
 
     void rapidSeeksWhileDownloading() {
-        // ~39 s stream (the 3 s file repeated; MP3 frames concatenate), fed slowly,
-        // with seeks both inside and ahead of what's downloaded.
+        // ~39 s stream: the 3 s file 13 times over (MP3 frames concatenate).
         QByteArray longMp3;
         for (int i = 0; i < 13; ++i) {
             longMp3 += mp3;
@@ -147,8 +141,6 @@ private Q_SLOTS:
     }
 
     void playerPollsTheEngine() {
-        // No one calls engine.poll() here: the Player's own timer must notice the
-        // end of the track (this used to depend on the main window's timer).
         Yandex::ApiClient api(nullptr);
         Yandex::Library lib(&api);
         Core::Player player(&lib, &engine);
@@ -164,7 +156,6 @@ private Q_SLOTS:
     }
 
     void restartWhileStreaming() {
-        // Switching tracks mid-download must not hang or crash.
         for (int i = 0; i < 5; ++i) {
             engine.beginStream();
             engine.appendData(mp3.left(8000));
@@ -173,8 +164,6 @@ private Q_SLOTS:
         engine.stop();
         QCOMPARE(engine.state(), Audio::AudioEngine::State::Stopped);
     }
-
-    // ---- gapless chaining of a queued stream
 
     Audio::AudioEngine::TStreamId startNearEnd(double at = 2.2) {
         const auto a = engine.beginStream();
@@ -203,13 +192,12 @@ private Q_SLOTS:
         pumpUntil([&] { return advanced.count() > 0 || finished.count() > 0; }, 3000);
         QVERIFY2(advanced.count() == 1, qPrintable(where(advanced.count(), finished.count())));
         QCOMPARE(finished.count(), 0);
-        QVERIFY(states.isEmpty());  // no Stopped/Buffering in between
+        QVERIFY(states.isEmpty());
         QCOMPARE(engine.currentStream(), b);
         QCOMPARE(engine.queuedStream(), Audio::AudioEngine::TStreamId(0));
         QVERIFY2(
             engine.positionSeconds() < 0.3, qPrintable(QString::number(engine.positionSeconds()))
         );
-        // The new track is seekable and ends normally.
         QVERIFY(engine.seek(2.7));
         pumpUntil([&] { return finished.count() > 0; }, 3000);
         QCOMPARE(finished.count(), 1);
@@ -222,7 +210,7 @@ private Q_SLOTS:
         startNearEnd(2.3);
         const auto b = queueWhole(mp3);
         QTest::qWait(150);  // the rest of track 1 is decoded and track 2 chained behind it
-        QVERIFY(engine.seek(0.5));  // back into track 1
+        QVERIFY(engine.seek(0.5));
         pumpUntil(
             [&] {
                 const double p = engine.positionSeconds();
@@ -233,8 +221,7 @@ private Q_SLOTS:
         QCOMPARE(advanced.count(), 0);
         const double pos = engine.positionSeconds();
         QVERIFY2(pos >= 0.5 && pos < 1.5, qPrintable(QString::number(pos)));
-        QCOMPARE(engine.queuedStream(), b);  // queued again
-        // ...and it still follows later, from its beginning.
+        QCOMPARE(engine.queuedStream(), b);
         QVERIFY(engine.seek(2.5));
         pumpUntil([&] { return advanced.count() > 0; }, 3000);
         QVERIFY2(advanced.count() == 1, qPrintable(where(advanced.count())));
@@ -272,7 +259,7 @@ private Q_SLOTS:
         startNearEnd(2.3);
         queueWhole(QByteArray(100000, 'x'));
         pumpUntil([&] { return finished.count() > 0 || advanced.count() > 0; }, 3000);
-        QCOMPARE(finished.count(), 1);  // the player then starts the next track itself
+        QCOMPARE(finished.count(), 1);
         QCOMPARE(advanced.count(), 0);
         QCOMPARE(engine.queuedStream(), Audio::AudioEngine::TStreamId(0));
         engine.stop();
@@ -282,7 +269,6 @@ private Q_SLOTS:
         QSignalSpy finished(&engine, &Audio::AudioEngine::trackFinished);
         QSignalSpy advanced(&engine, &Audio::AudioEngine::trackAdvanced);
         startNearEnd(2.0);
-        // Track 1 is fully decoded by now; the queued data comes in slowly.
         const auto b = engine.queueStream();
         engine.appendData(b, mp3.left(4000));  // not enough to start decoding it yet
         QTest::qWait(200);
@@ -295,8 +281,6 @@ private Q_SLOTS:
     }
 
     void partlyDownloadedQueuedStreamIsNotChained() {
-        // Chaining waits for the whole file; until then the track ends normally
-        // and the player starts the queued stream itself.
         QSignalSpy finished(&engine, &Audio::AudioEngine::trackFinished);
         QSignalSpy advanced(&engine, &Audio::AudioEngine::trackAdvanced);
         startNearEnd(2.4);
@@ -332,7 +316,6 @@ private Q_SLOTS:
     }
 
     void stopWhileQueuedDataIsMissing() {
-        // The decoder must never wait forever for a queued stream's data.
         startNearEnd(2.9);
         const auto b = engine.queueStream();
         engine.appendData(b, mp3.left(70000 < mp3.size() ? 70000 : mp3.size() / 2));

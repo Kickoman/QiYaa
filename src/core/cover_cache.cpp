@@ -12,7 +12,7 @@ namespace Core {
 
 namespace {
 constexpr int kMemoryItems = 30;
-}
+}  // namespace
 
 CoverCache::CoverCache(QNetworkAccessManager* nam, const QString& cacheDir, QObject* parent)
     : QObject(parent)
@@ -57,7 +57,6 @@ QImage CoverCache::get(const QUrl& url) {
         recentlyUsed.append(url);
         return *it;
     }
-    // On disk from an earlier run?
     if (const QString path = localFile(url); !path.isEmpty()) {
         const QImage image(path);
         if (!image.isNull()) {

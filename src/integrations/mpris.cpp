@@ -30,8 +30,6 @@ QDBusObjectPath TrackPath(const QString& id) {
 }
 }  // namespace
 
-// ------------------------------------------------------------------ Mpris
-
 Mpris::Mpris(
     MediaControls* controls,
     const QString& serviceSuffix,
@@ -48,7 +46,6 @@ Mpris::Mpris(
         qInfo("MPRIS: no D-Bus session bus");
         return;
     }
-    // A second running copy gets its own name, as the spec suggests.
     service = QStringLiteral("org.mpris.MediaPlayer2.") + serviceSuffix;
     if (connection.interface()->isServiceRegistered(service)) {
         service += QStringLiteral(".instance%1").arg(QCoreApplication::applicationPid());
@@ -67,7 +64,6 @@ Mpris::Mpris(
     }
     registered = true;
 
-    // Clients (GNOME/KDE panels, playerctl --follow) cache properties and rely on these.
     connect(mediaControls, &MediaControls::trackChanged, this, [this, player] {
         emitPropertiesChanged(
             kPlayerIface,
@@ -155,8 +151,6 @@ void Mpris::emitPropertiesChanged(const QString& interface, const QVariantMap& c
     connection.send(msg);
 }
 
-// ------------------------------------------------------------------ org.mpris.MediaPlayer2
-
 MprisRootAdaptor::MprisRootAdaptor(Mpris* parent)
     : QDBusAbstractAdaptor(parent)
     , mpris(parent) { }
@@ -173,8 +167,6 @@ void MprisRootAdaptor::Quit() {
     }
 }
 
-// ------------------------------------------------------------------ org.mpris.MediaPlayer2.Player
-
 MprisPlayerAdaptor::MprisPlayerAdaptor(Mpris* parent)
     : QDBusAbstractAdaptor(parent)
     , mpris(parent) { }
@@ -189,10 +181,7 @@ QString MprisPlayerAdaptor::loopStatus() const {
 }
 
 void MprisPlayerAdaptor::setLoopStatus(const QString& text) {
-    // Winamp repeats the playlist; "Track" is the closest we have.
-    mpris->controls()->player()->setRepeat(
-        text != QLatin1String("None")
-    );  // notifies via modesChanged
+    mpris->controls()->player()->setRepeat(text != QLatin1String("None"));
 }
 
 bool MprisPlayerAdaptor::shuffle() const {
@@ -200,7 +189,7 @@ bool MprisPlayerAdaptor::shuffle() const {
 }
 
 void MprisPlayerAdaptor::setShuffle(bool on) {
-    mpris->controls()->player()->setShuffle(on);  // notifies via modesChanged
+    mpris->controls()->player()->setShuffle(on);
 }
 
 QVariantMap MprisPlayerAdaptor::metadata() const {
@@ -213,7 +202,6 @@ double MprisPlayerAdaptor::volume() const {
 }
 
 void MprisPlayerAdaptor::setVolume(double value) {
-    // The app emits MediaControls::volumeChanged, which notifies clients.
     if (const auto& f = mpris->controls()->hooks().setVolume) {
         f(int(std::lround(std::clamp(value, 0.0, 1.0) * 100)));
     }
@@ -246,14 +234,13 @@ void MprisPlayerAdaptor::Play() {
     mpris->controls()->play();
 }
 
-// Seeked is emitted through MediaControls::seeked, only when a seek happened.
 void MprisPlayerAdaptor::Seek(qlonglong offsetUs) {
     if (!canSeek()) {
-        return;  // spec: no-op when CanSeek is false
+        return;
     }
     const double target = std::max(0.0, position() / 1e6 + offsetUs / 1e6);
     if (target >= mpris->controls()->player()->durationSeconds()) {
-        return Next();  // spec: past the end = next
+        return Next();
     }
     mpris->controls()->seekTo(target);
 }
@@ -261,7 +248,7 @@ void MprisPlayerAdaptor::Seek(qlonglong offsetUs) {
 void MprisPlayerAdaptor::SetPosition(const QDBusObjectPath& trackId, qlonglong positionUs) {
     const auto* t = mpris->controls()->player()->currentTrack();
     if (!canSeek() || !t || trackId != TrackPath(t->id)) {
-        return;  // stale request
+        return;
     }
     if (positionUs < 0 || positionUs > qlonglong(t->durationMs) * 1000) {
         return;

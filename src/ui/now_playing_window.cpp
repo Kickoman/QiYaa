@@ -14,7 +14,7 @@ namespace Ui {
 
 namespace {
 constexpr int kPad = 4;
-constexpr int kCoverPixels = 400;  // requested size; drawn scaled
+constexpr int kCoverPixels = 400;
 }  // namespace
 
 NowPlayingWindow::NowPlayingWindow(
@@ -51,7 +51,7 @@ void NowPlayingWindow::paintContent(QPainter& painter, const QRect& area) {
     const QImage image = track ? coverCache->get(track->coverUrl(kCoverPixels)) : QImage();
     if (!image.isNull()) {
         painter.save();
-        painter.setRenderHint(QPainter::SmoothPixmapTransform, true);  // a photo, not pixel art
+        painter.setRenderHint(QPainter::SmoothPixmapTransform, true);
         painter.drawImage(cover, image);
         painter.restore();
     } else {

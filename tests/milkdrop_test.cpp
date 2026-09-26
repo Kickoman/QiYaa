@@ -1,6 +1,3 @@
-// Milkdrop: the preset collection (no OpenGL needed) and, where an OpenGL 3.3
-// context can be made (CTest runs this under Xvfb when it can), projectM
-// rendering inside the window.
 #include "audio/audio_engine.h"
 #include "skins/skin.h"
 #include "ui/milkdrop_window.h"
@@ -15,7 +12,6 @@
 #include <QTest>
 
 namespace {
-// A tiny valid Milkdrop preset: a waveform and some zoom, no shaders.
 QByteArray SimplePreset(double zoom) {
     return QByteArray("[preset00]\nfDecay=0.98\nzoom=") + QByteArray::number(zoom)
         + "\nwave_r=1\nwave_g=0.5\nwave_b=0.2\nnWaveMode=2\nfWaveScale=1.5\n"
@@ -96,7 +92,7 @@ private Q_SLOTS:
 
     void windowSwitchesPresets() {
         Ui::MilkdropWindow window(&engine, builtIn.path(), user.path(), &skin);
-        QVERIFY(!window.view());  // nothing OpenGL before it's shown
+        QVERIFY(!window.view());
         QSignalSpy changed(&window, &Ui::MilkdropWindow::presetChanged);
         window.setShuffle(false);
         window.selectPreset(0);
@@ -131,7 +127,7 @@ private Q_SLOTS:
         Ui::MilkdropWindow window(&engine, builtIn.path(), user.path(), &skin);
         window.setShuffle(false);
         window.selectPreset(0);
-        window.onStaysBlack();  // A-first shows nothing on this "GPU"
+        window.onStaysBlack();
         QCOMPARE(window.blackPresets(), QStringList{"A-first"});
         QCOMPARE(window.currentPreset(), QStringLiteral("b-second"));
         // Never chosen automatically again, in order...
@@ -142,7 +138,7 @@ private Q_SLOTS:
         window.selectPreset(1);
         window.previousPreset();  // wraps past A-first
         QCOMPARE(window.currentPreset(), QStringLiteral("mine"));
-        // ...or at random (many times: a black one must never come up, not just rarely).
+        // 1000 random picks: a black one must never come up, not just rarely.
         window.setShuffle(true);
         for (int i = 0; i < 1000; ++i) {
             window.nextPreset();
@@ -189,14 +185,10 @@ private Q_SLOTS:
         for (int i = 0; i < 12; ++i) {
             window.onStaysBlack();
         }
-        // One black preset after another means the problem isn't the presets
-        // (no sound reaching it, a driver issue): don't hide them all.
         QCOMPARE(window.blackPresets().size(), 5);
     }
 
     void rendersWithProjectM() {
-        // The whole path on real OpenGL: Qt window + projectM + a real preset
-        // with warp and composite shaders (bright even without sound).
         Ui::MilkdropWindow window(&engine, QStringLiteral(":/milkdrop"), user.path(), &skin);
         window.setSizeSteps({2, 4});
         window.setLocked(true);
@@ -257,21 +249,17 @@ private Q_SLOTS:
         if (!qEnvironmentVariableIsEmpty("QIYAA_TEST_SHOTS")) {
             image.save(qEnvironmentVariable("QIYAA_TEST_SHOTS") + "/milkdrop.png");
         }
-        // Something was drawn: lit and colourful, not a flat colour.
         QVERIFY2(colourCount > 50, qPrintable(QString::number(colourCount)));
         QVERIFY2(
             lit > samples / 2, qPrintable(QStringLiteral("%1 of %2 lit").arg(lit).arg(samples))
         );
-        QVERIFY(qAlpha(image.pixel(image.width() / 2, image.height() / 2)) == 255);  // opaque
+        QVERIFY(qAlpha(image.pixel(image.width() / 2, image.height() / 2)) == 255);
 
-        // Hidden: no more frames.
         window.hide();
         QVERIFY(!view->isRendering());
     }
 
     void blackPictureIsNoticed() {
-        // The detector on real OpenGL: a preset that draws nothing is reported,
-        // one that draws a big white border isn't.
         QTemporaryDir dir;
         WriteFile(
             dir.filePath("black.milk"),

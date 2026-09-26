@@ -18,7 +18,7 @@ struct WinampPreset {
     std::array<int, kEqBands> bands;
 };
 
-// Winamp's built-in presets (webamp's presets/builtin.json).
+// Port of webamp's presets/builtin.json (MIT), in the .eqf scale 1..64.
 constexpr WinampPreset kWinampPresets[] = {
     {"Classical", 33, {33, 33, 33, 33, 33, 33, 20, 20, 20, 16}},
     {"Club", 33, {33, 33, 38, 42, 42, 42, 38, 33, 33, 33}},
@@ -40,12 +40,10 @@ constexpr WinampPreset kWinampPresets[] = {
 };
 
 constexpr char kHeader[] = "Winamp EQ library file v1.1";
-constexpr int kHeaderLength = sizeof(kHeader) - 1;  // 27
+constexpr int kHeaderLength = sizeof(kHeader) - 1;
 constexpr int kNameLength = 257;
 constexpr int kValues = kEqBands + 1;
 
-// Winamp wrote names in the Windows ANSI code page; we write UTF-8 unless the
-// name fits the local 8-bit encoding (which is that code page on Windows).
 QString DecodeName(const QByteArray& raw) {
     QStringDecoder utf8(QStringConverter::Utf8, QStringConverter::Flag::Stateless);
     const QString s = utf8.decode(raw);
@@ -133,7 +131,7 @@ QByteArray WriteEqf(const QList<EqPreset>& presets) {
     return out;
 }
 
-// Winamp's centre notch is 33 (writing 0 dB gives 33 too), so 33 reads as exactly 0 dB.
+// 33 is Winamp's centre notch (0 dB writes 33): exactly 0 dB, not the line's +0.19 dB.
 double EqfToDb(int value) {
     value = std::clamp(value, 1, 64);
     return value == 33 ? 0.0 : (double(value) - 1.0) / 63.0 * 24.0 - 12.0;

@@ -10,8 +10,6 @@
 
 namespace Vis {
 
-// ------------------------------------------------------------------ Analyzer
-
 Analyzer::Analyzer(int fftSize)
     : fftLength(fftSize)
     , windowFunction(fftSize)
@@ -30,7 +28,6 @@ const std::vector<float>& Analyzer::analyze(std::span<const float> mono) {
         real[i] = i < int(mono.size()) ? mono[i] * windowFunction[i] : 0.0f;
         imaginary[i] = 0.0f;
     }
-    // Iterative radix-2 FFT.
     for (int i = 1, j = 0; i < n; ++i) {
         int bit = n >> 1;
         for (; j & bit; bit >>= 1) {
@@ -77,8 +74,6 @@ QColor VisColor(const Skins::Skin& skin, int i) {
     return i < c.size() ? c[i] : QColor(Qt::green);
 }
 
-// ------------------------------------------------------------------ Spectrum
-
 class Spectrum : public Visualizer {
 public:
     static constexpr int kBars = 19;
@@ -93,7 +88,6 @@ public:
     }
 
     void update(const VisFrame& frame) override {
-        // Logarithmic buckets from ~60 Hz to ~16 kHz.
         const double binHz = double(frame.sampleRate) / frame.fftSize;
         const double lo = 60.0, hi = std::min(16000.0, frame.sampleRate / 2.0);
         for (int value = 0; value < kBars; ++value) {
@@ -106,7 +100,6 @@ public:
                 peakDb = std::max(peakDb, frame.spectrum[i]);
             }
             const float target = std::clamp((peakDb - kMinDb) / (kMaxDb - kMinDb), 0.0f, 1.0f);
-            // Bars jump up and fall smoothly, like Winamp's "fast" falloff.
             bars[value] = std::max(target, bars[value] - 0.07f);
             float peak = peaks[value] - 0.0004f * peakFrames[value] * peakFrames[value];
             if (peak < bars[value]) {
@@ -125,7 +118,6 @@ public:
             const int x = area.x() + value * 4;
             const int barH = int(std::ceil(bars[value] * h));
             for (int i = 0; i < barH; ++i) {
-                // Colours 2..17: analyzer gradient from top to bottom.
                 const int colorIndex = 2 + (h - 1 - i) * 16 / h;
                 painter.fillRect(x, area.y() + h - 1 - i, 3, 1, VisColor(skin, colorIndex));
             }
@@ -141,8 +133,6 @@ private:
     std::array<float, kBars> peaks{};
     std::array<int, kBars> peakFrames{};
 };
-
-// ------------------------------------------------------------------ Oscilloscope
 
 class Oscilloscope : public Visualizer {
 public:
@@ -170,7 +160,6 @@ public:
             const int y = ys[x];
             const int top = std::min(last, y), bottom = std::max(last, y);
             for (int yy = top; yy <= bottom; ++yy) {
-                // Colours 18..22: from the centre line outwards.
                 const int dist = int(std::abs(yy - 7.5f));
                 painter.fillRect(
                     area.x() + x, area.y() + yy, 1, 1, VisColor(skin, 18 + std::min(4, dist / 2))

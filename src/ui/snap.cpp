@@ -8,8 +8,7 @@
 namespace Ui {
 namespace {
 
-// QRect::right()/bottom() are inclusive (x + w - 1). webamp uses exclusive edges,
-// so we use our own helpers everywhere.
+// Exclusive edges as in webamp; QRect::right()/bottom() are inclusive (x + w - 1).
 int LeftEdge(const QRect& rect) {
     return rect.x();
 }
@@ -142,7 +141,6 @@ QPoint ClampInside(const QRect& rect, const QRect& screen) {
     if (BottomEdge(rect) > BottomEdge(screen)) {
         y = BottomEdge(screen) - rect.height();
     }
-    // Top-left wins if the window is bigger than the screen.
     if (x < LeftEdge(screen)) {
         x = LeftEdge(screen);
     }
@@ -212,13 +210,11 @@ QList<int> StackBelow(int self, const QList<QRect>& rects, int dy, const QList<b
                     follows = moving[j] && hangsFrom(rects[j], rects[i]);
                 }
                 if (dy > 0) {
-                    // Growing: anything we'd grow into gets pushed too.
                     follows = follows || grown.intersects(rects[i]);
                     for (int j = 0; j < n && !follows; ++j) {
                         follows = moving[j] && rects[j].translated(0, dy).intersects(rects[i]);
                     }
                 } else if (follows) {
-                    // Shrinking: another window that stays still holds it up.
                     for (int j = 0; j < n; ++j) {
                         if (j != self && j != i && !moving[j] && isSolid(j)
                             && hangsFrom(rects[j], rects[i])) {
@@ -231,7 +227,6 @@ QList<int> StackBelow(int self, const QList<QRect>& rects, int dy, const QList<b
                 }
             }
         }
-        // Shrinking must not pull a window onto one that stays.
         bool conflict = false;
         if (dy < 0) {
             for (int i = 0; i < n; ++i) {

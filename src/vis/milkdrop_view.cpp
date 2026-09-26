@@ -18,7 +18,7 @@ namespace Vis {
 namespace {
 constexpr uint32_t kMaxFramesPerFeed = 4096;
 constexpr int kProbeWidth = 32, kProbeHeight = 18;
-constexpr int kBlackLevel = 12;  // brightest channel below this (of 255) everywhere = black
+constexpr int kBlackLevel = 12;
 
 QSurfaceFormat ViewFormat() {
     // projectM 4 needs OpenGL 3.3 core. macOS only gives core profiles when asked.
@@ -27,7 +27,7 @@ QSurfaceFormat ViewFormat() {
     f.setProfile(QSurfaceFormat::CoreProfile);
     f.setDepthBufferSize(0);
     f.setStencilBufferSize(0);
-    f.setAlphaBufferSize(0);  // an opaque window: projectM's output alpha means nothing
+    f.setAlphaBufferSize(0);
     f.setSwapInterval(1);
     return f;
 }
@@ -41,7 +41,6 @@ QString MilkdropView::OpenGlProblem() {
             return QStringLiteral("нет OpenGL");
         }
         const QSurfaceFormat f = probe.format();
-        // projectM is built for desktop OpenGL.
         if (probe.isOpenGLES()) {
             return QStringLiteral("есть только OpenGL ES, а нужен OpenGL 3.3");
         }
@@ -90,8 +89,6 @@ void MilkdropView::destroyProjectM() {
 }
 
 void MilkdropView::loadPreset(const QByteArray& milk, bool smooth) {
-    // Loading touches GL, and projectM may be inside a frame right now (its
-    // callbacks come from there): do it at the start of the next frame.
     pending = std::make_pair(milk, smooth);
     update();
 }
@@ -102,7 +99,7 @@ void MilkdropView::setBlackWatch(bool on) {
     }
     blackWatch = on;
     blackChecks = 0;
-    sinceLoad.start();  // judge only what plays from now on
+    sinceLoad.start();
 }
 
 void MilkdropView::captureNextFrame() {
@@ -127,7 +124,6 @@ void MilkdropView::setLocked(bool locked) {
 }
 
 void MilkdropView::setTextureSearchPaths(const QStringList& paths) {
-    // Rebuilds projectM's textures (GL work): applied at the next frame, with our context current.
     texturePaths = paths;
     texturePathsDirty = true;
     update();
@@ -140,13 +136,12 @@ void MilkdropView::setRendering(bool on, int fps) {
     }
     timer.setInterval(1000 / std::max(1, fps));
     if (!timer.isActive()) {
-        visReadCursor = audioEngine->visCursor();  // don't replay what played while we were off
+        visReadCursor = audioEngine->visCursor();
         timer.start();
     }
 }
 
 void MilkdropView::applySettings() {
-    // Plain values, no GL: safe whatever context is current.
     if (!projectM) {
         return;
     }
@@ -271,7 +266,6 @@ void MilkdropView::paintGL() {
         blackChecks = 0;
         sawPicture = false;
     }
-    // Only the samples that played since the last frame.
     const uint32_t n =
         audioEngine->readNewVisSamples(&visReadCursor, pcm.data(), kMaxFramesPerFeed);
     if (n > 0) {
@@ -297,10 +291,8 @@ void MilkdropView::paintGL() {
 }
 
 void MilkdropView::makeOpaque() {
-    // projectM leaves whatever alpha a preset produced in the window, often 0.
-    // If the system gave the window an alpha channel anyway (an ARGB visual on
-    // X11/XWayland, a translucent surface elsewhere), those pixels would be
-    // composited as see-through, i.e. black over our frame. Set alpha to 1.
+    // projectM leaves a preset's alpha (often 0); a window that got an alpha channel anyway
+    // (an ARGB visual on X11/XWayland) would composite those pixels as see-through.
     QOpenGLFunctions* gl = context()->functions();
     gl->glBindFramebuffer(GL_FRAMEBUFFER, defaultFramebufferObject());
     gl->glDisable(GL_SCISSOR_TEST);
@@ -329,13 +321,11 @@ void MilkdropView::watchForBlack() {
         return;
     }
     blackChecks = 0;
-    sinceLoad.start();  // one report per stretch
+    sinceLoad.start();
     QMetaObject::invokeMethod(this, [this] { Q_EMIT staysBlack(); }, Qt::QueuedConnection);
 }
 
 bool MilkdropView::pictureIsBlack() {
-    // Scale the frame just drawn (framebuffer 0, before the swap) into a tiny
-    // target on the GPU and read that back: one small readback per second.
     QOpenGLExtraFunctions* f = context()->extraFunctions();
     if (!probeFbo) {
         f->glGenTextures(1, &probeTex);

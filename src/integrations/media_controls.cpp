@@ -9,7 +9,7 @@ using Audio::AudioEngine;
 
 namespace {
 constexpr int kCoverPixels = 400;
-}
+}  // namespace
 
 MediaControls::MediaControls(
     Core::Player* player,
@@ -22,7 +22,6 @@ MediaControls::MediaControls(
     , coverCache(covers)
     , hookFunctions(std::move(hooks)) {
     connect(corePlayer, &Core::Player::currentTrackChanged, this, [this] {
-        // Make sure the cover gets downloaded, so artUrl() can become a local file.
         if (const auto* t = corePlayer->currentTrack(); t && coverCache) {
             coverCache->get(t->coverUrl(kCoverPixels));
         }
@@ -54,9 +53,9 @@ MediaControls::Status MediaControls::status() const {
 
 void MediaControls::play() {
     if (status() == Status::Playing) {
-        return;  // media "play" must not restart the track
+        return;
     }
-    corePlayer->play();  // resumes when paused, starts when stopped
+    corePlayer->play();
 }
 
 void MediaControls::pause() {

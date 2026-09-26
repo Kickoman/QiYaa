@@ -1,4 +1,3 @@
-// The Winamp main window (275x116).
 #pragma once
 
 #include "ui/skinned_window.h"
@@ -29,7 +28,6 @@ public:
     int volume() const { return volumePercent; }
     int balance() const { return balancePercent; }
 
-    // Reflects whether the equalizer / playlist windows are shown.
     void setEqButton(bool on);
     void setPlButton(bool on);
 
@@ -38,15 +36,15 @@ public:
     bool showsRemainingTime() const { return remainingTimeShown; }
     void setShowsRemainingTime(bool on);
 
-    void setStatusText(const QString& text);  // shown in the marquee for a few seconds
+    void setStatusText(const QString& text);
 
     void setShaded(bool shaded) override;
 
 Q_SIGNALS:
     void eqToggleRequested();
     void plToggleRequested();
-    void menuRequested(QPoint globalPos);  // options button / right click
-    void sourcesMenuRequested(QPoint globalPos);  // eject button
+    void menuRequested(QPoint globalPos);
+    void sourcesMenuRequested(QPoint globalPos);
     void closeRequested();
     void minimizedChanged(bool minimized);
     void volumeChanged(int volume);
@@ -121,14 +119,14 @@ private:
     bool pressedInside = false;
     int volumePercent = 75;
     int balancePercent = 0;
-    double seekPreview = -1;  // 0..1 while dragging the position bar
+    double seekPreview = -1;
     bool eqOn = false;
     bool plOn = false;
     bool remainingTimeShown = false;
 
     QString statusText;
     QElapsedTimer statusAge;
-    int marqueeOffset = 0;  // in characters
+    int marqueeOffset = 0;
     QElapsedTimer marqueeStep;
 
     VisMode visualizationMode = VisMode::Spectrum;

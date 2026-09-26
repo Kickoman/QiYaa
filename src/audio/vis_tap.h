@@ -1,7 +1,3 @@
-// Lock-free tap of the most recent PCM for visualizations.
-// The audio thread appends; the UI thread copies out the latest N samples.
-// Reads may race with writes, which only makes a frame of a visualization a
-// little inexact — never unsafe, because the buffer never moves.
 #pragma once
 
 #include <array>
@@ -16,11 +12,9 @@ public:
 
     // Audio thread: interleaved stereo frames.
     void write(const float* frames, uint32_t frameCount);
-    // UI thread: the latest `count` frames (count <= kSize), oldest first.
+    // UI thread; count <= kSize.
     void read(float* left, float* right, uint32_t count) const;
-    // UI thread: the frames written since `*cursor` (the newest `maxFrames` of
-    // them if there are more; older ones are gone after kSize), interleaved
-    // stereo into `stereo`. Advances `*cursor`; returns the number of frames.
+    // UI thread.
     uint32_t readNew(uint32_t* cursor, float* stereo, uint32_t maxFrames) const;
     uint32_t position() const { return writePosition.load(std::memory_order_acquire); }
     void clear();

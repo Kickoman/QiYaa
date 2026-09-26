@@ -8,7 +8,6 @@
 namespace Audio {
 
 namespace {
-// Roughly one octave wide; neighbouring Winamp bands overlap smoothly.
 constexpr double kQ = 1.2;
 constexpr int kDirty = 4;
 }  // namespace
@@ -20,7 +19,7 @@ EqualizerDsp::EqualizerDsp() {
 void EqualizerDsp::setSampleRate(uint32_t rate) {
     sampleRate = rate > 0 ? rate : 44100;
     publish(lastSettings);
-    // Make it current immediately (no audio thread yet).
+    // No audio thread yet: make it current now.
     const int prev = middle.exchange(front);
     if (prev & kDirty) {
         front = prev & 3;
@@ -37,7 +36,7 @@ EqualizerDsp::ComputeCoefficients(const EqSettings& settings, double sampleRate)
         const double db = std::clamp(settings.bandsDb[i], -kEqMaxDb, kEqMaxDb);
         const double f0 = kEqBandHz[i];
         if (std::abs(db) < 0.05 || f0 >= sampleRate * 0.49) {
-            continue;  // identity
+            continue;
         }
         // RBJ audio EQ cookbook, peaking EQ.
         const double A = std::pow(10.0, db / 40.0);
@@ -81,7 +80,6 @@ void EqualizerDsp::process(float* frames, uint32_t frameCount) {
     for (int band = 0; band < kEqBands; ++band) {
         const Biquad& filter = c.bands[band];
         if (filter.identity) {
-            // Let the state decay so re-enabling a band doesn't pop.
             filterState1[band] = {0, 0};
             filterState2[band] = {0, 0};
             continue;

@@ -36,7 +36,6 @@ QString NormalizeToken(const QByteArray& raw) {
         s = s.mid(6).trimmed();
     }
 
-    // Tokens are URL-safe ASCII; anything else means we parsed garbage.
     static const QRegularExpression valid(QStringLiteral("^[A-Za-z0-9._\\-]{10,}$"));
     return valid.match(s).hasMatch() ? s : QString();
 }

@@ -139,7 +139,6 @@ void ApiClient::handleJson(QNetworkReply* reply, TJsonCallback callback) {
             );
             return;
         }
-        // Most endpoints wrap the payload in {"result": ...}; some newer ones don't.
         callback(
             obj.contains(QStringLiteral("result")) ? obj.value(QStringLiteral("result"))
                                                    : QJsonValue(obj),

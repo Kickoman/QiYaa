@@ -29,7 +29,7 @@
 #include "ui/library_menu.h"
 #include "ui/login_dialog.h"
 #include "ui/main_window.h"
-#include "ui/milkdrop_window.h"  // stays null without QIYAA_HAVE_MILKDROP
+#include "ui/milkdrop_window.h"
 #include "ui/now_playing_window.h"
 #include "ui/playlist_window.h"
 #include "ui/snap.h"
@@ -177,7 +177,6 @@ Application::Application(const Options& options, QObject* parent)
                 QStringLiteral("milkdrop/black"), milkdropWindowInstance->blackPresets()
             );
         });
-        // Picked by hand: say which one it is (like Milkdrop's own title display).
         connect(
             milkdropWindowInstance.get(), &Ui::MilkdropWindow::presetChanged, this,
             [this](const QString& name, bool byUser) {
@@ -199,7 +198,6 @@ Application::Application(const Options& options, QObject* parent)
     }
 #endif
 
-    // Main window.
     mainWindowInstance->setVolume(settings.value(QStringLiteral("volume"), 75).toInt());
     mainWindowInstance->setBalance(settings.value(QStringLiteral("balance"), 0).toInt());
     mainWindowInstance->setVisMode(Ui::MainWindow::VisMode(
@@ -222,7 +220,6 @@ Application::Application(const Options& options, QObject* parent)
         &Application::showSourcesMenu
     );
     connect(mainWindowInstance.get(), &Ui::MainWindow::closeRequested, this, &Application::quit);
-    // Minimising the main window takes the equalizer and playlist with it.
     connect(
         mainWindowInstance.get(), &Ui::MainWindow::minimizedChanged, this,
         [this](bool minimized) {
@@ -251,7 +248,6 @@ Application::Application(const Options& options, QObject* parent)
         }
     );
 
-    // Equalizer.
     const Audio::EqSettings eq = ReadEq(settings);
     equalizerWindowInstance->setSettings(eq);
     equalizerWindowInstance->setAutoOn(
@@ -269,7 +265,6 @@ Application::Application(const Options& options, QObject* parent)
         equalizerWindowInstance.get(), &Ui::EqualizerWindow::statusText, mainWindowInstance.get(),
         &Ui::MainWindow::setStatusText
     );
-    // The EQ's shade mode shows/controls the main window's volume and balance.
     equalizerWindowInstance->setMixer(mainWindowInstance->volume(), mainWindowInstance->balance());
     connect(mainWindowInstance.get(), &Ui::MainWindow::volumeChanged, this, [this](int value) {
         equalizerWindowInstance->setMixer(value, mainWindowInstance->balance());
@@ -289,7 +284,6 @@ Application::Application(const Options& options, QObject* parent)
         setEqualizerVisible(false);
     });
 
-    // Playlist.
     playlistWindowInstance->setSizeSteps(
         settings.value(QStringLiteral("playlist/steps"), QSize(0, 4)).toSize()
     );
@@ -309,7 +303,6 @@ Application::Application(const Options& options, QObject* parent)
         connect(window, &Ui::SkinnedWindow::moveFinished, this, &Application::saveState);
     }
 
-    // Shade states: applied before the windows are placed, so saved positions match.
     const std::pair<Ui::SkinnedWindow*, QString> shades[] = {
         {mainWindowInstance.get(), QStringLiteral("mainWindow/shaded")},
         {equalizerWindowInstance.get(), QStringLiteral("equalizer/shaded")},
@@ -381,7 +374,6 @@ QList<Ui::SkinnedWindow*> Application::windows() const {
 }
 
 void Application::layoutWindows() {
-    // Default Winamp stack: main, equalizer below it, playlist below that.
     const QPoint mainPos =
         settings.value(QStringLiteral("mainWindow/pos"), QPoint(100, 100)).toPoint();
     const QPoint eqDefault = mainPos + QPoint(0, mainWindowInstance->height());
@@ -393,7 +385,6 @@ void Application::layoutWindows() {
     playlistWindowInstance->placeAt(
         settings.value(QStringLiteral("playlist/pos"), plDefault).toPoint()
     );
-    // "Now playing" defaults to the right of the main window, Milkdrop below it.
     nowPlayingWindowInstance->placeAt(settings
                                           .value(
                                               QStringLiteral("nowPlaying/pos"),
@@ -442,7 +433,6 @@ void Application::start() {
         return;
     }
     qInfo("Using Yandex token from %s", qPrintable(token.origin));
-    // A token imported from the old Yaamp gets copied into our own config.
     const bool imported = !token.origin.startsWith(App::ConfigDir())
         && !token.origin.startsWith(QLatin1String("environment"));
     applyToken(token.token, imported);
@@ -503,14 +493,12 @@ bool Application::loadSkin(const QString& path) {
 
 void Application::setScale(double scale, bool persist) {
     const double old = mainWindowInstance->scale();
-    // Everything docked to the main window — hidden windows too, so they are
-    // still in place when shown — in order of distance from the main window.
     const QList<Ui::SkinnedWindow*> all = windows();
     QList<QRect> rects;
     for (Ui::SkinnedWindow* window : all) {
         rects << window->frameGeometry();
     }
-    QList<std::pair<Ui::SkinnedWindow*, QPoint>> docked;  // offsets in skin pixels
+    QList<std::pair<Ui::SkinnedWindow*, QPoint>> docked;
     for (int i : Ui::ConnectedGroup(0, rects)) {
         const QPointF off = QPointF(all[i]->pos() - mainWindowInstance->pos()) / old;
         docked.append({all[i], QPoint(qRound(off.x()), qRound(off.y()))});
@@ -520,10 +508,8 @@ void Application::setScale(double scale, bool persist) {
         window->setScale(scale);
     }
     const double s = mainWindowInstance->scale();
-    const QPoint mainPos = mainWindowInstance->pos();  // setScale may have moved it back on screen
+    const QPoint mainPos = mainWindowInstance->pos();
 
-    // Re-stack. Window sizes are rounded individually, so snap each window to
-    // the ones already placed to close 1 px rounding gaps.
     QList<QRect> placed{mainWindowInstance->frameGeometry()};
     for (const auto& [w, off] : docked) {
         QRect rect(mainPos + QPoint(qRound(off.x() * s), qRound(off.y() * s)), w->size());
@@ -531,7 +517,6 @@ void Application::setScale(double scale, bool persist) {
         w->move(rect.topLeft());
         placed << rect;
     }
-    // Keep the visible group on screen as a whole...
     QRect bounds = mainWindowInstance->frameGeometry();
     for (const auto& [w, off] : docked) {
         if (w->isVisible()) {
@@ -550,7 +535,6 @@ void Application::setScale(double scale, bool persist) {
             w->move(w->pos() + shift);
         }
     }
-    // ...and if it's taller/wider than the screen, every window must still be reachable.
     if (!screen.isEmpty()
         && (bounds.width() > screen.width() || bounds.height() > screen.height())) {
         for (Ui::SkinnedWindow* window : all) {
@@ -619,7 +603,7 @@ void Application::quit() {
     }
     quitting = true;
     saveState();
-    corePlayer.shutDown();  // sends the wave "skip" for the track in progress
+    corePlayer.shutDown();
     for (Ui::SkinnedWindow* window : windows()) {
         window->hide();
     }
@@ -653,8 +637,6 @@ void Application::saveState() {
     }
 }
 
-// ------------------------------------------------------------------ menus & keys
-
 void Application::installShortcuts(QWidget* widget) {
     auto add = [widget](const QKeySequence& key, auto fn) {
         auto* a = new QAction(widget);
@@ -662,7 +644,6 @@ void Application::installShortcuts(QWidget* widget) {
         QObject::connect(a, &QAction::triggered, widget, fn);
         widget->addAction(a);
     };
-    // Winamp's classic keys.
     for (int key :
          {Qt::Key_Z, Qt::Key_X, Qt::Key_C, Qt::Key_V, Qt::Key_B, Qt::Key_Left, Qt::Key_Right}) {
         add(QKeySequence(key), [this, key] { transportKey(key); });

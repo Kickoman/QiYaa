@@ -17,9 +17,6 @@ constexpr int kSuccess = 0;
 constexpr int kFailure = 1;
 constexpr int kInternalError = 2;
 
-// Wayland doesn't let apps position their own windows, which the Winamp layout
-// (several snapped windows) depends on. Unless the user explicitly chose a
-// platform, run through XWayland; fall back to native Wayland if xcb is missing.
 void ChoosePlatform() {
 #if defined(Q_OS_LINUX) || defined(Q_OS_FREEBSD)
     if (qEnvironmentVariableIsSet("QT_QPA_PLATFORM")) {
@@ -35,8 +32,6 @@ void ChoosePlatform() {
 #endif
 }
 
-// Feeds a local file into the engine in small pieces, like a slow download.
-// Handy for testing audio without a Yandex account.
 void StreamLocalFile(Audio::AudioEngine* engine, const QString& path) {
     auto file = std::make_shared<QFile>(path);
     if (!file->open(QIODevice::ReadOnly)) {
@@ -58,7 +53,6 @@ void StreamLocalFile(Audio::AudioEngine* engine, const QString& path) {
     timer->start(20);
 }
 
-// A few fake tracks, for screenshots and UI testing without an account.
 QList<Yandex::Track> DemoTracks() {
     const std::pair<const char*, int> samples[] = {
         {"Кино - Группа крови", 285},       {"Земфира - Искала", 237},
@@ -95,7 +89,7 @@ int Run(int& argc, char* argv[]) {
         QApplication::setWindowIcon(icon);
     }
     QApplication::setApplicationVersion(QStringLiteral(QIYAA_VERSION));
-    QApplication::setQuitOnLastWindowClosed(false);  // closing the EQ/playlist must not quit
+    QApplication::setQuitOnLastWindowClosed(false);
 
     QCommandLineParser commandLine;
     commandLine.setApplicationDescription(QStringLiteral("Winamp-style Yandex Music player"));
@@ -139,9 +133,8 @@ int Run(int& argc, char* argv[]) {
     options.skinOverride = commandLine.value(skinOption);
     options.offline =
         screenshot || commandLine.isSet(offlineOption) || commandLine.isSet(fileOption);
-    // With --play-file, a screenshot is taken after a second of playback (shows the visualizer).
     options.audio = !screenshot || commandLine.isSet(fileOption);
-    options.readOnlySettings = screenshot;  // screenshots never touch the user's settings
+    options.readOnlySettings = screenshot;
     options.mediaIntegration = !screenshot;
     App::Application application(options);
 

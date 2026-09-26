@@ -38,6 +38,7 @@ ReferenceAlignment: Pointer
 IndentCaseLabels: true
 NamespaceIndentation: None
 FixNamespaceComments: true
+ShortNamespaceLines: 0
 SpacesBeforeTrailingComments: 2
 EmptyLineBeforeAccessModifier: LogicalBlock
 KeepEmptyLinesAtTheStartOfBlocks: false

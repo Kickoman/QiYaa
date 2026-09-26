@@ -1,5 +1,3 @@
-// Windows System Media Transport Controls: media keys, the volume flyout's
-// media panel, lock screen. Windows 10+ only; built when C++/WinRT is available.
 #pragma once
 
 #include <QObject>
@@ -15,7 +13,6 @@ class MediaControls;
 class Smtc : public QObject {
     Q_OBJECT
 public:
-    // `window` is the main window: SMTC for desktop apps is bound to an HWND.
     Smtc(MediaControls* controls, QWidget* window, QObject* parent = nullptr);
     ~Smtc() override;
 

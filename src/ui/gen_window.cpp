@@ -55,7 +55,6 @@ void GenWindow::paintFrame(QPainter& painter) {
     const int window = skinSize().width(), h = skinSize().height();
     const bool active = isActiveWindow();
 
-    // Top: fill everything, then corners, ends and the title in the middle.
     const QRect centerFill = active ? Skins::GenWindowSprites::kTopCenterFillSelected
                                     : Skins::GenWindowSprites::kTopCenterFill;
     for (int x = 0; x < window; x += 25) {
@@ -106,7 +105,6 @@ void GenWindow::paintFrame(QPainter& painter) {
         );
     }
 
-    // Sides: tiles, with the bottom pieces anchored to the bottom.
     for (int y = kTopHeight; y < h - kBottomHeight; y += 29) {
         const int tile = std::min(29, h - kBottomHeight - y);
         activeSkin.draw(
@@ -128,7 +126,6 @@ void GenWindow::paintFrame(QPainter& painter) {
         {window - kRightWidth, h - kBottomHeight - 24}
     );
 
-    // Bottom.
     for (int x = 125; x < window - 125; x += 25) {
         activeSkin.draw(
             painter, TSheet::Gen, Skins::GenWindowSprites::kBottomFill, {x, h - kBottomHeight}

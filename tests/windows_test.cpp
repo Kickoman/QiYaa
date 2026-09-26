@@ -1,4 +1,3 @@
-// The full window set on the offscreen platform: docking, scale, playlist, EQ.
 #include "app/application.h"
 #include "core/cover_cache.h"
 #include "support/mock_http_server.h"
@@ -34,7 +33,6 @@ void SendMouseEvent(
     QCoreApplication::sendEvent(widget, &e);
 }
 
-// Press at `local` (window pixels) and move the cursor by `delta`.
 void Drag(QWidget* widget, QPoint local, QPoint delta) {
     const QPoint g = widget->mapToGlobal(local);
     SendMouseEvent(widget, QEvent::MouseButtonPress, local, g, Qt::LeftButton, Qt::LeftButton);
@@ -77,7 +75,6 @@ private:
     Ui::EqualizerWindow* eq = nullptr;
     Ui::PlaylistWindow* pl = nullptr;
 
-    // Scale tests need the stack to fit on screen (see tests/CMakeLists.txt).
     void requireBigScreen() {
         if (QGuiApplication::primaryScreen()->availableGeometry().height() < 1200) {
             QSKIP("needs a 2560x1440 virtual screen");
@@ -117,7 +114,7 @@ private Q_SLOTS:
 
     void equalizerDetachesAndSnapsBack() {
         const QPoint start = eq->pos();
-        Drag(eq, {100, 5}, {300, 0});  // pull it away to the right
+        Drag(eq, {100, 5}, {300, 0});
         QCOMPARE(eq->pos(), start + QPoint(300, 0));
         QVERIFY(!main->dockedWindows().contains(eq));
         Drag(eq, {100, 5}, {-292, 0});  // within 15 px of the old spot: snaps
@@ -172,7 +169,7 @@ private Q_SLOTS:
         QVERIFY(pl->selection().isEmpty());
         QKeyEvent del(QEvent::KeyPress, Qt::Key_Delete, Qt::NoModifier);
         QCoreApplication::sendEvent(pl, &del);
-        QCOMPARE(app->player()->playlist().size(), 10);  // nothing was selected
+        QCOMPARE(app->player()->playlist().size(), 10);
     }
 
     void shiftArrowsGrowTheRange() {
@@ -320,7 +317,7 @@ private Q_SLOTS:
         const QPoint mainPos = main->pos();
         main->setShaded(true);
         QCOMPARE(main->size(), QSize(275, 14));
-        QCOMPARE(eq->pos(), mainPos + QPoint(0, 14));  // pulled up
+        QCOMPARE(eq->pos(), mainPos + QPoint(0, 14));
         QCOMPARE(pl->pos(), eq->pos() + QPoint(0, eq->height()));
         eq->setShaded(true);
         QCOMPARE(eq->height(), 14);
@@ -403,7 +400,7 @@ private Q_SLOTS:
         Ui::MilkdropWindow* md = app->milkdropWindow();
 #if defined(QIYAA_HAVE_MILKDROP)
         QVERIFY(md);
-        QVERIFY(!md->isVisible());  // off by default
+        QVERIFY(!md->isVisible());
         app->setMilkdropVisible(true);
         QVERIFY(md->isVisible());
         QCOMPARE(
@@ -493,7 +490,6 @@ private Q_SLOTS:
         if (!qEnvironmentVariableIsEmpty("QIYAA_TEST_SHOTS")) {
             app->snapshot().save(qEnvironmentVariable("QIYAA_TEST_SHOTS") + "/nowplaying.png");
         }
-        // Docked to the right of the main window by default.
         QCOMPARE(np->pos(), main->pos() + QPoint(main->width(), 0));
     }
 

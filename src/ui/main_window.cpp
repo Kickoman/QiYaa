@@ -22,8 +22,8 @@ using Skins::MainWindowSprites;
 namespace {
 
 constexpr int kMarqueeStepMs = 220;
-constexpr int kVisFrameMs = 33;  // ~30 fps while the visualization is animating
-constexpr int kFullRepaintMs = 100;  // time display, position bar
+constexpr int kVisFrameMs = 33;
+constexpr int kFullRepaintMs = 100;
 constexpr int kVisSamples = 1024;
 constexpr int kStatusShowMs = 3000;
 const QString kMarqueeSeparator = QStringLiteral("  ***  ");
@@ -124,7 +124,7 @@ void MainWindow::setShaded(bool shaded) {
 void MainWindow::setBalance(int value) {
     value = std::clamp(value, -100, 100);
     if (std::abs(value) < 8) {
-        value = 0;  // Winamp snaps to centre
+        value = 0;
     }
     const bool changed = value != balancePercent;
     balancePercent = value;
@@ -142,11 +142,7 @@ void MainWindow::setStatusText(const QString& text) {
     update();
 }
 
-// ------------------------------------------------------------------ timer
-
 void MainWindow::refreshTimer() {
-    // Only tick when something on screen actually changes: playback, a blinking
-    // pause, a pending status text, or a marquee that has to scroll.
     const auto st = corePlayer->engine()->state();
     const bool playing =
         st == Audio::AudioEngine::State::Playing || st == Audio::AudioEngine::State::Buffering;
@@ -223,12 +219,9 @@ void MainWindow::changeEvent(QEvent* event) {
 }
 
 void MainWindow::closeEvent(QCloseEvent* event) {
-    // Alt+F4 / window manager close on the main window quits, like Winamp.
     event->accept();
     Q_EMIT closeRequested();
 }
-
-// ------------------------------------------------------------------ painting
 
 QString MainWindow::marqueeText() const {
     if (!statusText.isEmpty()) {
@@ -357,11 +350,9 @@ void MainWindow::paintShaded(QPainter& painter) {
         Skins::kCloseButtonDown
     );
 
-    // Mini time (right-aligned in 5 characters, like Winamp).
     const QString t = miniTimeText().rightJustified(5, u' ');
     activeSkin.drawText(painter, {127, 4}, t, 25);
 
-    // Mini position bar.
     const double dur = corePlayer->durationSeconds();
     if (corePlayer->engine()->state() != Audio::AudioEngine::State::Stopped && dur > 0) {
         const double frac = seekPreview >= 0
@@ -408,7 +399,6 @@ void MainWindow::paintSkin(QPainter& painter) {
         painter, TSheet::TitleBar, Skins::kClutterBar, Skins::MainWindowSprites::kClutter
     );
 
-    // Status: play/pause/stop indicator + time.
     const QRect indicator = st == Audio::AudioEngine::State::Paused ? Skins::kPausedIndicator
         : stopped                                                   ? Skins::kStoppedIndicator
                                                                     : Skins::kPlayingIndicator;
@@ -423,7 +413,6 @@ void MainWindow::paintSkin(QPainter& painter) {
     }
     drawTime(painter);
 
-    // Visualization (drawn over the background, only while playing).
     if (visualizer
         && (st == Audio::AudioEngine::State::Playing || st == Audio::AudioEngine::State::Buffering
         )) {
@@ -433,7 +422,6 @@ void MainWindow::paintSkin(QPainter& painter) {
         painter.restore();
     }
 
-    // Marquee.
     {
         painter.save();
         painter.setClipRect(Skins::MainWindowSprites::kMarquee);
@@ -453,7 +441,6 @@ void MainWindow::paintSkin(QPainter& painter) {
         painter.restore();
     }
 
-    // kbps / kHz / mono-stereo.
     if (!stopped) {
         const int kbps = corePlayer->currentBitrate();
         const int khz = (corePlayer->engine()->sourceSampleRate() + 500) / 1000;
@@ -478,7 +465,6 @@ void MainWindow::paintSkin(QPainter& painter) {
         Skins::MainWindowSprites::kStereo
     );
 
-    // Volume.
     {
         const int frame = int(std::lround(volumePercent / 100.0 * 28));
         const int offset = std::max(0, (frame - 1) * Skins::kSliderFrameStep);
@@ -497,7 +483,6 @@ void MainWindow::paintSkin(QPainter& painter) {
             Skins::MainWindowSprites::kVolume.topLeft() + QPoint(x, 1)
         );
     }
-    // Balance.
     {
         const int offset = int(std::abs(balancePercent) / 100.0 * 27) * Skins::kSliderFrameStep;
         activeSkin.draw(
@@ -517,7 +502,6 @@ void MainWindow::paintSkin(QPainter& painter) {
         );
     }
 
-    // EQ / PL toggles.
     auto toggle = [&](Element element, const Skins::ToggleSprite& spr, bool on, QPoint at) {
         const bool down = pressedElement == element && pressedInside;
         activeSkin.draw(
@@ -528,7 +512,6 @@ void MainWindow::paintSkin(QPainter& painter) {
     toggle(Element::EqToggle, Skins::kEqButton, eqOn, Skins::MainWindowSprites::kEqButton);
     toggle(Element::PlToggle, Skins::kPlButton, plOn, Skins::MainWindowSprites::kPlButton);
 
-    // Position bar.
     activeSkin.draw(
         painter, TSheet::PosBar, Skins::kPositionBackground,
         Skins::MainWindowSprites::kPosition.topLeft()
@@ -549,7 +532,6 @@ void MainWindow::paintSkin(QPainter& painter) {
         );
     }
 
-    // Transport.
     drawButton(
         painter, Element::Previous, Skins::MainWindowSprites::kPrevious, Skins::kPrevious.normal,
         Skins::kPrevious.pressed
@@ -581,8 +563,6 @@ void MainWindow::paintSkin(QPainter& painter) {
         Element::Repeat, Skins::kRepeat, corePlayer->repeat(), Skins::MainWindowSprites::kRepeat
     );
 }
-
-// ------------------------------------------------------------------ input
 
 MainWindow::Element MainWindow::hitTestShaded(QPoint point) const {
     struct Area {
@@ -650,7 +630,6 @@ MainWindow::Element MainWindow::hitTest(QPoint point) const {
 }
 
 bool MainWindow::isDragArea(QPoint point) const {
-    // Winamp lets you drag the main window by any spot that isn't a control.
     const Element element = hitTest(point);
     return element == Element::None || element == Element::Marquee;
 }
@@ -661,7 +640,7 @@ bool MainWindow::skinMousePress(QPoint pos, Qt::MouseButton button) {
     }
     const Element element = hitTest(pos);
     if (element == Element::None || element == Element::Marquee) {
-        return false;  // marquee drags the window
+        return false;
     }
     if (element == Element::Position
         && corePlayer->engine()->state() == Audio::AudioEngine::State::Stopped) {
@@ -766,7 +745,6 @@ void MainWindow::wheelEvent(QWheelEvent* event) {
 }
 
 bool MainWindow::skinMouseDoubleClick(QPoint pos, Qt::MouseButton button) {
-    // Double click on the title bar toggles shade mode, like Winamp.
     if (button != Qt::LeftButton || pos.y() >= 14 || hitTest(pos) != Element::None) {
         return false;
     }

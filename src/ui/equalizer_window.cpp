@@ -58,11 +58,9 @@ QString BandName(int band) {
     return hz >= 1000 ? QStringLiteral("%1KHZ").arg(hz / 1000) : QStringLiteral("%1HZ").arg(hz);
 }
 
-// Natural cubic spline through (xs, ys), sampled at every integer x in [0, xs.back()].
 // Port of webamp's spline.js (itself adapted from morganherlocker/cubic-spline, MIT).
 QList<double> NaturalSpline(const QList<double>& xs, const QList<double>& ys) {
     const int n = int(xs.size()) - 1;
-    // Tridiagonal system for the slopes k.
     QList<double> a(n + 1), b(n + 1), c(n + 1), d(n + 1), k(n + 1);
     for (int i = 0; i <= n; ++i) {
         if (i == 0) {
@@ -83,7 +81,6 @@ QList<double> NaturalSpline(const QList<double>& xs, const QList<double>& ys) {
             d[i] = 3 * ((ys[i] - ys[i - 1]) / (h0 * h0) + (ys[i + 1] - ys[i]) / (h1 * h1));
         }
     }
-    // Thomas algorithm.
     for (int i = 1; i <= n; ++i) {
         const double m = a[i] / b[i - 1];
         b[i] -= m * c[i - 1];
@@ -141,8 +138,6 @@ QList<double> EqualizerWindow::GraphCurve(const Audio::EqSettings& settings) {
     return NaturalSpline(xs, ys);
 }
 
-// ------------------------------------------------------------------ painting
-
 void EqualizerWindow::drawSlider(QPainter& painter, QPoint at, double db, bool active) const {
     const int frame = int(std::lround((db + Audio::kEqMaxDb) / (2 * Audio::kEqMaxDb) * 27));
     const QRect src(
@@ -177,7 +172,6 @@ void EqualizerWindow::drawGraph(QPainter& painter) const {
         const int y = std::clamp(int(std::lround(ys[x])), 0, kGraphHeight - 1);
         const int top = std::min(y, lastY), bottom = std::max(y, lastY);
         for (int yy = top; yy <= bottom; ++yy) {
-            // Colour depends on height, taken from the 1px column in the skin.
             const QColor c = sheet.isNull() ? QColor(Qt::green)
                                             : QColor::fromRgb(sheet.pixel(
                                                   Skins::EqualizerSprites::kGraphLineColors.x(),
@@ -213,7 +207,6 @@ void EqualizerWindow::paintShaded(QPainter& painter) {
                          : Skins::EqualizerShadeSprites::kShadeBackground,
         {0, 0}
     );
-    // Thumb sprite changes with the value: left / centre / right third.
     const int vThird = std::clamp(volumePercent * 3 / 101, 0, 2);
     const int vx =
         Skins::EqualizerShadeSprites::kVolume.x()
@@ -306,8 +299,6 @@ void EqualizerWindow::paintSkin(QPainter& painter) {
     }
 }
 
-// ------------------------------------------------------------------ input
-
 int EqualizerWindow::hitTest(QPoint point) const {
     if (Contains({Skins::EqualizerSprites::kClose, QSize(9, 9)}, point)) {
         return kElClose;
@@ -394,7 +385,7 @@ void EqualizerWindow::setFromMouse(int element, QPoint point) {
         Audio::kEqMaxDb - top / Skins::EqualizerSprites::kSliderTravel * 2 * Audio::kEqMaxDb;
     db = std::round(db * 10) / 10;
     if (std::abs(db) < 0.6) {
-        db = 0;  // centre detent
+        db = 0;
     }
     if (db == *v) {
         return;
@@ -459,11 +450,10 @@ void EqualizerWindow::skinMouseRelease(QPoint pos, Qt::MouseButton button) {
 }
 
 bool EqualizerWindow::skinMouseDoubleClick(QPoint pos, Qt::MouseButton button) {
-    if (button == Qt::LeftButton && pos.y() < 14 && hitTest(pos) == kElNone) {  // title bar
+    if (button == Qt::LeftButton && pos.y() < 14 && hitTest(pos) == kElNone) {
         setShaded(!isShaded());
         return true;
     }
-    // Double click on a slider resets it to 0 dB.
     const int el = hitTest(pos);
     double* v = valueFor(el);
     if (button != Qt::LeftButton || !v) {
@@ -523,7 +513,6 @@ void EqualizerWindow::loadEqf() {
     if (presets.size() == 1) {
         return applyPreset(presets.first());
     }
-    // Libraries (.q1) hold many presets: let the user pick one.
     QStringList names;
     for (const auto& p : presets) {
         names << p.name;
@@ -587,7 +576,6 @@ void EqualizerWindow::showPresets() {
 }
 
 void EqualizerWindow::closeEvent(QCloseEvent* event) {
-    // Window manager close: just hide (the owner keeps the EQ/PL buttons in sync).
     event->ignore();
     Q_EMIT closeRequested();
 }

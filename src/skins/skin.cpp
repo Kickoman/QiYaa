@@ -28,8 +28,6 @@ constexpr mz_uint kMaxEntries = 4096;
 constexpr mz_uint64 kMaxEntryBytes = 32 * 1024 * 1024;
 constexpr qint64 kMaxTotalBytes = 64 * 1024 * 1024;
 
-// Reads all files of a zip into memory, keyed by lower-case base name
-// ("main.bmp"). Skins often put files in a sub-folder and use random case.
 QHash<QString, QByteArray> ReadZip(const QByteArray& zip) {
     QHash<QString, QByteArray> files;
     mz_zip_archive archive{};
@@ -55,7 +53,7 @@ QHash<QString, QByteArray> ReadZip(const QByteArray& zip) {
         }
         const QString name = QFileInfo(QString::fromUtf8(st.m_filename)).fileName().toLower();
         if (files.contains(name)) {
-            continue;  // first one wins
+            continue;
         }
         if (st.m_uncomp_size > kMaxEntryBytes
             || total + qint64(st.m_uncomp_size) > kMaxTotalBytes) {
@@ -104,7 +102,7 @@ QList<QColor> ParseVisColors(const QByteArray& text) {
     return colors;
 }
 
-// Position of a character in TEXT.BMP (row, column), per webamp's FONT_LOOKUP.
+// Port of webamp's FONT_LOOKUP.
 bool FontCell(QChar c, int* row, int* col) {
     static const QHash<char16_t, std::pair<int, int>> table = [] {
         QHash<char16_t, std::pair<int, int>> t;
@@ -130,7 +128,6 @@ bool FontCell(QChar c, int* row, int* col) {
     }();
     auto it = table.constFind(c.toLower().unicode());
     if (it == table.cend()) {
-        // Upper-case Å/Ö/Ä are in the table as-is.
         it = table.constFind(c.unicode());
         if (it == table.cend()) {
             return false;
@@ -141,59 +138,55 @@ bool FontCell(QChar c, int* row, int* col) {
     return true;
 }
 
-// TEXT.BMP only has Latin letters. Cyrillic letters that look like Latin ones
-// reuse the skin's own glyphs; the rest are drawn from these 6-row bitmaps in
-// the skin's text colour, so titles look native in any skin.
 struct PixelGlyph {
     char16_t ch;
-    int width;  // ink columns; advance is width + 1
+    int width;
     const char* rows[6];
 };
 
 constexpr PixelGlyph kCyrillicGlyphs[] = {
-    {u'Б', 4, {"####", "#...", "###.", "#..#", "#..#", "###."}},  // Б
-    {u'Г', 4, {"####", "#...", "#...", "#...", "#...", "#..."}},  // Г
-    {u'Ґ', 4, {"...#", "####", "#...", "#...", "#...", "#..."}},  // Ґ
-    {u'Д', 4, {".###", ".#.#", ".#.#", ".#.#", "####", "#..#"}},  // Д
-    {u'Ж', 5, {"#.#.#", "#.#.#", ".###.", "#.#.#", "#.#.#", "#.#.#"}},  // Ж
-    {u'И', 4, {"#..#", "#..#", "#.##", "##.#", "#..#", "#..#"}},  // И
-    {u'Й', 4, {".##.", "....", "#..#", "#.##", "##.#", "#..#"}},  // Й
-    {u'Л', 4, {".###", ".#.#", ".#.#", ".#.#", ".#.#", "##.#"}},  // Л
-    {u'П', 4, {"####", "#..#", "#..#", "#..#", "#..#", "#..#"}},  // П
-    {u'Ф', 5, {".###.", "#.#.#", "#.#.#", ".###.", "..#..", "..#.."}},  // Ф
-    {u'Ц', 4, {"#.#.", "#.#.", "#.#.", "#.#.", "####", "...#"}},  // Ц
-    {u'Ч', 4, {"#..#", "#..#", "#..#", ".###", "...#", "...#"}},  // Ч
-    {u'Ш', 5, {"#.#.#", "#.#.#", "#.#.#", "#.#.#", "#.#.#", "#####"}},  // Ш
-    {u'Щ', 5, {"#.#.#", "#.#.#", "#.#.#", "#.#.#", "#####", "....#"}},  // Щ
-    {u'Ъ', 5, {"##...", ".#...", ".###.", ".#..#", ".#..#", ".###."}},  // Ъ
-    {u'Ы', 5, {"#...#", "#...#", "###.#", "#.#.#", "#.#.#", "###.#"}},  // Ы
-    {u'Ь', 4, {"#...", "#...", "###.", "#..#", "#..#", "###."}},  // Ь
-    {u'Э', 4, {"###.", "...#", ".###", "...#", "...#", "###."}},  // Э
-    {u'Є', 4, {".###", "#...", "###.", "#...", "#...", ".###"}},  // Є
-    {u'Ю', 5, {"#..#.", "#.#.#", "###.#", "#.#.#", "#.#.#", "#..#."}},  // Ю
-    {u'Я', 4, {".###", "#..#", "#..#", ".###", ".#.#", "#..#"}},  // Я
+    {u'Б', 4, {"####", "#...", "###.", "#..#", "#..#", "###."}},
+    {u'Г', 4, {"####", "#...", "#...", "#...", "#...", "#..."}},
+    {u'Ґ', 4, {"...#", "####", "#...", "#...", "#...", "#..."}},
+    {u'Д', 4, {".###", ".#.#", ".#.#", ".#.#", "####", "#..#"}},
+    {u'Ж', 5, {"#.#.#", "#.#.#", ".###.", "#.#.#", "#.#.#", "#.#.#"}},
+    {u'И', 4, {"#..#", "#..#", "#.##", "##.#", "#..#", "#..#"}},
+    {u'Й', 4, {".##.", "....", "#..#", "#.##", "##.#", "#..#"}},
+    {u'Л', 4, {".###", ".#.#", ".#.#", ".#.#", ".#.#", "##.#"}},
+    {u'П', 4, {"####", "#..#", "#..#", "#..#", "#..#", "#..#"}},
+    {u'Ф', 5, {".###.", "#.#.#", "#.#.#", ".###.", "..#..", "..#.."}},
+    {u'Ц', 4, {"#.#.", "#.#.", "#.#.", "#.#.", "####", "...#"}},
+    {u'Ч', 4, {"#..#", "#..#", "#..#", ".###", "...#", "...#"}},
+    {u'Ш', 5, {"#.#.#", "#.#.#", "#.#.#", "#.#.#", "#.#.#", "#####"}},
+    {u'Щ', 5, {"#.#.#", "#.#.#", "#.#.#", "#.#.#", "#####", "....#"}},
+    {u'Ъ', 5, {"##...", ".#...", ".###.", ".#..#", ".#..#", ".###."}},
+    {u'Ы', 5, {"#...#", "#...#", "###.#", "#.#.#", "#.#.#", "###.#"}},
+    {u'Ь', 4, {"#...", "#...", "###.", "#..#", "#..#", "###."}},
+    {u'Э', 4, {"###.", "...#", ".###", "...#", "...#", "###."}},
+    {u'Є', 4, {".###", "#...", "###.", "#...", "#...", ".###"}},
+    {u'Ю', 5, {"#..#.", "#.#.#", "###.#", "#.#.#", "#.#.#", "#..#."}},
+    {u'Я', 4, {".###", "#..#", "#..#", ".###", ".#.#", "#..#"}},
 };
 
-// Cyrillic -> Latin/digit glyph that looks the same in the Winamp font.
 char16_t CyrillicLookalike(char16_t upper) {
     switch (upper) {
-        case u'А': return u'a';  // А
-        case u'В': return u'b';  // В
+        case u'А': return u'a';
+        case u'В': return u'b';
         case u'Е':
-        case u'Ё': return u'e';  // Е Ё
-        case u'З': return u'3';  // З
-        case u'К': return u'k';  // К
-        case u'М': return u'm';  // М
-        case u'Н': return u'h';  // Н
-        case u'О': return u'o';  // О
-        case u'Р': return u'p';  // Р
-        case u'С': return u'c';  // С
-        case u'Т': return u't';  // Т
+        case u'Ё': return u'e';
+        case u'З': return u'3';
+        case u'К': return u'k';
+        case u'М': return u'm';
+        case u'Н': return u'h';
+        case u'О': return u'o';
+        case u'Р': return u'p';
+        case u'С': return u'c';
+        case u'Т': return u't';
         case u'У':
-        case u'Ў': return u'y';  // У Ў
-        case u'Х': return u'x';  // Х
+        case u'Ў': return u'y';
+        case u'Х': return u'x';
         case u'І':
-        case u'Ї': return u'i';  // І Ї
+        case u'Ї': return u'i';
         default: return 0;
     }
 }
@@ -207,15 +200,13 @@ const PixelGlyph* FindPixelGlyph(char16_t upper) {
     return nullptr;
 }
 
-// How one character is drawn.
 struct CharRender {
     enum Kind { Cell, Pixel, SystemFont } kind = SystemFont;
-    int row = 0, col = 0;  // Cell
-    const PixelGlyph* glyph = nullptr;  // Pixel
+    int row = 0, col = 0;
+    const PixelGlyph* glyph = nullptr;
     int advance = 0;
 };
 
-// Font for characters that TEXT.BMP doesn't have (Cyrillic etc.).
 const QFont& FallbackFont() {
     static const QFont f = [] {
         QFont font(QStringLiteral("Sans Serif"));
@@ -227,8 +218,6 @@ const QFont& FallbackFont() {
     return f;
 }
 
-// The "ink" colour of TEXT.BMP: the most common colour that is not the
-// background (pixel 0,0 is the background in practice).
 QColor TextInkColor(const QImage& text) {
     if (text.isNull()) {
         return Qt::green;
@@ -351,8 +340,7 @@ void Skin::loadArchive(const QByteArray& archive, const Skin* fallback) {
 }
 
 void Skin::measureGenLetters() {
-    // Letters sit side by side, separated by one column of the background
-    // colour (taken from x=0). Port of webamp's genGenTextSprites().
+    // Port of webamp's genGenTextSprites().
     auto measure = [](const QImage& image, int y) {
         QList<std::pair<int, int>> out;
         if (image.isNull() || y >= image.height()) {
@@ -487,7 +475,7 @@ CharRender ResolveChar(QChar ch) {
         r.advance = g->width + 1;
         return r;
     }
-    // Accented Latin (é, ñ, ü...): drop the accent like webamp's deburr().
+    // Accented Latin: drop the accent, like webamp's deburr().
     const QString base = QString(ch).normalized(QString::NormalizationForm_D);
     if (!base.isEmpty() && base.at(0) != ch && FontCell(base.at(0), &r.row, &r.col)) {
         r.kind = CharRender::Cell;
@@ -533,7 +521,6 @@ int Skin::drawText(QPainter& painter, const QPoint& at, const QString& text, int
                 );
                 break;
             case CharRender::Pixel:
-                // Background from the skin's space glyph, then the ink pixels.
                 for (int bx = 0; bx < r.advance; bx += Skins::kCharWidth) {
                     painter.drawImage(
                         QPoint(x + bx, at.y()), font,

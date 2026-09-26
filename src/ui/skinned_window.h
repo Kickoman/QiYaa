@@ -1,6 +1,3 @@
-// Base class for every Winamp window: a frameless top-level OS window painted
-// from skin sprites, shaped by region.txt, moved with snapping and always kept
-// inside the visible screen area.
 #pragma once
 
 #include <QImage>
@@ -27,39 +24,27 @@ public:
     void setSkin(const Skins::Skin* skin);
     const Skins::Skin& skin() const { return *currentSkin; }
 
-    // Zoom factor: 1 = original 275px wide, 2 = "double size", 1.5 = in between.
-    // Clamped to [1, 4] and rounded to 0.05.
     void setScale(double scale);
     double scale() const { return scaleFactor; }
     static bool IsIntegerScale(double s) { return std::abs(s - std::round(s)) < 1e-6; }
 
-    // Size in skin pixels (before scaling). Resizable windows (playlist) change it.
     QSize skinSize() const { return skinPixelSize; }
     void setSkinSize(QSize size);
 
-    // When true, dragging this window also drags every window docked to it
-    // (Winamp: the main window pulls the equalizer and playlist along).
     void setDragsDockedWindows(bool on) { dragsDocked = on; }
 
-    // Secondary windows (EQ, playlist): no own taskbar button on Windows.
     void setSecondary();
 
-    // Places the window at `pos` (e.g. restored from settings), clamped to the
-    // visible area of the screens that exist right now.
     void placeAt(QPoint pos);
     void ensureVisible();
 
-    // Visible windows that are docked (directly or through others) to this one.
     QList<SkinnedWindow*> dockedWindows() const;
 
-    // Winamp's "window shade": the window collapses to a 14 px strip.
     bool isShaded() const { return shadeEnabled; }
     virtual void setShaded(bool shaded) { Q_UNUSED(shaded); }
 
-    // true when the platform lets us position windows (X11, Windows, macOS, XWayland).
     static bool CanPositionWindows();
 
-    // All live skinned windows (used for snapping them to each other).
     static const QList<SkinnedWindow*>& AllWindows();
 
 Q_SIGNALS:
@@ -67,34 +52,21 @@ Q_SIGNALS:
     void shadeChanged(bool shaded);
 
 protected:
-    // Paint in skin coordinates; the painter is already scaled.
     virtual void paintSkin(QPainter& painter) = 0;
-    // Where a press starts dragging the window (title bar etc.), in skin coordinates.
     virtual bool isDragArea(QPoint skinPos) const = 0;
-    // Mouse handling for controls, in skin coordinates. Return true if consumed.
     virtual bool skinMousePress(QPoint, Qt::MouseButton) { return false; }
     virtual void skinMouseMove(QPoint) { }
     virtual void skinMouseRelease(QPoint, Qt::MouseButton) { }
-    // Return true if consumed; otherwise the double click acts as a normal press.
     virtual bool skinMouseDoubleClick(QPoint, Qt::MouseButton) { return false; }
     virtual void skinChanged() { }
-    // Section of region.txt to use as the window mask ("normal", "equalizer", ...);
-    // empty = rectangular window.
     virtual QString regionSection() const { return {}; }
 
-    // Changes the skin size and moves the windows docked below this one up or
-    // down by the height difference, so the stack stays together (shade mode).
     void resizeKeepingStack(QSize skinSize);
-    // Switches shade mode: resizes (keeping docked windows attached), updates
-    // the mask, then emits shadeChanged.
     void applyShade(bool shaded, QSize skinSize);
 
     QPoint toSkin(QPointF widgetPos) const;
-    // Whole wheel "notches" in this event, accumulating the small deltas that
-    // touchpads and smooth-scrolling mice send. Positive = away from the user.
     int wheelSteps(QWheelEvent* event);
     void applyMask();
-    // Repaint only a part of the window, given in skin coordinates.
     void updateSkinRect(const QRect& skinRect);
 
     void paintEvent(QPaintEvent*) override;
@@ -112,14 +84,13 @@ private:
     double scaleFactor = 1.0;
     bool dragsDocked = false;
     bool shadeEnabled = false;
-    QImage buffer;  // intermediate image for fractional scales
+    QImage buffer;
     int wheelAccum = 0;
 
-    // Drag state.
     bool dragging = false;
     QPoint pressGlobal;
     QRect groupStartBounds;
-    QList<std::pair<QPointer<SkinnedWindow>, QPoint>> dragGroup;  // window, start position
+    QList<std::pair<QPointer<SkinnedWindow>, QPoint>> dragGroup;
 };
 
 }  // namespace Ui

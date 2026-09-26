@@ -1,5 +1,3 @@
-// MPRIS over a real session bus (CTest runs this under dbus-run-session).
-// Commands come from an external client (gdbus), like GNOME / playerctl would send them.
 #include "core/cover_cache.h"
 #include "core/player.h"
 #include "integrations/media_controls.h"
@@ -35,7 +33,6 @@ QList<Yandex::Track> MakeTracks(int n) {
 }
 }  // namespace
 
-// Receives org.freedesktop.DBus.Properties.PropertiesChanged.
 class ChangeSink : public QObject {
     Q_OBJECT
 public:
@@ -91,8 +88,7 @@ private Q_SLOTS:
         covers = std::make_unique<Core::CoverCache>(nullptr, tmp.path());
         Integrations::MediaControls::Hooks hooks;
         hooks.volume = [this] { return volume; };
-        hooks.setVolume = [this](int value
-                          ) {  // like MainWindow::setVolume, which the app wires to volumeChanged
+        hooks.setVolume = [this](int value) {
             if (value == volume) {
                 return;
             }
@@ -193,7 +189,6 @@ private Q_SLOTS:
         ));
     }
 
-    // Changes made in the app (not over D-Bus) must reach clients too.
     void appSideChangesAreAnnounced() {
         ChangeSink sink;
         QVERIFY(QDBusConnection::sessionBus().connect(

@@ -1,8 +1,3 @@
-// Winamp-style 10-band equalizer: preamp + 10 peaking biquads per channel.
-//
-// The UI thread calls publish() with new settings; coefficients are computed
-// there and handed to the audio thread through a lock-free triple buffer, so
-// process() never blocks or allocates.
 #pragma once
 
 #include <array>
@@ -28,8 +23,7 @@ class EqualizerDsp {
 public:
     EqualizerDsp();
 
-    // Both must be called before the audio thread starts or from it; the rate
-    // is fixed for the lifetime of the device.
+    // Writer and reader at once: only while process() cannot run.
     void setSampleRate(uint32_t rate);
 
     // UI thread.
@@ -38,7 +32,6 @@ public:
     // Audio thread: interleaved stereo, in place.
     void process(float* frames, uint32_t frameCount);
 
-    // Magnitude response in dB at `hz` for the given settings (used by tests).
     static double ResponseDb(const EqSettings& settings, double hz, double sampleRate);
 
 private:
@@ -59,11 +52,11 @@ private:
 
     // Triple buffer: writer owns `back`, reader owns `front`, `middle` is exchanged.
     std::array<Coeffs, 3> coefficientSlots{};
-    int back = 0;  // writer only
-    int front = 1;  // reader only
+    int back = 0;
+    int front = 1;
     std::atomic<int> middle{2 | 0};  // index | (dirty << 2)
 
-    // Filter state per band per channel (audio thread only).
+    // Audio thread only.
     std::array<std::array<float, 2>, kEqBands> filterState1{};
     std::array<std::array<float, 2>, kEqBands> filterState2{};
 };

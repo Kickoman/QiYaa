@@ -1,5 +1,3 @@
-// The Winamp playlist editor: resizable in 25x29 px steps, skinned by
-// PLEDIT.BMP and PLEDIT.TXT, shows the player's queue.
 #pragma once
 
 #include "ui/skinned_window.h"
@@ -17,7 +15,6 @@ class PlaylistWindow : public SkinnedWindow {
 public:
     PlaylistWindow(Core::Player* player, const Skins::Skin* skin, QWidget* parent = nullptr);
 
-    // Size in resize steps beyond the minimum 275x116 (Winamp's playlist "segments").
     QSize sizeSteps() const { return resizeSteps; }
     void setSizeSteps(QSize steps);
     void setShaded(bool shaded) override;
@@ -27,13 +24,11 @@ public:
     void setScrollOffset(int row);
     void ensureRowVisible(int row);
     const QSet<int>& selection() const { return selectedRows; }
-    // Row under a point in skin coordinates, or -1.
     int rowAt(QPoint skinPos) const;
 
 Q_SIGNALS:
     void closeRequested();
     void sizeStepsChanged(QSize steps);
-    // Bottom "ADD" button / context menu: the owner shows the sources menu at `globalPos`.
     void sourcesMenuRequested(QPoint globalPos);
 
 protected:
@@ -66,8 +61,8 @@ private:
     QSize resizeSteps{0, 4};
     int scrollRow = 0;
     QSet<int> selectedRows;
-    int anchor = -1;  // fixed end of a Shift range
-    int cursorRow = -1;  // row the keyboard is on
+    int anchor = -1;
+    int cursorRow = -1;
     int shownSecond = -1;
 
     Drag activeDrag = Drag::None;

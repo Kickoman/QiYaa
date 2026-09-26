@@ -12,8 +12,7 @@
 namespace Yandex {
 
 namespace {
-// Yandex Music's public OAuth client — the same one Yaamp's login page and
-// other unofficial clients (yandex-music-api, etc.) use.
+// Yandex Music's public OAuth client, the one Yaamp and yandex-music-api use.
 constexpr char kClientId[] = "23cabbbdc6cd418abb4b39c32c41195d";
 constexpr char kClientSecret[] = "53bc75238f0c4d08a118e51fe9203300";
 

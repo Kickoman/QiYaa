@@ -42,13 +42,11 @@ QString FormatTime(qint64 seconds) {
     return QStringLiteral("%1:%2").arg(seconds / 60).arg(seconds % 60, 2, 10, QLatin1Char('0'));
 }
 
-// Mini transport buttons in the bottom-right corner: prev, play, pause, stop, next, eject.
 constexpr int kMiniX[] = {3, 11, 20, 29, 37, 45};
 constexpr int kMiniWidth = 8;
 constexpr int kMiniY = 22;
 constexpr int kMiniHeight = 10;
 
-// Bottom-left menu buttons (22x18): ADD, REM, SEL, MISC; LIST is at the right.
 constexpr int kBtnAdd = 0, kBtnRem = 1, kBtnSel = 2, kBtnMisc = 3, kBtnList = 4, kBtnMini0 = 10;
 
 }  // namespace
@@ -66,7 +64,6 @@ PlaylistWindow::PlaylistWindow(Core::Player* player, const Skins::Skin* skin, QW
     setWindowTitle(QStringLiteral("QiYaa Playlist"));
     setFocusPolicy(Qt::StrongFocus);
     connect(corePlayer, &Core::Player::queueReplaced, this, [this] {
-        // A different list: old row numbers mean nothing any more.
         selectedRows.clear();
         anchor = cursorRow = -1;
         scrollRow = 0;
@@ -91,7 +88,6 @@ PlaylistWindow::PlaylistWindow(Core::Player* player, const Skins::Skin* skin, QW
         update();
     });
     connect(corePlayer, &Core::Player::positionTick, this, [this] {
-        // Only the mini time changes; repaint it once a second.
         const int sec = int(corePlayer->engine()->positionSeconds());
         if (sec == shownSecond) {
             return;
@@ -187,14 +183,11 @@ QRect PlaylistWindow::scrollHandleRect() const {
     };
 }
 
-// ------------------------------------------------------------------ painting
-
 void PlaylistWindow::drawTiles(QPainter& painter) const {
     const Skins::Skin& activeSkin = skin();
     const int window = skinSize().width(), h = skinSize().height();
     const bool active = isActiveWindow();
 
-    // Top: corners, tiles, centred title.
     for (int x = 25; x < window - 25; x += 25) {
         activeSkin.draw(
             painter, TSheet::PlEdit,
@@ -217,7 +210,6 @@ void PlaylistWindow::drawTiles(QPainter& painter) const {
         {window - 25, 0}
     );
 
-    // Sides.
     for (int y = Skins::PlaylistSprites::kTopHeight; y < h - Skins::PlaylistSprites::kBottomHeight;
          y += 29) {
         const int tileH = std::min(29, h - Skins::PlaylistSprites::kBottomHeight - y);
@@ -232,7 +224,6 @@ void PlaylistWindow::drawTiles(QPainter& painter) const {
         );
     }
 
-    // Bottom.
     for (int x = 125; x < window - 150; x += 25) {
         activeSkin.draw(
             painter, TSheet::PlEdit, Skins::PlaylistSprites::kBottomTile,
@@ -319,7 +310,6 @@ void PlaylistWindow::drawBottomInfo(QPainter& painter) const {
     const int window = skinSize().width(), h = skinSize().height();
     const QPoint base(window - 150, h - Skins::PlaylistSprites::kBottomHeight);
 
-    // Running time: "selected/total" like Winamp.
     qint64 total = 0, selected = 0;
     const auto& tracks = corePlayer->playlist();
     for (int i = 0; i < tracks.size(); ++i) {
@@ -333,7 +323,6 @@ void PlaylistWindow::drawBottomInfo(QPainter& painter) const {
     skin().drawText(painter, base + QPoint(7, 10), FormatTime(selected) + u'/' + FormatTime(total));
     painter.restore();
 
-    // Mini time: elapsed.
     const auto st = corePlayer->engine()->state();
     if (st != Audio::AudioEngine::State::Stopped) {
         painter.save();
@@ -361,8 +350,7 @@ void PlaylistWindow::setShaded(bool shaded) {
     }
     const QSize full = fullSkinSize();
     applyShade(shaded, shaded ? QSize(full.width(), 14) : full);
-    setScrollOffset(scrollRow
-    );  // the shaded view has one row, so the offset may be out of range now
+    setScrollOffset(scrollRow);
     update();
 }
 
@@ -380,7 +368,6 @@ void PlaylistWindow::paintShaded(QPainter& painter) {
         {window - 50, 0}
     );
 
-    // Current track and its length, like Winamp's collapsed playlist.
     if (const auto* t = corePlayer->currentTrack()) {
         const QString time = FormatTime(t->durationMs / 1000);
         const int timeW = Skins::Skin::TextWidth(time);
@@ -420,8 +407,6 @@ void PlaylistWindow::paintSkin(QPainter& painter) {
     drawTiles(painter);
     drawBottomInfo(painter);
 }
-
-// ------------------------------------------------------------------ input
 
 int PlaylistWindow::miniButtonAt(QPoint point) const {
     const int window = skinSize().width(), h = skinSize().height();
@@ -490,7 +475,7 @@ bool PlaylistWindow::skinMousePress(QPoint pos, Qt::MouseButton button) {
         return true;
     }
     if (isShaded()) {
-        return false;  // the rest of the strip drags the window
+        return false;
     }
     if (RectContains(QRect(window - 20, h - 20, 20, 20), pos)) {
         activeDrag = Drag::Resize;
@@ -509,7 +494,6 @@ bool PlaylistWindow::skinMousePress(QPoint pos, Qt::MouseButton button) {
         dragStartScroll = scrollRow;
         const QRect handle = scrollHandleRect();
         if (pos.y() < handle.y() || pos.y() >= handle.y() + handle.height()) {
-            // Click on the track: jump there.
             const QRect list = listRect();
             const double frac = double(pos.y() - list.y() - handle.height() / 2)
                 / std::max(1, list.height() - handle.height());
@@ -605,9 +589,7 @@ void PlaylistWindow::skinMouseRelease(QPoint pos, Qt::MouseButton button) {
                 popupAt(menu, {72, skinSize().height() - 30});
                 break;
             }
-            case kBtnMisc:
-                break;  // Winamp's MISC (sort, file info) has nothing to offer for a stream queue
-                        // yet
+            case kBtnMisc: break;
             case kBtnMini0 + 0: corePlayer->previous(); break;
             case kBtnMini0 + 1: corePlayer->play(); break;
             case kBtnMini0 + 2: corePlayer->pause(); break;
@@ -623,7 +605,7 @@ void PlaylistWindow::skinMouseRelease(QPoint pos, Qt::MouseButton button) {
 bool PlaylistWindow::skinMouseDoubleClick(QPoint pos, Qt::MouseButton button) {
     if (button == Qt::LeftButton && (isShaded() || pos.y() < Skins::PlaylistSprites::kTopHeight)
         && pos.x() < skinSize().width() - 21) {
-        setShaded(!isShaded());  // double click on the title bar
+        setShaded(!isShaded());
         return true;
     }
     const int row = rowAt(pos);
@@ -667,7 +649,6 @@ void PlaylistWindow::keyPressEvent(QKeyEvent* event) {
             return;
         default: return QWidget::keyPressEvent(event);
     }
-    // Shift extends from the fixed anchor; plain arrows move both.
     selectRow(cur, event->modifiers() & Qt::ShiftModifier);
     ensureRowVisible(cur);
 }
@@ -686,7 +667,6 @@ void PlaylistWindow::contextMenuEvent(QContextMenuEvent* event) {
 }
 
 void PlaylistWindow::closeEvent(QCloseEvent* event) {
-    // Window manager close: just hide (the owner keeps the EQ/PL buttons in sync).
     event->ignore();
     Q_EMIT closeRequested();
 }

@@ -6,7 +6,6 @@ class TestSnap : public QObject {
     Q_OBJECT
 private Q_SLOTS:
     void snapsToRightEdgeOfOther() {
-        // A window dragged to 5px right of another sticks to it.
         const QRect other(0, 0, 275, 116);
         const QRect moving(280, 3, 275, 116);
         QCOMPARE(Ui::SnapToOthers(moving, {other}), QPoint(275, 0));
@@ -47,7 +46,6 @@ private Q_SLOTS:
         QCOMPARE(Ui::ResolveDragPosition(lost, {}, screens), QPoint(1645, 200));
     }
 
-    // Shade mode: which windows follow a height change of window 0.
     void shrinkingPullsUpTheStack() {
         const QList<QRect> rects{{0, 0, 275, 116}, {0, 116, 275, 116}, {0, 232, 275, 232}};
         QCOMPARE(Ui::StackBelow(0, rects, -102), (QList<int>{1, 2}));
