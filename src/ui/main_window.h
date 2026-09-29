@@ -51,6 +51,7 @@ Q_SIGNALS:
     void sourcesMenuRequested(QPoint globalPos);
     void closeRequested();
     void minimizedChanged(bool minimized);
+    void activated();
     void volumeChanged(int volume);
     void balanceChanged(int balance);
 

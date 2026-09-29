@@ -224,6 +224,8 @@ void MainWindow::changeEvent(QEvent* event) {
     if (event->type() == QEvent::WindowStateChange) {
         refreshTimer();
         Q_EMIT minimizedChanged(isMinimized());
+    } else if (event->type() == QEvent::ActivationChange && isActiveWindow()) {
+        Q_EMIT activated();
     }
 }
 

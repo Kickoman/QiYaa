@@ -261,6 +261,7 @@ Application::Application(const Options& options, QObject* parent)
             }
         }
     );
+    connect(mainWindowInstance.get(), &Ui::MainWindow::activated, this, &Application::raiseWindows);
 
     const Audio::EqSettings eq = ReadEq(settings);
     equalizerWindowInstance->setSettings(eq);
@@ -346,11 +347,7 @@ Application::Application(const Options& options, QObject* parent)
             if (mainWindowInstance->isMinimized()) {
                 mainWindowInstance->showNormal();
             }
-            for (Ui::SkinnedWindow* window : windows()) {
-                if (window->isVisible()) {
-                    window->raise();
-                }
-            }
+            raiseWindows();
             mainWindowInstance->activateWindow();
         };
         hooks.quit = [this] { quit(); };
@@ -385,6 +382,15 @@ QList<Ui::SkinnedWindow*> Application::windows() const {
         out << milkdropWindowInstance.get();
     }
     return out;
+}
+
+void Application::raiseWindows() {
+    for (Ui::SkinnedWindow* window : windows()) {
+        if (window != mainWindowInstance.get() && window->isVisible()) {
+            window->raise();
+        }
+    }
+    mainWindowInstance->raise();
 }
 
 void Application::layoutWindows() {

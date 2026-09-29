@@ -88,6 +88,7 @@ private:
     void fillWindowActions(QMenu* menu);
     void transportKey(int key);
     QList<Ui::SkinnedWindow*> windows() const;
+    void raiseWindows();
 
     Options startOptions;
     std::unique_ptr<QTemporaryDir> temporaryDirectory;
