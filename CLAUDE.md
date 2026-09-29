@@ -50,9 +50,23 @@ README is its file-level reference.
   (`docs/architecture.md`, `docs/code-style.md`, this file) are in English. The top-level README
   and the rest of `docs/` are for users and are in Russian.
 
+## Behaviour lives in `spec/`
+
+`spec/` is a submodule, [Kickoman/QiYaa-spec](https://github.com/Kickoman/QiYaa-spec), shared with
+the Android app. It holds the player scenarios, the API fixtures, the DSP reference vectors and the
+parity table; [spec/README.md](spec/README.md) says what is where. Nothing in it is desktop-only.
+
+- **Change the spec before the code.** When a change alters behaviour that the spec describes (or
+  should), commit the spec change to QiYaa-spec first. Then bump `spec/` here in the same change as
+  the code and tests, and open an issue in Kickoman/QiYaa-android for the other side.
+- **Tests name the scenario.** A test that checks a spec scenario names its ID (`WAVE-03`).
+- **Never edit `spec/` only here.** A change inside the submodule that is not pushed to QiYaa-spec
+  breaks every other checkout.
+
 ## Before you send a change
 
 ```bash
+git submodule update --init
 cmake -S . -B build -G Ninja && cmake --build build
 QT_QPA_PLATFORM=offscreen ctest --test-dir build --output-on-failure
 git ls-files 'src/*.cpp' 'src/*.h' 'tests/*.cpp' 'tests/*.h' | xargs clang-format --dry-run --Werror

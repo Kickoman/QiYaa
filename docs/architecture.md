@@ -25,9 +25,10 @@ audio, yandex, skins  →  vis, core  →  ui, integrations  →  app  →  qiya
 | [src/integrations](../src/integrations/README.md) | `Integrations` | Media keys and system media panels: MPRIS (Linux) or SMTC (Windows) | Qt Gui (+ DBus) | audio, core, yandex |
 | [src/app](../src/app/README.md) | `App` | `Application`: owns and wires everything, menus, shortcuts, settings, login; `main()` | audio, core, skins, yandex | integrations, ui, vis |
 
-Vendored code lives in `contrib/` (miniaudio, miniz) and is not changed. Milkdrop
-(`QIYAA_HAVE_MILKDROP`), MPRIS (`QIYAA_HAVE_MPRIS`) and SMTC (`QIYAA_HAVE_SMTC`) are optional; the
-build options are in [building.md](building.md#параметры-cmake).
+Vendored code lives in `contrib/` (miniaudio, miniz) and is not changed. `spec/` is a submodule
+with the behaviour and test data shared with the Android app ([spec/README.md](../spec/README.md)).
+Milkdrop (`QIYAA_HAVE_MILKDROP`), MPRIS (`QIYAA_HAVE_MPRIS`) and SMTC (`QIYAA_HAVE_SMTC`) are
+optional; the build options are in [building.md](building.md#параметры-cmake).
 
 ## Who owns what
 
