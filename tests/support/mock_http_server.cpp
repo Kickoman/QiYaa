@@ -1,5 +1,7 @@
 #include "support/mock_http_server.h"
 
+#include "support/spec_fixtures.h"
+
 #include <QHostAddress>
 #include <QPointer>
 #include <QTcpSocket>
@@ -60,6 +62,16 @@ void MockHttpServer::result(
     const QByteArray& resultJson
 ) {
     json(method, path, "{\"invocationInfo\":{},\"result\":" + resultJson + "}");
+}
+
+void MockHttpServer::fixture(
+    const QByteArray& method,
+    const QString& path,
+    const QString& name,
+    int delayMs
+) {
+    const MockResponse response{FixtureStatus(name), Fixture(name), delayMs};
+    on(method, path, [response](const MockRequest&) { return response; });
 }
 
 const MockRequest* MockHttpServer::last(const QString& path) const {

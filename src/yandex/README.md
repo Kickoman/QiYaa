@@ -435,8 +435,10 @@ QUrl BuildTrackUrl(const DownloadInfo& info);
 - The fallback to the first variant can give the player a preview or an AAC stream, still under
   `/get-mp3/`.
 - `ts` is not required; an empty one yields `…/get-mp3/<sign>//<path>`.
-- Tests `signsTrackUrlLikeYaamp` and `picksBestFullMp3` in `tests/yandex_test.cpp` pin the
-  signing and the choice.
+- Tests `signsTrackUrlLikeYaamp`, `downloadVariantsAreParsedAndTheBestIsPicked` and
+  `storageReplyGivesTheSignedLink` in `tests/yandex_test.cpp` pin the signing and the choice.
+  The last two read `spec/fixtures/yandex/tracks-download-info` and `storage-download-info`,
+  whose expected links the Android tests check too.
 
 ## Formats read
 
@@ -583,3 +585,5 @@ The error strings, all in English except the device-code expiry:
 - MPRIS and SMTC metadata built from `Track`: [src/integrations](../integrations/README.md).
 - Tests: `tests/yandex_test.cpp` (pure functions: signing, variant choice, tokens, track parsing)
   and `tests/library_test.cpp` (every endpoint against `Tests::MockHttpServer` in `tests/support/`).
+  The responses they serve and what parsing must give are shared with the Android app in
+  `spec/fixtures/yandex` and `spec/expected/yandex` ([tests](../../tests/README.md#spec-fixtures)).

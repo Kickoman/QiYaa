@@ -1,3 +1,5 @@
+#include "support/spec_fixtures.h"
+#include "support/yandex_json.h"
 #include "yandex/api_client.h"
 #include "yandex/token.h"
 #include "yandex/track_url.h"
@@ -6,11 +8,23 @@
 #include <QCryptographicHash>
 #include <QJsonArray>
 #include <QJsonDocument>
+#include <QJsonObject>
+#include <QJsonValue>
+#include <QList>
 #include <QObject>
 #include <QString>
 #include <QTest>
 
 #include <optional>
+
+namespace {
+
+// The "result" of a wrapped API reply in spec/fixtures/yandex.
+QJsonValue ResultOf(const QString& name) {
+    return QJsonDocument::fromJson(Tests::Fixture(name)).object().value(QStringLiteral("result"));
+}
+
+}  // namespace
 
 class TestYandex : public QObject {
     Q_OBJECT
@@ -32,37 +46,34 @@ private Q_SLOTS:
                 .arg(QString::fromLatin1(expectedSign))
         );
     }
-    void picksBestFullMp3() {
-        const QJsonArray variants =
-            QJsonDocument::fromJson("[\n"
-                                    "            "
-                                    "{\"codec\":\"mp3\",\"bitrateInKbps\":320,\"preview\":true,"
-                                    "\"downloadInfoUrl\":\"https://x/a?sign=1\"},\n"
-                                    "            "
-                                    "{\"codec\":\"aac\",\"bitrateInKbps\":256,\"preview\":false,"
-                                    "\"downloadInfoUrl\":\"https://x/b?sign=1\"},\n"
-                                    "            "
-                                    "{\"codec\":\"mp3\",\"bitrateInKbps\":192,\"preview\":false,"
-                                    "\"downloadInfoUrl\":\"https://x/c?sign=1\"},\n"
-                                    "            "
-                                    "{\"codec\":\"mp3\",\"bitrateInKbps\":320,\"preview\":false,"
-                                    "\"downloadInfoUrl\":\"https://x/d?sign=1\"}\n"
-                                    "        ]")
-                .array();
-        const std::optional<Yandex::DownloadVariant> best =
-            Yandex::PickBestVariant(Yandex::ParseDownloadVariants(variants));
-        QVERIFY(best);
-        QCOMPARE(best->bitrateKbps, 320);
-        QCOMPARE(best->downloadInfoUrl.path(), QStringLiteral("/d"));
-        QVERIFY(!Yandex::PickBestVariant({}));
+    void downloadVariantsAreParsedAndTheBestIsPicked_data() {
+        QTest::addColumn<QString>("name");
+        for (const char* name : {"variants", "previews-only", "empty"}) {
+            QTest::newRow(name) << QStringLiteral("tracks-download-info/%1").arg(name);
+        }
     }
-    void parsesDownloadInfoJson() {
+    void downloadVariantsAreParsedAndTheBestIsPicked() {
+        QFETCH(QString, name);
+        const QList<Yandex::DownloadVariant> variants =
+            Yandex::ParseDownloadVariants(ResultOf(name).toArray());
+        QCOMPARE(
+            Tests::Json(Tests::VariantsJson(variants, Yandex::PickBestVariant(variants))),
+            Tests::Expected(name)
+        );
+    }
+    void storageReplyGivesTheSignedLink_data() {
+        QTest::addColumn<QString>("name");
+        for (const char* name : {"ok", "number-ts", "xml"}) {
+            QTest::newRow(name) << QStringLiteral("storage-download-info/%1").arg(name);
+        }
+    }
+    void storageReplyGivesTheSignedLink() {
+        QFETCH(QString, name);
         const std::optional<Yandex::DownloadInfo> info =
-            Yandex::ParseDownloadInfo("{\"s\":\"abc\",\"ts\":\"0005\",\"path\":\"/p/"
-                                      "q\",\"host\":\"h.net\",\"regional-host\":[]}");
-        QVERIFY(info);
-        QCOMPARE(info->host, QStringLiteral("h.net"));
-        QVERIFY(!Yandex::ParseDownloadInfo("<xml/>"));
+            Yandex::ParseDownloadInfo(Tests::Fixture(name));
+        const QJsonObject actual =
+            info ? Tests::ToJson(*info) : QJsonObject{{QStringLiteral("invalid"), true}};
+        QCOMPARE(Tests::Json(actual), Tests::Expected(name));
     }
     void normalizesTokens() {
         QCOMPARE(
@@ -86,30 +97,30 @@ private Q_SLOTS:
         QCOMPARE(Yandex::NormalizeToken(""), QString());
         QCOMPARE(Yandex::NormalizeToken("not a token at all"), QString());
     }
-    void parsesTrack() {
-        const auto document =
-            QJsonDocument::fromJson("{\"id\":\"12345\",\"title\":\"Song\",\"version\":\"Live\",\n"
-                                    "            "
-                                    "\"artists\":[{\"name\":\"A\"},{\"name\":\"B\"}],\"albums\":[{"
-                                    "\"id\":777}],\"durationMs\":201000,\"available\":true}");
-        const Yandex::Track track = Yandex::ApiClient::ParseTrack(document.object());
-        QCOMPARE(track.id, QStringLiteral("12345"));
-        QCOMPARE(track.albumId, QStringLiteral("777"));
-        QCOMPARE(track.displayTitle(), QStringLiteral("A, B - Song (Live)"));
-        QCOMPARE(track.durationMs, 201'000);
-        QVERIFY(track.coverUrl().isEmpty());
+    void tracksAreParsed_data() {
+        QTest::addColumn<QString>("name");
+        for (const char* name :
+             {"two-tracks", "with-unavailable", "version-and-artists", "cover-from-album"}) {
+            QTest::newRow(name) << QStringLiteral("tracks/%1").arg(name);
+        }
     }
-    void parsesAlbumDetailsAndCover() {
-        const auto document = QJsonDocument::fromJson(
-            "{\"id\":1,\"title\":\"T\",\"albums\":[{\"id\":2,\"title\":\"Звезда\","
-            "\"year\":1989,\"genre\":\"rusrock\",\"coverUri\":\"avatars.yandex.net/"
-            "get-music-content/1/a/%%\"}]}"
-        );
-        const Yandex::Track track = Yandex::ApiClient::ParseTrack(document.object());
-        QCOMPARE(track.albumTitle, QStringLiteral("Звезда"));
-        QCOMPARE(track.year, 1989);
+    void tracksAreParsed() {
+        QFETCH(QString, name);
+        QList<Yandex::Track> tracks;
+        for (const QJsonValue& value : ResultOf(name).toArray()) {
+            tracks << Yandex::ApiClient::ParseTrack(value);
+        }
+        QCOMPARE(Tests::Json(Tests::TracksJson(tracks)), Tests::Expected(name));
+    }
+    void trackDisplayTitleAndCoverLink() {
+        const Yandex::Track live =
+            Yandex::ApiClient::ParseTrack(ResultOf("tracks/version-and-artists").toArray().first());
+        QCOMPARE(live.displayTitle(), QStringLiteral("A, B - Song (Live)"));
+        QVERIFY(live.coverUrl().isEmpty());
+        const Yandex::Track fromAlbum =
+            Yandex::ApiClient::ParseTrack(ResultOf("tracks/cover-from-album").toArray().first());
         QCOMPARE(
-            track.coverUrl(200).toString(),
+            fromAlbum.coverUrl(200).toString(),
             QStringLiteral("https://avatars.yandex.net/get-music-content/1/a/200x200")
         );
     }

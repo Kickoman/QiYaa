@@ -1,7 +1,21 @@
-add_library(qiyaa_test_support STATIC support/mock_http_server.cpp support/mock_http_server.h)
+# The API fixtures and expected results come from the spec/ submodule.
+set(QIYAA_SPEC_DIR "${PROJECT_SOURCE_DIR}/spec")
+if(NOT EXISTS "${QIYAA_SPEC_DIR}/fixtures/yandex")
+    message(FATAL_ERROR "spec/ is empty; run: git submodule update --init")
+endif()
+
+add_library(qiyaa_test_support STATIC
+    support/mock_http_server.cpp support/mock_http_server.h
+    support/spec_fixtures.cpp support/spec_fixtures.h)
 target_include_directories(qiyaa_test_support PUBLIC ${CMAKE_CURRENT_SOURCE_DIR})
 target_link_libraries(qiyaa_test_support PUBLIC Qt6::Core Qt6::Network)
+target_compile_definitions(qiyaa_test_support PRIVATE QIYAA_SPEC_DIR="${QIYAA_SPEC_DIR}")
 qiyaa_target_defaults(qiyaa_test_support)
+
+# The Yandex models in the neutral JSON of spec/expected/yandex.
+add_library(qiyaa_test_yandex STATIC support/yandex_json.cpp support/yandex_json.h)
+target_link_libraries(qiyaa_test_yandex PUBLIC qiyaa_test_support qiyaa_yandex)
+qiyaa_target_defaults(qiyaa_test_yandex)
 
 # qiyaa_add_test(<name> <modules...>): <name>.cpp linked with qiyaa_<module> for each module.
 function(qiyaa_add_test name)
@@ -19,11 +33,13 @@ endfunction()
 qiyaa_add_test(snap_test ui)
 qiyaa_add_test(region_test skins)
 qiyaa_add_test(yandex_test yandex)
+target_link_libraries(yandex_test PRIVATE qiyaa_test_yandex)
 qiyaa_add_test(skin_test skins)
 qiyaa_add_test(audio_test audio core)
 target_compile_definitions(audio_test PRIVATE QIYAA_TEST_DATA="${CMAKE_CURRENT_SOURCE_DIR}/data")
 qiyaa_add_test(main_window_test audio core skins ui yandex)
 qiyaa_add_test(library_test audio core ui yandex)
+target_link_libraries(library_test PRIVATE qiyaa_test_yandex)
 target_compile_definitions(library_test PRIVATE QIYAA_TEST_DATA="${CMAKE_CURRENT_SOURCE_DIR}/data")
 qiyaa_add_test(dsp_test audio skins ui vis)
 qiyaa_add_test(windows_test app core ui)

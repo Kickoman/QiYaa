@@ -1,7 +1,9 @@
 # `tests` — Qt Test suites and the mock HTTP server they share
 
 This folder holds one Qt Test executable per area of QiYaa, the shared fixture
-`Tests::MockHttpServer` (`support/`) and the files the suites read (`data/`). The suites drive
+`Tests::MockHttpServer` (`support/`) and the files the suites read (`data/`). The Yandex Music API
+responses the suites serve, and what parsing them must give, come from the `spec/` submodule
+shared with the Android app (see **Spec fixtures**). The suites drive
 the real modules: the audio engine plays through miniaudio's Null output, windows open on Qt's
 offscreen platform, the Yandex client talks to a local HTTP server, MPRIS runs over a private
 D-Bus session and projectM renders on a virtual X server. No suite talks to Yandex Music, a sound
@@ -13,15 +15,17 @@ is formatting (the clang-format check in `.github/workflows/ci.yml`).
 
 | File | Contains |
 |---|---|
-| `CMakeLists.txt` | `qiyaa_test_support`, the `qiyaa_add_test` helper, one CTest entry per suite, and `milkdrop_gl_test` |
+| `CMakeLists.txt` | `qiyaa_test_support`, `qiyaa_test_yandex`, the `qiyaa_add_test` helper, one CTest entry per suite, and `milkdrop_gl_test`; stops the configuration when `spec/` is not checked out |
 | `support/mock_http_server.h/.cpp` | `Tests::MockRequest`, `Tests::MockResponse`, `Tests::MockHttpServer` |
+| `support/spec_fixtures.h/.cpp` | `Tests::Fixture`, `FixtureStatus`, `Expected`, `ExpectedObject`, `Json`: reading `spec/fixtures/yandex` and `spec/expected/yandex` |
+| `support/yandex_json.h/.cpp` | `Tests::ToJson` and friends: the `Yandex::` models in the neutral JSON of `spec/expected/yandex`; `CheckError` |
 | `snap_test.cpp` | `Ui::SnapToOthers`, `SnapWithin`, `ClampInside`, `PickScreen`, `ResolveDragPosition`, and `StackBelow` (which windows follow a shade change of window 0). Pure `QRect` arithmetic, no windows |
 | `region_test.cpp` | `Skins::ParseRegionTxt` and `RegionFromPolygons`: sections, several polygons, degenerate and missing points, empty input |
-| `yandex_test.cpp` | Track-link signing (`BuildTrackUrl`), picking the best full mp3, `ParseDownloadInfo`, `NormalizeToken` on five input shapes, `ApiClient::ParseTrack` and the cover URL |
+| `yandex_test.cpp` | Track-link signing (`BuildTrackUrl`), download variants and the best full mp3, `ParseDownloadInfo` and the signed link, `ApiClient::ParseTrack` and the cover URL, all on spec fixtures; `NormalizeToken` on five input shapes |
 | `skin_test.cpp` | The built-in base skin, loading every bundled `:/skins/*.wsz`, and the `Skins::Error` messages |
 | `audio_test.cpp` | `Audio::AudioEngine` on the test mp3: streaming in chunks, pause, the decode-error message, seeks during download, the `Core::Player` polling timer, and gapless chaining of a queued stream |
 | `dsp_test.cpp` | EQ response and processing, the 17 built-in EQ presets, `.eqf` read/write, `EqualizerWindow::GraphCurve`, the FFT analyzer, spectrum and oscilloscope rendering |
-| `library_test.cpp` | `Yandex::Library`/`ApiClient` against the mock server: request shapes and parsing for every source the menu offers, likes, waves, search, device login and wave feedback. Also `Core::Player` track events, preloading, and endless sources |
+| `library_test.cpp` | `Yandex::Library`/`ApiClient` against the mock server serving spec fixtures: request shapes and parsing for every source the menu offers, likes, waves, search with each kind of best result, errors, device login and wave feedback. Also `Core::Player` track events, preloading, and endless sources |
 | `main_window_test.cpp` | One `Ui::MainWindow` on the default offscreen screen: position clamping, dragging and edge snapping, shuffle click, volume slider, ×2 and fractional scale |
 | `windows_test.cpp` | The whole `App::Application` window set: docking, detaching, scaling, playlist selection/scroll/resize, EQ sliders, shade modes, login dialog layout, Milkdrop and Now Playing windows, `snapshot()` |
 | `screenshots_test.cpp` | Golden screenshots of the main window and the equalizer (see **Golden screenshots**) |
@@ -65,11 +69,11 @@ QT_QPA_PLATFORM=offscreen QIYAA_AUDIO_BACKEND=null build/tests/audio_test queued
 |---|---|---|
 | `snap_test` | ui | plain |
 | `region_test` | skins | plain |
-| `yandex_test` | yandex | plain |
+| `yandex_test` | yandex (+ `qiyaa_test_yandex`) | plain |
 | `skin_test` | skins | plain |
 | `audio_test` | audio core | plain; `QIYAA_TEST_DATA` |
 | `main_window_test` | audio core skins ui yandex | plain |
-| `library_test` | audio core ui yandex | plain; `QIYAA_TEST_DATA` |
+| `library_test` | audio core ui yandex (+ `qiyaa_test_yandex`) | plain; `QIYAA_TEST_DATA` |
 | `dsp_test` | audio skins ui vis | plain |
 | `windows_test` | app core ui | 2560×1440 virtual screen (not on Windows) |
 | `screenshots_test` | audio core skins ui yandex | plain; `QIYAA_TEST_DATA` |
@@ -120,10 +124,13 @@ pictures into an existing directory; nothing creates it:
 
 ## Dependencies
 
-- `qiyaa_test_support`: a static library from `support/`. It PUBLIC-links Qt6::Core and
-  Qt6::Network, and its PUBLIC include directory is `tests/`, so the header is
-  `"support/mock_http_server.h"`. Every `qiyaa_add_test` target links it. Only `library_test`
-  and `windows_test` use it. `mpris_test` is added by hand and does not link it.
+- `qiyaa_test_support`: a static library from `support/` (the mock server and the spec
+  readers). It PUBLIC-links Qt6::Core and Qt6::Network, and its PUBLIC include directory is
+  `tests/`, so the headers are `"support/…"`. It gets `QIYAA_SPEC_DIR` (the absolute path of
+  `spec/`) as a PRIVATE definition. Every `qiyaa_add_test` target links it. Only `library_test`,
+  `yandex_test` and `windows_test` use it. `mpris_test` is added by hand and does not link it.
+- `qiyaa_test_yandex`: `support/yandex_json.cpp`. It PUBLIC-links `qiyaa_test_support` and
+  `qiyaa_yandex`. Only `library_test` and `yandex_test` link it.
 - Each suite links the modules in the table above, plus what those modules link PUBLIC. For
   example, `audio_test` reaches `Yandex::ApiClient` through `qiyaa_core`'s PUBLIC link to
   `qiyaa_yandex`.
@@ -175,6 +182,7 @@ public:
     void onPrefix(const QByteArray& method, const QString& prefix, THandler handler);
     void json(const QByteArray& method, const QString& path, const QByteArray& body, int status = 200);
     void result(const QByteArray& method, const QString& path, const QByteArray& resultJson);
+    void fixture(const QByteArray& method, const QString& path, const QString& name, int delayMs = 0);
     const QList<MockRequest>& requests() const;        // in arrival order
     const MockRequest* last(const QString& path) const;   // nullptr when none
 };
@@ -192,10 +200,13 @@ public:
   3. Otherwise `404` with body `{"error":"not found"}`.
 - `on` for a method and path that already have a route replaces the handler. That is how a
   suite points a path at new data in a later test function.
+- `fixture` answers the body of `spec/fixtures/yandex/<name>.json` byte for byte, with the
+  status its case name gives (**Spec fixtures**). This is how the suites answer the Yandex
+  endpoints.
 - `json` answers a fixed body and status. `result` wraps the body in the Yandex Music API
-  envelope `{"invocationInfo":{},"result":<resultJson>}`. Use `json` for endpoints that answer
-  without the envelope: `/wheel/new`, OAuth `/device/code` and `/token`, the download-info hop
-  `/dl…`, and error bodies.
+  envelope `{"invocationInfo":{},"result":<resultJson>}`. They remain for synthetic replies that
+  are not API fixtures: the player tests' download-info, whose links point at this server's
+  port.
 - Every response is `HTTP/1.1 <status> X` with `Content-Type: application/json`, even for mp3
   and PNG bodies, plus `Connection: close` and `Content-Length`. The server then closes the
   connection, so each connection carries one request.
@@ -258,6 +269,42 @@ record it again to get a change through. When a rendering change is intended, sa
 change, explain why the pixels move, and replace the image as a separate, reviewed step. Adding
 a new row with a new image is fine. See `docs/code-style.md` §6 and `CLAUDE.md`.
 
+## Spec fixtures
+
+`spec/` is a submodule, [Kickoman/QiYaa-spec](https://github.com/Kickoman/QiYaa-spec). Its
+`fixtures/yandex/<endpoint>/<case>.json` are API response bodies as the server sends them, and
+`expected/yandex/<endpoint>/<case>.json` say what parsing each must give, in a neutral JSON that
+the Android tests read too. The naming, the status in the case name and the neutral fields are
+defined in the spec's own READMEs.
+
+```cpp
+namespace Tests {
+QByteArray Fixture(const QString& name);          // "search/best-artist": the body, byte for byte
+int FixtureStatus(const QString& name);           // "…/401-session-expired" → 401, otherwise 200
+QByteArray Expected(const QString& name);         // expected/yandex/<name>.json through Json()
+QJsonObject ExpectedObject(const QString& name);
+QByteArray Json(const QJsonObject& object);       // indented, keys sorted
+
+QJsonObject ToJson(const Yandex::Track&);         // and Account, WaveBatch, SearchResult, DownloadInfo
+QJsonObject TracksJson(const QList<Yandex::Track>&);   // {"tracks": [...]}; also IdsJson,
+                                                       // PlaylistsJson, NamedJson, StationsJson,
+                                                       // WavesJson, VariantsJson
+QString CheckError(const QString& error, const QString& expectedName);   // "" when it matches
+}
+```
+
+A test compares `Json(<converted result>)` with `Expected(name)`; on a mismatch Qt Test prints
+both documents. An error case is checked with `CheckError`: the app's text must name
+`HTTP <status>` and contain the expected message, unless the expectation has none (an empty body,
+where the text comes from Qt).
+
+- A missing file stops the test with `qFatal`, naming the path. CMake refuses to configure the
+  tests at all when `spec/fixtures/yandex` does not exist.
+- Changing a fixture or an expectation means a commit to QiYaa-spec first; see
+  [CLAUDE.md](../CLAUDE.md#behaviour-lives-in-spec).
+- A new field in a model: add it to the converter here and to every file of
+  `spec/expected/yandex` that holds that model, in the same spec commit.
+
 ## Suite notes
 
 These are facts the function names do not carry. What each module promises is in its own README.
@@ -317,7 +364,9 @@ The chaining tests start with two helpers. `startNearEnd(at)` plays the file and
 **library_test.** The suite shares one server and one `ApiClient` with token `test-token`
 aimed at the server. It also shares one `Library`. `initTestCase` answers `/account/status`
 with uid 42, and `connectsAccountWithAuthHeader` logs in with it.
-`J()` writes JSON with single quotes, because moc can't parse raw string literals. `Result<T>`
+The API responses are spec fixtures (**Spec fixtures**). `J()` writes JSON with single quotes,
+because moc can't parse raw string literals; it is left for the player tests' synthetic replies,
+as is `TrackJson()` for their numbered tracks. `Result<T>`
 collects a `(value, error)` callback, and `wait()` spins for up to 5 s.
 
 - `slowLoadDoesNotReplaceNewerChoice`: the likes answer after 300 ms (`delayMs`). "Моя волна"
@@ -495,9 +544,8 @@ D-Bus, and OpenGL on a software renderer. This is how they stay stable:
 **Order and environment:**
 
 - **Shared state in `library_test`.** Later functions rely on earlier ones:
-  - `connectsAccountWithAuthHeader` logs in as uid 42, which the `/users/42/…` routes need;
-  - the `/tracks/` route from `likedTracksFetchesMetadataAndRemembersLikes` also answers
-    `playlistWithoutEmbeddedTracksFetchesByIds` and `likedArtistsAndTheirTopTracksAreParsed`.
+  - `connectsAccountWithAuthHeader` logs in as uid 42, which the `/users/42/…` routes need.
+    Every other function sets the routes it uses itself.
 
   To run one function, name its prerequisites before it. Qt Test runs named functions in the
   order given.

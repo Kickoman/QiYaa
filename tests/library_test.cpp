@@ -1,6 +1,8 @@
 #include "audio/audio_engine.h"
 #include "core/player.h"
 #include "support/mock_http_server.h"
+#include "support/spec_fixtures.h"
+#include "support/yandex_json.h"
 #include "ui/library_menu.h"
 #include "yandex/api_client.h"
 #include "yandex/library.h"
@@ -10,6 +12,7 @@
 #include <QJsonArray>
 #include <QJsonDocument>
 #include <QJsonObject>
+#include <QJsonValue>
 #include <QLatin1String>
 #include <QList>
 #include <QNetworkAccessManager>
@@ -17,6 +20,7 @@
 #include <QObject>
 #include <QSignalSpy>
 #include <QString>
+#include <QStringList>
 #include <QTest>
 #include <QUrl>
 
@@ -36,6 +40,29 @@ QByteArray TrackJson(int id, const char* title, int albumId = 0) {
         json += ",\"albums\":[{\"id\":" + QByteArray::number(albumId) + "}]";
     }
     return json + "}";
+}
+
+// The ids an expected result lists under `key` ("trackIds", "albumIds").
+QStringList ExpectedIds(const QString& name, const char* key) {
+    QStringList ids;
+    for (const QJsonValue& id : Tests::ExpectedObject(name).value(QLatin1String(key)).toArray()) {
+        ids << id.toString();
+    }
+    return ids;
+}
+
+QJsonArray ExpectedTracks(const QString& name) {
+    return Tests::ExpectedObject(name).value(QStringLiteral("tracks")).toArray();
+}
+
+// The tracks of a wrapped /tracks/ reply in spec/fixtures/yandex.
+QList<Yandex::Track> FixtureTracks(const QString& name) {
+    QList<Yandex::Track> tracks;
+    const QJsonObject reply = QJsonDocument::fromJson(Tests::Fixture(name)).object();
+    for (const QJsonValue& value : reply.value(QStringLiteral("result")).toArray()) {
+        tracks << Yandex::ApiClient::ParseTrack(value);
+    }
+    return tracks;
 }
 
 template <typename T>
@@ -83,10 +110,7 @@ private Q_SLOTS:
     void initTestCase() {
         api.setBaseUrl(server.baseUrl());
         api.setToken(QStringLiteral("test-token"));
-        server.result(
-            "GET", "/account/status",
-            J("{'account':{'uid':42,'login':'kick','displayName':'Kick'}}")
-        );
+        server.fixture("GET", "/account/status", "account-status/ok");
     }
 
     void connectsAccountWithAuthHeader() {
@@ -94,7 +118,7 @@ private Q_SLOTS:
         library.connectAccount(account.callback());
         QVERIFY(account.wait());
         QVERIFY2(account.error.isEmpty(), qPrintable(account.error));
-        QCOMPARE(account.value.uid, QStringLiteral("42"));
+        QCOMPARE(Tests::Json(Tests::ToJson(account.value)), Tests::Expected("account-status/ok"));
         QVERIFY(library.isLoggedIn());
         QCOMPARE(
             server.last("/account/status")->headers.value("authorization"),
@@ -102,113 +126,125 @@ private Q_SLOTS:
         );
     }
 
+    void likedTracksFetchesMetadataAndRemembersLikes_data() {
+        QTest::addColumn<QString>("name");
+        QTest::newRow("string ids") << QStringLiteral("users-likes-tracks/string-ids");
+        QTest::newRow("number ids") << QStringLiteral("users-likes-tracks/number-ids");
+    }
     void likedTracksFetchesMetadataAndRemembersLikes() {
-        server.result(
-            "GET", "/users/42/likes/tracks",
-            J("{'library':{'uid':42,'tracks':[{'id':'1','albumId':'10'},{'id':'2','albumId':'20'}]}"
-              "}")
-        );
-        server.result(
-            "POST", "/tracks/", "[" + TrackJson(1, "One", 10) + "," + TrackJson(2, "Two", 20) + "]"
-        );
+        QFETCH(QString, name);
+        server.fixture("GET", "/users/42/likes/tracks", name);
+        server.fixture("POST", "/tracks/", "tracks/two-tracks");
         Result<QList<Yandex::Track>> liked;
         library.likedTracks(liked.callback());
         QVERIFY(liked.wait());
-        QCOMPARE(liked.value.size(), 2);
-        QCOMPARE(liked.value[1].title, QStringLiteral("Two"));
-        QCOMPARE(server.last("/tracks/")->formValue("track-ids"), QStringLiteral("1,2"));
-        QVERIFY(library.isLiked("1"));
+        QVERIFY2(liked.error.isEmpty(), qPrintable(liked.error));
+        const QStringList ids = ExpectedIds(name, "trackIds");
+        QCOMPARE(server.last("/tracks/")->formValue("track-ids"), ids.join(u','));
+        QCOMPARE(Tests::Json(Tests::TracksJson(liked.value)), Tests::Expected("tracks/two-tracks"));
+        for (const QString& id : ids) {
+            QVERIFY(library.isLiked(id));
+        }
         QVERIFY(!library.isLiked("3"));
     }
 
     void userPlaylistsAndTheirEmbeddedTracksAreParsed() {
-        server.result(
-            "GET", "/users/42/playlists/list",
-            J("[{'uid':42,'kind':1003,'title':'Дорога','trackCount':2}]")
-        );
+        server.fixture("GET", "/users/42/playlists/list", "users-playlists-list/ok");
         Result<QList<Yandex::PlaylistReference>> lists;
         library.userPlaylists(lists.callback());
         QVERIFY(lists.wait());
-        QCOMPARE(lists.value.size(), 1);
-        QCOMPARE(lists.value[0].kind, QStringLiteral("1003"));
-        QCOMPARE(lists.value[0].title, QStringLiteral("Дорога"));
+        QCOMPARE(
+            Tests::Json(Tests::PlaylistsJson(lists.value)),
+            Tests::Expected("users-playlists-list/ok")
+        );
 
         // Embedded track objects are used directly.
-        server.result(
-            "GET", "/users/42/playlists/1003",
-            "{\"tracks\":[{\"id\":5,\"track\":" + TrackJson(5, "Five") + "}]}"
-        );
+        server.fixture("GET", "/users/42/playlists/1003", "users-playlists/embedded-tracks");
+        const auto before = server.requests().size();
         Result<QList<Yandex::Track>> tracks;
         library.playlistTracks(lists.value[0], tracks.callback());
         QVERIFY(tracks.wait());
-        QCOMPARE(tracks.value.size(), 1);
-        QCOMPARE(tracks.value[0].title, QStringLiteral("Five"));
+        QCOMPARE(
+            Tests::Json(Tests::TracksJson(tracks.value)),
+            Tests::Expected("users-playlists/embedded-tracks")
+        );
+        QCOMPARE(server.requests().size(), before + 1);  // no /tracks/ request
     }
 
     void playlistWithoutEmbeddedTracksFetchesByIds() {
-        server.result("GET", "/users/7/playlists/3", J("{'tracks':[{'id':1},{'id':2}]}"));
+        server.fixture("GET", "/users/7/playlists/3", "users-playlists/ids-only");
+        server.fixture("POST", "/tracks/", "tracks/two-tracks");
         Result<QList<Yandex::Track>> tracks;
         library.playlistTracks(Yandex::PlaylistReference{"7", "3", "x", 2}, tracks.callback());
         QVERIFY(tracks.wait());
-        QCOMPARE(tracks.value.size(), 2);
-        QCOMPARE(server.last("/tracks/")->formValue("track-ids"), QStringLiteral("1,2"));
+        QCOMPARE(
+            server.last("/tracks/")->formValue("track-ids"),
+            ExpectedIds("users-playlists/ids-only", "trackIds").join(u',')
+        );
+        QCOMPARE(
+            Tests::Json(Tests::TracksJson(tracks.value)), Tests::Expected("tracks/two-tracks")
+        );
     }
 
     void likedArtistsAndTheirTopTracksAreParsed() {
-        server.result(
-            "GET", "/users/42/likes/artists",
-            J("[{'id':9,'name':'Кино'},{'artist':{'id':10,'name':'Земфира'}}]")
-        );
+        server.fixture("GET", "/users/42/likes/artists", "users-likes-artists/ok");
         Result<QList<Yandex::NamedReference>> artists;
         library.likedArtists(artists.callback());
         QVERIFY(artists.wait());
-        QCOMPARE(artists.value.size(), 2);
-        QCOMPARE(artists.value[1].name, QStringLiteral("Земфира"));
-
-        server.result(
-            "GET", "/artists/9/track-ids-by-rating", J("{'artist':{},'tracks':['1','2']}")
+        QCOMPARE(
+            Tests::Json(Tests::NamedJson("artists", artists.value)),
+            Tests::Expected("users-likes-artists/ok")
         );
-        Result<QList<Yandex::Track>> top;
-        library.artistTopTracks("9", top.callback());
-        QVERIFY(top.wait());
-        QCOMPARE(top.value.size(), 2);
+
+        server.fixture("POST", "/tracks/", "tracks/two-tracks");
+        for (const char* name :
+             {"artists-track-ids-by-rating/ok", "artists-track-ids-by-rating/more-than-100"}) {
+            server.fixture("GET", "/artists/9/track-ids-by-rating", name);
+            Result<QList<Yandex::Track>> top;
+            library.artistTopTracks("9", top.callback());
+            QVERIFY(top.wait());
+            QVERIFY2(top.error.isEmpty(), qPrintable(top.error));
+            QCOMPARE(
+                server.last("/tracks/")->formValue("track-ids"),
+                ExpectedIds(name, "trackIds").join(u',')
+            );
+        }
     }
 
     void albumsSkipPodcasts() {
-        server.result("GET", "/users/42/likes/albums", J("[{'id':100},{'id':200}]"));
-        server.result(
-            "POST", "/albums",
-            J("[{'id':100,'title':'Звезда','artists':[{'name':'Кино'}]},{'id':200,'title':'Pod','"
-              "type':'podcast'}]")
-        );
+        server.fixture("GET", "/users/42/likes/albums", "users-likes-albums/ok");
+        server.fixture("POST", "/albums", "albums/with-podcast");
         Result<QList<Yandex::NamedReference>> albums;
         library.likedAlbums(albums.callback());
         QVERIFY(albums.wait());
-        QCOMPARE(albums.value.size(), 1);
-        QCOMPARE(albums.value[0].name, QStringLiteral("Кино - Звезда"));
-        QCOMPARE(server.last("/albums")->formValue("album-ids"), QStringLiteral("100,200"));
-
-        server.result(
-            "GET", "/albums/100/with-tracks",
-            "{\"id\":100,\"volumes\":[[" + TrackJson(1, "A") + "],[" + TrackJson(2, "B") + "]]}"
+        QCOMPARE(
+            server.last("/albums")->formValue("album-ids"),
+            ExpectedIds("users-likes-albums/ok", "albumIds").join(u',')
         );
+        QCOMPARE(
+            Tests::Json(Tests::NamedJson("albums", albums.value)),
+            Tests::Expected("albums/with-podcast")
+        );
+
+        server.fixture("GET", "/albums/4053/with-tracks", "albums-with-tracks/two-volumes");
         Result<QList<Yandex::Track>> tracks;
-        library.albumTracks("100", tracks.callback());
+        library.albumTracks("4053", tracks.callback());
         QVERIFY(tracks.wait());
-        QCOMPARE(tracks.value.size(), 2);
-        QCOMPARE(tracks.value[0].albumId, QStringLiteral("100"));
+        QCOMPARE(
+            Tests::Json(Tests::TracksJson(tracks.value)),
+            Tests::Expected("albums-with-tracks/two-volumes")
+        );
     }
 
     void stationsAreListedWithTypeTagIds() {
-        server.result(
-            "GET", "/rotor/stations/list",
-            J("[{'station':{'id':{'type':'genre','tag':'rock'},'name':'Рок'}}]")
-        );
+        server.fixture("GET", "/rotor/stations/list", "rotor-stations-list/ok");
         Result<QList<Yandex::Station>> stationList;
         library.stations(stationList.callback());
         QVERIFY(stationList.wait());
-        QCOMPARE(stationList.value.size(), 1);
-        QCOMPARE(stationList.value[0].id, QStringLiteral("genre:rock"));
+        QCOMPARE(
+            Tests::Json(Tests::StationsJson(stationList.value)),
+            Tests::Expected("rotor-stations-list/ok")
+        );
         QCOMPARE(
             server.last("/rotor/stations/list")->query.queryItemValue("language"),
             QStringLiteral("ru")
@@ -216,17 +252,11 @@ private Q_SLOTS:
     }
 
     void waveSessionStartsFromSeedsAndContinuesWithTheQueue() {
-        server.result(
-            "POST", "/rotor/session/new",
-            "{\"radioSessionId\":\"S1\",\"batchId\":\"B1\",\"sequence\":[{\"type\":\"track\","
-            "\"track\":"
-                + TrackJson(1, "W1") + "}]}"
-        );
+        server.fixture("POST", "/rotor/session/new", "rotor-session-new/ok");
         Result<Yandex::WaveBatch> first;
         library.startWave({"user:onyourwave"}, first.callback());
         QVERIFY(first.wait());
-        QCOMPARE(first.value.sessionId, QStringLiteral("S1"));
-        QCOMPARE(first.value.tracks.size(), 1);
+        QCOMPARE(Tests::Json(Tests::ToJson(first.value)), Tests::Expected("rotor-session-new/ok"));
         const QJsonObject body =
             QJsonDocument::fromJson(server.last("/rotor/session/new")->body).object();
         QCOMPARE(
@@ -234,41 +264,52 @@ private Q_SLOTS:
         );
         QVERIFY(body.value("includeTracksInResponse").toBool());
 
-        server.result(
-            "POST", "/rotor/session/S1/tracks",
-            "{\"batchId\":\"B2\",\"sequence\":[{\"track\":" + TrackJson(2, "W2") + "}]}"
+        const QString sessionId = first.value.sessionId;
+        server.fixture(
+            "POST", QStringLiteral("/rotor/session/%1/tracks").arg(sessionId),
+            "rotor-session-tracks/ok"
         );
         Result<Yandex::WaveBatch> more;
-        library.moreWave("S1", {"1"}, more.callback());
+        library.moreWave(sessionId, {"38634572"}, more.callback());
         QVERIFY(more.wait());
-        QCOMPARE(more.value.tracks.value(0).title, QStringLiteral("W2"));
-        QCOMPARE(more.value.sessionId, QStringLiteral("S1"));
+        QCOMPARE(
+            Tests::Json(Tests::ToJson(more.value)), Tests::Expected("rotor-session-tracks/ok")
+        );
         const QJsonObject moreBody =
-            QJsonDocument::fromJson(server.last("/rotor/session/S1/tracks")->body).object();
-        QCOMPARE(moreBody.value("queue").toArray().first().toString(), QStringLiteral("1"));
+            QJsonDocument::fromJson(
+                server.last(QStringLiteral("/rotor/session/%1/tracks").arg(sessionId))->body
+            )
+                .object();
+        QCOMPARE(moreBody.value("queue").toArray().first().toString(), QStringLiteral("38634572"));
     }
 
-    void searchReportsTheBestArtist() {
-        server.result(
-            "GET", "/search",
-            "{\"best\":{\"type\":\"artist\",\"result\":{\"id\":9,\"name\":\"Кино\"}},"
-            "\"tracks\":{\"results\":["
-                + TrackJson(3, "Кукушка") + "]}}"
-        );
+    void searchReportsTheBestResult_data() {
+        QTest::addColumn<QString>("name");
+        for (const char* name :
+             {"best-artist", "best-album", "best-track", "best-playlist", "best-podcast", "no-best"
+             }) {
+            QTest::newRow(name) << QStringLiteral("search/%1").arg(name);
+        }
+    }
+    void searchReportsTheBestResult() {
+        QFETCH(QString, name);
+        server.fixture("GET", "/search", name);
         Result<Yandex::SearchResult> found;
         library.search("кино", found.callback());
         QVERIFY(found.wait());
-        QCOMPARE(found.value.bestKind, Yandex::SearchResult::Kind::Artist);
-        QCOMPARE(found.value.bestId, QStringLiteral("9"));
-        QCOMPARE(found.value.bestName, QStringLiteral("Кино"));
-        QCOMPARE(found.value.tracks.size(), 1);
+        QCOMPARE(Tests::Json(Tests::ToJson(found.value)), Tests::Expected(name));
         QCOMPARE(server.last("/search")->query.queryItemValue("text"), QStringLiteral("кино"));
     }
 
     void likeUnlikeAndDislikeUpdateTheLikes() {
-        server.result("POST", "/users/42/likes/tracks/add-multiple", J("{'revision':1}"));
-        server.result("POST", "/users/42/likes/tracks/remove", J("{'revision':2}"));
-        server.result("POST", "/users/42/dislikes/tracks/add-multiple", J("{'revision':3}"));
+        server.fixture(
+            "POST", "/users/42/likes/tracks/add-multiple", "users-likes-tracks-add-multiple/ok"
+        );
+        server.fixture("POST", "/users/42/likes/tracks/remove", "users-likes-tracks-remove/ok");
+        server.fixture(
+            "POST", "/users/42/dislikes/tracks/add-multiple",
+            "users-dislikes-tracks-add-multiple/ok"
+        );
         Result<bool> like;
         library.setLiked("77", true, like.callback());
         QVERIFY(like.wait());
@@ -282,81 +323,84 @@ private Q_SLOTS:
         QVERIFY(unlike.wait());
         QVERIFY(!library.isLiked("77"));
         Result<bool> dislike;
-        library.dislike("1", dislike.callback());
+        library.dislike("33311009", dislike.callback());
         QVERIFY(dislike.wait());
         QVERIFY(dislike.value);
-        QVERIFY(!library.isLiked("1"));
+        QVERIFY(!library.isLiked("33311009"));
     }
 
+    void errorsAreReported_data() {
+        QTest::addColumn<QString>("name");
+        QTest::newRow("401 error object")
+            << QStringLiteral("users-likes-artists/401-session-expired");
+        QTest::newRow("404 error object") << QStringLiteral("rotor-session-feedback/404-not-found");
+        QTest::newRow("503 error string")
+            << QStringLiteral("rotor-session-feedback/503-string-error");
+        QTest::newRow("500 empty body") << QStringLiteral("account-status/500-empty");
+    }
     void errorsAreReported() {
-        server.json(
-            "GET", "/users/42/likes/artists",
-            J("{'error':{'name':'session-expired','message':'Token expired'}}"), 401
-        );
+        QFETCH(QString, name);
+        server.fixture("GET", "/users/42/likes/artists", name);
         Result<QList<Yandex::NamedReference>> artists;
         library.likedArtists(artists.callback());
         QVERIFY(artists.wait());
-        QVERIFY(artists.error.contains("401"));
-        QVERIFY(artists.error.contains("Token expired"));
+        const QString problem = Tests::CheckError(artists.error, name);
+        QVERIFY2(problem.isEmpty(), qPrintable(problem));
     }
 
     void deviceLoginPollsUntilToken() {
-        server.json(
-            "POST", "/device/code",
-            J("{'device_code':'DEV','user_code':'ABCD1234','verification_url':'https://ya.ru/"
-              "device','interval':1,'expires_in':300}")
-        );
+        server.fixture("POST", "/device/code", "oauth-device-code/ok");
         int polls = 0;
         server.on("POST", "/token", [&polls](const Tests::MockRequest& request) {
+            auto answer = [](const QString& name) {
+                return Tests::MockResponse{Tests::FixtureStatus(name), Tests::Fixture(name)};
+            };
             if (request.formValue("code") != "DEV") {
-                return Tests::MockResponse{400, J("{'error':'bad_verification_code'}")};
+                return answer("oauth-token/400-bad-verification-code");
             }
             if (++polls < 2) {
-                return Tests::MockResponse{400, J("{'error':'authorization_pending'}")};
+                return answer("oauth-token/400-authorization-pending");
             }
-            return Tests::MockResponse{
-                200, J("{'access_token':'NEW_TOKEN','token_type':'bearer'}")
-            };
+            return answer("oauth-token/ok");
         });
+        const QJsonObject code = Tests::ExpectedObject("oauth-device-code/ok");
         Yandex::DeviceLogin login(&networkManager);
         login.setBaseUrl(server.baseUrl());
         QSignalSpy codeReady(&login, &Yandex::DeviceLogin::codeReady);
         QSignalSpy succeeded(&login, &Yandex::DeviceLogin::succeeded);
         login.start();
         QVERIFY(codeReady.wait(3000));
-        QCOMPARE(codeReady.first().at(0).toString(), QStringLiteral("ABCD1234"));
+        QCOMPARE(codeReady.first().at(0).toString(), code.value("userCode").toString());
+        QCOMPARE(codeReady.first().at(1).toUrl(), QUrl(code.value("verificationUrl").toString()));
         QVERIFY(succeeded.wait(5000));
-        QCOMPARE(succeeded.first().at(0).toString(), QStringLiteral("NEW_TOKEN"));
+        QCOMPARE(
+            succeeded.first().at(0).toString(),
+            Tests::ExpectedObject("oauth-token/ok").value("accessToken").toString()
+        );
         QCOMPARE(polls, 2);
         QCOMPARE(server.last("/token")->formValue("grant_type"), QStringLiteral("device_code"));
     }
 
     void deviceLoginFailureIsReported() {
-        server.json(
-            "POST", "/device/code",
-            J("{'error':'invalid_client','error_description':'Client not found'}"), 400
-        );
+        const QString name = QStringLiteral("oauth-device-code/400-invalid-client");
+        server.fixture("POST", "/device/code", name);
         Yandex::DeviceLogin login(&networkManager);
         login.setBaseUrl(server.baseUrl());
         QSignalSpy failed(&login, &Yandex::DeviceLogin::failed);
         login.start();
         QVERIFY(failed.wait(3000));
-        QCOMPARE(failed.first().at(0).toString(), QStringLiteral("Client not found"));
+        QCOMPARE(
+            failed.first().at(0).toString(),
+            Tests::ExpectedObject(name).value("error").toObject().value("message").toString()
+        );
     }
 
     void slowLoadDoesNotReplaceNewerChoice() {
         Audio::AudioEngine engine;
         Core::Player player(&library, &engine);
-        server.on("GET", "/users/42/likes/tracks", [](const Tests::MockRequest&) {
-            return Tests::MockResponse{
-                200, J("{'result':{'library':{'tracks':[{'id':'1'}]}}}"), 300
-            };
-        });
-        server.result("POST", "/tracks/", "[" + TrackJson(1, "Liked") + "]");
-        server.result(
-            "POST", "/rotor/session/new",
-            "{\"radioSessionId\":\"S9\",\"sequence\":[{\"track\":" + TrackJson(7, "Wave") + "}]}"
-        );
+        server.fixture("GET", "/users/42/likes/tracks", "users-likes-tracks/string-ids", 300);
+        server.fixture("POST", "/tracks/", "tracks/two-tracks");
+        server.fixture("POST", "/rotor/session/new", "rotor-session-new/ok");
         Ui::PlayLikes(&player, false);
         Ui::PlayMyWave(&player);
         QVERIFY(QTest::qWaitFor(
@@ -364,63 +408,55 @@ private Q_SLOTS:
         ));
         QTest::qWait(600);  // the likes response arrives now
         QCOMPARE(player.queueTitle(), QStringLiteral("Моя волна"));
-        QCOMPARE(player.playlist().first().title, QStringLiteral("Wave"));
+        QCOMPARE(
+            player.playlist().first().title,
+            ExpectedTracks("rotor-session-new/ok").first().toObject().value("title").toString()
+        );
     }
 
     void personalPlaylistsAndTheirRecommendationsAreParsed() {
-        server.result(
-            "GET", "/landing3",
-            J("{'blocks':[{'type':'personal-playlists','entities':["
-              "{'type':'personal-playlist','data':{'type':'playlistOfTheDay','data':{'uid':"
-              "503646255,'kind':123,'title':'Плейлист дня','trackCount':60}}},"
-              "{'type':'personal-playlist','data':{'data':{'owner':{'uid':503646255},'kind':456,'"
-              "title':'Дежавю'}}}]}]}")
-        );
+        server.fixture("GET", "/landing3", "landing3/personal-playlists");
         Result<QList<Yandex::PlaylistReference>> playlists;
         library.personalPlaylists(playlists.callback());
         QVERIFY(playlists.wait());
         QVERIFY2(playlists.error.isEmpty(), qPrintable(playlists.error));
-        QCOMPARE(playlists.value.size(), 2);
-        QCOMPARE(playlists.value[0].title, QStringLiteral("Плейлист дня"));
-        QCOMPARE(playlists.value[1].ownerUid, QStringLiteral("503646255"));
+        QCOMPARE(
+            Tests::Json(Tests::PlaylistsJson(playlists.value)),
+            Tests::Expected("landing3/personal-playlists")
+        );
         QCOMPARE(
             server.last("/landing3")->query.queryItemValue("blocks"),
             QStringLiteral("personalplaylists")
         );
 
-        server.result(
+        server.fixture(
             "GET", "/users/503646255/playlists/123/recommendations",
-            "{\"batchId\":\"b\",\"tracks\":[" + TrackJson(8, "Rec", 80) + "]}"
+            "users-playlists-recommendations/ok"
         );
         Result<QList<Yandex::Track>> recommendations;
         library.playlistRecommendations(playlists.value[0], recommendations.callback());
         QVERIFY(recommendations.wait());
-        QCOMPARE(recommendations.value.size(), 1);
-        QCOMPARE(recommendations.value[0].title, QStringLiteral("Rec"));
+        QCOMPARE(
+            Tests::Json(Tests::TracksJson(recommendations.value)),
+            Tests::Expected("users-playlists-recommendations/ok")
+        );
     }
 
     void wheelOfWavesReadsAnUnwrappedBodyAndSkipsOtherItems() {
-        server.json(
-            "POST", "/wheel/new",
-            J("{'wheelId':'w1','items':[{'type':'WAVE','id':'1','data':{'wave':{'name':'Бодрое','"
-              "description':'d','seeds':['mood:energetic']}}},"
-              "{'type':'OTHER','id':'2','data':{}}]}")
-        );
+        server.fixture("POST", "/wheel/new", "wheel-new/ok");
         Result<QList<Yandex::Wave>> waves;
         library.wheelWaves({"user:onyourwave"}, waves.callback());
         QVERIFY(waves.wait());
         QVERIFY2(waves.error.isEmpty(), qPrintable(waves.error));
-        QCOMPARE(waves.value.size(), 1);
-        QCOMPARE(waves.value[0].seeds, QStringList{"mood:energetic"});
+        QCOMPARE(Tests::Json(Tests::WavesJson(waves.value)), Tests::Expected("wheel-new/ok"));
         const QJsonObject body = QJsonDocument::fromJson(server.last("/wheel/new")->body).object();
         QCOMPARE(body.value("context").toObject().value("type").toString(), QStringLiteral("WAVE"));
     }
 
     void waveFeedbackFallsBackToStationEndpoint() {
-        Yandex::Track track =
-            Yandex::ApiClient::ParseTrack(QJsonDocument::fromJson(TrackJson(5, "T", 50)).object());
+        const Yandex::Track track = FixtureTracks("tracks/two-tracks").first();
         // Session endpoint works: only it is used.
-        server.result("POST", "/rotor/session/OK1/feedback", "\"ok\"");
+        server.fixture("POST", "/rotor/session/OK1/feedback", "rotor-session-feedback/ok");
         library.waveFeedback(
             "OK1", "user:onyourwave", "B1", Yandex::WaveEvent::TrackStarted, &track
         );
@@ -436,14 +472,16 @@ private Q_SLOTS:
         );
         QCOMPARE(
             sessionBody.value("event").toObject().value("trackId").toString(),
-            QStringLiteral("5:50")
+            track.id + u':' + track.albumId
         );
 
         // Session endpoint rejected: falls back to the station endpoint, and stays there.
-        server.json(
-            "POST", "/rotor/session/BAD/feedback", J("{'error':{'message':'not found'}}"), 404
+        server.fixture(
+            "POST", "/rotor/session/BAD/feedback", "rotor-session-feedback/404-not-found"
         );
-        server.result("POST", "/rotor/station/user:onyourwave/feedback", "\"ok\"");
+        server.fixture(
+            "POST", "/rotor/station/user:onyourwave/feedback", "rotor-station-feedback/ok"
+        );
         const auto before = server.requests().size();
         auto stationCalls = [&] {
             int calls = 0;
@@ -474,9 +512,10 @@ private Q_SLOTS:
     }
 
     void waveFeedbackDoesNotResendAfterServerError() {
-        Yandex::Track track =
-            Yandex::ApiClient::ParseTrack(QJsonDocument::fromJson(TrackJson(5, "T", 50)).object());
-        server.json("POST", "/rotor/session/S500/feedback", J("{'error':'oops'}"), 503);
+        const Yandex::Track track = FixtureTracks("tracks/two-tracks").first();
+        server.fixture(
+            "POST", "/rotor/session/S500/feedback", "rotor-session-feedback/503-string-error"
+        );
         const auto before = server.requests().size();
         bool settled = false;
         const int pending = api.pendingPosts();
@@ -492,12 +531,11 @@ private Q_SLOTS:
     }
 
     void postsSettleOnlyAfterTheFallback() {
-        Yandex::Track track =
-            Yandex::ApiClient::ParseTrack(QJsonDocument::fromJson(TrackJson(5, "T", 50)).object());
-        server.json(
-            "POST", "/rotor/session/S404/feedback", J("{'error':{'message':'not found'}}"), 404
+        const Yandex::Track track = FixtureTracks("tracks/two-tracks").first();
+        server.fixture(
+            "POST", "/rotor/session/S404/feedback", "rotor-session-feedback/404-not-found"
         );
-        server.result("POST", "/rotor/station/user:x/feedback", "\"ok\"");
+        server.fixture("POST", "/rotor/station/user:x/feedback", "rotor-station-feedback/ok");
         const auto before = server.requests().size();
         int stationCallsAtSettle = -1;
         auto stationCalls = [&] {
@@ -531,7 +569,7 @@ private Q_SLOTS:
                 + server.baseUrl().toUtf8() + "/dl?x=2\"}]"
         );
         server.json("GET", "/dl", J("{'host':'127.0.0.1:1','path':'/p','ts':'1','s':'s'}"));
-        server.result("POST", "/play-audio", "\"ok\"");
+        server.fixture("POST", "/play-audio", "play-audio/ok");
         QList<Yandex::Track> tracks;
         for (int i = 1; i <= 2; ++i) {
             tracks << Yandex::ApiClient::ParseTrack(
@@ -585,7 +623,7 @@ private:
         server.onPrefix("GET", "/get-mp3/", [mp3](const Tests::MockRequest&) {
             return Tests::MockResponse{200, mp3};
         });
-        server.result("POST", "/play-audio", "\"ok\"");
+        server.fixture("POST", "/play-audio", "play-audio/ok");
         return true;
     }
     int requestsTo(const QString& path) const {

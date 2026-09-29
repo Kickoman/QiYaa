@@ -44,6 +44,9 @@ public:
     void
     json(const QByteArray& method, const QString& path, const QByteArray& body, int status = 200);
     void result(const QByteArray& method, const QString& path, const QByteArray& resultJson);
+    // Answers with spec/fixtures/yandex/<name>.json and the status its case name gives.
+    void
+    fixture(const QByteArray& method, const QString& path, const QString& name, int delayMs = 0);
 
     const QList<MockRequest>& requests() const { return recordedRequests; }
     const MockRequest* last(const QString& path) const;
