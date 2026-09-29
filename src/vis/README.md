@@ -12,7 +12,7 @@ colours from [src/skins](../skins/README.md).
 
 | File | Contains |
 |---|---|
-| `visualizer.h` | `VisFrame`, the `Visualizer` interface, `MakeSpectrum`, `MakeOscilloscope`, `Analyzer` |
+| `visualizer.h` | `VisFrame`, the `Visualizer` interface, `MakeSpectrum`, `MakeOscilloscope`, `SpectrumBands`, `SpectrumLevels`, `Analyzer` |
 | `visualizer.cpp` | `Analyzer` (Hann window + radix-2 FFT), the file-local `Spectrum` and `Oscilloscope` |
 | `milkdrop_presets.h/.cpp` | `PresetTransition` (cut or blend); `MilkdropPresets` — built-in and user `.milk` files in a fixed order, read with a 1 MiB bound |
 | `milkdrop_view.h/.cpp` | `MilkdropView` — projectM 4 in a `QOpenGLWindow`: OpenGL 3.3 probe, PCM feed, deferred preset loads, black-picture watch, frame capture. Built only with Milkdrop |
@@ -65,6 +65,11 @@ public:
 
 std::unique_ptr<Visualizer> MakeSpectrum();      // name() "Спектр"
 std::unique_ptr<Visualizer> MakeOscilloscope();  // name() "Осциллограф"
+
+inline constexpr int kSpectrumBars = 19;
+struct SpectrumBand { double lowHz, highHz; int firstBin, endBin; };   // bins [firstBin, endBin)
+std::array<SpectrumBand, kSpectrumBars> SpectrumBands(int sampleRate, int fftSize);
+std::array<float, kSpectrumBars> SpectrumLevels(std::span<const float> spectrumDb, int sampleRate, int fftSize);
 ```
 
 - `update` is called once per animation frame with fresh data. `render` is `const` and draws only
@@ -96,6 +101,9 @@ index the skin does not have is drawn `Qt::green`.
   2)` Hz. Bar `bar` covers `60 * r^(bar/19)` to `60 * r^((bar+1)/19)` Hz with `r = highestHz / 60`,
   and shows the loudest bin in that range: at least one bin, never bin 0 (DC).
 - −72 dBFS is an empty bar, −6 dBFS a full one, linear in dB between.
+- `SpectrumBands` and `SpectrumLevels` are this computation for one frame, before fall-off and
+  peaks: the bands and the 0..1 target of each bar. The spectrum's `update` uses them, and they
+  produce `spec/dsp/spectrum.json`, the vectors the Android spectrum is checked against.
 - A bar jumps up at once and falls by 0.07 of the height per `update` (Winamp's "fast" falloff):
   a full bar empties in 15 updates.
 - A peak is pushed up by its bar. Otherwise it drops by `0.0004 * t²` of the height per `update`,

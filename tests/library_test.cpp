@@ -23,6 +23,7 @@
 #include <QStringList>
 #include <QTest>
 #include <QUrl>
+#include <QVariant>
 
 #include <functional>
 
@@ -729,6 +730,48 @@ private Q_SLOTS:
         QCOMPARE(asked, 1);
         QCOMPARE(player.playlist().size(), 4);
         QCOMPARE(player.playlist().last().title, QStringLiteral("more"));
+    }
+
+    void shuffleDoesNotApplyInAWave() {  // spec WAVE-10, WAVE-11
+        Audio::AudioEngine engine;  // not initialised: nothing actually plays
+        Core::Player player(&library, &engine);
+        QSignalSpy status(&player, &Core::Player::statusMessage);
+        auto shuffleMessages = [&] {
+            int count = 0;
+            for (const QList<QVariant>& arguments : status) {
+                count += arguments.at(0).toString().startsWith(QStringLiteral("Перемешивание"));
+            }
+            return count;
+        };
+        player.setShuffle(true);
+        QList<int> ids;
+        for (int i = 1; i <= 12; ++i) {
+            ids << i;
+        }
+        int asked = 0;
+        player.setQueue(
+            NumberedTracks(ids), "Wave", false,
+            [&](std::function<void(const QList<Yandex::Track>&)>) { ++asked; }
+        );
+        QCOMPARE(shuffleMessages(), 1);
+        QVERIFY(player.shuffle());
+        QVERIFY(!player.shuffleActive());
+        player.playIndex(0);
+        for (int expected = 1; expected <= 10; ++expected) {
+            player.next();
+            QCOMPARE(player.currentIndex(), expected);  // in order, not a random pick
+        }
+        QCOMPARE(asked, 1);  // 2 tracks left at index 10
+
+        player.setShuffle(false);
+        player.setShuffle(true);
+        QCOMPARE(shuffleMessages(), 2);
+
+        player.setQueue(NumberedTracks(ids), "Plain", false);
+        QVERIFY(player.shuffle());
+        QVERIFY(player.shuffleActive());
+        QCOMPARE(shuffleMessages(), 2);
+        player.stop();
     }
 };
 

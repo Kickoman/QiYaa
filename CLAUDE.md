@@ -60,6 +60,9 @@ parity table; [spec/README.md](spec/README.md) says what is where. Nothing in it
   should), commit the spec change to QiYaa-spec first. Then bump `spec/` here in the same change as
   the code and tests, and open an issue in Kickoman/QiYaa-android for the other side.
 - **Tests name the scenario.** A test that checks a spec scenario names its ID (`WAVE-03`).
+- **Features go in the parity table.** A feature that lands here and not on Android, or the
+  other way round, gets a row in [spec/parity.md](spec/parity.md) and an issue for the other
+  app. Closing that issue sets the row to "yes".
 - **Never edit `spec/` only here.** A change inside the submodule that is not pushed to QiYaa-spec
   breaks every other checkout.
 

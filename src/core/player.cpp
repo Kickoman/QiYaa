@@ -20,6 +20,10 @@ using Yandex::Track;
 namespace {
 constexpr int kLoadMoreWhenLeft = 2;
 constexpr int kDownloadTimeoutMs = 30'000;
+
+QString ShuffleOffInWaveText() {
+    return QStringLiteral("Перемешивание не действует в волне");
+}
 }  // namespace
 
 Player::Player(Yandex::Library* library, Audio::AudioEngine* engine, QObject* parent)
@@ -110,6 +114,9 @@ void Player::setQueue(
     Q_EMIT queueReplaced();
     Q_EMIT playlistChanged();
     Q_EMIT currentTrackChanged();
+    if (loadMore && shuffleEnabled) {
+        Q_EMIT statusMessage(ShuffleOffInWaveText());
+    }
     if (autoplay && playingIndex >= 0) {
         playIndex(0);
     }
@@ -220,6 +227,9 @@ void Player::setShuffle(bool on) {
     }
     shuffleEnabled = on;
     Q_EMIT modesChanged();
+    if (on && loadMore) {
+        Q_EMIT statusMessage(ShuffleOffInWaveText());
+    }
     refreshPreload();
 }
 
@@ -257,7 +267,7 @@ int Player::sequentialNext() const {
 }
 
 int Player::pickNext() const {
-    if (!shuffleEnabled || queuedTracks.size() < 2) {
+    if (!shuffleActive() || queuedTracks.size() < 2) {
         return sequentialNext();
     }
     int randomIndex;
@@ -511,7 +521,7 @@ void Player::cancelPreload() {
 void Player::refreshPreload() {
     if (preload) {
         int index = -1;
-        if (shuffleEnabled) {
+        if (shuffleActive()) {
             for (int i = 0; i < queuedTracks.size() && index < 0; ++i) {
                 if (i != playingIndex && queuedTracks[i].id == preload->trackId) {
                     index = i;

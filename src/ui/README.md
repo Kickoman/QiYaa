@@ -346,8 +346,10 @@ toggles shade, the wheel changes the volume by 4 per notch and shows `VOLUME: n%
 **Traps:**
 - Shade-mode hit rectangles (transport at x 169–224, mini position bar 226,4 17x7, mini time
   127,4 25x6) are literals in `main_window.cpp`, not in `skins/sprites.h`.
-- The shuffle and repeat lights are read from `Player` when painting, but nothing connects
-  `Player::modesChanged`: a change from elsewhere (MPRIS) shows at the next repaint.
+- The shuffle and repeat lights are read from `Player` when painting. The shuffle light is
+  `Player::shuffleActive()`, so it is off during a wave even when the user's choice is on.
+  `modesChanged` and `queueReplaced` repaint the window, so a change from MPRIS or a new queue
+  shows at once.
 - The eject menu position comes from the unshaded layout: in shade mode `sourcesMenuRequested`
   points at skin (136, 105), below the 14 px strip.
 

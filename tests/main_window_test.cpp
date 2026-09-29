@@ -9,14 +9,17 @@
 #include <QEvent>
 #include <QGuiApplication>
 #include <QImage>
+#include <QList>
 #include <QMouseEvent>
 #include <QNetworkAccessManager>
 #include <QObject>
 #include <QPoint>
 #include <QPointF>
+#include <QRect>
 #include <QScreen>
 #include <QTest>
 
+#include <functional>
 #include <memory>
 
 class TestMainWindow : public QObject {
@@ -108,6 +111,22 @@ private Q_SLOTS:
         send(QEvent::MouseButtonPress, shuffleButton, Qt::LeftButton);
         send(QEvent::MouseButtonRelease, shuffleButton, Qt::NoButton);
         QVERIFY(player->shuffle());
+    }
+
+    void shuffleButtonShowsOffDuringAWave() {  // spec WAVE-10
+        const QRect button(164, 89, 47, 15);
+        auto shuffleButton = [&] { return window->grab(button).toImage(); };
+        player->setShuffle(true);
+        const QImage on = shuffleButton();
+        player->setShuffle(false);
+        const QImage off = shuffleButton();
+        QVERIFY(on != off);
+        player->setShuffle(true);
+        player->setQueue({}, "Wave", false, [](std::function<void(const QList<Yandex::Track>&)>) {
+        });
+        QCOMPARE(shuffleButton(), off);
+        player->setQueue({}, "Plain", false);
+        QCOMPARE(shuffleButton(), on);
     }
 
     void volumeSliderFollowsMouse() {

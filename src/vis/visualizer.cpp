@@ -26,8 +26,7 @@ QColor VisColor(const Skins::Skin& skin, int index) {
 
 class Spectrum : public Visualizer {
 public:
-    static constexpr int kBars = 19;
-    static constexpr float kMinDb = -72.0f, kMaxDb = -6.0f;
+    static constexpr int kBars = kSpectrumBars;
 
     QString name() const override { return QStringLiteral("Спектр"); }
 
@@ -38,22 +37,10 @@ public:
     }
 
     void update(const VisFrame& frame) override {
-        const double binHz = double(frame.sampleRate) / frame.fftSize;
-        const double lowestHz = 60.0, highestHz = std::min(16'000.0, frame.sampleRate / 2.0);
+        const std::array<float, kBars> levels =
+            SpectrumLevels(frame.spectrum, frame.sampleRate, frame.fftSize);
         for (int bar = 0; bar < kBars; ++bar) {
-            const double bandLowHz = lowestHz * std::pow(highestHz / lowestHz, double(bar) / kBars);
-            const double bandHighHz =
-                lowestHz * std::pow(highestHz / lowestHz, double(bar + 1) / kBars);
-            int firstBin = std::clamp(int(bandLowHz / binHz), 1, int(frame.spectrum.size()) - 1);
-            int endBin = std::clamp(
-                int(std::ceil(bandHighHz / binHz)), firstBin + 1, int(frame.spectrum.size())
-            );
-            float peakDb = kMinDb;
-            for (int i = firstBin; i < endBin; ++i) {
-                peakDb = std::max(peakDb, frame.spectrum[i]);
-            }
-            const float target = std::clamp((peakDb - kMinDb) / (kMaxDb - kMinDb), 0.0f, 1.0f);
-            bars[bar] = std::max(target, bars[bar] - 0.07f);
+            bars[bar] = std::max(levels[bar], bars[bar] - 0.07f);
             float peak = peaks[bar] - 0.0004f * peakFrames[bar] * peakFrames[bar];
             if (peak < bars[bar]) {
                 peak = bars[bar];
@@ -192,6 +179,37 @@ const std::vector<float>& Analyzer::analyze(std::span<const float> mono) {
         decibels[i] = 20.0f * std::log10(std::max(magnitude, 1e-9f));
     }
     return decibels;
+}
+
+std::array<SpectrumBand, kSpectrumBars> SpectrumBands(int sampleRate, int fftSize) {
+    const int binCount = fftSize / 2 + 1;
+    const double binHz = double(sampleRate) / fftSize;
+    const double lowestHz = 60.0, highestHz = std::min(16'000.0, sampleRate / 2.0);
+    std::array<SpectrumBand, kSpectrumBars> bands{};
+    for (int bar = 0; bar < kSpectrumBars; ++bar) {
+        SpectrumBand& band = bands[bar];
+        band.lowHz = lowestHz * std::pow(highestHz / lowestHz, double(bar) / kSpectrumBars);
+        band.highHz = lowestHz * std::pow(highestHz / lowestHz, double(bar + 1) / kSpectrumBars);
+        band.firstBin = std::clamp(int(band.lowHz / binHz), 1, binCount - 1);
+        band.endBin = std::clamp(int(std::ceil(band.highHz / binHz)), band.firstBin + 1, binCount);
+    }
+    return bands;
+}
+
+std::array<float, kSpectrumBars>
+SpectrumLevels(std::span<const float> spectrumDb, int sampleRate, int fftSize) {
+    constexpr float kMinDb = -72.0f, kMaxDb = -6.0f;
+    std::array<float, kSpectrumBars> levels{};
+    const std::array<SpectrumBand, kSpectrumBars> bands = SpectrumBands(sampleRate, fftSize);
+    for (int bar = 0; bar < kSpectrumBars; ++bar) {
+        float peakDb = kMinDb;
+        const int endBin = std::min(bands[bar].endBin, int(spectrumDb.size()));
+        for (int i = bands[bar].firstBin; i < endBin; ++i) {
+            peakDb = std::max(peakDb, spectrumDb[i]);
+        }
+        levels[bar] = std::clamp((peakDb - kMinDb) / (kMaxDb - kMinDb), 0.0f, 1.0f);
+    }
+    return levels;
 }
 
 std::unique_ptr<Visualizer> MakeSpectrum() {

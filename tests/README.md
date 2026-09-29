@@ -24,9 +24,9 @@ is formatting (the clang-format check in `.github/workflows/ci.yml`).
 | `yandex_test.cpp` | Track-link signing (`BuildTrackUrl`), download variants and the best full mp3, `ParseDownloadInfo` and the signed link, `ApiClient::ParseTrack` and the cover URL, all on spec fixtures; `NormalizeToken` on five input shapes |
 | `skin_test.cpp` | The built-in base skin, loading every bundled `:/skins/*.wsz`, and the `Skins::Error` messages |
 | `audio_test.cpp` | `Audio::AudioEngine` on the test mp3: streaming in chunks, pause, the decode-error message, seeks during download, the `Core::Player` polling timer, and gapless chaining of a queued stream |
-| `dsp_test.cpp` | EQ response and processing, the 17 built-in EQ presets, `.eqf` read/write, `EqualizerWindow::GraphCurve`, the FFT analyzer, spectrum and oscilloscope rendering |
-| `library_test.cpp` | `Yandex::Library`/`ApiClient` against the mock server serving spec fixtures: request shapes and parsing for every source the menu offers, likes, waves, search with each kind of best result, errors, device login and wave feedback. Also `Core::Player` track events, preloading, and endless sources |
-| `main_window_test.cpp` | One `Ui::MainWindow` on the default offscreen screen: position clamping, dragging and edge snapping, shuffle click, volume slider, ×2 and fractional scale |
+| `dsp_test.cpp` | EQ response and processing, the 17 built-in EQ presets, `.eqf` read/write, `EqualizerWindow::GraphCurve`, the FFT analyzer, spectrum and oscilloscope rendering; the reference vectors of `spec/dsp` (checks them, and writes them with `QIYAA_WRITE_DSP_VECTORS=1`) |
+| `library_test.cpp` | `Yandex::Library`/`ApiClient` against the mock server serving spec fixtures: request shapes and parsing for every source the menu offers, likes, waves, search with each kind of best result, errors, device login and wave feedback. Also `Core::Player` track events, preloading, endless sources, and shuffle not applying in a wave |
+| `main_window_test.cpp` | One `Ui::MainWindow` on the default offscreen screen: position clamping, dragging and edge snapping, shuffle click, the shuffle light off during a wave, volume slider, ×2 and fractional scale |
 | `windows_test.cpp` | The whole `App::Application` window set: docking, detaching, scaling, playlist selection/scroll/resize, EQ sliders, shade modes, login dialog layout, Milkdrop and Now Playing windows, `snapshot()` |
 | `screenshots_test.cpp` | Golden screenshots of the main window and the equalizer (see **Golden screenshots**) |
 | `mpris_test.cpp` | `Integrations::Mpris` over a session bus, driven by `gdbus` as an external client |
@@ -284,6 +284,8 @@ int FixtureStatus(const QString& name);           // "…/401-session-expired" �
 QByteArray Expected(const QString& name);         // expected/yandex/<name>.json through Json()
 QJsonObject ExpectedObject(const QString& name);
 QByteArray Json(const QJsonObject& object);       // indented, keys sorted
+QJsonObject SpecObject(const QString& relativePath);                 // any file: "dsp/eqf.json"
+void WriteSpecObject(const QString& relativePath, const QJsonObject&);   // generators only
 
 QJsonObject ToJson(const Yandex::Track&);         // and Account, WaveBatch, SearchResult, DownloadInfo
 QJsonObject TracksJson(const QList<Yandex::Track>&);   // {"tracks": [...]}; also IdsJson,
@@ -344,6 +346,12 @@ The chaining tests start with two helpers. `startNearEnd(at)` plays the file and
 
 **dsp_test.**
 
+- `eqResponseMatchesSpec`, `eqPresetsMatchSpec`, `eqfMatchesSpec` and `spectrumMatchesSpec`
+  read `spec/dsp/*.json`, take the inputs from the files, compute and compare within each file's
+  tolerance ([spec/dsp](../spec/dsp/README.md)). With **QIYAA_WRITE_DSP_VECTORS=1**,
+  `initTestCase` first writes the four files from the inputs listed in the test, with
+  `Tests::WriteSpecObject`. Run it by hand, never from CTest; the result is deterministic.
+
 - `settingsChangingWhileProcessingKeepsOutputBounded` publishes new settings before each of 100 blocks of 480
   frames. The output must stay finite and below 4.0 in magnitude.
 - `presetsLookRight`: "Full Bass" is above +5 dB in band 0 and below −5 dB in band 9.
@@ -393,6 +401,10 @@ collects a `(value, error)` callback, and `wait()` spins for up to 5 s.
   one; 23 is preloaded and follows without a gap.
 - `playerAsksEndlessSourceForMore`: the engine is never initialised. With 3 tracks, playing
   index 1 leaves 2, which triggers the request for more.
+- `shuffleDoesNotApplyInAWave` (spec WAVE-10, WAVE-11): a 12-track endless queue with shuffle on
+  walks indices 1 to 10 in order with `next()`; the chance that random picks do the same is
+  negligible. It checks the status message on start and when shuffle is switched on, and that
+  an ordinary queue afterwards shuffles again.
 
 **main_window_test.** All functions share one window on the default 800×600 screen. Input
 events go through `QCoreApplication::sendEvent`, which is synchronous.

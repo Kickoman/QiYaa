@@ -75,7 +75,8 @@ public:
     bool seekFraction(double fraction);               // 0..1 of durationSeconds()
     void setShuffle(bool on);
     void setRepeat(bool on);
-    bool shuffle() const;
+    bool shuffle() const;                             // the user's choice
+    bool shuffleActive() const;                       // shuffle && the queue is not endless
     bool repeat() const;
 
     const QList<Yandex::Track>& playlist() const;
@@ -225,7 +226,9 @@ above.
   removed: `stop()`, then `currentTrackChanged`. Then, always, `playlistChanged` and
   `refreshPreload()`.
 - **`setShuffle`, `setRepeat`**: nothing happens without a change. With a change:
-  `modesChanged`, then `refreshPreload()`.
+  `modesChanged`, then `refreshPreload()`. Switching shuffle on while the queue is endless also
+  emits `statusMessage("Перемешивание не действует в волне")`; `setQueue` emits the same when an
+  endless queue starts with shuffle on.
 - **`seekTo(seconds)`**: clamps the target to `[0, durationSeconds()]`, or to `>= 0` when the
   duration is 0. It returns `false` and emits nothing when `AudioEngine::seek` refuses, which
   happens while stopped and until the engine's decoder has opened the stream. On success it moves
@@ -260,16 +263,19 @@ Tickets start at 1, so 0 never matches. `ui/library_menu.cpp` uses 0 to mean "ta
   `setQueue` without `autoplay`, `appendTracks`, `removeTracks` or a mode change.
 - `done(tracks)` is ignored if the `Player` is gone or the queue has been replaced. Otherwise the
   request is no longer in flight, the wait ends, and `appendTracks(tracks)` runs. If `next()` was
-  waiting and a track now follows the cursor, `playIndex(cursor + 1)` runs; this is the next index
-  in order even when shuffle is on.
+  waiting and a track now follows the cursor, `playIndex(cursor + 1)` runs, the first new track.
 - `done` may be called synchronously from inside the `TLoadMoreCallback`.
 
 ### Next, shuffle, repeat
 
 - `sequentialNext()` returns `cursor + 1`. At the end of a finite queue it returns 0 if repeat is
   on, and -1 otherwise. At the end of an endless queue it returns -1.
-- `pickNext()` is `sequentialNext()` when shuffle is off or the queue has fewer than 2 tracks.
-  Otherwise it draws uniformly from every index except the cursor, using
+- Shuffle does not apply to an endless queue (spec WAVE-10, WAVE-11): a wave plays in queue order.
+  `shuffle()` stays the user's choice, and MPRIS reads and writes that choice. `shuffleActive()`
+  is what applies now, and the main window draws the shuffle button from it. An ordinary queue
+  after a wave shuffles again without the user doing anything.
+- `pickNext()` is `sequentialNext()` when `shuffleActive()` is false or the queue has fewer than
+  2 tracks. Otherwise it draws uniformly from every index except the cursor, using
   `QRandomGenerator::global()`. Repeats are allowed, nothing records history, and the draws are
   not reproducible.
 - The pick is made when the preload starts, and `next()` goes to the preload's index. So with
@@ -318,7 +324,7 @@ Tickets start at 1, so 0 never matches. `ui/library_menu.cpp` uses 0 to mean "ta
   follows, so `next()` picks again: the result is a gap, never the wrong track.
 - **Refreshed** by `refreshPreload()` after `appendTracks`, `removeTracks`, and any actual change of
   shuffle or repeat. The preload is kept, and its index updated, when its track id is still what
-  follows. With shuffle off, that means the id at `sequentialNext()`. With shuffle on, it means the
+  follows. Without active shuffle, that means the id at `sequentialNext()`. With it, the
   first index other than the cursor that holds the id. Otherwise the preload is cancelled.
   Whenever no preload is kept, `maybePreload()` tries a new one.
 - A queued stream that the engine cannot decode is forgotten by the engine, and
@@ -390,8 +396,6 @@ Tickets start at 1, so 0 never matches. `ui/library_menu.cpp` uses 0 to mean "ta
 - Removing a track before the current one changes `currentIndex()` without
   `currentTrackChanged`. The same is true when `appendTracks` moves the cursor from -1 to 0. UI
   that depends on the index must also listen to `playlistChanged`.
-- With shuffle on an endless source, load-more fires only when a random pick lands on one of the
-  last two tracks.
 - A link failure or a decoding failure stops playback on that track. Neither skips to the next
   track.
 - `shutDown()` blocks playback only. `setQueue`, `appendTracks` and `removeTracks` still change

@@ -75,6 +75,9 @@ MainWindow::MainWindow(Core::Player* player, const Skins::Skin* skin, QWidget* p
         update();
     });
     connect(corePlayer, &Core::Player::statusMessage, this, &MainWindow::setStatusText);
+    // The shuffle button shows shuffleActive(), which a wave switches off.
+    connect(corePlayer, &Core::Player::queueReplaced, this, qOverload<>(&QWidget::update));
+    connect(corePlayer, &Core::Player::modesChanged, this, qOverload<>(&QWidget::update));
     refreshTimer();
 }
 
@@ -573,7 +576,8 @@ void MainWindow::paintSkin(QPainter& painter) {
         Skins::kEject.pressed
     );
     toggle(
-        Element::Shuffle, Skins::kShuffle, corePlayer->shuffle(), Skins::MainWindowSprites::kShuffle
+        Element::Shuffle, Skins::kShuffle, corePlayer->shuffleActive(),
+        Skins::MainWindowSprites::kShuffle
     );
     toggle(
         Element::Repeat, Skins::kRepeat, corePlayer->repeat(), Skins::MainWindowSprites::kRepeat

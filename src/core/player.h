@@ -53,7 +53,9 @@ public:
     bool seekFraction(double fraction);
     void setShuffle(bool on);
     void setRepeat(bool on);
-    bool shuffle() const { return shuffleEnabled; }
+    bool shuffle() const { return shuffleEnabled; }  // the user's choice
+    // Shuffle as it applies now: never in an endless queue (a wave plays in queue order).
+    bool shuffleActive() const { return shuffleEnabled && !loadMore; }
     bool repeat() const { return repeatEnabled; }
 
     const QList<Yandex::Track>& playlist() const { return queuedTracks; }
