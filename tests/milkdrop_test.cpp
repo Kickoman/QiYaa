@@ -71,6 +71,9 @@ private Q_SLOTS:
         WriteFile(directory.filePath("b.milk"), SimplePreset(1.0));
         WriteFile(directory.filePath("B.milk"), SimplePreset(1.0));
         WriteFile(directory.filePath("a.milk"), SimplePreset(1.0));
+        if (QDir(directory.path()).entryList(QDir::Files).size() < 3) {
+            QSKIP("the file system ignores case: B.milk replaced b.milk");
+        }
         Vis::MilkdropPresets presets;
         presets.load(directory.path(), {});
         QCOMPARE(presets.size(), 3);
