@@ -34,6 +34,7 @@
 #include <QLatin1String>
 #include <QList>
 #include <QMenu>
+#include <QNetworkInformation>
 #include <QPainter>
 #include <QPoint>
 #include <QPointF>
@@ -45,6 +46,7 @@
 #include <algorithm>
 #include <cmath>
 #include <initializer_list>
+#include <optional>
 #include <utility>
 
 namespace App {
@@ -366,6 +368,12 @@ Application::Application(const Options& options, QObject* parent)
 #endif
     }
 
+    // The system's view of the network ends a wait for it at once (spec ERR-02); without a
+    // backend that can tell, the Player retries on its timer alone.
+    if (startOptions.audio && !startOptions.offline) {
+        watchNetwork();
+    }
+
     connect(qApp, &QApplication::aboutToQuit, this, [this] {
         saveState();
         corePlayer.stop();
@@ -373,6 +381,28 @@ Application::Application(const Options& options, QObject* parent)
 }
 
 Application::~Application() = default;
+
+void Application::watchNetwork() {
+    using Information = QNetworkInformation;
+    if (!Information::loadDefaultBackend()
+        && !Information::loadBackendByFeatures(Information::Feature::Reachability)) {
+        return;
+    }
+    Information* information = Information::instance();
+    if (!information || !information->supports(Information::Feature::Reachability)) {
+        return;
+    }
+    auto apply = [this](Information::Reachability reachability) {
+        // Local and Site say little about the Yandex servers: leave those to the timer.
+        corePlayer.setNetworkOnline(
+            reachability == Information::Reachability::Online             ? std::optional(true)
+                : reachability == Information::Reachability::Disconnected ? std::optional(false)
+                                                                          : std::nullopt
+        );
+    };
+    connect(information, &Information::reachabilityChanged, this, apply);
+    apply(information->reachability());
+}
 
 QList<Ui::SkinnedWindow*> Application::windows() const {
     QList<Ui::SkinnedWindow*> out{

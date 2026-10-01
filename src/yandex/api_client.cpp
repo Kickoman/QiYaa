@@ -109,15 +109,54 @@ void ApiClient::trackPost(QNetworkReply* reply) {
     });
 }
 
+RequestError ClassifyReply(const QNetworkReply& reply) {
+    RequestError error;
+    error.httpStatus = reply.attribute(QNetworkRequest::HttpStatusCodeAttribute).toInt();
+    switch (reply.error()) {
+        case QNetworkReply::NoError: break;
+        case QNetworkReply::ConnectionRefusedError:
+        case QNetworkReply::RemoteHostClosedError:  // also a body cut short after its status line
+        case QNetworkReply::HostNotFoundError:
+        case QNetworkReply::TimeoutError:
+        case QNetworkReply::OperationCanceledError:  // the transfer timeout before Qt 6.11
+        case QNetworkReply::SslHandshakeFailedError:  // captive portals
+        case QNetworkReply::TemporaryNetworkFailureError:
+        case QNetworkReply::NetworkSessionFailedError:
+        case QNetworkReply::BackgroundRequestNotAllowedError:
+        case QNetworkReply::UnknownNetworkError:
+        case QNetworkReply::ProxyConnectionRefusedError:
+        case QNetworkReply::ProxyConnectionClosedError:
+        case QNetworkReply::ProxyNotFoundError:
+        case QNetworkReply::ProxyTimeoutError:
+        case QNetworkReply::UnknownProxyError:
+            error.kind = RequestError::Kind::Network;
+            return error;
+        default: error.kind = RequestError::Kind::Content; break;
+    }
+    if (error.httpStatus >= 400) {
+        error.kind = RequestError::Kind::Http;
+    }
+    return error;
+}
+
 void ApiClient::handleJson(QNetworkReply* reply, TJsonCallback callback) {
+    handleClassifiedJson(
+        reply,
+        [callback = std::move(callback)](const QJsonValue& result, const RequestError& error) {
+            callback(result, error.text);
+        }
+    );
+}
+
+void ApiClient::handleClassifiedJson(QNetworkReply* reply, TClassifiedJsonCallback callback) {
     connect(reply, &QNetworkReply::finished, this, [reply, callback = std::move(callback)] {
         reply->deleteLater();
         const QByteArray body = reply->readAll();
-        const int status = reply->attribute(QNetworkRequest::HttpStatusCodeAttribute).toInt();
+        RequestError error = ClassifyReply(*reply);
         const QJsonDocument document = QJsonDocument::fromJson(body);
         const QJsonObject object = document.object();
 
-        if (reply->error() != QNetworkReply::NoError || status >= 400) {
+        if (error.isError()) {
             QString message = object.value(QStringLiteral("error"))
                                   .toObject()
                                   .value(QStringLiteral("message"))
@@ -128,25 +167,24 @@ void ApiClient::handleJson(QNetworkReply* reply, TJsonCallback callback) {
             if (message.isEmpty()) {
                 message = reply->errorString();
             }
-            callback(
-                {},
-                QStringLiteral("HTTP %1 from %2: %3").arg(status).arg(reply->url().path(), message)
-            );
+            error.text = QStringLiteral("HTTP %1 from %2: %3")
+                             .arg(error.httpStatus)
+                             .arg(reply->url().path(), message);
+            callback({}, error);
             return;
         }
         if (!document.isObject()) {
-            callback(
-                {},
-                QStringLiteral("%1: the %2-byte reply is not a JSON object")
-                    .arg(reply->url().path())
-                    .arg(body.size())
-            );
+            error.kind = RequestError::Kind::Content;
+            error.text = QStringLiteral("%1: the %2-byte reply is not a JSON object")
+                             .arg(reply->url().path())
+                             .arg(body.size());
+            callback({}, error);
             return;
         }
         callback(
             object.contains(QStringLiteral("result")) ? object.value(QStringLiteral("result"))
                                                       : QJsonValue(object),
-            {}
+            error
         );
     });
 }
@@ -225,16 +263,17 @@ void ApiClient::tracks(const QStringList& ids, TCallback<QList<Track>> callback)
     );
 }
 
-void ApiClient::resolveTrackUrl(const QString& trackId, TCallback<ResolvedUrl> callback) {
+void ApiClient::resolveTrackUrl(const QString& trackId, TUrlCallback callback) {
     const QString id = trackId.section(u':', 0, 0);
     QPointer<ApiClient> self(this);
-    getJson(
-        QStringLiteral("/tracks/%1/download-info").arg(id), {},
-        [self, callback, id](const QJsonValue& result, const QString& error) {
+    QUrl url(baseUrl + QStringLiteral("/tracks/%1/download-info").arg(id));
+    handleClassifiedJson(
+        networkManager->get(MakeRequest(url, accessToken)),
+        [self, callback, id](const QJsonValue& result, const RequestError& error) {
             if (!self) {
                 return;
             }
-            if (!error.isEmpty()) {
+            if (error.isError()) {
                 return callback({}, error);
             }
             const QJsonArray variants = result.toArray();
@@ -243,9 +282,12 @@ void ApiClient::resolveTrackUrl(const QString& trackId, TCallback<ResolvedUrl> c
             if (!best) {
                 return callback(
                     {},
-                    QStringLiteral("track %1: none of %2 download variants has a usable link")
-                        .arg(id)
-                        .arg(variants.size())
+                    RequestError{
+                        RequestError::Kind::Content, error.httpStatus,
+                        QStringLiteral("track %1: none of %2 download variants has a usable link")
+                            .arg(id)
+                            .arg(variants.size())
+                    }
                 );
             }
 
@@ -259,17 +301,19 @@ void ApiClient::resolveTrackUrl(const QString& trackId, TCallback<ResolvedUrl> c
             const int bitrate = best->bitrateKbps;
             connect(reply, &QNetworkReply::finished, self, [reply, callback, bitrate] {
                 reply->deleteLater();
-                if (reply->error() != QNetworkReply::NoError) {
-                    return callback({}, QStringLiteral("download-info: ") + reply->errorString());
+                RequestError infoError = ClassifyReply(*reply);
+                if (infoError.isError()) {
+                    infoError.text = QStringLiteral("download-info: ") + reply->errorString();
+                    return callback({}, infoError);
                 }
                 const QByteArray body = reply->readAll();
                 const std::optional<DownloadInfo> info = ParseDownloadInfo(body);
                 if (!info) {
-                    return callback(
-                        {},
+                    infoError.kind = RequestError::Kind::Content;
+                    infoError.text =
                         QStringLiteral("download-info: no host, path and s in a %1-byte reply")
-                            .arg(body.size())
-                    );
+                            .arg(body.size());
+                    return callback({}, infoError);
                 }
                 callback(ResolvedUrl{BuildTrackUrl(*info), bitrate}, {});
             });

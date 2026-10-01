@@ -588,7 +588,7 @@ void AudioEngine::dropStreams() {
     currentId = queuedId = 0;
 }
 
-void AudioEngine::startDecoder() {
+void AudioEngine::startDecoder(double startSeconds) {
     // Stopping the device guarantees the callback isn't inside the ring right now.
     if (implementation->deviceReady && ma_device_is_started(&implementation->device)) {
         ma_device_stop(&implementation->device);
@@ -598,13 +598,16 @@ void AudioEngine::startDecoder() {
         ma_device_start(&implementation->device);
     }
 
+    // A start position is a seek the decoder serves before any audio reaches the ring.
+    const ma_int64 startFrame =
+        startSeconds > 0 ? ma_int64(startSeconds * implementation->sampleRate) : -1;
     implementation->framesPlayed = 0;
-    implementation->frameOffset = 0;
+    implementation->frameOffset = std::max<ma_int64>(0, startFrame);
     implementation->decoderStarted = false;
     implementation->decoderDone = false;
     implementation->decoderFailed = false;
     implementation->finishedReported = false;
-    implementation->seekRequest = -1;
+    implementation->seekRequest = startFrame;
     implementation->decoderEpoch = 0;
     implementation->uiEpoch = 0;
     implementation->failedQueuedId = 0;
@@ -619,7 +622,7 @@ void AudioEngine::startDecoder() {
     setState(State::Buffering);
 }
 
-AudioEngine::TStreamId AudioEngine::beginStream() {
+AudioEngine::TStreamId AudioEngine::beginStream(double startSeconds) {
     dropStreams();
     if (!implementation->ringReady) {
         setState(State::Stopped);
@@ -628,7 +631,7 @@ AudioEngine::TStreamId AudioEngine::beginStream() {
     }
     currentId = ++lastId;
     streams.insert(currentId, std::make_shared<StreamBuffer>());
-    startDecoder();
+    startDecoder(startSeconds);
     return currentId;
 }
 
@@ -686,7 +689,7 @@ AudioEngine::TStreamId AudioEngine::playQueuedNow() {
     streams.insert(id, buffer);
     currentId = id;
     queuedId = 0;
-    startDecoder();
+    startDecoder(0);
     return id;
 }
 
@@ -761,6 +764,10 @@ bool AudioEngine::seek(double seconds) {
     return true;
 }
 
+bool AudioEngine::decoderStarted() const {
+    return implementation->decoderStarted.load();
+}
+
 double AudioEngine::positionSeconds() const {
     if (implementation->sampleRate == 0) {
         return 0;
@@ -810,7 +817,8 @@ void AudioEngine::updateGains() {
 
 void AudioEngine::poll() {
     if (implementation->decoderFailed.exchange(false)) {
-        const std::shared_ptr<StreamBuffer> buffer = streams.value(currentId);
+        const TStreamId failedId = currentId;
+        const std::shared_ptr<StreamBuffer> buffer = streams.value(failedId);
         const qulonglong received = buffer ? buffer->size() : 0;
         stop();
         Q_EMIT errorOccurred(
@@ -818,6 +826,7 @@ void AudioEngine::poll() {
             )
                 .arg(received)
         );
+        Q_EMIT streamUndecodable(failedId);
         return;
     }
     if (const TStreamId failedId = implementation->failedQueuedId.exchange(0);

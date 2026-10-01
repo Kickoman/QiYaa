@@ -45,6 +45,21 @@ struct ResolvedUrl {
     int bitrateKbps = 0;
 };
 
+// What went wrong with a request, by kind rather than by its text. A broken or failed connection
+// is Network even when a status line had arrived; then a status of 400 or more is Http; any other
+// unusable reply (not JSON, no usable download variant, …) is Content.
+struct RequestError {
+    enum class Kind { None, Network, Http, Content };
+    Kind kind = Kind::None;
+    int httpStatus = 0;  // the server's status, when it answered
+    QString text;
+
+    bool isError() const { return kind != Kind::None; }
+};
+
+// The error of a finished reply: Kind::None when it succeeded. `text` is left empty.
+RequestError ClassifyReply(const QNetworkReply& reply);
+
 using TForm = QList<std::pair<QString, QString>>;
 
 class ApiClient : public QObject {
@@ -53,6 +68,7 @@ public:
     template <typename T>
     using TCallback = std::function<void(const T& value, const QString& error)>;
     using TJsonCallback = std::function<void(const QJsonValue& result, const QString& error)>;
+    using TUrlCallback = std::function<void(const ResolvedUrl& link, const RequestError& error)>;
 
     explicit ApiClient(QNetworkAccessManager* networkAccessManager, QObject* parent = nullptr);
 
@@ -69,7 +85,7 @@ public:
 
     void accountStatus(TCallback<Account> callback);
     void tracks(const QStringList& ids, TCallback<QList<Track>> callback);
-    void resolveTrackUrl(const QString& trackId, TCallback<ResolvedUrl> callback);
+    void resolveTrackUrl(const QString& trackId, TUrlCallback callback);
     void reportPlayStarted(const Account& account, const Track& track, const QString& playId);
 
     int pendingPosts() const { return pendingPostCount; }
@@ -81,7 +97,10 @@ Q_SIGNALS:
     void postsSettled();
 
 private:
+    using TClassifiedJsonCallback =
+        std::function<void(const QJsonValue& result, const RequestError& error)>;
     void handleJson(QNetworkReply* reply, TJsonCallback callback);
+    void handleClassifiedJson(QNetworkReply* reply, TClassifiedJsonCallback callback);
     void trackPost(QNetworkReply* reply);
 
     QNetworkAccessManager* networkManager;

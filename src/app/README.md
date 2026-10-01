@@ -243,6 +243,10 @@ default offscreen screen, where the scale tests skip themselves).
   another skin is loaded.
 - The playlist's ADD button and right-click (`PlaylistWindow::sourcesMenuRequested`) open the full
   main menu, not the sources menu.
+- With audio on and not offline, `watchNetwork()` loads a `QNetworkInformation` backend that can
+  tell reachability and passes it to `Player::setNetworkOnline`: Online is true, Disconnected
+  false, anything else (Local, Site, Unknown) "cannot tell". Without such a backend the `Player`'s
+  retry timer alone ends a wait for the network ([src/core](../core/README.md#failures-during-playback)).
 
 ### Login, logout and the token
 

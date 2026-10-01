@@ -35,7 +35,9 @@ public:
 
     using TStreamId = quint64;
 
-    TStreamId beginStream();
+    // A new current stream. With `startSeconds`, decoding starts there and the position shows it
+    // from the start: how a track that lost its download resumes.
+    TStreamId beginStream(double startSeconds = 0);
     TStreamId queueStream();
     void clearQueued();
     TStreamId queuedStream() const;
@@ -55,6 +57,8 @@ public:
     bool seek(double seconds);
 
     State state() const { return currentState; }
+    // Whether the current stream's decoder has opened it, i.e. audio could come out.
+    bool decoderStarted() const;
     double positionSeconds() const;
     int sourceSampleRate() const { return sourceRate.load(); }
     int sourceChannels() const { return sourceChannelCount.load(); }
@@ -75,12 +79,14 @@ Q_SIGNALS:
     void trackFinished();
     void trackAdvanced();
     void errorOccurred(const QString& message);
+    // After errorOccurred, when the current stream could not be decoded; the engine has stopped.
+    void streamUndecodable(Audio::AudioEngine::TStreamId stream);
 
 private:
     struct Implementation;
     void setState(State state);
     void updateGains();
-    void startDecoder();
+    void startDecoder(double startSeconds);
     void dropStreams();
 
     QHash<TStreamId, std::shared_ptr<StreamBuffer>> streams;

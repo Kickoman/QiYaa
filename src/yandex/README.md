@@ -13,7 +13,7 @@ cover images or decide what plays next: that is [src/core](../core/README.md) (`
 
 | File | Contains |
 |---|---|
-| `api_client.h/.cpp` | `ApiClient` — authorised GET/POST, the `{"result": …}` envelope, the pending-POST count; `Account`, `Track`, `ResolvedUrl`, `TForm`; `accountStatus`, `tracks`, `resolveTrackUrl`, `reportPlayStarted` |
+| `api_client.h/.cpp` | `ApiClient` — authorised GET/POST, the `{"result": …}` envelope, the pending-POST count; `Account`, `Track`, `ResolvedUrl`, `RequestError`, `ClassifyReply`, `TForm`; `accountStatus`, `tracks`, `resolveTrackUrl`, `reportPlayStarted` |
 | `library.h/.cpp` | `Library` — the logged-in account, likes and dislikes, playlists, "Для вас" playlists, artists, albums, stations, waves (rotor sessions, feedback, the wheel), search; `NamedReference`, `PlaylistReference`, `Station`, `WaveBatch`, `Wave`, `WaveEvent`, `SearchResult` |
 | `oauth.h/.cpp` | `DeviceLogin` — the OAuth device-code flow; `BrowserLoginUrl` for the implicit-grant fallback |
 | `token.h/.cpp` | `NormalizeToken`, `FindToken`, `SaveToken`, `ForgetToken`; `TokenSource` |
@@ -64,6 +64,15 @@ struct ResolvedUrl {
     int bitrateKbps = 0;
 };
 
+struct RequestError {
+    enum class Kind { None, Network, Http, Content };
+    Kind kind = Kind::None;
+    int httpStatus = 0;   // the server's status, when it answered
+    QString text;         // the same text the QString callbacks get
+    bool isError() const;
+};
+RequestError ClassifyReply(const QNetworkReply& reply);   // text left empty
+
 using TForm = QList<std::pair<QString, QString>>;
 
 class ApiClient : public QObject {
@@ -86,7 +95,8 @@ public:
 
     void accountStatus(TCallback<Account> callback);
     void tracks(const QStringList& ids, TCallback<QList<Track>> callback);
-    void resolveTrackUrl(const QString& trackId, TCallback<ResolvedUrl> callback);
+    using TUrlCallback = std::function<void(const ResolvedUrl& link, const RequestError& error)>;
+    void resolveTrackUrl(const QString& trackId, TUrlCallback callback);
     void reportPlayStarted(const Account& account, const Track& track, const QString& playId);
 
     int pendingPosts() const;   // POSTs whose reply has not finished
@@ -558,6 +568,17 @@ policy is in [docs/architecture.md](../../docs/architecture.md#errors)). Every f
 | `NormalizeToken`, `FindToken` | an empty `QString`, an empty `TokenSource` |
 | `SaveToken`, `ForgetToken` | `false`; nothing |
 | `track_url` functions | `std::nullopt` |
+
+`resolveTrackUrl` reports a `RequestError`, so the `Player` can tell what to do without reading the
+text (spec/player/errors.md). `ClassifyReply` decides the kind:
+
+- **Network**: refused, closed by the remote side (also a body cut short after its status line),
+  host not found, timeout, the transfer timeout (`OperationCanceledError` before Qt 6.11), a TLS
+  handshake failure (captive portals), a temporary network failure and the proxy errors. These
+  win over any status.
+- **Http**: otherwise a status of 400 or more, in `httpStatus`.
+- **Content**: any other failed reply, a reply that is not a JSON object, no usable download
+  variant, a download-info reply without host, path and s.
 
 The error strings, all in English except the device-code expiry:
 

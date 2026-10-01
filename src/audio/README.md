@@ -67,7 +67,7 @@ public:
 
     using TStreamId = quint64;         // 0 = none
 
-    TStreamId beginStream();           // drops current and queued; 0 without a device
+    TStreamId beginStream(double startSeconds = 0);   // drops current and queued; 0 without a device
     TStreamId queueStream();           // 0 unless a decoder thread exists
     void clearQueued();
     TStreamId queuedStream() const;    // 0 when none, or the decoder could not open it
@@ -107,6 +107,7 @@ Q_SIGNALS:
     void trackFinished();
     void trackAdvanced();
     void errorOccurred(const QString& message);
+    void streamUndecodable(Audio::AudioEngine::TStreamId stream);
 };
 ```
 
@@ -126,7 +127,10 @@ report the file's own format, for display.
 - `beginStream()` stops the decoder thread, drops the current and the queued stream, creates the
   next id (ids start at 1 and are never reused by one engine), starts a decoder thread and the
   device, and sets `Buffering`. Without a ring (`init()` not called or failed) it sets `Stopped`,
-  emits `errorOccurred("no audio output device")` and returns 0.
+  emits `errorOccurred("no audio output device")` and returns 0. With `startSeconds > 0` the
+  decoder seeks there before any audio reaches the ring, and `positionSeconds()` shows that
+  position from the start: how the `Player` resumes a track whose download broke off.
+- `decoderStarted()` tells whether the current stream's decoder has opened it.
 - `appendData()`, `finishData()`, `failData()` do nothing for an id that is neither current nor
   queued, so a late network callback cannot feed the wrong track. `failData()` ends a stream the
   way `finishData()` does: the engine plays up to the last byte received and reports
@@ -157,8 +161,10 @@ All signals are emitted synchronously on the UI thread:
 | `trackFinished` | `poll` | `Playing`, the decoder is done, the ring is empty, no seek is pending, nothing is chained; or playback reached the boundary of a cancelled chain. Once per decoder run |
 | `trackAdvanced` | `poll` | playback crossed into the chained stream: `currentStream()` is now the former queued id, `queuedStream()` is 0, the position restarts at 0. No `stateChanged` |
 | `errorOccurred` | `beginStream`, `poll` | no device; the first stream cannot be decoded (after `stop()`, so `stateChanged(Stopped)` comes first) |
+| `streamUndecodable(stream)` | `poll` | right after that `errorOccurred`, with the id of the stream that could not be decoded |
 
-`poll()` emits at most one of `trackFinished`, `trackAdvanced`, `errorOccurred` and returns right
+`poll()` emits at most one of `trackFinished`, `trackAdvanced`, `errorOccurred` (with its
+`streamUndecodable`) and returns right
 after it, so a connected slot may call back into the engine (`Player` starts the next track from
 its `trackFinished` slot). Nothing is reported between polls; how often `Player` polls is in
 [src/core](../core/README.md).

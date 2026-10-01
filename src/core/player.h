@@ -1,6 +1,7 @@
 #pragma once
 
 #include "audio/audio_engine.h"
+#include "core/failure_policy.h"
 #include "yandex/api_client.h"
 #include "yandex/library.h"
 
@@ -75,6 +76,14 @@ public:
     Yandex::Library* library() const { return yandexLibrary; }
     int preloadedIndex() const;
 
+    // What the system says about the network: nullopt when it cannot tell, and then only the
+    // retry timer ends a wait for the network. Coming online retries a waiting track at once.
+    void setNetworkOnline(std::optional<bool> online);
+    // The delays between tries while waiting for the network: `firstMs`, doubling up to `maxMs`
+    // (2 s and 60 s unless a test sets them).
+    void setNetworkRetryDelays(int firstMs, int maxMs);
+    bool isWaitingForNetwork() const { return networkWait.has_value(); }
+
 Q_SIGNALS:
     void statusMessage(const QString& text);
     void playlistChanged();
@@ -94,11 +103,21 @@ private:
         int bitrate = 0;
         QPointer<QNetworkReply> reply;
         bool downloadDone = false;
-        bool failed = false;
+    };
+    // A track parked by a network failure (spec ERR-01 to ERR-03): its stream starts again at
+    // `position`, and plays on if `resume`.
+    struct NetworkWait {
+        bool resume = true;
+        double position = 0;
+        int attempt = 0;
     };
 
     QNetworkReply* startDownload(const QUrl& url, TStreamId stream);
-    void downloadFinished(TStreamId stream, bool failed, const QString& error);
+    void downloadFinished(TStreamId stream, const Yandex::RequestError& error);
+    void handleFailure(FailureKind kind, const QString& text);
+    void waitForNetwork();
+    void retryAfterNetwork();
+    void cancelNetworkWait();
     void abortDownload();
     void trackStarted(const Yandex::Track& track, int bitrate);
     int sequentialNext() const;
@@ -120,7 +139,14 @@ private:
     TEventCallback openTrackEvents;
     double playedSeconds = 0;
     double lastPosition = 0;
-    bool downloadFailed = false;
+    std::optional<FailureKind> streamFailure;  // the current stream's download broke
+    qint64 currentBytes = 0;  // audio bytes the current stream has received
+    int failuresInRow = 0;
+    std::optional<NetworkWait> networkWait;
+    std::optional<bool> networkOnline;
+    QTimer retryTimer;
+    int retryFirstMs = 2'000;
+    int retryMaxMs = 60'000;
     bool isShutDown = false;
     bool loadingMore = false;
     bool waitingForMore = false;

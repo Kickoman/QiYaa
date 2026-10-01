@@ -101,6 +101,7 @@ target_link_libraries(qiyaa_vis PUBLIC Qt6::Gui PRIVATE qiyaa_audio qiyaa_skins)
 
 qiyaa_add_module(core
     src/core/cover_cache.cpp    src/core/cover_cache.h
+    src/core/failure_policy.cpp src/core/failure_policy.h
     src/core/player.cpp         src/core/player.h
     src/core/sources.cpp        src/core/sources.h)
 target_link_libraries(qiyaa_core PUBLIC qiyaa_audio qiyaa_yandex Qt6::Gui Qt6::Network)

@@ -17,6 +17,7 @@ builds no menus ([src/ui](../ui/README.md), `library_menu.cpp`) and shows nothin
 | File | Contains |
 |---|---|
 | `player.h/.cpp` | `Player`: the queue and cursor, transport, shuffle and repeat, source-request tickets, the endless-source hook `TLoadMoreCallback`, track events `TEventCallback`, link resolution, download streaming, the gapless preload, and the engine's poll timer |
+| `failure_policy.h/.cpp` | `FailureKind`, `FailureAction`, `DecideOnFailure`: what the `Player` does about a track that cannot play |
 | `sources.h/.cpp` | `Sources`: playing a source (likes, playlist, recommendations, artist, album, wave or station, search) with a ticket each, the wave's load-more and feedback callbacks, like and dislike of the current track |
 | `cover_cache.h/.cpp` | `CoverCache`: cover images by URL, with an LRU of 30 in memory, files in a cache directory and one download per URL at a time |
 
@@ -92,6 +93,10 @@ public:
     Yandex::Library* library() const;
     int preloadedIndex() const;                       // -1 until the preload has an engine stream
 
+    void setNetworkOnline(std::optional<bool> online); // the system's view; nullopt: cannot tell
+    void setNetworkRetryDelays(int firstMs, int maxMs); // 2 s doubling to 60 s by default
+    bool isWaitingForNetwork() const;
+
 Q_SIGNALS:
     void statusMessage(const QString& text);
     void playlistChanged();
@@ -138,18 +143,17 @@ The state has three parts. The current track's phase:
 | Phase | Engine state | Track open¹ | Entered by | Left by |
 |---|---|---|---|---|
 | **Empty** | Stopped | no | `setQueue` with no available track, `clearQueue`, removing every track | `setQueue` with tracks, `appendTracks` (to Stopped) |
-| **Stopped** | Stopped | no² | `stop`, `setQueue` without `autoplay`, the end of a finite queue, removing the current track, a link failure, an engine failure² | `play`, `playIndex`, `next`, `previous` |
-| **Resolving** | Buffering³ | no | `playIndex` without a usable preload: the engine stream is begun, and the link request is in flight | link OK: **Open**. Link error: **Stopped**. `stop`, `playIndex` or `setQueue`: the reply is dropped by `generation` |
-| **Open**, downloading | Buffering, Playing, Paused | yes | the link resolved and the download started, or the preload was taken over while still downloading | download OK: **Open, downloaded**. Download failed: **Open, failed**. End or skip: see [Inputs](#inputs-in-the-order-they-act) |
+| **Stopped** | Stopped | no | `stop`, `setQueue` without `autoplay`, the end of a finite queue, removing the current track, a failure the policy stops on (see [Failures](#failures-during-playback)) | `play`, `playIndex`, `next`, `previous` |
+| **Resolving** | Buffering² | no | `playIndex` without a usable preload: the engine stream is begun, and the link request is in flight | link OK: **Open**. Link error: the [failure policy](#failures-during-playback). `stop`, `playIndex` or `setQueue`: the reply is dropped by `generation` |
+| **Open**, downloading | Buffering, Playing, Paused | yes | the link resolved and the download started, or the preload was taken over while still downloading | download OK: **Open, downloaded**. Download failed: the failure policy at once if no audio arrived, else **Open, failed**. End or skip: see [Inputs](#inputs-in-the-order-they-act) |
 | **Open**, downloaded | Buffering, Playing, Paused | yes | the current download finished without error, or a finished preload was taken over | end or skip. Only in this phase can a new preload start |
-| **Open**, failed | Buffering, Playing, Paused | yes | the current download failed (the engine plays what arrived) | end (reported as `Skipped`) or skip |
+| **Open**, failed | Buffering, Playing, Paused | yes | the current download failed after some audio arrived; the engine plays what arrived | end: a network failure **Waiting for the network**, any other failure the end reported as `Skipped`. Skip |
+| **Waiting for the network** | Paused (parked) | as before | a network failure (ERR-01 to ERR-03) | the link and download work: **Open** again, playing if it played before. Another failure: the policy. `stop`, `playIndex`, `setQueue`: the wait ends |
 | **Waiting for more** | Stopped | no | `next()` at the end of an endless queue | `done` with new tracks: `playIndex(cursor + 1)`. `done({})`: stays Stopped. `play`, `playIndex`, `stop` or `setQueue` clear the wait |
 | **Shut down** | Stopped | no | `shutDown()` | never |
 
 ¹ Its `Started` was reported, and `Finished` or `Skipped` has not been reported yet (`openTrack`).
-² After a decoding failure the engine stops itself (`errorOccurred`, with no `trackFinished`). The
-track stays open until the next `stop`, `playIndex` or `setQueue`, which report it as `Skipped`.
-³ Without an output device, `beginStream()` leaves the engine Stopped and returns stream 0. The
+² Without an output device, `beginStream()` leaves the engine Stopped and returns stream 0. The
 link is still resolved, and the download runs into the ignored stream 0.
 
 The preload's phase:
@@ -185,8 +189,9 @@ above.
   3. **Otherwise:** `cancelPreload()`, then `AudioEngine::beginStream()`, then
      `currentTrackChanged` (with `currentBitrate()` still 0), then the load-more check, then
      `ApiClient::resolveTrackUrl`. The reply is ignored if `generation` has moved on. On an error:
-     `statusMessage("Cannot get link: <error>")`, the engine stops, no event is sent and there is
-     no skip. On success: the download starts into the stream begun above, then `trackStarted`.
+     the [failure policy](#failures-during-playback); without an output device (stream 0) only
+     `statusMessage("Cannot get link: <error>")` and a stop. On success: the download starts into
+     the stream begun above, then `trackStarted`.
 - **`trackStarted(track, bitrate)`** (private): stores the bitrate, sends
   `ApiClient::reportPlayStarted(account, track, <new UUID>)`, opens the track and remembers the
   current `TEventCallback` for its closing event. It resets the played seconds, sends
@@ -221,10 +226,13 @@ above.
   track: `generation` is bumped, the preload's reply, stream, index and download flags are taken
   over, the wait ends, and then `currentTrackChanged`, the load-more check and `trackStarted`.
 - **Download finished**:
-  - If it is the current stream and it failed: `statusMessage("Download failed: <Qt error>")` and
-    `downloadFailed`.
+  - If it is the current stream and it failed: with no audio bytes received, the failure policy
+    at once; otherwise the failure kind is kept for the track's end (a network failure then
+    waits, ERR-03; any other shows `statusMessage("Download failed: <Qt error>")` and ends the
+    track as `Skipped`).
   - If it is the current stream and it succeeded: `currentDownloaded`, then `maybePreload()`.
-  - If it is the preload's stream: `downloadDone` and `failed` are recorded, with no message.
+  - If it is the preload's stream: a failure cancels the preload (that track is fetched again when
+    its turn comes); success records `downloadDone`.
   - Anything else is ignored.
 - **`appendTracks`**: appends the available tracks. If none were added, it returns without a
   signal. Otherwise the cursor moves from -1 to 0 if needed, then `playlistChanged`, then
@@ -302,8 +310,42 @@ Tickets start at 1, so 0 never matches. `Sources` takes one for every pick.
 - At most one track download is in flight. A preload's link is requested only after the current
   track's download has finished without error. Aborted downloads are disconnected before
   `abort()`, so they never reach the finish handler.
-- There is no retry. When the current download fails, the engine plays what arrived, the track
-  ends with `Skipped`, and `trackFinished` moves on.
+- An HTTP error page (status 400 or more) is not passed to the engine. A download fails by
+  `Yandex::ClassifyReply`: a broken connection is a network failure even after its status line.
+
+### Failures during playback
+
+The rules are [spec/player/errors.md](../../spec/player/errors.md); `tests/failures_test.cpp`
+checks them by ID. `failure_policy.h` holds the decision as pure functions, the counterpart of
+the Android app's `ErrorPolicy`:
+
+```cpp
+enum class FailureKind { Network, Auth, Track };
+enum class FailureAction { WaitForNetwork, Next, Stop, StopAfterLimit };
+inline constexpr int kMaxTrackFailuresInRow = 3;
+FailureKind KindOf(const Yandex::RequestError& error);     // Network; HTTP 401/403 Auth; else Track
+FailureAction DecideOnFailure(FailureKind kind, int failuresInRow, bool hasNext, bool endless);
+```
+
+- **Where a failure comes from:** the link (`resolveTrackUrl`'s `RequestError`), the download
+  (`ClassifyReply` of the stream's reply) and `AudioEngine::streamUndecodable` (a Track failure,
+  or a Network one if the download had already broken off).
+- **Track** (ERR-04, ERR-05, ERR-07): `"Трек не играет: <text>"` and `next()`, which in a wave at
+  its end waits for more. The third in a row stops instead, with `"Остановлено: 3 трека подряд
+  не играют"`; with no next track in a finite queue it stops at once. The count goes back to 0
+  when the engine reaches Playing, and in `setQueue` (ERR-06).
+- **Auth** (ERR-08): `"Ошибка доступа: <text>"` and a stop. It is not counted.
+- **Network** (ERR-01 to ERR-03): the track is parked. `"Нет сети — жду подключения…"` once; the
+  download and the preload are dropped, and a new stream is begun at the position the track had
+  reached and paused, so every view shows it paused there. The track stays open: no `Skipped`
+  now, and no new `Started` or play report when it continues. A retry follows after 2 s, then
+  4 s, 8 s … up to 60 s (`setNetworkRetryDelays`); `setNetworkOnline(true)` retries at once,
+  `setNetworkOnline(false)` holds the retries until then. A retry resolves the link again and
+  streams into the parked stream, which seeks to the kept position before any audio; it plays on
+  if the track was playing and the user has not paused since (Play and Pause during the wait only
+  set that). `stop`, `playIndex` and `setQueue` end the wait.
+- `src/app` feeds `setNetworkOnline` from `QNetworkInformation` when a backend can tell
+  reachability; without one the timer alone ends a wait.
 
 ### Gapless preload
 
@@ -322,7 +364,7 @@ Tickets start at 1, so 0 never matches. `Sources` takes one for every pick.
      stream. `next()` always takes this path when the preload is queued.
 
   In both cases a download that is still running continues as the current download, and a failed
-  one carries `downloadFailed` over.
+  one has already cancelled the preload.
 - **Cancelled** by `cancelPreload()`, in `stop()`, in every `playIndex` that does not take it over,
   and in `refreshPreload()`. Cancelling disconnects and aborts its reply, and calls
   `AudioEngine::clearQueued()` if its stream is still the queued one. The engine may already have
@@ -368,7 +410,7 @@ Tickets start at 1, so 0 never matches. `Sources` takes one for every pick.
 
 | Signal | Emitted |
 |---|---|
-| `statusMessage(text)` | `"Audio error: <message>"` (from `AudioEngine::errorOccurred`), `"Cannot get link: <error>"`, `"Download failed: <Qt error>"`, and `"Загружаю ещё треки..."` (loading more tracks). `Sources` also emits it on the `Player` for source loads, likes and dislikes, which makes it the app's one status line |
+| `statusMessage(text)` | `"Audio error: <message>"` (from `AudioEngine::errorOccurred`), the failure statuses (`"Трек не играет: …"`, `"Остановлено: 3 трека подряд не играют"`, `"Ошибка доступа: …"`, `"Нет сети — жду подключения…"`, `"Cannot get link: …"` without an output device, `"Download failed: …"`), and `"Загружаю ещё треки..."` (loading more tracks). `Sources` also emits it on the `Player` for source loads, likes and dislikes, which makes it the app's one status line |
 | `playlistChanged` | by `setQueue`; by `appendTracks` when something was added; by `removeTracks` always, even when no index was valid |
 | `queueReplaced` | by `setQueue` and `clearQueue` only, before `playlistChanged` |
 | `currentTrackChanged` | by `setQueue`, even for an empty queue; by `playIndex` at once; again from `trackStarted` once the bitrate is known; twice on a gapless advance; by `removeTracks` when the current track was removed |
@@ -403,8 +445,9 @@ Tickets start at 1, so 0 never matches. `Sources` takes one for every pick.
 - Removing a track before the current one changes `currentIndex()` without
   `currentTrackChanged`. The same is true when `appendTracks` moves the cursor from -1 to 0. UI
   that depends on the index must also listen to `playlistChanged`.
-- A link failure or a decoding failure stops playback on that track. Neither skips to the next
-  track.
+- A track that cannot play is skipped, waited on or stopped on, by the
+  [failure policy](#failures-during-playback); without an output device (stream 0) a link failure
+  only stops, as nothing can be waited on or skipped to.
 - `shutDown()` blocks playback only. `setQueue`, `appendTracks` and `removeTracks` still change
   the list, and `next()` at the end of an endless queue still calls the `TLoadMoreCallback`.
 - `Started` means "the download began", not "audio is audible". Without an output device it is
@@ -561,11 +604,11 @@ loaders that throw (the project's error policy is in
 
 | Where | Failure arrives as |
 |---|---|
-| link, current track | `statusMessage("Cannot get link: <error>")`, with `ApiClient`'s error text; the engine stops and no track event is sent |
+| link, current track | the failure policy, by `Yandex::RequestError` kind; without an output device `statusMessage("Cannot get link: <error>")` and a stop |
 | link, preload | nothing; the preload is dropped |
-| download, current track | `statusMessage("Download failed: <QNetworkReply::errorString()>")`; the closing event is `Skipped` |
-| download, preload | nothing until it becomes current; then the closing event is `Skipped` |
-| audio engine | `statusMessage("Audio error: <message>")` |
+| download, current track | the failure policy; after some audio, `statusMessage("Download failed: …")` and `Skipped` at the end, or for the network a wait |
+| download, preload | the preload is cancelled, with no message |
+| audio engine | `statusMessage("Audio error: <message>")`; an undecodable current stream also goes to the failure policy (`AudioEngine::streamUndecodable`) |
 | endless source | the `TLoadMoreCallback` reports a failed load as `done({})`; a waiting `next()` stays stopped |
 | seek | `seekTo` and `seekFraction` return `false` |
 | index out of range | `playIndex` does nothing; `removeTracks` skips it |

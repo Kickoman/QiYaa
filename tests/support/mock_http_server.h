@@ -31,6 +31,9 @@ struct MockResponse {
     int status = 200;
     QByteArray body;
     int delayMs = 0;
+    // >= 0: the Content-Length is the whole body's, but only this many bytes are sent before the
+    // connection closes: a download cut short by the network.
+    qsizetype truncateAfter = -1;
 };
 
 class MockHttpServer : public QObject {

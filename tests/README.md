@@ -27,6 +27,7 @@ is formatting (the clang-format check in `.github/workflows/ci.yml`).
 | `dsp_test.cpp` | EQ response and processing, the 17 built-in EQ presets, `.eqf` read/write, `EqualizerWindow::GraphCurve`, the FFT analyzer, spectrum and oscilloscope rendering; the reference vectors of `spec/dsp` (checks them, and writes them with `QIYAA_WRITE_DSP_VECTORS=1`) |
 | `library_test.cpp` | `Yandex::Library`/`ApiClient` against the mock server serving spec fixtures: request shapes and parsing for every source the menu offers, likes, waves, search with each kind of best result, errors, device login and wave feedback. Also `Core::Player` track events, preloading, endless sources, and shuffle not applying in a wave |
 | `sources_test.cpp` | `Core::Sources` against the `spec/player` scenarios on spec fixtures, one function per scenario group: the last pick wins, stale failures, search as one pick, a failed source keeps the queue, likes with their count, an empty source keeping the queue, search's best result, and a wave played on the Null output (radio start, load more with the last ids, batch ids on the events, dislike and skip) |
+| `failures_test.cpp` | What the `Player` does when a track cannot play (`spec/player/errors.md`): the failure policy as a table, `ClassifyReply` on real replies, and on the Null output a broken and an undecodable track skipped, three in a row stopping, the count reset by a track that plays, a broken last track, a rejected account, no network (pause, then continue the same track), and a download cut short that waits instead of moving on |
 | `main_window_test.cpp` | One `Ui::MainWindow` on the default offscreen screen: position clamping, dragging and edge snapping, shuffle click, the shuffle light off during a wave, volume slider, ×2 and fractional scale |
 | `windows_test.cpp` | The whole `App::Application` window set: docking, detaching, scaling, playlist selection/scroll/resize, EQ sliders, shade modes, login dialog layout, Milkdrop and Now Playing windows, `snapshot()` |
 | `screenshots_test.cpp` | Golden screenshots of the main window and the equalizer (see **Golden screenshots**) |
@@ -76,6 +77,7 @@ QT_QPA_PLATFORM=offscreen QIYAA_AUDIO_BACKEND=null build/tests/audio_test queued
 | `main_window_test` | audio core skins ui yandex | plain |
 | `library_test` | audio core yandex (+ `qiyaa_test_yandex`) | plain; `QIYAA_TEST_DATA` |
 | `sources_test` | audio core yandex (+ `qiyaa_test_yandex`) | plain; `QIYAA_TEST_DATA` |
+| `failures_test` | audio core yandex | plain; `QIYAA_TEST_DATA` |
 | `dsp_test` | audio skins ui vis | plain |
 | `windows_test` | app core ui | 2560×1440 virtual screen (not on Windows) |
 | `screenshots_test` | audio core skins ui yandex | plain; `QIYAA_TEST_DATA` |
@@ -130,7 +132,7 @@ pictures into an existing directory; nothing creates it:
   readers). It PUBLIC-links Qt6::Core and Qt6::Network, and its PUBLIC include directory is
   `tests/`, so the headers are `"support/…"`. It gets `QIYAA_SPEC_DIR` (the absolute path of
   `spec/`) as a PRIVATE definition. Every `qiyaa_add_test` target links it. Only `library_test`,
-  `sources_test`, `yandex_test` and `windows_test` use it. `mpris_test` is added by hand and does not link it.
+  `sources_test`, `failures_test`, `yandex_test` and `windows_test` use it. `mpris_test` is added by hand and does not link it.
 - `qiyaa_test_yandex`: `support/yandex_json.cpp`. It PUBLIC-links `qiyaa_test_support` and
   `qiyaa_yandex`. Only `library_test`, `sources_test` and `yandex_test` link it.
 - Each suite links the modules in the table above, plus what those modules link PUBLIC. For
@@ -173,6 +175,7 @@ struct MockResponse {
     int status = 200;
     QByteArray body;
     int delayMs = 0;
+    qsizetype truncateAfter = -1;   // >= 0: send only that much of the body, then close
 };
 
 class MockHttpServer : public QObject {
@@ -212,6 +215,9 @@ public:
 - Every response is `HTTP/1.1 <status> X` with `Content-Type: application/json`, even for mp3
   and PNG bodies, plus `Connection: close` and `Content-Length`. The server then closes the
   connection, so each connection carries one request.
+- `truncateAfter` keeps the full `Content-Length` but sends only the first bytes of the body and
+  closes the connection: a download cut short by the network, which Qt reports as
+  `RemoteHostClosedError` with status 200.
 - `delayMs` delays the reply with a timer on the socket. If the client has gone meanwhile,
   nothing is written.
 
@@ -417,6 +423,14 @@ and a 404 there would move the session to the station endpoint for good (TRK-10)
 - `waveStartsLoadsMoreAndReportsEveryTrack` plays on the Null output and skips without it. The
   unavailable track of the first batch is left out, so the queue starts with one track and asks
   for more at once; the dislike then skips to the new batch's track.
+
+**failures_test.** One server for the suite. Its single `/get-mp3/` handler (prefix routes never
+replace each other) serves the mp3 unless `streamOverride` names the track id; `init()` clears
+the overrides. Each scenario builds its own `Stack` with retry delays of 50 to 200 ms and skips
+without an audio output. Broken tracks answer their `download-info` with an error fixture. No
+network is the API base pointed at the closed port 1; `brokenDownloadWaitsInsteadOfMovingOn`
+cuts the stream after 9,000 bytes (a bit over 1 s), and removing the override is the network
+coming back.
 
 **main_window_test.** All functions share one window on the default 800×600 screen. Input
 events go through `QCoreApplication::sendEvent`, which is synchronous.

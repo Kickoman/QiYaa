@@ -89,6 +89,7 @@ private:
     void fillWindowActions(QMenu* menu);
     void transportKey(int key);
     QList<Ui::SkinnedWindow*> windows() const;
+    void watchNetwork();
     void raiseWindows();
 
     Options startOptions;
