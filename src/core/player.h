@@ -25,6 +25,12 @@ inline constexpr double kPreviousRestartsAfterSeconds = 3.0;
 // to restart the current track from 0 (spec TR-01, TR-02).
 int PreviousTarget(double positionSeconds, int cursor, int size, bool repeat);
 
+// How the queue's source wants its tracks treated; a new source (setQueue) has the defaults.
+struct QueueRules {
+    bool playReports = true;
+    bool previousRestartsOnly = false;
+};
+
 class Player : public QObject {
     Q_OBJECT
 public:
@@ -47,8 +53,18 @@ public:
         TEventCallback events = {}
     );
     void appendTracks(const QList<Yandex::Track>& tracks);
+    void insertTracks(int index, const QList<Yandex::Track>& tracks);
     void removeTracks(QList<int> indices);
     void clearQueue();
+    // Keeps the queue and the current track playing; replaces the source behind them.
+    void changeSource(
+        const QString& title,
+        TLoadMoreCallback more,
+        TEventCallback events,
+        QueueRules rules
+    );
+    // The load-more check now, not only when a track becomes current.
+    void requestMore() { maybeLoadMore(); }
 
     void play();
     void pause();
@@ -65,6 +81,10 @@ public:
     // Shuffle as it applies now: never in an endless queue (a wave plays in queue order).
     bool shuffleActive() const { return shuffleEnabled && !loadMore; }
     bool repeat() const { return repeatEnabled; }
+    const QueueRules& rules() const { return queueRules; }
+    bool isWaitingForMore() const { return waitingForMore; }
+    // A track is starting, open or parked by the network: something is playing or about to.
+    bool trackInProgress() const { return openTrack || resolvingLink || networkWait; }
 
     const QList<Yandex::Track>& playlist() const { return queuedTracks; }
     const QString& queueTitle() const { return titleText; }
@@ -135,6 +155,7 @@ private:
     QString titleText;
     TLoadMoreCallback loadMore;
     TEventCallback reportEvent;
+    QueueRules queueRules;
     std::optional<Yandex::Track> openTrack;
     TEventCallback openTrackEvents;
     double playedSeconds = 0;
@@ -148,6 +169,7 @@ private:
     int retryFirstMs = 2'000;
     int retryMaxMs = 60'000;
     bool isShutDown = false;
+    bool resolvingLink = false;
     bool loadingMore = false;
     bool waitingForMore = false;
     quint64 sourceRequest = 0;

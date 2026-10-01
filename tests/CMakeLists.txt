@@ -44,6 +44,8 @@ target_compile_definitions(library_test PRIVATE QIYAA_TEST_DATA="${CMAKE_CURRENT
 qiyaa_add_test(sources_test audio core yandex)
 target_link_libraries(sources_test PRIVATE qiyaa_test_yandex)
 target_compile_definitions(sources_test PRIVATE QIYAA_TEST_DATA="${CMAKE_CURRENT_SOURCE_DIR}/data")
+qiyaa_add_test(jam_mode_test audio core yandex)
+target_compile_definitions(jam_mode_test PRIVATE QIYAA_TEST_DATA="${CMAKE_CURRENT_SOURCE_DIR}/data")
 qiyaa_add_test(failures_test audio core yandex)
 target_compile_definitions(failures_test PRIVATE QIYAA_TEST_DATA="${CMAKE_CURRENT_SOURCE_DIR}/data")
 qiyaa_add_test(dsp_test audio skins ui vis)

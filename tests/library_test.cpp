@@ -702,6 +702,30 @@ private Q_SLOTS:
         QCOMPARE(Core::PreviousTarget(position, cursor, 5, repeat), target);
     }
 
+    void repeatDoesNotReplayTheOnlyTrackOfAWave() {  // spec WAVE-12
+        PlaybackStack playback;
+        if (!setUpAudio(playback, {21})) {
+            QSKIP("no audio output");
+        }
+        playback.player.setRepeat(true);
+        playback.player.setQueue(
+            NumberedTracks({21}), "Wave", false,
+            [](std::function<void(const QList<Yandex::Track>&)>) {}
+        );
+        QSignalSpy finished(&playback.engine, &Audio::AudioEngine::trackFinished);
+        playback.player.playIndex(0);
+        QVERIFY(QTest::qWaitFor(
+            [&] { return playback.engine.state() == Audio::AudioEngine::State::Playing; }, 8000
+        ));
+        QTest::qWait(300);  // the whole file has arrived
+        QVERIFY(playback.player.seekTo(2.5));
+        QVERIFY(finished.wait(4000));
+        QVERIFY(QTest::qWaitFor([&] { return playback.player.isWaitingForMore(); }, 2000));
+        QTest::qWait(300);
+        QCOMPARE(playback.engine.state(), Audio::AudioEngine::State::Stopped);
+        QVERIFY(!playback.player.trackInProgress());
+    }
+
     void shuffleDoesNotApplyInAWave() {  // spec WAVE-10, WAVE-11
         Audio::AudioEngine engine;  // not initialised: nothing actually plays
         Core::Player player(&library, &engine);

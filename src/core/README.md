@@ -8,7 +8,9 @@ following track, so the engine can go on without a gap, and it reports each trac
 a play report to Yandex and a per-queue callback that the wave uses for feedback. `Sources` turns
 what the user picks (likes, playlists, artists, albums, waves, stations, search) into the
 `Player`'s queue and builds the wave's callbacks; it is the desktop counterpart of the Android
-app's queue manager, and `spec/player` describes both. `CoverCache`
+app's queue manager, and `spec/player` describes both. `JamMode` is the queue while the app hosts
+a jam: the current track, the jam part that mirrors the server's queue, and the jam wave
+(`spec/jam/host.md`). `CoverCache`
 downloads album covers and keeps them in memory and on disk. The folder does not decode or output
 audio or chain streams at the sample level ([src/audio](../audio/README.md)). It does not speak
 the Yandex API, sign links or build cover URLs itself ([src/yandex](../yandex/README.md)). It
@@ -18,6 +20,7 @@ builds no menus ([src/ui](../ui/README.md), `library_menu.cpp`) and shows nothin
 |---|---|
 | `player.h/.cpp` | `Player`: the queue and cursor, transport, shuffle and repeat, source-request tickets, the endless-source hook `TLoadMoreCallback`, track events `TEventCallback`, link resolution, download streaming, the gapless preload, and the engine's poll timer |
 | `failure_policy.h/.cpp` | `FailureKind`, `FailureAction`, `DecideOnFailure`: what the `Player` does about a track that cannot play |
+| `jam_mode.h/.cpp` | `JamMode`, `JamEntry`, `JamSlot`, `JamPlayback`: the jam mode of the queue; it knows nothing of the network or the protocol |
 | `sources.h/.cpp` | `Sources`: playing a source (likes, playlist, recommendations, artist, album, wave or station, search) with a ticket each, the wave's load-more and feedback callbacks, like and dislike of the current track |
 | `cover_cache.h/.cpp` | `CoverCache`: cover images by URL, with an LRU of 30 in memory, files in a cache directory and one download per URL at a time |
 
@@ -65,8 +68,11 @@ public:
         TEventCallback events = {}
     );
     void appendTracks(const QList<Yandex::Track>& tracks);
+    void insertTracks(int index, const QList<Yandex::Track>& tracks);   // at index, clamped
     void removeTracks(QList<int> indices);            // indices before removal, any order, duplicates ok
     void clearQueue();
+    void changeSource(const QString& title, TLoadMoreCallback more, TEventCallback events, QueueRules rules);
+    void requestMore();                               // the load-more check now
 
     void play();                                      // resume / restart while playing / start
     void pause();                                     // toggles
@@ -82,6 +88,9 @@ public:
     bool shuffle() const;                             // the user's choice
     bool shuffleActive() const;                       // shuffle && the queue is not endless
     bool repeat() const;
+    const QueueRules& rules() const;                  // QueueRules{playReports, previousRestartsOnly}
+    bool isWaitingForMore() const;                    // stopped at the end of an endless queue
+    bool trackInProgress() const;                     // a track is resolving, open or parked
 
     const QList<Yandex::Track>& playlist() const;
     const QString& queueTitle() const;
@@ -135,6 +144,16 @@ Q_SIGNALS:
   or to the new last track.
 - `clearQueue()` takes a new ticket and calls `setQueue({}, {}, false)`. This also drops the
   `TLoadMoreCallback` and the `TEventCallback`.
+- `insertTracks(index, tracks)` puts the available tracks at `index` (clamped to the queue). An
+  index at or before the cursor shifts the cursor up by the number inserted; an empty queue gets
+  the cursor 0. Then `playlistChanged` and `refreshPreload()`, which keeps the preload when its
+  track still follows.
+- `changeSource(title, more, events, rules)` keeps the queue, the cursor and the track that plays,
+  and replaces what is behind them: the title, the `TLoadMoreCallback`, the `TEventCallback` (the
+  open track still closes through the one it started with) and the `QueueRules`. It ends the wait
+  for more, bumps `queueGeneration` (a late `done` of the old source is dropped), and emits
+  `playlistChanged` and `modesChanged`, then `refreshPreload()`. `setQueue` resets the rules to
+  the defaults.
 
 ### State machine
 
@@ -277,8 +296,12 @@ Tickets start at 1, so 0 never matches. `Sources` takes one for every pick.
   resolved, and the gapless advance) and when `next()` reaches the end. It does not run from
   `setQueue` without `autoplay`, `appendTracks`, `removeTracks` or a mode change.
 - `done(tracks)` is ignored if the `Player` is gone or the queue has been replaced. Otherwise the
-  request is no longer in flight, the wait ends, and `appendTracks(tracks)` runs. If `next()` was
-  waiting and a track now follows the cursor, `playIndex(cursor + 1)` runs, the first new track.
+  request is no longer in flight and `appendTracks(tracks)` runs. If `next()` was waiting and a
+  track now follows the cursor, `playIndex(cursor + 1)` runs, the first new track; if nothing came,
+  the player keeps waiting (`isWaitingForMore()`), and a later `next()`, or tracks inserted by the
+  jam, go on from there.
+- `requestMore()` runs the check from outside, for a source that learns of new material between
+  track changes (the jam's new seeds).
 - `done` may be called synchronously from inside the `TLoadMoreCallback`.
 
 ### Next, shuffle, repeat
@@ -296,7 +319,8 @@ Tickets start at 1, so 0 never matches. `Sources` takes one for every pick.
 - The pick is made when the preload starts, and `next()` goes to the preload's index. So with
   shuffle, "next" is the track already downloading. Before a preload exists, `next()` draws again.
 - Repeat with a single track: `trackFinished` replays it. On a finite queue `sequentialNext()` is
-  0 then, so the same track is preloaded again and loops without a gap.
+  0 then, so the same track is preloaded again and loops without a gap. An endless queue with one
+  track does not replay it: it waits for more (spec WAVE-12).
 
 ### Downloads
 
@@ -398,13 +422,17 @@ FailureAction DecideOnFailure(FailureKind kind, int failuresInRow, bool hasNext,
   download, where the track only drained to where the data stopped.
 - No event is sent for a track whose link failed, because it never opened. None is sent when the
   `Player` is destroyed with a track open either; call `shutDown()` first, as
-  `App::Application::quit` does.
+  `App::Application::quit` does. A link reply that arrives after the `Player` is gone is dropped
+  (every resolve callback holds a `QPointer` to it).
 - The played seconds are the seconds actually heard. On every tick and at close, the position
   step since the previous reading is added if the engine is `Playing` and `0 < step < 1.0`.
   Normal steps are about 0.1 s. Seeks and other jumps of 1 s or more, backward moves, and paused
   or buffering time do not count. `seekTo` also moves the baseline to the target.
 - Each `Started` also sends a play report through `ApiClient::reportPlayStarted`, with a new UUID
-  as the play id, whether or not the queue has a `TEventCallback`.
+  as the play id, whether or not the queue has a `TEventCallback` — unless the source's
+  `QueueRules::playReports` is false (the jam, HOST-15).
+- With `QueueRules::previousRestartsOnly` (the jam, HOST-07), `previous()` always restarts the
+  current track by `seekTo(0)`, or `playIndex(cursor)` when the engine refuses the seek.
 
 ### Signals
 
@@ -513,6 +541,82 @@ The scenarios are [spec/player/sources.md](../../spec/player/sources.md),
   `Player` closes the open track, and sends its feedback, while the application shuts down,
   after the `Sources` may be gone.
 - `playLikes(false)` (after login) fills the queue without starting playback.
+
+## `jam_mode.h`: `JamMode`
+
+```cpp
+struct JamEntry { QString itemId; Yandex::Track track; QString addedBy; };
+struct JamSlot { enum class Kind { Item, Wave, Other }; Kind kind; QString itemId; QString addedBy; };
+struct JamPlayback { enum class Kind { Item, Wave, Idle }; Kind kind; QString itemId;
+                     std::optional<Yandex::Track> track; qint64 positionMs; bool paused; };
+inline constexpr int kJamPlayingReportMs = 10'000;
+inline constexpr int kJamWaveHistory = 5;
+
+class JamMode : public QObject {
+public:
+    JamMode(Player* player, Yandex::Library* library, QObject* parent = nullptr);
+    bool isActive() const;
+    const QList<JamSlot>& queueSlots() const;         // one per track of Player::playlist()
+    JamSlot currentSlot() const;
+    void start(const QString& title, bool waveFeedback);
+    void setQueue(const QList<JamEntry>& entries, const QStringList& seeds, int seedsVersion);  // each state
+    void skip(const QString& itemId);                 // command{skip}
+    void end();
+    void reportPlayback();                            // now, as after `resumed` (HOST-26)
+    void setPlayingReportInterval(int ms);            // for tests
+Q_SIGNALS:
+    void itemStarted(const QString& itemId);          // -> started{itemId}
+    void playback(const Core::JamPlayback& playback); // -> playing
+};
+```
+
+The scenarios are [spec/jam/host.md](../../spec/jam/host.md) with Desktop = Kickoman/QiYaa#13;
+`tests/jam_mode_test.cpp` checks them by ID. The network, the protocol and the server's messages are
+the host session's (Kickoman/QiYaa#14); `JamMode` gets the queue as `JamEntry`s and reports through
+its two signals.
+
+- **The queue** is the current track, then the **jam part** (the mirror of the server's queue), then
+  the **jam wave**. `queueSlots()` says which each track of `Player::playlist()` is: `Item` (with
+  its item id and who added it), `Wave`, or `Other` (the track that played when the jam started).
+  Every change of the queue during the jam goes through `JamMode`, which changes its slots first
+  and the `Player` second; a size that differs afterwards (someone else edited the queue) is
+  logged and the slots are cut or padded.
+- **Start** (HOST-14): every track but the current one is removed, and `Player::changeSource`
+  makes the queue endless with `QueueRules{playReports = false, previousRestartsOnly = true}`
+  (HOST-15, HOST-07). The track that plays goes on and is reported as a wave track. An endless
+  queue already turns shuffle off (WAVE-10) and repeat does not wrap or replay it (WAVE-12), so the
+  user's modes need no change.
+- **The jam part** (HOST-01 to HOST-04): `setQueue` keeps the longest common prefix of the jam part
+  and the server's queue, removes the rest of the jam part and inserts what differs, so a next
+  track that did not change keeps its preload. The current item is left out even while the state
+  still lists it. Into an empty queue, the first item plays at once; a new item after the cursor
+  plays at once when the player waits at the end or nothing is in progress (HOST-08).
+- **The jam wave** (HOST-10 to HOST-13) is the `Player`'s load-more: when at most 2 tracks are left,
+  `JamMode` asks `Library::startWave` with the last state's seeds (no seeds: `track:<current id>`;
+  nothing played: no wave, `playing{idle}`), or `moreWave` of its session with the last 5 wave
+  tracks. The session remembers the `seedsVersion` it started with. When the jam part becomes empty
+  again under new seeds (the current track is not a wave track, no item follows), the old
+  session's deferred tracks are removed and the next load starts a new session.
+- **Not learning** (HOST-15, HOST-16): no play reports; rotor feedback (radioStarted, trackStarted,
+  trackFinished, skip) only for the jam wave's tracks, to the session each came from, and only when
+  `start` got `waveFeedback`.
+- **Reports**: `itemStarted(itemId)` when a jam item's `Started` fires; `playback` after every
+  track event, on the engine's state changes, seeks, and every 10 s while playing (HOST-05,
+  HOST-06). `Idle` when nothing plays (empty queue, or stopped waiting at the end).
+- **Skip** (HOST-18, HOST-19): `skip(itemId)` is `Player::next()` only when that item is current.
+- **End** (HOST-32, HOST-33): the wave tracks after the cursor are removed, the jam items stay as
+  ordinary tracks, the current track plays on, and `changeSource` with the default rules brings the
+  play reports and a finite queue back.
+- `Sources::setJamMode(jam)`: while the jam is on, every pick (likes, playlists, artists, albums,
+  waves, stations, search) leaves the queue alone and says `Идёт джем: добавляйте треки в джем`
+  (HOST-21). Likes and dislikes still work (HOST-17).
+
+**Traps:**
+- The `Player`'s load-more and event callbacks hold a `QPointer<JamMode>` and a shared wave state:
+  a wave track that closes after `end()`, or while the app shuts down, still gets its feedback.
+- HOST-09 (a broken last jam track waits for the jam wave) is the `Player`'s own ERR-07 for an
+  endless queue: `DecideOnFailure` says Next (the policy table in `tests/failures_test.cpp`), and
+  `next()` at the end waits for more. `jam_mode_test` does not repeat it.
 
 ## `cover_cache.h`: `CoverCache`
 

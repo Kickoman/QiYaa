@@ -47,7 +47,7 @@ Player::Player(Yandex::Library* library, Audio::AudioEngine* engine, QObject* pa
             );
         }
         openTrack.reset();
-        if (repeatEnabled && queuedTracks.size() == 1) {
+        if (repeatEnabled && queuedTracks.size() == 1 && !loadMore) {  // WAVE-12: a wave waits
             return playIndex(playingIndex);
         }
         next();
@@ -133,6 +133,7 @@ void Player::setQueue(
     }
     titleText = title;
     loadMore = std::move(more);
+    queueRules = {};
     loadingMore = false;
     waitingForMore = false;
     failuresInRow = 0;  // ERR-06
@@ -164,6 +165,47 @@ void Player::appendTracks(const QList<Yandex::Track>& tracks) {
         playingIndex = 0;
     }
     Q_EMIT playlistChanged();
+    refreshPreload();
+}
+
+void Player::insertTracks(int index, const QList<Yandex::Track>& tracks) {
+    QList<Yandex::Track> added;
+    for (const Yandex::Track& track : tracks) {
+        if (track.available) {
+            added << track;
+        }
+    }
+    if (added.isEmpty()) {
+        return;
+    }
+    const int at = std::clamp(index, 0, int(queuedTracks.size()));
+    for (qsizetype i = 0; i < added.size(); ++i) {
+        queuedTracks.insert(at + i, added[i]);
+    }
+    if (playingIndex < 0) {
+        playingIndex = 0;
+    } else if (at <= playingIndex) {
+        playingIndex += int(added.size());
+    }
+    Q_EMIT playlistChanged();
+    refreshPreload();
+}
+
+void Player::changeSource(
+    const QString& title,
+    TLoadMoreCallback more,
+    TEventCallback events,
+    QueueRules rules
+) {
+    titleText = title;
+    loadMore = std::move(more);
+    reportEvent = std::move(events);
+    queueRules = rules;
+    loadingMore = false;
+    waitingForMore = false;
+    ++queueGeneration;
+    Q_EMIT playlistChanged();
+    Q_EMIT modesChanged();
     refreshPreload();
 }
 
@@ -280,6 +322,7 @@ void Player::setRepeat(bool on) {
 void Player::stop() {
     cancelNetworkWait();
     closeOpenTrack();
+    resolvingLink = false;
     waitingForMore = false;
     ++generation;
     cancelPreload();
@@ -345,6 +388,12 @@ void Player::previous() {
     if (queuedTracks.isEmpty()) {
         return;
     }
+    if (queueRules.previousRestartsOnly) {  // HOST-07: a jam never goes back
+        if (!seekTo(0)) {
+            playIndex(playingIndex);
+        }
+        return;
+    }
     const bool active = audioEngine->state() != Audio::AudioEngine::State::Stopped;
     const int target = PreviousTarget(
         active ? audioEngine->positionSeconds() : 0.0, playingIndex, int(queuedTracks.size()),
@@ -389,8 +438,12 @@ void Player::maybeLoadMore() {
         const bool wasWaiting = self->waitingForMore;
         self->waitingForMore = false;
         self->appendTracks(tracks);
-        if (wasWaiting && self->playingIndex + 1 < self->queuedTracks.size()) {
-            self->playIndex(self->playingIndex + 1);
+        if (wasWaiting) {
+            if (self->playingIndex + 1 < self->queuedTracks.size()) {
+                self->playIndex(self->playingIndex + 1);
+            } else {
+                self->waitingForMore = true;  // nothing came: still at the end
+            }
         }
     });
 }
@@ -408,6 +461,7 @@ void Player::playIndex(int index) {
     waitingForMore = false;
     cancelNetworkWait();
     closeOpenTrack();
+    resolvingLink = false;
     const quint64 requestGeneration = ++generation;
     abortDownload();
     playingIndex = index;
@@ -431,16 +485,18 @@ void Player::playIndex(int index) {
     }
     cancelPreload();
     streamId = audioEngine->beginStream();
+    resolvingLink = true;
     Q_EMIT currentTrackChanged();
     maybeLoadMore();
 
     yandexLibrary->api()->resolveTrackUrl(
         track.id,
-        [this, requestGeneration,
+        [this, self = QPointer<Player>(this), requestGeneration,
          track](const Yandex::ResolvedUrl& link, const Yandex::RequestError& error) {
-            if (requestGeneration != generation) {
+            if (!self || requestGeneration != generation) {
                 return;
             }
+            resolvingLink = false;
             if (error.isError()) {
                 if (!streamId) {  // no audio output: nothing to wait on or to skip to
                     Q_EMIT statusMessage(QStringLiteral("Cannot get link: ") + error.text);
@@ -457,9 +513,11 @@ void Player::playIndex(int index) {
 
 void Player::trackStarted(const Yandex::Track& track, int bitrate) {
     bitrateKbps = bitrate;
-    yandexLibrary->api()->reportPlayStarted(
-        yandexLibrary->account(), track, QUuid::createUuid().toString(QUuid::WithoutBraces)
-    );
+    if (queueRules.playReports) {
+        yandexLibrary->api()->reportPlayStarted(
+            yandexLibrary->account(), track, QUuid::createUuid().toString(QUuid::WithoutBraces)
+        );
+    }
     openTrack = track;
     openTrackEvents = reportEvent;
     playedSeconds = 0;
@@ -599,9 +657,9 @@ void Player::retryAfterNetwork() {
     const Track track = *currentTrack();
     yandexLibrary->api()->resolveTrackUrl(
         track.id,
-        [this, requestGeneration,
+        [this, self = QPointer<Player>(this), requestGeneration,
          track](const Yandex::ResolvedUrl& link, const Yandex::RequestError& error) {
-            if (requestGeneration != generation || !networkWait) {
+            if (!self || requestGeneration != generation || !networkWait) {
                 return;
             }
             if (error.isError()) {

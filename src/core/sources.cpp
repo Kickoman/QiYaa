@@ -1,5 +1,6 @@
 #include "core/sources.h"
 
+#include "core/jam_mode.h"
 #include "core/player.h"
 #include "yandex/api_client.h"
 #include "yandex/library.h"
@@ -110,7 +111,18 @@ void Sources::showStatus(const QString& text) {
     ShowStatus(corePlayer, text);
 }
 
+bool Sources::refusedForJam() {
+    if (!jamMode || !jamMode->isActive()) {
+        return false;
+    }
+    showStatus(QStringLiteral("Идёт джем: добавляйте треки в джем"));
+    return true;
+}
+
 void Sources::playLikes(bool autoplay) {
+    if (refusedForJam()) {
+        return;
+    }
     showStatus(QStringLiteral("Мне нравится: загрузка..."));
     QPointer<Player> guardedPlayer(corePlayer);
     const quint64 ticket = corePlayer->newSourceRequest();
@@ -134,12 +146,18 @@ void Sources::playLikes(bool autoplay) {
 }
 
 void Sources::playPlaylist(const Yandex::PlaylistReference& playlist) {
+    if (refusedForJam()) {
+        return;
+    }
     yandexLibrary->playlistTracks(
         playlist, QueueLoader(corePlayer, playlist.title, corePlayer->newSourceRequest())
     );
 }
 
 void Sources::playRecommendations(const Yandex::PlaylistReference& playlist) {
+    if (refusedForJam()) {
+        return;
+    }
     yandexLibrary->playlistRecommendations(
         playlist,
         QueueLoader(
@@ -149,18 +167,27 @@ void Sources::playRecommendations(const Yandex::PlaylistReference& playlist) {
 }
 
 void Sources::playArtist(const QString& artistId, const QString& name) {
+    if (refusedForJam()) {
+        return;
+    }
     yandexLibrary->artistTopTracks(
         artistId, QueueLoader(corePlayer, name, corePlayer->newSourceRequest())
     );
 }
 
 void Sources::playAlbum(const QString& albumId, const QString& title) {
+    if (refusedForJam()) {
+        return;
+    }
     yandexLibrary->albumTracks(
         albumId, QueueLoader(corePlayer, title, corePlayer->newSourceRequest())
     );
 }
 
 void Sources::playWave(const QStringList& seeds, const QString& title) {
+    if (refusedForJam()) {
+        return;
+    }
     Yandex::Library* library = yandexLibrary;
     showStatus(title + QStringLiteral(": загрузка..."));
     QPointer<Player> guardedPlayer(corePlayer);
@@ -204,6 +231,9 @@ void Sources::playMyWave() {
 }
 
 void Sources::search(const QString& text) {
+    if (refusedForJam()) {
+        return;
+    }
     Yandex::Library* library = yandexLibrary;
     const QString title = QStringLiteral("Поиск: ") + text;
     showStatus(title + QStringLiteral("..."));

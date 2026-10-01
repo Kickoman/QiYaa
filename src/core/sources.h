@@ -11,6 +11,7 @@ struct PlaylistReference;
 
 namespace Core {
 
+class JamMode;
 class Player;
 
 // What the user picks to listen to, turned into the Player's queue: likes, playlists, artists,
@@ -39,12 +40,17 @@ public:
     // The seeds of the last wave started, My Wave before any: what the wheel of waves matches.
     const QStringList& lastWaveSeeds() const { return waveSeeds; }
 
+    // While its jam is on, a pick does not replace the queue (HOST-21).
+    void setJamMode(const JamMode* jam) { jamMode = jam; }
+
 private:
     void showStatus(const QString& text);
+    bool refusedForJam();
 
     Player* corePlayer;
     Yandex::Library* yandexLibrary;
     QStringList waveSeeds{kMyWaveSeed};
+    const JamMode* jamMode = nullptr;
 };
 
 }  // namespace Core
