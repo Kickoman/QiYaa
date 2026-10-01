@@ -93,7 +93,8 @@ Application::Application(const Options& options, QObject* parent)
     , currentSkin(std::make_unique<Skins::Skin>(baseSkin))
     , apiClient(&networkManager)
     , yandexLibrary(&apiClient)
-    , corePlayer(&yandexLibrary, &audioEngine) {
+    , corePlayer(&yandexLibrary, &audioEngine)
+    , sources(&corePlayer, &yandexLibrary) {
     if (startOptions.audio) {
         if (const Audio::AudioEngine::InitResult initResult = audioEngine.init(); !initResult.ok) {
             qWarning("Audio: %s", qPrintable(initResult.message));
@@ -472,7 +473,7 @@ void Application::applyToken(const QString& token, bool save) {
         }
         mainWindowInstance->setStatusText(QStringLiteral("Привет, %1!").arg(account.displayName));
         if (corePlayer.playlist().isEmpty()) {
-            Ui::PlayLikes(&corePlayer, false);
+            sources.playLikes(false);
         }
     });
 }
@@ -791,14 +792,18 @@ void Application::fillWindowActions(QMenu* menu) {
 void Application::showSourcesMenu(QPoint globalPosition) {
     auto* menu = new QMenu(mainWindowInstance.get());
     menu->setAttribute(Qt::WA_DeleteOnClose);
-    Ui::AddLibraryActions(menu, &corePlayer, mainWindowInstance.get(), [this] { login(); });
+    Ui::AddLibraryActions(menu, &corePlayer, &sources, mainWindowInstance.get(), [this] {
+        login();
+    });
     menu->popup(globalPosition);
 }
 
 void Application::showMainMenu(QPoint globalPosition) {
     auto* menu = new QMenu(mainWindowInstance.get());
     menu->setAttribute(Qt::WA_DeleteOnClose);
-    Ui::AddLibraryActions(menu, &corePlayer, mainWindowInstance.get(), [this] { login(); });
+    Ui::AddLibraryActions(menu, &corePlayer, &sources, mainWindowInstance.get(), [this] {
+        login();
+    });
     menu->addSeparator();
     fillWindowActions(menu);
     menu->addSeparator();

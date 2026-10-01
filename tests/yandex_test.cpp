@@ -100,7 +100,8 @@ private Q_SLOTS:
     void tracksAreParsed_data() {
         QTest::addColumn<QString>("name");
         for (const char* name :
-             {"two-tracks", "with-unavailable", "version-and-artists", "cover-from-album"}) {
+             {"two-tracks", "with-unavailable", "version-and-artists", "cover-from-album",
+              "cover-order"}) {
             QTest::newRow(name) << QStringLiteral("tracks/%1").arg(name);
         }
     }

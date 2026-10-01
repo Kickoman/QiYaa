@@ -3,8 +3,10 @@
 #include <QByteArray>
 #include <QHash>
 #include <QList>
+#include <QNetworkAccessManager>
 #include <QObject>
 #include <QString>
+#include <QStringList>
 #include <QTcpServer>
 #include <QUrlQuery>
 
@@ -48,6 +50,10 @@ public:
     void
     fixture(const QByteArray& method, const QString& path, const QString& name, int delayMs = 0);
 
+    // Lets the Player stream these track ids from this server: their download-info, the
+    // download-info link, the signed /get-mp3/ link (all serving `mp3`) and /play-audio.
+    void audioTracks(const QStringList& trackIds, const QByteArray& mp3);
+
     const QList<MockRequest>& requests() const { return recordedRequests; }
     const MockRequest* last(const QString& path) const;
 
@@ -64,6 +70,14 @@ private:
     QHash<QByteArray, THandler> routes;
     QList<PrefixRoute> prefixRoutes;
     QList<MockRequest> recordedRequests;
+};
+
+// Sends the https:// links that point at 127.0.0.1 over http, so signed track links reach the
+// MockHttpServer.
+class LocalNetworkAccessManager : public QNetworkAccessManager {
+protected:
+    QNetworkReply*
+    createRequest(Operation op, const QNetworkRequest& request, QIODevice* outgoingData) override;
 };
 
 }  // namespace Tests

@@ -26,6 +26,7 @@ is formatting (the clang-format check in `.github/workflows/ci.yml`).
 | `audio_test.cpp` | `Audio::AudioEngine` on the test mp3: streaming in chunks, pause, the decode-error message, seeks during download, the `Core::Player` polling timer, and gapless chaining of a queued stream |
 | `dsp_test.cpp` | EQ response and processing, the 17 built-in EQ presets, `.eqf` read/write, `EqualizerWindow::GraphCurve`, the FFT analyzer, spectrum and oscilloscope rendering; the reference vectors of `spec/dsp` (checks them, and writes them with `QIYAA_WRITE_DSP_VECTORS=1`) |
 | `library_test.cpp` | `Yandex::Library`/`ApiClient` against the mock server serving spec fixtures: request shapes and parsing for every source the menu offers, likes, waves, search with each kind of best result, errors, device login and wave feedback. Also `Core::Player` track events, preloading, endless sources, and shuffle not applying in a wave |
+| `sources_test.cpp` | `Core::Sources` against the `spec/player` scenarios on spec fixtures, one function per scenario group: the last pick wins, stale failures, search as one pick, a failed source keeps the queue, likes with their count, search's best result, and a wave played on the Null output (radio start, load more with the last ids, batch ids on the events, dislike and skip) |
 | `main_window_test.cpp` | One `Ui::MainWindow` on the default offscreen screen: position clamping, dragging and edge snapping, shuffle click, the shuffle light off during a wave, volume slider, ×2 and fractional scale |
 | `windows_test.cpp` | The whole `App::Application` window set: docking, detaching, scaling, playlist selection/scroll/resize, EQ sliders, shade modes, login dialog layout, Milkdrop and Now Playing windows, `snapshot()` |
 | `screenshots_test.cpp` | Golden screenshots of the main window and the equalizer (see **Golden screenshots**) |
@@ -73,7 +74,8 @@ QT_QPA_PLATFORM=offscreen QIYAA_AUDIO_BACKEND=null build/tests/audio_test queued
 | `skin_test` | skins | plain |
 | `audio_test` | audio core | plain; `QIYAA_TEST_DATA` |
 | `main_window_test` | audio core skins ui yandex | plain |
-| `library_test` | audio core ui yandex (+ `qiyaa_test_yandex`) | plain; `QIYAA_TEST_DATA` |
+| `library_test` | audio core yandex (+ `qiyaa_test_yandex`) | plain; `QIYAA_TEST_DATA` |
+| `sources_test` | audio core yandex (+ `qiyaa_test_yandex`) | plain; `QIYAA_TEST_DATA` |
 | `dsp_test` | audio skins ui vis | plain |
 | `windows_test` | app core ui | 2560×1440 virtual screen (not on Windows) |
 | `screenshots_test` | audio core skins ui yandex | plain; `QIYAA_TEST_DATA` |
@@ -128,9 +130,9 @@ pictures into an existing directory; nothing creates it:
   readers). It PUBLIC-links Qt6::Core and Qt6::Network, and its PUBLIC include directory is
   `tests/`, so the headers are `"support/…"`. It gets `QIYAA_SPEC_DIR` (the absolute path of
   `spec/`) as a PRIVATE definition. Every `qiyaa_add_test` target links it. Only `library_test`,
-  `yandex_test` and `windows_test` use it. `mpris_test` is added by hand and does not link it.
+  `sources_test`, `yandex_test` and `windows_test` use it. `mpris_test` is added by hand and does not link it.
 - `qiyaa_test_yandex`: `support/yandex_json.cpp`. It PUBLIC-links `qiyaa_test_support` and
-  `qiyaa_yandex`. Only `library_test` and `yandex_test` link it.
+  `qiyaa_yandex`. Only `library_test`, `sources_test` and `yandex_test` link it.
 - Each suite links the modules in the table above, plus what those modules link PUBLIC. For
   example, `audio_test` reaches `Yandex::ApiClient` through `qiyaa_core`'s PUBLIC link to
   `qiyaa_yandex`.
@@ -223,9 +225,12 @@ public:
   waiting.
 - A header sent twice keeps its last value. Request bodies must carry `Content-Length`; chunked
   bodies are not read. `QNetworkAccessManager` sends `Content-Length` for byte-array bodies.
-- HTTP only. Yandex track links are always `https://`, so `library_test`'s
-  `LocalNetworkAccessManager` (a `QNetworkAccessManager`) rewrites `https` URLs with host
-  `127.0.0.1` to `http`. The `/get-mp3/…` link then reaches this server.
+- HTTP only. Yandex track links are always `https://`, so `Tests::LocalNetworkAccessManager`
+  (a `QNetworkAccessManager` in the same header) rewrites `https` URLs with host `127.0.0.1` to
+  `http`. The `/get-mp3/…` link then reaches this server.
+- `audioTracks(ids, mp3)` serves what a `Player` needs to stream those track ids from this
+  server: each id's `download-info`, then `/dlinfo<id>`, then `mp3` under `/get-mp3/`, and
+  `/play-audio`.
 - It is a `QObject` without `Q_OBJECT`, so it has no signals. Wait on the client's signals or
   callbacks instead.
 
@@ -377,8 +382,6 @@ because moc can't parse raw string literals; it is left for the player tests' sy
 as is `TrackJson()` for their numbered tracks. `Result<T>`
 collects a `(value, error)` callback, and `wait()` spins for up to 5 s.
 
-- `slowLoadDoesNotReplaceNewerChoice`: the likes answer after 300 ms (`delayMs`). "Моя волна"
-  is chosen in the meantime, and the late likes must be ignored.
 - `wheelOfWavesReadsAnUnwrappedBodyAndSkipsOtherItems`: `/wheel/new` answers without the `{"result": …}` envelope.
 - Wave feedback goes to the session endpoint `/rotor/session/<id>/feedback` first. On an HTTP
   4xx (404 here) it falls back to `/rotor/station/<station>/feedback?batch-id=…`, and that
@@ -390,9 +393,9 @@ collects a `(value, error)` callback, and `wait()` spins for up to 5 s.
   1 Finished and 2 Skipped. Playing another index logs Skipped for the current track.
   Replacing the queue does the same.
 - `PlaybackStack` is a separate `LocalNetworkAccessManager`, `ApiClient`, `Library`, engine and
-  `Player` that really plays (on the Null output). `setUpAudio` serves, for each id,
-  `download-info`, then `/dlinfo<id>`, then the mp3 under `/get-mp3/`. It returns false, and the
-  test skips, when the mp3 can't be read or the engine can't start.
+  `Player` that really plays (on the Null output). `setUpAudio` serves the ids with
+  `MockHttpServer::audioTracks`. It returns false, and the test skips, when the mp3 can't be read
+  or the engine can't start.
 - `playerPreloadsAndAdvancesSeamlessly`: once track 11 is downloaded, 12 is fetched in the
   background (`preloadedIndex() == 1`). The advance is `trackAdvanced`, never `trackFinished`,
   logged as Started 11, Finished 11, Started 12. The download info for 12 is requested once.
@@ -405,6 +408,15 @@ collects a `(value, error)` callback, and `wait()` spins for up to 5 s.
   walks indices 1 to 10 in order with `next()`; the chance that random picks do the same is
   negligible. It checks the status message on start and when shuffle is switched on, and that
   an ordinary queue afterwards shuffles again.
+
+**sources_test.** One server, `ApiClient` and `Library` (uid 42) for the suite; each function
+builds its own `Player` (engine not initialised) and `Sources` and watches the status line. The
+wave's feedback route is registered in `initTestCase`: every function's wave is the same session,
+and a 404 there would move the session to the station endpoint for good (TRK-10).
+
+- `waveStartsLoadsMoreAndReportsEveryTrack` plays on the Null output and skips without it. The
+  unavailable track of the first batch is left out, so the queue starts with one track and asks
+  for more at once; the dislike then skips to the new batch's track.
 
 **main_window_test.** All functions share one window on the default 800×600 screen. Input
 events go through `QCoreApplication::sendEvent`, which is synchronous.
@@ -523,8 +535,8 @@ D-Bus, and OpenGL on a software renderer. This is how they stay stable:
   - `audio_test`'s `qWait(150)` gives track 1 time to be decoded to its end and track 2 time to
     be chained. A machine too slow for that still passes `seekingBackUndoesTheChain` and the
     two "clearing a chained stream" tests; they then exercise the unchained path instead.
-  - `library_test`'s `qWait(600)` in `slowLoadDoesNotReplaceNewerChoice` waits for a reply
-    delayed by 300 ms. If the reply comes later still, the test passes without having tested
+  - `sources_test`'s `qWait(600)` in `lastPickedSourceWins` and `staleFailureIsSilent`, and
+    `qWait(800)` in `searchIsOnePickAcrossItsRequests`, wait for a reply delayed by 300 or 400 ms. If the reply comes later still, the test passes without having tested
     the race.
   - The one wait that can fail on a very slow machine is in the two `library_test` preload
     tests. They wait for `preloadedIndex()`, then `qWait(300)`, then seek to 2.4 s. The 24 KB

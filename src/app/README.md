@@ -261,7 +261,7 @@ accepted token formats and the rule that an empty own file means "logged out" ar
 `applyToken(token, save)` sets the token on `ApiClient`, shows `Подключаюсь к Яндекс Музыке...`
 and calls `Library::connectAccount`. On error the marquee shows `Вход не удался: <error>`. On
 success it calls `Yandex::SaveToken(TokenFile(), token)` if `save`, shows
-`Привет, <displayName>!`, and, if the play queue is empty, calls `Ui::PlayLikes(player, false)`
+`Привет, <displayName>!`, and, if the play queue is empty, calls `Core::Sources::playLikes(false)`
 (queues the liked tracks without starting playback).
 
 `login()` runs `Ui::LoginDialog` modally (`exec()`, a nested event loop) and, on accept, calls

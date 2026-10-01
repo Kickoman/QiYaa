@@ -20,7 +20,7 @@ to Yandex ([src/yandex](../yandex/README.md)), or create, lay out, connect and s
 | `gen_window.h/.cpp` | `GenWindow` — abstract GEN.BMP frame: title, close button, resize grip |
 | `now_playing_window.h/.cpp` | `NowPlayingWindow` — cover and details of the current track |
 | `milkdrop_window.h/.cpp` | `MilkdropWindow` — projectM view in a GEN frame: preset switching, black-preset skipping, full screen. Built only with Milkdrop |
-| `library_menu.h/.cpp` | `AddLibraryActions` (Yandex menu items) and `PlayMyWave`, `PlayWave`, `PlayLikes`, `PlaySearchResults` |
+| `library_menu.h/.cpp` | `AddLibraryActions`: the Yandex menu items, which call `Core::Sources` |
 | `login_dialog.h/.cpp` | `LoginDialog` — Yandex login by device code or by a pasted token |
 
 ## Dependencies
@@ -690,47 +690,29 @@ screen; a right click in the view or in the frame's content opens the preset men
 ## Library menu — `library_menu.h/.cpp`
 
 ```cpp
-void PlayMyWave(Core::Player* player);    // PlayWave({"user:onyourwave"}, "Моя волна")
-void PlayWave(Core::Player* player, const QStringList& seeds, const QString& title);
-void PlayLikes(Core::Player* player, bool autoplay);
-void PlaySearchResults(Core::Player* player, const QString& text);
-
 void AddLibraryActions(
     QMenu* menu,
-    Core::Player* player,
+    Core::Player* player,                 // the current track, for like/dislike/open
+    Core::Sources* sources,               // what every item plays
     QWidget* dialogParent,                // parent of the search input dialog
     std::function<void()> loginRequested  // the only item when not logged in
 );
 ```
 
-Everything is asynchronous. Progress and errors go out as `Player::statusMessage` (the main window
-shows them): `<title>: загрузка...`, `Ошибка: …`, `Ошибка волны: …`, `Ошибка поиска: …`,
-`<title>: пусто`, `Ничего не найдено`, `Мне нравится: N треков`. Only the latest source wins: each
-load takes `Player::newSourceRequest()` before its request and the callback drops its result
-unless `isLatestSourceRequest(ticket)`; the `Player` is held through `QPointer`.
+The menu only builds items; what they play, and every status they report, is `Core::Sources`
+([src/core](../core/README.md#sourcesh-sources)).
 
-- `PlayWave`: `Library::startWave(seeds)`, then `Player::setQueue(tracks, title, true, more,
-  events)`. `more` asks `moreWave` for the next batch, passing the ids of the last 5 queued tracks,
-  so the queue never ends. `events` reports `TrackStarted`, `TrackFinished` or `Skip` for each track
-  with the id of the batch it came in; `RadioStarted` is sent once. The wave state (session,
-  station = first seed, track → batch) is shared by both callbacks for the life of that queue. The
-  seeds of the last started wave (process-wide, `user:onyourwave` at start) are what the
-  "Колесо волн" submenu asks for waves around.
-- `PlayLikes`: `likedTracks`, then `setQueue(tracks, "Мне нравится", autoplay)`, even when empty.
-- `PlaySearchResults`: `Library::search`; a best result of type `artist` loads its top tracks, of
-  type `album` its tracks (with the same ticket); otherwise the found tracks.
-- `AddLibraryActions`: when logged in — Моя волна, Мне нравится, submenus Колесо волн, Для вас,
-  Плейлисты (Слушать / Похожие треки), Исполнители, Альбомы, Станции (grouped by station type),
-  Поиск..., then like/unlike, dislike (which also calls `Player::next()` at once) and open in the
-  browser; those three are disabled without a current track. Submenus load on their first
-  `aboutToShow`, once per menu instance: a disabled `Загрузка...`, then the items, `(пусто)` or a
-  disabled `Ошибка: …`.
+- When logged in: Моя волна, Мне нравится, submenus Колесо волн (the waves around
+  `Sources::lastWaveSeeds()`), Для вас, Плейлисты (Слушать / Похожие треки), Исполнители,
+  Альбомы, Станции (grouped by station type), Поиск..., then like/unlike, dislike (which also
+  skips) and open in the browser; those three are disabled without a current track.
+- Submenus load their lists straight from `Yandex::Library` on their first `aboutToShow`, once per
+  menu instance: a disabled `Загрузка...`, then the items, `(пусто)` or a disabled `Ошибка: …`.
 
 **Traps:**
-- Menu actions and the like/dislike callbacks capture `Player*` and `Library*` unguarded; that is
-  safe only because the app owns both for the whole run.
+- Menu actions capture `Player*`, `Sources*` and `Library*` unguarded; that is safe only because
+  the app owns them for the whole run.
 - Submenus never reload: build a new menu for fresh data.
-- The last wave's seeds are a function-local static shared by all menus.
 
 ## LoginDialog — `login_dialog.h/.cpp`
 
@@ -781,7 +763,7 @@ Nothing in `src/ui` throws. The only `catch` is `EqualizerWindow`'s around `Audi
 | Failure | Reported as |
 |---|---|
 | `.eqf` cannot be opened, is above 1 MiB, cannot be saved | `EqualizerWindow::statusText`: `EQ: <file>: <reason>`, `EQ: <file> — <n> КБ, а пресеты не больше 1024 КБ`, `EQ: <file> не сохранён: <reason>` |
-| Yandex request fails | error string from the `Library` callback → `Player::statusMessage`, or a disabled `Ошибка: …` item in a submenu; `moreWave` errors go to `qWarning` only |
+| Yandex request fails | a source's error goes out through `Core::Sources` as `Player::statusMessage`; a submenu's list shows a disabled `Ошибка: …` item |
 | Device login fails, pasted text holds no token | labels in `LoginDialog` |
 | No usable OpenGL, projectM fails | `MilkdropWindow::failure()`, painted in the frame; `qWarning` |
 | A preset fails or stays black | handled by switching (see `MilkdropWindow`); `qWarning` |

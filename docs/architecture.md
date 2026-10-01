@@ -20,7 +20,7 @@ audio, yandex, skins  →  vis, core  →  ui, integrations  →  app  →  qiya
 | [src/yandex](../src/yandex/README.md) | `Yandex` | Yandex Music HTTP API, OAuth device login, signed track links, the token file | Qt Core, Network | |
 | [src/skins](../src/skins/README.md) | `Skins` | Loads `.wsz` skins: sheets, `region.txt`, `pledit.txt`, `viscolor.txt`, bitmap text; sprite tables | Qt Gui | miniz |
 | [src/vis](../src/vis/README.md) | `Vis` | Spectrum, oscilloscope, FFT; Milkdrop through projectM in a `QOpenGLWindow` | Qt Gui (+ OpenGL) | audio, skins (+ projectM) |
-| [src/core](../src/core/README.md) | `Core` | `Player` (queue, transport, downloads, preload, track events) and `CoverCache` | audio, yandex, Qt Gui, Network | |
+| [src/core](../src/core/README.md) | `Core` | `Player` (queue, transport, downloads, preload, track events), `Sources` (what a pick plays, wave callbacks) and `CoverCache` | audio, yandex, Qt Gui, Network | |
 | [src/ui](../src/ui/README.md) | `Ui` | The skinned windows, snapping and docking, the Yandex menus, the login dialog | audio, vis, Qt Widgets | core, skins, yandex |
 | [src/integrations](../src/integrations/README.md) | `Integrations` | Media keys and system media panels: MPRIS (Linux) or SMTC (Windows) | Qt Gui (+ DBus) | audio, core, yandex |
 | [src/app](../src/app/README.md) | `App` | `Application`: owns and wires everything, menus, shortcuts, settings, login; `main()` | audio, core, skins, yandex | integrations, ui, vis |
@@ -50,10 +50,10 @@ Ui (menu)  ──source──▶  Core::Player  ──resolveTrackUrl──▶  
                                                                   EQ → VisTap → volume, balance
 ```
 
-1. A menu item from `Ui::AddLibraryActions` asks `Yandex::Library` for a source (a playlist, the
-   likes, a wave) and hands the tracks to `Player::setQueue`. An endless source also gives a
-   callback that fetches more tracks; for a wave, `library_menu.cpp` also sends wave feedback
-   from `Player`'s track events.
+1. A menu item from `Ui::AddLibraryActions` calls `Core::Sources`, which asks `Yandex::Library`
+   for a source (a playlist, the likes, a wave) and hands the tracks to `Player::setQueue`. An
+   endless source also gives a callback that fetches more tracks; for a wave, `Sources` also
+   sends wave feedback from `Player`'s track events.
 2. `Player::playIndex` asks `ApiClient::resolveTrackUrl` for a signed mp3 link, starts a stream in
    the engine and appends the download to it chunk by chunk. When the download completes, it
    resolves and downloads the next track into a queued stream, so the engine continues without a
@@ -94,7 +94,7 @@ audio device that does not open — is data: an error string in a callback or a 
 | sprite positions, skin parsing, bitmap text | [src/skins](../src/skins/README.md) |
 | what plays next, shuffle, repeat, preload, play reports | [src/core](../src/core/README.md) |
 | decoding, seeking, gapless, the equalizer DSP | [src/audio](../src/audio/README.md) |
-| an API call, a new source, login | [src/yandex](../src/yandex/README.md), then the menu in `src/ui/library_menu.cpp` |
+| an API call, a new source, login | [src/yandex](../src/yandex/README.md), then `src/core/sources.cpp` and the menu in `src/ui/library_menu.cpp` |
 | the spectrum, the oscilloscope, Milkdrop rendering | [src/vis](../src/vis/README.md) |
 | media keys, MPRIS, SMTC | [src/integrations](../src/integrations/README.md) |
 | menus, shortcuts, settings, start-up and shut-down order, command-line options | [src/app](../src/app/README.md) |

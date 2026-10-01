@@ -3,7 +3,6 @@
 #include "support/mock_http_server.h"
 #include "support/spec_fixtures.h"
 #include "support/yandex_json.h"
-#include "ui/library_menu.h"
 #include "yandex/api_client.h"
 #include "yandex/library.h"
 #include "yandex/oauth.h"
@@ -52,10 +51,6 @@ QStringList ExpectedIds(const QString& name, const char* key) {
     return ids;
 }
 
-QJsonArray ExpectedTracks(const QString& name) {
-    return Tests::ExpectedObject(name).value(QStringLiteral("tracks")).toArray();
-}
-
 // The tracks of a wrapped /tracks/ reply in spec/fixtures/yandex.
 QList<Yandex::Track> FixtureTracks(const QString& name) {
     QList<Yandex::Track> tracks;
@@ -80,20 +75,6 @@ struct Result {
     }
     bool wait() {
         return QTest::qWaitFor([this] { return done; }, 5000);
-    }
-};
-
-class LocalNetworkAccessManager : public QNetworkAccessManager {
-protected:
-    QNetworkReply*
-    createRequest(Operation op, const QNetworkRequest& request, QIODevice* outgoingData) override {
-        QNetworkRequest localRequest(request);
-        QUrl url = localRequest.url();
-        if (url.scheme() == QLatin1String("https") && url.host() == QLatin1String("127.0.0.1")) {
-            url.setScheme(QStringLiteral("http"));
-            localRequest.setUrl(url);
-        }
-        return QNetworkAccessManager::createRequest(op, localRequest, outgoingData);
     }
 };
 
@@ -396,25 +377,6 @@ private Q_SLOTS:
         );
     }
 
-    void slowLoadDoesNotReplaceNewerChoice() {
-        Audio::AudioEngine engine;
-        Core::Player player(&library, &engine);
-        server.fixture("GET", "/users/42/likes/tracks", "users-likes-tracks/string-ids", 300);
-        server.fixture("POST", "/tracks/", "tracks/two-tracks");
-        server.fixture("POST", "/rotor/session/new", "rotor-session-new/ok");
-        Ui::PlayLikes(&player, false);
-        Ui::PlayMyWave(&player);
-        QVERIFY(QTest::qWaitFor(
-            [&] { return player.queueTitle() == QStringLiteral("Моя волна"); }, 3000
-        ));
-        QTest::qWait(600);  // the likes response arrives now
-        QCOMPARE(player.queueTitle(), QStringLiteral("Моя волна"));
-        QCOMPARE(
-            player.playlist().first().title,
-            ExpectedTracks("rotor-session-new/ok").first().toObject().value("title").toString()
-        );
-    }
-
     void personalPlaylistsAndTheirRecommendationsAreParsed() {
         server.fixture("GET", "/landing3", "landing3/personal-playlists");
         Result<QList<Yandex::PlaylistReference>> playlists;
@@ -595,7 +557,7 @@ private Q_SLOTS:
 
 private:
     struct PlaybackStack {
-        LocalNetworkAccessManager networkManager;
+        Tests::LocalNetworkAccessManager networkManager;
         Yandex::ApiClient api{&networkManager};
         Yandex::Library library{&api};
         Audio::AudioEngine engine;
@@ -608,23 +570,11 @@ private:
         }
         playback.engine.setVolume(0);
         playback.api.setBaseUrl(server.baseUrl());
-        const QByteArray mp3 = file.readAll();
+        QStringList trackIds;
         for (int id : ids) {
-            server.result(
-                "GET", QStringLiteral("/tracks/%1/download-info").arg(id),
-                "[{\"codec\":\"mp3\",\"bitrateInKbps\":320,\"downloadInfoUrl\":\""
-                    + server.baseUrl().toUtf8() + "/dlinfo" + QByteArray::number(id) + "\"}]"
-            );
-            server.json(
-                "GET", QStringLiteral("/dlinfo%1").arg(id),
-                "{\"host\":\"" + QUrl(server.baseUrl()).authority().toUtf8() + "\",\"path\":\"/t"
-                    + QByteArray::number(id) + "\",\"ts\":\"1\",\"s\":\"s\"}"
-            );
+            trackIds << QString::number(id);
         }
-        server.onPrefix("GET", "/get-mp3/", [mp3](const Tests::MockRequest&) {
-            return Tests::MockResponse{200, mp3};
-        });
-        server.fixture("POST", "/play-audio", "play-audio/ok");
+        server.audioTracks(trackIds, file.readAll());
         return true;
     }
     int requestsTo(const QString& path) const {

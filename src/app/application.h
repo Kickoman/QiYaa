@@ -2,6 +2,7 @@
 
 #include "audio/audio_engine.h"
 #include "core/player.h"
+#include "core/sources.h"
 #include "skins/skin.h"
 #include "yandex/api_client.h"
 #include "yandex/library.h"
@@ -103,6 +104,7 @@ private:
     Yandex::Library yandexLibrary;
     Audio::AudioEngine audioEngine;
     Core::Player corePlayer;
+    Core::Sources sources;
     std::unique_ptr<Core::CoverCache> coverCache;
     std::unique_ptr<Integrations::MediaControls> mediaControls;
     std::unique_ptr<QObject> systemMediaControls;

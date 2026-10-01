@@ -1,20 +1,23 @@
-# `src/core` — playback controller and cover cache
+# `src/core` — playback controller, sources and cover cache
 
 This folder decides what plays. `Player` holds the queue of the current source and moves through
 it: play, pause, stop, next, previous, shuffle and repeat. It asks an endless source (a wave)
 for more tracks before the queue runs out. For each track it resolves the download link through
 `Yandex::ApiClient` and streams the mp3 bytes into `Audio::AudioEngine`. It also preloads the
 following track, so the engine can go on without a gap, and it reports each track's start and end:
-a play report to Yandex and a per-queue callback that the wave uses for feedback. `CoverCache`
+a play report to Yandex and a per-queue callback that the wave uses for feedback. `Sources` turns
+what the user picks (likes, playlists, artists, albums, waves, stations, search) into the
+`Player`'s queue and builds the wave's callbacks; it is the desktop counterpart of the Android
+app's queue manager, and `spec/player` describes both. `CoverCache`
 downloads album covers and keeps them in memory and on disk. The folder does not decode or output
 audio or chain streams at the sample level ([src/audio](../audio/README.md)). It does not speak
-the Yandex API, sign links or build cover URLs itself ([src/yandex](../yandex/README.md)). It does
-not choose sources or build the wave callbacks ([src/ui](../ui/README.md), `library_menu.cpp`),
-and it shows nothing on screen. Namespace `Core`, library `qiyaa_core`.
+the Yandex API, sign links or build cover URLs itself ([src/yandex](../yandex/README.md)). It
+builds no menus ([src/ui](../ui/README.md), `library_menu.cpp`) and shows nothing on screen. Namespace `Core`, library `qiyaa_core`.
 
 | File | Contains |
 |---|---|
 | `player.h/.cpp` | `Player`: the queue and cursor, transport, shuffle and repeat, source-request tickets, the endless-source hook `TLoadMoreCallback`, track events `TEventCallback`, link resolution, download streaming, the gapless preload, and the engine's poll timer |
+| `sources.h/.cpp` | `Sources`: playing a source (likes, playlist, recommendations, artist, album, wave or station, search) with a ticket each, the wave's load-more and feedback callbacks, like and dislike of the current track |
 | `cover_cache.h/.cpp` | `CoverCache`: cover images by URL, with an LRU of 30 in memory, files in a cache directory and one download per URL at a time |
 
 ## Dependencies
@@ -249,7 +252,7 @@ Four counters, each bumped by different calls and each guarding one kind of late
 | `generation` | `stop`, `playIndex`, gapless advance | the link reply of a track that is no longer current |
 | `preloadGeneration` | every new preload | the link reply of a preload that was cancelled or replaced |
 
-Tickets start at 1, so 0 never matches. `ui/library_menu.cpp` uses 0 to mean "take one now".
+Tickets start at 1, so 0 never matches. `Sources` takes one for every pick.
 
 ### Endless sources (`TLoadMoreCallback`)
 
@@ -361,7 +364,7 @@ Tickets start at 1, so 0 never matches. `ui/library_menu.cpp` uses 0 to mean "ta
 
 | Signal | Emitted |
 |---|---|
-| `statusMessage(text)` | `"Audio error: <message>"` (from `AudioEngine::errorOccurred`), `"Cannot get link: <error>"`, `"Download failed: <Qt error>"`, and `"Загружаю ещё треки..."` (loading more tracks). `ui/library_menu.cpp` also emits it on the `Player` for source loads, which makes it the app's one status line |
+| `statusMessage(text)` | `"Audio error: <message>"` (from `AudioEngine::errorOccurred`), `"Cannot get link: <error>"`, `"Download failed: <Qt error>"`, and `"Загружаю ещё треки..."` (loading more tracks). `Sources` also emits it on the `Player` for source loads, likes and dislikes, which makes it the app's one status line |
 | `playlistChanged` | by `setQueue`; by `appendTracks` when something was added; by `removeTracks` always, even when no index was valid |
 | `queueReplaced` | by `setQueue` and `clearQueue` only, before `playlistChanged` |
 | `currentTrackChanged` | by `setQueue`, even for an empty queue; by `playIndex` at once; again from `trackStarted` once the bitrate is known; twice on a gapless advance; by `removeTracks` when the current track was removed |
@@ -405,6 +408,61 @@ Tickets start at 1, so 0 never matches. `ui/library_menu.cpp` uses 0 to mean "ta
 - `stop()` and `setQueue` do not reset `currentBitrate()`.
 - The timer starts on the engine's next `stateChanged`. An engine that is already playing when
   the `Player` is constructed is not polled until its state changes.
+
+## `sources.h`: `Sources`
+
+```cpp
+class Sources : public QObject {
+public:
+    static inline const QString kMyWaveSeed = "user:onyourwave";
+    Sources(Player* player, Yandex::Library* library, QObject* parent = nullptr);
+
+    void playLikes(bool autoplay);                               // "Мне нравится"
+    void playPlaylist(const Yandex::PlaylistReference& playlist);
+    void playRecommendations(const Yandex::PlaylistReference& playlist);   // "<title>: похожие"
+    void playArtist(const QString& artistId, const QString& name);        // top tracks
+    void playAlbum(const QString& albumId, const QString& title);
+    void playWave(const QStringList& seeds, const QString& title);        // waves and stations
+    void playMyWave();                                           // {kMyWaveSeed}, "Моя волна"
+    void search(const QString& text);                            // "Поиск: <text>"
+
+    void setLiked(const QString& trackId, bool liked);
+    void dislikeAndSkip(const QString& trackId);                 // dislike, then Player::next()
+
+    const QStringList& lastWaveSeeds() const;                    // what the wheel of waves matches
+};
+```
+
+The scenarios are [spec/player/sources.md](../../spec/player/sources.md),
+[wave.md](../../spec/player/wave.md) and [tracking.md](../../spec/player/tracking.md);
+`tests/sources_test.cpp` checks them by ID.
+
+- **One ticket per pick.** Every `play…` and `search` takes `Player::newSourceRequest()` before
+  its request, and its reply is applied only if `isLatestSourceRequest(ticket)` (SRC-01, SRC-02).
+  A search whose best result is an artist or album asks for that one's tracks with the same
+  ticket (SRC-03). Replies are dropped silently; the HTTP request is not aborted. The `Player` is
+  held through `QPointer`.
+- **Statuses**, all through `Player::statusMessage`: `<title>: загрузка...` (waves, likes),
+  `Поиск: <text>...`, `Ошибка: …`, `Ошибка волны: …`, `Ошибка поиска: …`, `<title>: пусто`,
+  `Ничего не найдено`, `Мне нравится: N треков`, `Добавлено в «Мне нравится»`,
+  `Убрано из «Мне нравится»`, `Дизлайк поставлен`.
+- **Search** (SRC-09 to SRC-12): a best artist queues its top 100 under its name, a best album its
+  tracks under its title, anything else the found tracks as `Поиск: <text>`.
+- **A wave** (`playWave`): `Library::startWave(seeds)`. On success the wave state (session,
+  station = first seed, track id → batch id) is shared by two callbacks for the life of that
+  queue: `more` asks `moreWave` with the ids of the last 5 queued tracks (WAVE-05), and `events`
+  maps `TrackEvent` Started, Finished, Skipped to `WaveEvent` TrackStarted, TrackFinished, Skip
+  with the batch the track came in (TRK-04 to TRK-06). `RadioStarted` is sent before
+  `setQueue`, so before the first track's `trackStarted` (TRK-03). The seeds become
+  `lastWaveSeeds()`.
+- **Likes**: `setLiked` and `dislikeAndSkip` call the `Library` and report in the status line;
+  `dislikeAndSkip` calls `Player::next()` at once, which closes the track with `Skip` (TRK-07).
+
+**Traps:**
+- The wave's callbacks hold the `Library` and a `QPointer<Player>`, not the `Sources`: the
+  `Player` closes the open track, and sends its feedback, while the application shuts down,
+  after the `Sources` may be gone.
+- `playLikes(false)` (after login) fills the queue without starting playback.
 
 ## `cover_cache.h`: `CoverCache`
 
@@ -516,10 +574,8 @@ no exception may cross the event loop, so they must not throw.
   downloaded part, and the `errorOccurred` texts: [src/audio](../audio/README.md).
 - `download-info` and the signed link, `Track` and `Track::coverUrl`, the `/play-audio` report,
   and wave sessions and feedback: [src/yandex](../yandex/README.md).
-- Choosing a source and taking the ticket (likes, playlists, albums, artists, search, waves); the
-  wave's `TLoadMoreCallback` and `TEventCallback` (which batch a track came from, the ids sent for
-  more, how a `TrackEvent` maps to a `WaveEvent`); the status line; the playlist and "Now playing"
-  windows: [src/ui](../ui/README.md).
+- The Yandex menu that calls `Sources`, the status line, the playlist and "Now playing" windows:
+  [src/ui](../ui/README.md).
 - Media keys, MPRIS and SMTC state, and the cover `artUrl` built from `localFile()`:
   [src/integrations](../integrations/README.md).
 - Creating the `Player` and the cache and choosing the cache directory, loading the likes without

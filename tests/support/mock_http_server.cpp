@@ -3,6 +3,8 @@
 #include "support/spec_fixtures.h"
 
 #include <QHostAddress>
+#include <QLatin1String>
+#include <QNetworkRequest>
 #include <QPointer>
 #include <QTcpSocket>
 #include <QTimer>
@@ -72,6 +74,37 @@ void MockHttpServer::fixture(
 ) {
     const MockResponse response{FixtureStatus(name), Fixture(name), delayMs};
     on(method, path, [response](const MockRequest&) { return response; });
+}
+
+void MockHttpServer::audioTracks(const QStringList& trackIds, const QByteArray& mp3) {
+    for (const QString& id : trackIds) {
+        result(
+            "GET", QStringLiteral("/tracks/%1/download-info").arg(id),
+            "[{\"codec\":\"mp3\",\"bitrateInKbps\":320,\"downloadInfoUrl\":\"" + baseUrl().toUtf8()
+                + "/dlinfo" + id.toUtf8() + "\"}]"
+        );
+        json(
+            "GET", QStringLiteral("/dlinfo%1").arg(id),
+            "{\"host\":\"" + QUrl(baseUrl()).authority().toUtf8() + "\",\"path\":\"/t" + id.toUtf8()
+                + "\",\"ts\":\"1\",\"s\":\"s\"}"
+        );
+    }
+    onPrefix("GET", "/get-mp3/", [mp3](const MockRequest&) { return MockResponse{200, mp3}; });
+    fixture("POST", "/play-audio", "play-audio/ok");
+}
+
+QNetworkReply* LocalNetworkAccessManager::createRequest(
+    Operation op,
+    const QNetworkRequest& request,
+    QIODevice* outgoingData
+) {
+    QNetworkRequest localRequest(request);
+    QUrl url = localRequest.url();
+    if (url.scheme() == QLatin1String("https") && url.host() == QLatin1String("127.0.0.1")) {
+        url.setScheme(QStringLiteral("http"));
+        localRequest.setUrl(url);
+    }
+    return QNetworkAccessManager::createRequest(op, localRequest, outgoingData);
 }
 
 const MockRequest* MockHttpServer::last(const QString& path) const {
