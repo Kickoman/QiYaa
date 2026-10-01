@@ -334,7 +334,9 @@ private Q_SLOTS:
     void startedWaitsInTheStoredOutboxOfflineAndGoesWithResume() {  // HOST-05, HOST-25, HOST-26
         Stack stack(&library);
         QVERIFY(stack.created());
-        stack.state(1, {Item("i1", "11"), Item("i2", "22")});
+        // i3 keeps the player from waiting for the jam wave after i2: with no sound card a waiting
+        // player reports idle.
+        stack.state(1, {Item("i1", "11"), Item("i2", "22"), Item("i3", "33")});
         QTRY_VERIFY(OfType<Jam::Started>(stack.sent()) == std::vector{Jam::Started{"i1"}});
 
         stack.server.last().close();
@@ -353,10 +355,12 @@ private Q_SLOTS:
         QTRY_VERIFY(stack.host.isConnected());
         QCOMPARE(stack.store.load()->outbox, QStringList());
         QVERIFY(stack.waitSent(2));
-        const auto* playing = std::get_if<Jam::Playing>(&stack.sent().back());
-        QVERIFY(playing);
-        QCOMPARE(playing->source, Jam::Source::Item);
-        QCOMPARE(playing->itemId, QStringLiteral("i2"));
+        const Jam::ClientMessage last = stack.sent().back();
+        const auto* playing = std::get_if<Jam::Playing>(&last);
+        QVERIFY2(
+            playing && playing->source == Jam::Source::Item && playing->itemId == "i2",
+            Jam::Encode(last).constData()
+        );
         QVERIFY(stack.host.pin(QStringLiteral("i2")));
     }
 
