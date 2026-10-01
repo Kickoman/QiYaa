@@ -298,13 +298,27 @@ void Player::next() {
     stop();
 }
 
+int PreviousTarget(double positionSeconds, int cursor, int size, bool repeat) {
+    if (positionSeconds > kPreviousRestartsAfterSeconds) {
+        return -1;
+    }
+    return cursor > 0 ? cursor - 1 : (repeat ? size - 1 : 0);
+}
+
 void Player::previous() {
     if (queuedTracks.isEmpty()) {
         return;
     }
-    playIndex(
-        playingIndex > 0 ? playingIndex - 1 : (repeatEnabled ? int(queuedTracks.size()) - 1 : 0)
+    const bool active = audioEngine->state() != Audio::AudioEngine::State::Stopped;
+    const int target = PreviousTarget(
+        active ? audioEngine->positionSeconds() : 0.0, playingIndex, int(queuedTracks.size()),
+        repeatEnabled
     );
+    if (target >= 0) {
+        playIndex(target);
+    } else if (!seekTo(0)) {  // the restart is a seek: no new start, no events
+        playIndex(playingIndex);
+    }
 }
 
 bool Player::seekFraction(double fraction) {

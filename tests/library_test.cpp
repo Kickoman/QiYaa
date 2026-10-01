@@ -682,6 +682,26 @@ private Q_SLOTS:
         QCOMPARE(player.playlist().last().title, QStringLiteral("more"));
     }
 
+    void previousFollowsTheThreeSecondRule_data() {  // spec TR-01, TR-02
+        QTest::addColumn<double>("position");
+        QTest::addColumn<int>("cursor");
+        QTest::addColumn<bool>("repeat");
+        QTest::addColumn<int>("target");
+        QTest::newRow("early: previous track") << 1.0 << 2 << false << 1;
+        QTest::newRow("at 3 s: still previous") << 3.0 << 2 << false << 1;
+        QTest::newRow("late: restart") << 3.5 << 2 << false << -1;
+        QTest::newRow("late on the first track: restart") << 10.0 << 0 << true << -1;
+        QTest::newRow("first track, repeat: last") << 0.5 << 0 << true << 4;
+        QTest::newRow("first track, no repeat: first") << 0.5 << 0 << false << 0;
+    }
+    void previousFollowsTheThreeSecondRule() {
+        QFETCH(double, position);
+        QFETCH(int, cursor);
+        QFETCH(bool, repeat);
+        QFETCH(int, target);
+        QCOMPARE(Core::PreviousTarget(position, cursor, 5, repeat), target);
+    }
+
     void shuffleDoesNotApplyInAWave() {  // spec WAVE-10, WAVE-11
         Audio::AudioEngine engine;  // not initialised: nothing actually plays
         Core::Player player(&library, &engine);

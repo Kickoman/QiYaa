@@ -17,6 +17,13 @@ class QNetworkReply;
 
 namespace Core {
 
+// Previous goes back a track only near a track's start; later it restarts the track.
+inline constexpr double kPreviousRestartsAfterSeconds = 3.0;
+
+// What Previous does at `positionSeconds` into track `cursor` of `size`: the index to play, or -1
+// to restart the current track from 0 (spec TR-01, TR-02).
+int PreviousTarget(double positionSeconds, int cursor, int size, bool repeat);
+
 class Player : public QObject {
     Q_OBJECT
 public:

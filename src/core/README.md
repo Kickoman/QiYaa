@@ -196,8 +196,12 @@ above.
   endless: `stop()`, mark waiting, run the load-more check, then emit
   `statusMessage("Загружаю ещё треки...")`. Else (the end of a finite queue with repeat off):
   `stop()`, and the cursor stays on the last track.
-- **`previous()`**: `playIndex(cursor - 1)`. At index 0 it jumps to the last track if repeat is on,
-  and restarts track 0 otherwise. It ignores shuffle; there is no history.
+- **`previous()`** (spec TR-01, TR-02; the choice is `PreviousTarget()`): more than
+  `kPreviousRestartsAfterSeconds` (3 s) into a playing or paused track, it restarts that track
+  with `seekTo(0)`. That is a seek, not a new start: no events and no play report; if the engine
+  refuses the seek, `playIndex(cursor)`. Earlier, or while stopped: `playIndex(cursor - 1)`; at
+  index 0 the last track if repeat is on, track 0 otherwise. It ignores shuffle; there is no
+  history.
 - **`play()`**, by engine state: Paused resumes. Playing calls `playIndex(cursor)`, which restarts
   the track as Winamp does, with `Skipped` and then a new `Started`. Buffering does nothing.
   Stopped calls `playIndex(cursor)`, or `playIndex(0)` when the cursor is -1.
