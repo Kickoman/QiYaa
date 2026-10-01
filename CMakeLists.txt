@@ -1,7 +1,7 @@
 cmake_minimum_required(VERSION 3.21)
 
 project(QiYaa
-    VERSION 0.2.0
+    VERSION 0.3.0
     DESCRIPTION "Winamp-style Yandex Music player (C++/Qt)"
     LANGUAGES C CXX)
 
