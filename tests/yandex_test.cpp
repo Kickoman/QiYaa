@@ -101,7 +101,7 @@ private Q_SLOTS:
         QTest::addColumn<QString>("name");
         for (const char* name :
              {"two-tracks", "with-unavailable", "version-and-artists", "cover-from-album",
-              "cover-order"}) {
+              "cover-order", "all-unavailable"}) {
             QTest::newRow(name) << QStringLiteral("tracks/%1").arg(name);
         }
     }

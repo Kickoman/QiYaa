@@ -20,6 +20,13 @@ namespace {
 
 constexpr qsizetype kWaveHistory = 5;
 
+// The tracks the Player would queue: the empty check of a source runs on these (SRC-08).
+bool HasAvailable(const QList<Track>& tracks) {
+    return std::any_of(tracks.cbegin(), tracks.cend(), [](const Track& track) {
+        return track.available;
+    });
+}
+
 void ShowStatus(Player* player, const QString& text) {
     Q_EMIT player->statusMessage(text);
 }
@@ -35,7 +42,7 @@ auto QueueLoader(Player* player, const QString& title, quint64 ticket) {
         if (!error.isEmpty()) {
             return ShowStatus(guardedPlayer, QStringLiteral("Ошибка: ") + error);
         }
-        if (tracks.isEmpty()) {
+        if (!HasAvailable(tracks)) {  // SRC-07, SRC-08: the queue stays
             return ShowStatus(guardedPlayer, title + QStringLiteral(": пусто"));
         }
         guardedPlayer->setQueue(tracks, title, true);
@@ -115,6 +122,9 @@ void Sources::playLikes(bool autoplay) {
         if (!error.isEmpty()) {
             return ShowStatus(guardedPlayer, QStringLiteral("Ошибка: ") + error);
         }
+        if (!HasAvailable(tracks)) {  // SRC-07, SRC-08: the queue stays
+            return ShowStatus(guardedPlayer, QStringLiteral("Мне нравится: пусто"));
+        }
         guardedPlayer->setQueue(tracks, QStringLiteral("Мне нравится"), autoplay);
         ShowStatus(
             guardedPlayer,
@@ -165,6 +175,9 @@ void Sources::playWave(const QStringList& seeds, const QString& title) {
             }
             if (!error.isEmpty()) {
                 return ShowStatus(guardedPlayer, QStringLiteral("Ошибка волны: ") + error);
+            }
+            if (!HasAvailable(batch.tracks)) {  // WAVE-03: no queue, no feedback
+                return ShowStatus(guardedPlayer, title + QStringLiteral(": пусто"));
             }
             auto state = std::make_shared<WaveState>();
             state->session = batch.sessionId;
@@ -217,7 +230,7 @@ void Sources::search(const QString& text) {
                     result.bestId, QueueLoader(guardedPlayer, result.bestName, ticket)
                 );
             }
-            if (result.tracks.isEmpty()) {
+            if (!HasAvailable(result.tracks)) {  // SRC-12
                 return ShowStatus(guardedPlayer, QStringLiteral("Ничего не найдено"));
             }
             guardedPlayer->setQueue(result.tracks, title, true);

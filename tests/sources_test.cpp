@@ -196,6 +196,56 @@ private Q_SLOTS:
         QCOMPARE(stack.player.playlist().first().title, ExpectedTitle("tracks/two-tracks"));
     }
 
+    void emptySourceKeepsTheQueue_data() {  // SRC-07, SRC-08
+        QTest::addColumn<QString>("likes");
+        QTest::addColumn<QString>("tracks");
+        QTest::newRow("no likes") << QStringLiteral("users-likes-tracks/empty")
+                                  << QStringLiteral("tracks/two-tracks");
+        QTest::newRow("all unavailable") << QStringLiteral("users-likes-tracks/string-ids")
+                                         << QStringLiteral("tracks/all-unavailable");
+    }
+    void emptySourceKeepsTheQueue() {
+        QFETCH(QString, likes);
+        QFETCH(QString, tracks);
+        Stack stack(&library);
+        stack.player.setQueue({KeptTrack()}, "Kept", false);
+        server.fixture("GET", "/users/42/likes/tracks", likes);
+        server.fixture("POST", "/tracks/", tracks);
+        stack.sources.playLikes(true);
+        QVERIFY(
+            QTest::qWaitFor([&] { return stack.saw(QStringLiteral("Мне нравится: пусто")); }, 3000)
+        );
+        QCOMPARE(stack.player.queueTitle(), QStringLiteral("Kept"));
+
+        server.fixture("GET", "/artists/9/track-ids-by-rating", "artists-track-ids-by-rating/ok");
+        stack.sources.playArtist(QStringLiteral("9"), QStringLiteral("Кино"));
+        QVERIFY(QTest::qWaitFor(
+            [&] {
+                return stack.saw(QStringLiteral("Кино: пусто"))
+                    || stack.player.queueTitle() == QStringLiteral("Кино");
+            },
+            3000
+        ));
+        QCOMPARE(
+            stack.player.queueTitle(),
+            tracks == QStringLiteral("tracks/all-unavailable") ? QStringLiteral("Kept")
+                                                               : QStringLiteral("Кино")
+        );
+    }
+
+    void waveWithoutPlayableTracksKeepsTheQueue() {  // WAVE-03
+        Stack stack(&library);
+        stack.player.setQueue({KeptTrack()}, "Kept", false);
+        server.fixture("POST", "/rotor/session/new", "rotor-session-new/all-unavailable");
+        const auto before = server.requests().size();
+        stack.sources.playMyWave();
+        QVERIFY(QTest::qWaitFor([&] { return stack.saw(QStringLiteral("Моя волна: пусто")); }, 3000)
+        );
+        QTest::qWait(100);
+        QCOMPARE(stack.player.queueTitle(), QStringLiteral("Kept"));
+        QVERIFY(feedbackEvents(before).isEmpty());  // no radioStarted for a wave that never starts
+    }
+
     void searchQueuesTheBestResult_data() {  // SRC-09 to SRC-12
         QTest::addColumn<QString>("name");
         QTest::addColumn<QString>("title");

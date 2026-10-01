@@ -446,6 +446,9 @@ The scenarios are [spec/player/sources.md](../../spec/player/sources.md),
   `Поиск: <text>...`, `Ошибка: …`, `Ошибка волны: …`, `Ошибка поиска: …`, `<title>: пусто`,
   `Ничего не найдено`, `Мне нравится: N треков`, `Добавлено в «Мне нравится»`,
   `Убрано из «Мне нравится»`, `Дизлайк поставлен`.
+- **An empty source keeps the queue** (SRC-07, SRC-08, WAVE-03): when a reply has no available
+  track (none at all, or all `available: false`), the status is `<title>: пусто` (search:
+  `Ничего не найдено`) and nothing else happens: no `setQueue`, and for a wave no `RadioStarted`.
 - **Search** (SRC-09 to SRC-12): a best artist queues its top 100 under its name, a best album its
   tracks under its title, anything else the found tracks as `Поиск: <text>`.
 - **A wave** (`playWave`): `Library::startWave(seeds)`. On success the wave state (session,
