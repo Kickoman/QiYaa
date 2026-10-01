@@ -14,7 +14,7 @@ option(QIYAA_BUILD_TESTS "Build unit tests" ON)
 # For packaging scripts (CI names the installers after it).
 file(WRITE ${CMAKE_BINARY_DIR}/version.txt "${PROJECT_VERSION}")
 
-find_package(Qt6 6.4 REQUIRED COMPONENTS Core Gui Widgets Network)
+find_package(Qt6 6.4 REQUIRED COMPONENTS Core Gui Widgets Network LinguistTools)
 qt_standard_project_setup()
 
 add_library(qiyaa_miniz STATIC
@@ -137,6 +137,7 @@ endif()
 qiyaa_add_module(ui
     src/ui/equalizer_window.cpp src/ui/equalizer_window.h
     src/ui/gen_window.cpp       src/ui/gen_window.h
+    src/ui/input_dialogs.cpp    src/ui/input_dialogs.h
     src/ui/library_menu.cpp     src/ui/library_menu.h
     src/ui/login_dialog.cpp     src/ui/login_dialog.h
     src/ui/main_window.cpp      src/ui/main_window.h
@@ -244,7 +245,8 @@ endif()
 qiyaa_add_module(app
     src/app/application.cpp     src/app/application.h
     src/app/offline_sources.cpp src/app/offline_sources.h
-    src/app/paths.cpp           src/app/paths.h)
+    src/app/paths.cpp           src/app/paths.h
+    src/app/translations.cpp    src/app/translations.h)
 target_link_libraries(qiyaa_app
     PUBLIC qiyaa_audio qiyaa_core qiyaa_skins qiyaa_yandex
     PRIVATE qiyaa_integrations qiyaa_ui qiyaa_vis)
@@ -252,6 +254,11 @@ if(QIYAA_HAVE_JAM)
     target_link_libraries(qiyaa_app PRIVATE qiyaa_jam)
     target_compile_definitions(qiyaa_app PRIVATE QIYAA_JAM_URL="${QIYAA_JAM_URL}")
 endif()
+# The interface in Belarusian, Russian and English (the source language; its file holds the
+# plural forms). translations/README.md says how to update the .ts files.
+qt_add_translations(qiyaa_app
+    TS_FILES translations/qiyaa_be.ts translations/qiyaa_en.ts translations/qiyaa_ru.ts
+    RESOURCE_PREFIX /i18n)
 qt_add_resources(qiyaa_app "icons"
     PREFIX "/icons"
     BASE resources/icons

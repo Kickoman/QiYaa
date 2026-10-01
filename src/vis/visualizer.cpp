@@ -3,6 +3,7 @@
 #include "skins/skin.h"
 
 #include <QColor>
+#include <QCoreApplication>
 #include <QPainter>
 #include <QRect>
 #include <QString>
@@ -28,7 +29,9 @@ class Spectrum : public Visualizer {
 public:
     static constexpr int kBars = kSpectrumBars;
 
-    QString name() const override { return QStringLiteral("Спектр"); }
+    QString name() const override {
+        return QCoreApplication::translate("Vis::Visualizer", "Spectrum");
+    }
 
     void reset() override {
         bars.fill(0);
@@ -78,7 +81,9 @@ private:
 
 class Oscilloscope : public Visualizer {
 public:
-    QString name() const override { return QStringLiteral("Осциллограф"); }
+    QString name() const override {
+        return QCoreApplication::translate("Vis::Visualizer", "Oscilloscope");
+    }
     void reset() override { rows.fill(-1); }
 
     void update(const VisFrame& frame) override {

@@ -67,7 +67,7 @@ PlaylistWindow::PlaylistWindow(Core::Player* player, const Skins::Skin* skin, QW
           parent
       )
     , corePlayer(player) {
-    setWindowTitle(QStringLiteral("QiYaa Playlist"));
+    retranslate();
     setFocusPolicy(Qt::StrongFocus);
     connect(corePlayer, &Core::Player::queueReplaced, this, [this] {
         selectedRows.clear();
@@ -321,7 +321,7 @@ void PlaylistWindow::drawRows(QPainter& painter) const {
         painter.drawText(
             listArea.adjusted(4, kListPaddingTop, -4, 0),
             Qt::AlignLeft | Qt::AlignTop | Qt::TextWordWrap,
-            QStringLiteral("Плейлист пуст.\nПравый клик или кнопка ADD — выбрать, что слушать.")
+            tr("The playlist is empty.\nRight click or ADD: pick what to listen to.")
         );
     }
 }
@@ -592,24 +592,22 @@ void PlaylistWindow::skinMouseRelease(QPoint pos, Qt::MouseButton button) {
             case Button::Remove: {
                 auto* menu = new QMenu(this);
                 menu->addAction(
-                        QStringLiteral("Удалить выбранные"), this, [this] { removeSelected(); }
+                        tr("Remove the selected"), this, [this] { removeSelected(); }
                 )->setEnabled(!selectedRows.isEmpty());
-                menu->addAction(QStringLiteral("Очистить плейлист"), this, [this] {
-                    clearQueue();
-                });
+                menu->addAction(tr("Clear the playlist"), this, [this] { clearQueue(); });
                 popupAt(menu, {43, skinSize().height() - 30});
                 break;
             }
             case Button::Select: {
                 auto* menu = new QMenu(this);
-                menu->addAction(QStringLiteral("Выбрать все"), this, [this] {
+                menu->addAction(tr("Select all"), this, [this] {
                     selectedRows.clear();
                     for (int i = 0; i < corePlayer->playlist().size(); ++i) {
                         selectedRows.insert(i);
                     }
                     update();
                 });
-                menu->addAction(QStringLiteral("Снять выбор"), this, [this] {
+                menu->addAction(tr("Select none"), this, [this] {
                     selectedRows.clear();
                     update();
                 });
@@ -713,6 +711,10 @@ void PlaylistWindow::contextMenuEvent(QContextMenuEvent* event) {
 void PlaylistWindow::closeEvent(QCloseEvent* event) {
     event->ignore();
     Q_EMIT closeRequested();
+}
+
+void PlaylistWindow::retranslate() {
+    setWindowTitle(tr("QiYaa: playlist"));
 }
 
 }  // namespace Ui

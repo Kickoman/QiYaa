@@ -326,7 +326,7 @@ private Q_SLOTS:
         QCOMPARE(Ids(stack.player), QStringList{QStringLiteral("11")});
         QCOMPARE(
             stack.status.last().at(0).toString(),
-            QStringLiteral("Идёт джем: добавляйте треки в джем")
+            QStringLiteral("A jam is on: add tracks to the jam")
         );
     }
 

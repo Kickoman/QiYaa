@@ -1,3 +1,4 @@
+#include "app/translations.h"
 #include "audio/audio_engine.h"
 #include "core/jam_mode.h"
 #include "core/player.h"
@@ -13,6 +14,7 @@
 
 #include <QAction>
 #include <QClipboard>
+#include <QCoreApplication>
 #include <QDir>
 #include <QFile>
 #include <QFontDatabase>
@@ -32,8 +34,9 @@
 #include <vector>
 
 // Ui::JamWindow against spec/jam/host.md (HOST-20, HOST-25, HOST-35): its controls, by their
-// labels, drive a HostSession on a stub server; its pictures on the built-in skins are compared
-// with tests/data/golden, drawn with tests/data/fonts/Tiny5 so that every system draws the same.
+// labels (the English source texts: no translation is installed), drive a HostSession on a stub
+// server; its pictures on the built-in skins, in the default language, are compared with
+// tests/data/golden, drawn with tests/data/fonts/Tiny5 so that every system draws the same.
 
 namespace {
 
@@ -143,7 +146,7 @@ private:
         // A jam on the server with the room of spec/jam/protocol/examples/state/host.
         bool created() {
             window.setHostName(QStringLiteral("Маша"));
-            if (!click(QStringLiteral("Начать джем"))
+            if (!click(QCoreApplication::translate("Ui::JamWindow", "Start the jam"))
                 || !QTest::qWaitFor([&] { return !server.received().isEmpty(); }, 5000)) {
                 return false;
             }
@@ -226,12 +229,12 @@ private Q_SLOTS:
 
     void theStartPageStartsAJamWithTheGivenName() {
         Stack stack(&library, &baseSkin, pixelFont);
-        QVERIFY(!stack.control(QStringLiteral("Начать джем"))->enabled);
+        QVERIFY(!stack.control(QStringLiteral("Start the jam"))->enabled);
         stack.window.setHostName(QStringLiteral("Маша"));
-        QVERIFY(stack.control(QStringLiteral("Начать джем"))->enabled);
-        QVERIFY(stack.click(QStringLiteral("Начать джем")));
+        QVERIFY(stack.control(QStringLiteral("Start the jam"))->enabled);
+        QVERIFY(stack.click(QStringLiteral("Start the jam")));
         QCOMPARE(stack.host.phase(), Jam::HostPhase::Creating);
-        QVERIFY(stack.control(QStringLiteral("Отмена")));
+        QVERIFY(stack.control(QStringLiteral("Cancel")));
         QTRY_VERIFY(!stack.server.received().isEmpty());
         stack.server.welcome();
         QTRY_COMPARE(OfType<Jam::Create>(stack.sent()).size(), size_t(1));
@@ -244,14 +247,14 @@ private Q_SLOTS:
         play->setShortcut(QKeySequence(Qt::Key_X));
         stack.window.addAction(play);
         QSignalSpy played(play, &QAction::triggered);
-        QVERIFY(stack.click(QStringLiteral("Как вас покажут гостям")));
+        QVERIFY(stack.click(QStringLiteral("How the guests will see you")));
         stack.window.activateWindow();
         QVERIFY(QTest::qWaitForWindowActive(&stack.window));
         QTest::keyClicks(&stack.window, QStringLiteral("Max"));
         QTest::keyClick(&stack.window, Qt::Key_Backspace);
         QCOMPARE(played.size(), 0);
         stack.window.setHostName(QStringLiteral("Маша"));  // typed by the user: not replaced
-        QVERIFY(stack.click(QStringLiteral("Начать джем")));
+        QVERIFY(stack.click(QStringLiteral("Start the jam")));
         QTRY_VERIFY(!stack.server.received().isEmpty());
         stack.server.welcome();
         QTRY_COMPARE(OfType<Jam::Create>(stack.sent()).size(), size_t(1));
@@ -261,11 +264,11 @@ private Q_SLOTS:
     void theSettingsTheGuestsAndTheLinkGoToTheServer() {  // HOST-35
         Stack stack(&library, &baseSkin, pixelFont);
         QVERIFY(stack.created());
-        QVERIFY(stack.click(QStringLiteral("По очереди")));
-        QVERIFY(stack.click(QStringLiteral("Нет")));
-        QVERIFY(stack.click(QStringLiteral("Пускать")));
-        QVERIFY(stack.click(QStringLiteral("Новая ссылка")));
-        const std::optional<Ui::JamWindow::Control> kick = stack.control(QStringLiteral("Убрать"));
+        QVERIFY(stack.click(QStringLiteral("Taking turns")));
+        QVERIFY(stack.click(QStringLiteral("No")));
+        QVERIFY(stack.click(QStringLiteral("Let in")));
+        QVERIFY(stack.click(QStringLiteral("New link")));
+        const std::optional<Ui::JamWindow::Control> kick = stack.control(QStringLiteral("Remove"));
         QVERIFY(kick);
         QTest::mouseClick(&stack.window, Qt::LeftButton, {}, kick->rect.center());
         QTRY_COMPARE(OfType<Jam::ChangeSettings>(stack.sent()).size(), size_t(3));
@@ -281,21 +284,21 @@ private Q_SLOTS:
     void theLinkIsCopied() {  // HOST-35
         Stack stack(&library, &baseSkin, pixelFont);
         QVERIFY(stack.created());
-        QVERIFY(stack.click(QStringLiteral("Копировать")));
+        QVERIFY(stack.click(QStringLiteral("Copy")));
         QCOMPARE(QGuiApplication::clipboard()->text(), stack.host.joinUrl());
-        QCOMPARE(stack.status.last().at(0).toString(), QStringLiteral("Ссылка скопирована"));
+        QCOMPARE(stack.status.last().at(0).toString(), QStringLiteral("The link is copied"));
     }
 
     void theEndAsksTwice() {  // HOST-35
         Stack stack(&library, &baseSkin, pixelFont);
         QVERIFY(stack.created());
-        QVERIFY(stack.click(QStringLiteral("Закончить джем")));
-        QVERIFY(stack.control(QStringLiteral("Нажмите ещё раз, чтобы закончить")));
+        QVERIFY(stack.click(QStringLiteral("End the jam")));
+        QVERIFY(stack.control(QStringLiteral("Press again to end")));
         QCOMPARE(stack.host.phase(), Jam::HostPhase::Active);
-        QVERIFY(stack.click(QStringLiteral("Нажмите ещё раз, чтобы закончить")));
+        QVERIFY(stack.click(QStringLiteral("Press again to end")));
         QTRY_COMPARE(OfType<Jam::End>(stack.sent()).size(), size_t(1));
         QCOMPARE(stack.host.phase(), Jam::HostPhase::None);
-        QVERIFY(stack.control(QStringLiteral("Начать джем")));
+        QVERIFY(stack.control(QStringLiteral("Start the jam")));
     }
 
     void withoutAConnectionOnlyTheLinkAndTheEndWork() {  // HOST-25
@@ -304,36 +307,36 @@ private Q_SLOTS:
         stack.server.last().close();
         QTRY_VERIFY(!stack.host.isConnected());
         for (const QString& label :
-             {QStringLiteral("Новая ссылка"), QStringLiteral("По очереди"), QStringLiteral("Нет"),
-              QStringLiteral("Пускать"), QStringLiteral("Убрать")}) {
+             {QStringLiteral("New link"), QStringLiteral("Taking turns"), QStringLiteral("No"),
+              QStringLiteral("Let in"), QStringLiteral("Remove")}) {
             QVERIFY2(!stack.control(label)->enabled, qUtf8Printable(label));
         }
-        QVERIFY(stack.control(QStringLiteral("Копировать"))->enabled);
-        QVERIFY(stack.control(QStringLiteral("Закончить джем"))->enabled);
+        QVERIFY(stack.control(QStringLiteral("Copy"))->enabled);
+        QVERIFY(stack.control(QStringLiteral("End the jam"))->enabled);
         stack.window.showPage(Ui::JamWindow::Page::Search);
-        QVERIFY(stack.control(QStringLiteral("Джем"))->enabled);
+        QVERIFY(stack.control(QStringLiteral("Jam"))->enabled);
     }
 
     void theSearchAddsAndPlaysNext() {  // HOST-20
         Stack stack(&library, &baseSkin, pixelFont);
         QVERIFY(stack.created());
         catalog.result("GET", "/search", searchResults());
-        QVERIFY(stack.click(QStringLiteral("Добавить треки")));
+        QVERIFY(stack.click(QStringLiteral("Add tracks")));
         QCOMPARE(stack.window.page(), Ui::JamWindow::Page::Search);
         for (const QChar letter : QStringLiteral("кино")) {
             QTest::sendKeyEvent(QTest::Click, &stack.window, Qt::Key_unknown, letter, {});
         }
         QTest::keyClick(&stack.window, Qt::Key_Return);
-        QTRY_VERIFY(stack.control(QStringLiteral("В джем")));
+        QTRY_VERIFY(stack.control(QStringLiteral("To the jam")));
         QCOMPARE(
             catalog.last(QStringLiteral("/search"))->query.queryItemValue(QStringLiteral("text")),
             QStringLiteral("кино")
         );
-        QVERIFY(stack.click(QStringLiteral("В джем")));
+        QVERIFY(stack.click(QStringLiteral("To the jam")));
         QTRY_COMPARE(OfType<Jam::Add>(stack.sent()).size(), size_t(1));
         QCOMPARE(OfType<Jam::Add>(stack.sent()).front().track->id, QStringLiteral("11"));
-        QCOMPARE(stack.status.last().at(0).toString(), QStringLiteral("Отправлено в джем"));
-        QVERIFY(stack.click(QStringLiteral("Следом")));
+        QCOMPARE(stack.status.last().at(0).toString(), QStringLiteral("Sent to the jam"));
+        QVERIFY(stack.click(QStringLiteral("Next")));
         QTRY_COMPARE(OfType<Jam::Add>(stack.sent()).size(), size_t(2));
     }
 
@@ -351,6 +354,8 @@ private Q_SLOTS:
 
     void looksLikeTheSkin() {  // HOST-35
         QFETCH(QString, skin);
+        App::Translations translations;  // the pictures are in the default language
+        QVERIFY(translations.apply(App::kDefaultLanguage));
         const Skins::Skin loaded = Skins::Skin::LoadFile(skin, &baseSkin);
         Stack stack(&library, &loaded, pixelFont);
         QVERIFY(stack.created());
@@ -358,22 +363,28 @@ private Q_SLOTS:
     }
 
     void theStartPageLooksAsRecorded() {
+        App::Translations translations;  // the pictures are in the default language
+        QVERIFY(translations.apply(App::kDefaultLanguage));
         Stack stack(&library, &baseSkin, pixelFont);
         stack.window.setHostName(QStringLiteral("Маша"));
         compareWithGolden(&stack.window, QStringLiteral("jam-start"));
     }
 
     void theSearchPageLooksAsRecorded() {  // HOST-20
+        App::Translations translations;  // the pictures are in the default language
+        QVERIFY(translations.apply(App::kDefaultLanguage));
         Stack stack(&library, &baseSkin, pixelFont);
         QVERIFY(stack.created());
         catalog.result("GET", "/search", searchResults());
         stack.window.showPage(Ui::JamWindow::Page::Search);
         stack.window.search(QStringLiteral("кино"));
-        QTRY_VERIFY(stack.control(QStringLiteral("В джем")));
+        QTRY_VERIFY(stack.control(QCoreApplication::translate("Ui::JamWindow", "To the jam")));
         compareWithGolden(&stack.window, QStringLiteral("jam-search"));
     }
 
     void theOfflinePageLooksAsRecorded() {  // HOST-25
+        App::Translations translations;  // the pictures are in the default language
+        QVERIFY(translations.apply(App::kDefaultLanguage));
         Stack stack(&library, &baseSkin, pixelFont);
         QVERIFY(stack.created());
         // The connection drops; the next one waits for a welcome that does not come.

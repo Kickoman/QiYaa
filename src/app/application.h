@@ -1,5 +1,6 @@
 #pragma once
 
+#include "app/translations.h"
 #include "audio/audio_engine.h"
 #include "core/jam_mode.h"
 #include "core/player.h"
@@ -16,6 +17,7 @@
 #include <QTemporaryDir>
 
 #include <memory>
+#include <optional>
 
 class QMenu;
 class QMessageBox;
@@ -56,6 +58,8 @@ public:
         bool mediaIntegration = true;
         // Tests: a manager that reaches their mock server. Null: the app's own.
         QNetworkAccessManager* network = nullptr;
+        // The interface language for this run, not saved. Unset: the `language` setting.
+        std::optional<Language> language;
     };
 
     explicit Application(const Options& options, QObject* parent = nullptr);
@@ -88,6 +92,9 @@ public:
     void setMilkdropVisible(bool on);
     void setJamWindowVisible(bool on);
 
+    Language language() const { return translations.language(); }
+    void setLanguage(Language language);
+
     void login();
     void logout();
     void applyToken(const QString& token, bool save);
@@ -114,6 +121,7 @@ private:
     Options startOptions;
     std::unique_ptr<QTemporaryDir> temporaryDirectory;
     QSettings settings;
+    Translations translations;
     Skins::Skin baseSkin;
     std::unique_ptr<Skins::Skin> currentSkin;
     bool transientScale = false;

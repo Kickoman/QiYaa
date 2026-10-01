@@ -2,14 +2,14 @@
 
 #include "core/player.h"
 #include "core/sources.h"
+#include "ui/input_dialogs.h"
 #include "yandex/api_client.h"
 #include "yandex/library.h"
 
 #include <QAction>
+#include <QCoreApplication>
 #include <QDesktopServices>
 #include <QHash>
-#include <QInputDialog>
-#include <QLineEdit>
 #include <QMap>
 #include <QMenu>
 #include <QPointer>
@@ -40,7 +40,8 @@ void LazySubmenu(
             return;
         }
         *loaded = true;
-        QAction* placeholder = submenu->addAction(QStringLiteral("Загрузка..."));
+        QAction* placeholder =
+            submenu->addAction(QCoreApplication::translate("Ui::LibraryMenu", "Loading…"));
         placeholder->setEnabled(false);
         QPointer<QMenu> guardedMenu(submenu);
         load([guardedMenu, placeholder, fill](const QList<T>& items, const QString& error) {
@@ -50,11 +51,16 @@ void LazySubmenu(
             guardedMenu->removeAction(placeholder);
             placeholder->deleteLater();
             if (!error.isEmpty()) {
-                guardedMenu->addAction(QStringLiteral("Ошибка: ") + error)->setEnabled(false);
+                guardedMenu
+                    ->addAction(
+                        QCoreApplication::translate("Ui::LibraryMenu", "Error: %1").arg(error)
+                    )
+                    ->setEnabled(false);
                 return;
             }
             if (items.isEmpty()) {
-                guardedMenu->addAction(QStringLiteral("(пусто)"))->setEnabled(false);
+                guardedMenu->addAction(QCoreApplication::translate("Ui::LibraryMenu", "(empty)"))
+                    ->setEnabled(false);
                 return;
             }
             fill(guardedMenu, items);
@@ -63,17 +69,19 @@ void LazySubmenu(
 }
 
 QString StationTypeTitle(const QString& type) {
-    static const QMap<QString, QString> names{
-        {QStringLiteral("genre"), QStringLiteral("Жанры")},
-        {QStringLiteral("mood"), QStringLiteral("Настроение")},
-        {QStringLiteral("activity"), QStringLiteral("Занятия")},
-        {QStringLiteral("epoch"), QStringLiteral("Эпохи")},
-        {QStringLiteral("local"), QStringLiteral("Местное")},
-        {QStringLiteral("author"), QStringLiteral("Авторы")},
-        {QStringLiteral("user"), QStringLiteral("Персональные")},
-        {QStringLiteral("personal"), QStringLiteral("Персональные")},
+    // Translated on each call: the language can change while the app runs.
+    static const QMap<QString, const char*> names{
+        {QStringLiteral("genre"), QT_TRANSLATE_NOOP("Ui::LibraryMenu", "Genres")},
+        {QStringLiteral("mood"), QT_TRANSLATE_NOOP("Ui::LibraryMenu", "Mood")},
+        {QStringLiteral("activity"), QT_TRANSLATE_NOOP("Ui::LibraryMenu", "Activities")},
+        {QStringLiteral("epoch"), QT_TRANSLATE_NOOP("Ui::LibraryMenu", "Eras")},
+        {QStringLiteral("local"), QT_TRANSLATE_NOOP("Ui::LibraryMenu", "Local")},
+        {QStringLiteral("author"), QT_TRANSLATE_NOOP("Ui::LibraryMenu", "Authors")},
+        {QStringLiteral("user"), QT_TRANSLATE_NOOP("Ui::LibraryMenu", "Personal")},
+        {QStringLiteral("personal"), QT_TRANSLATE_NOOP("Ui::LibraryMenu", "Personal")},
     };
-    return names.value(type, type);
+    const char* name = names.value(type, nullptr);
+    return name ? QCoreApplication::translate("Ui::LibraryMenu", name) : type;
 }
 
 }  // namespace
@@ -87,14 +95,21 @@ void AddLibraryActions(
 ) {
     Yandex::Library* library = player->library();
     if (!library->isLoggedIn()) {
-        menu->addAction(QStringLiteral("Войти в Яндекс Музыку..."), menu, loginRequested);
+        menu->addAction(
+            QCoreApplication::translate("Ui::LibraryMenu", "Log in to Yandex Music…"), menu,
+            loginRequested
+        );
         return;
     }
 
-    menu->addAction(QStringLiteral("Моя волна"), menu, [sources] { sources->playMyWave(); });
-    menu->addAction(QStringLiteral("Мне нравится"), menu, [sources] { sources->playLikes(true); });
+    menu->addAction(QCoreApplication::translate("Ui::LibraryMenu", "My Vibe"), menu, [sources] {
+        sources->playMyWave();
+    });
+    menu->addAction(QCoreApplication::translate("Ui::LibraryMenu", "Liked"), menu, [sources] {
+        sources->playLikes(true);
+    });
 
-    QMenu* wheel = menu->addMenu(QStringLiteral("Колесо волн"));
+    QMenu* wheel = menu->addMenu(QCoreApplication::translate("Ui::LibraryMenu", "Wheel of vibes"));
     LazySubmenu<Yandex::Wave>(
         wheel,
         [library, sources](auto callback) {
@@ -111,7 +126,7 @@ void AddLibraryActions(
         }
     );
 
-    QMenu* forYou = menu->addMenu(QStringLiteral("Для вас"));
+    QMenu* forYou = menu->addMenu(QCoreApplication::translate("Ui::LibraryMenu", "For you"));
     LazySubmenu<Yandex::PlaylistReference>(
         forYou, [library](auto callback) { library->personalPlaylists(callback); },
         [sources](QMenu* submenu, const QList<Yandex::PlaylistReference>& items) {
@@ -123,7 +138,7 @@ void AddLibraryActions(
         }
     );
 
-    QMenu* playlists = menu->addMenu(QStringLiteral("Плейлисты"));
+    QMenu* playlists = menu->addMenu(QCoreApplication::translate("Ui::LibraryMenu", "Playlists"));
     LazySubmenu<Yandex::PlaylistReference>(
         playlists, [library](auto callback) { library->userPlaylists(callback); },
         [sources](QMenu* submenu, const QList<Yandex::PlaylistReference>& items) {
@@ -132,18 +147,18 @@ void AddLibraryActions(
                     QStringLiteral("%1 (%2)").arg(playlist.title).arg(playlist.trackCount)
                 );
                 playlistMenu->addAction(
-                    QStringLiteral("Слушать"), playlistMenu,
+                    QCoreApplication::translate("Ui::LibraryMenu", "Listen"), playlistMenu,
                     [sources, playlist] { sources->playPlaylist(playlist); }
                 );
                 playlistMenu->addAction(
-                    QStringLiteral("Похожие треки"), playlistMenu,
+                    QCoreApplication::translate("Ui::LibraryMenu", "Similar tracks"), playlistMenu,
                     [sources, playlist] { sources->playRecommendations(playlist); }
                 );
             }
         }
     );
 
-    QMenu* artists = menu->addMenu(QStringLiteral("Исполнители"));
+    QMenu* artists = menu->addMenu(QCoreApplication::translate("Ui::LibraryMenu", "Artists"));
     LazySubmenu<Yandex::NamedReference>(
         artists, [library](auto callback) { library->likedArtists(callback); },
         [sources](QMenu* submenu, const QList<Yandex::NamedReference>& items) {
@@ -155,7 +170,7 @@ void AddLibraryActions(
         }
     );
 
-    QMenu* albums = menu->addMenu(QStringLiteral("Альбомы"));
+    QMenu* albums = menu->addMenu(QCoreApplication::translate("Ui::LibraryMenu", "Albums"));
     LazySubmenu<Yandex::NamedReference>(
         albums, [library](auto callback) { library->likedAlbums(callback); },
         [sources](QMenu* submenu, const QList<Yandex::NamedReference>& items) {
@@ -167,7 +182,7 @@ void AddLibraryActions(
         }
     );
 
-    QMenu* stations = menu->addMenu(QStringLiteral("Станции"));
+    QMenu* stations = menu->addMenu(QCoreApplication::translate("Ui::LibraryMenu", "Stations"));
     LazySubmenu<Yandex::Station>(
         stations, [library](auto callback) { library->stations(callback); },
         [sources](QMenu* submenu, const QList<Yandex::Station>& items) {
@@ -184,33 +199,40 @@ void AddLibraryActions(
         }
     );
 
-    menu->addAction(QStringLiteral("Поиск..."), menu, [sources, dialogParent] {
-        bool ok = false;
-        const QString text = QInputDialog::getText(
-            dialogParent, QStringLiteral("Поиск"), QStringLiteral("Исполнитель, альбом или трек:"),
-            QLineEdit::Normal, {}, &ok
-        );
-        if (ok && !text.trimmed().isEmpty()) {
-            sources->search(text.trimmed());
+    menu->addAction(
+        QCoreApplication::translate("Ui::LibraryMenu", "Search…"), menu,
+        [sources, dialogParent] {
+            const QString text =
+                AskText(
+                    dialogParent, QCoreApplication::translate("Ui::LibraryMenu", "Search"),
+                    QCoreApplication::translate("Ui::LibraryMenu", "Artist, album or track:")
+                )
+                    .value_or(QString())
+                    .trimmed();
+            if (!text.isEmpty()) {
+                sources->search(text);
+            }
         }
-    });
+    );
 
     menu->addSeparator();
     const Yandex::Track* currentTrack = player->currentTrack();
     const QString id = currentTrack ? currentTrack->id : QString();
     const bool liked = currentTrack && library->isLiked(id);
     QAction* like = menu->addAction(
-        liked ? QStringLiteral("Убрать из «Мне нравится»") : QStringLiteral("Нравится"), menu,
-        [sources, id, liked] { sources->setLiked(id, !liked); }
+        liked ? QCoreApplication::translate("Ui::LibraryMenu", "Remove from Liked")
+              : QCoreApplication::translate("Ui::LibraryMenu", "Like"),
+        menu, [sources, id, liked] { sources->setLiked(id, !liked); }
     );
-    QAction* dislike =
-        menu->addAction(QStringLiteral("Не нравится (пропустить)"), menu, [sources, id] {
-            sources->dislikeAndSkip(id);
-        });
+    QAction* dislike = menu->addAction(
+        QCoreApplication::translate("Ui::LibraryMenu", "Dislike (skip)"), menu,
+        [sources, id] { sources->dislikeAndSkip(id); }
+    );
     const QUrl webUrl = currentTrack ? currentTrack->webUrl() : QUrl();
-    QAction* open = menu->addAction(QStringLiteral("Открыть трек в браузере"), menu, [webUrl] {
-        QDesktopServices::openUrl(webUrl);
-    });
+    QAction* open = menu->addAction(
+        QCoreApplication::translate("Ui::LibraryMenu", "Open the track in the browser"), menu,
+        [webUrl] { QDesktopServices::openUrl(webUrl); }
+    );
     for (QAction* action : {like, dislike, open}) {
         action->setEnabled(currentTrack != nullptr);
     }

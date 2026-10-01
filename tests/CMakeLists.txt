@@ -51,6 +51,8 @@ target_compile_definitions(failures_test PRIVATE QIYAA_TEST_DATA="${CMAKE_CURREN
 qiyaa_add_test(dsp_test audio skins ui vis)
 qiyaa_add_test(windows_test app core ui)
 qiyaa_add_test(screenshots_test audio core skins ui yandex)
+qiyaa_add_test(translations_test app ui)
+target_compile_definitions(translations_test PRIVATE QIYAA_SOURCE_DIR="${PROJECT_SOURCE_DIR}")
 target_compile_definitions(screenshots_test PRIVATE QIYAA_TEST_DATA="${CMAKE_CURRENT_SOURCE_DIR}/data")
 # A realistic 2560x1440 virtual screen (the offscreen default is 800x600).
 # Not on Windows: Qt splits platform arguments on ':', which breaks "C:/...".
@@ -69,7 +71,7 @@ if(QIYAA_HAVE_JAM)
     qiyaa_add_test(jam_host_test audio core jam yandex)
     target_link_libraries(jam_host_test PRIVATE qiyaa_test_jam)
     target_compile_definitions(jam_host_test PRIVATE QIYAA_TEST_DATA="${CMAKE_CURRENT_SOURCE_DIR}/data")
-    qiyaa_add_test(jam_window_test audio core jam skins ui yandex)
+    qiyaa_add_test(jam_window_test app audio core jam skins ui yandex)
     target_link_libraries(jam_window_test PRIVATE qiyaa_test_jam)
     target_compile_definitions(jam_window_test PRIVATE QIYAA_TEST_DATA="${CMAKE_CURRENT_SOURCE_DIR}/data")
     # Against a real jam server: QIYAA_JAM_TEST_SERVER (its PUBLIC_URL), or the test skips.

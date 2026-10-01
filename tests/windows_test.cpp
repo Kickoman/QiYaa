@@ -104,6 +104,7 @@ private Q_SLOTS:
         options.audio = false;
         options.readOnlySettings = true;
         options.mediaIntegration = false;
+        options.language = App::Language::English;
         application = std::make_unique<App::Application>(options);
         application->start();
         main = application->mainWindow();
@@ -315,7 +316,7 @@ private Q_SLOTS:
         QVERIFY(QTest::qWaitFor(
             [&] {
                 for (QLabel* label : dialog.findChildren<QLabel*>()) {
-                    if (label->text().contains(QStringLiteral("не удался"))) {
+                    if (label->text().contains(QStringLiteral("failed"))) {
                         return true;
                     }
                 }

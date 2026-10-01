@@ -346,6 +346,9 @@ void SkinnedWindow::mouseDoubleClickEvent(QMouseEvent* event) {
 void SkinnedWindow::changeEvent(QEvent* event) {
     if (event->type() == QEvent::ActivationChange) {
         update();
+    } else if (event->type() == QEvent::LanguageChange) {
+        retranslate();
+        update();  // the texts are drawn, so a repaint takes the new language
     }
     QWidget::changeEvent(event);
 }

@@ -5,6 +5,7 @@
 #include "yandex/api_client.h"
 #include "yandex/library.h"
 
+#include <QCoreApplication>
 #include <QHash>
 #include <QList>
 #include <QPointer>
@@ -41,10 +42,14 @@ auto QueueLoader(Player* player, const QString& title, quint64 ticket) {
             return;
         }
         if (!error.isEmpty()) {
-            return ShowStatus(guardedPlayer, QStringLiteral("Ошибка: ") + error);
+            return ShowStatus(
+                guardedPlayer, QCoreApplication::translate("Core::Sources", "Error: %1").arg(error)
+            );
         }
         if (!HasAvailable(tracks)) {  // SRC-07, SRC-08: the queue stays
-            return ShowStatus(guardedPlayer, title + QStringLiteral(": пусто"));
+            return ShowStatus(
+                guardedPlayer, QCoreApplication::translate("Core::Sources", "%1: empty").arg(title)
+            );
         }
         guardedPlayer->setQueue(tracks, title, true);
     };
@@ -115,7 +120,7 @@ bool Sources::refusedForJam() {
     if (!jamMode || !jamMode->isActive()) {
         return false;
     }
-    showStatus(QStringLiteral("Идёт джем: добавляйте треки в джем"));
+    showStatus(tr("A jam is on: add tracks to the jam"));
     return true;
 }
 
@@ -123,7 +128,7 @@ void Sources::playLikes(bool autoplay) {
     if (refusedForJam()) {
         return;
     }
-    showStatus(QStringLiteral("Мне нравится: загрузка..."));
+    showStatus(tr("Liked: loading…"));
     QPointer<Player> guardedPlayer(corePlayer);
     const quint64 ticket = corePlayer->newSourceRequest();
     yandexLibrary->likedTracks([guardedPlayer, autoplay,
@@ -132,15 +137,14 @@ void Sources::playLikes(bool autoplay) {
             return;
         }
         if (!error.isEmpty()) {
-            return ShowStatus(guardedPlayer, QStringLiteral("Ошибка: ") + error);
+            return ShowStatus(guardedPlayer, tr("Error: %1").arg(error));
         }
         if (!HasAvailable(tracks)) {  // SRC-07, SRC-08: the queue stays
-            return ShowStatus(guardedPlayer, QStringLiteral("Мне нравится: пусто"));
+            return ShowStatus(guardedPlayer, tr("Liked: empty"));
         }
-        guardedPlayer->setQueue(tracks, QStringLiteral("Мне нравится"), autoplay);
+        guardedPlayer->setQueue(tracks, tr("Liked"), autoplay);
         ShowStatus(
-            guardedPlayer,
-            QStringLiteral("Мне нравится: %1 треков").arg(guardedPlayer->playlist().size())
+            guardedPlayer, tr("Liked: %n track(s)", nullptr, int(guardedPlayer->playlist().size()))
         );
     });
 }
@@ -161,7 +165,7 @@ void Sources::playRecommendations(const Yandex::PlaylistReference& playlist) {
     yandexLibrary->playlistRecommendations(
         playlist,
         QueueLoader(
-            corePlayer, playlist.title + QStringLiteral(": похожие"), corePlayer->newSourceRequest()
+            corePlayer, tr("%1: similar").arg(playlist.title), corePlayer->newSourceRequest()
         )
     );
 }
@@ -189,7 +193,7 @@ void Sources::playWave(const QStringList& seeds, const QString& title) {
         return;
     }
     Yandex::Library* library = yandexLibrary;
-    showStatus(title + QStringLiteral(": загрузка..."));
+    showStatus(tr("%1: loading…").arg(title));
     QPointer<Player> guardedPlayer(corePlayer);
     QPointer<Sources> self(this);
     const quint64 ticket = corePlayer->newSourceRequest();
@@ -201,10 +205,10 @@ void Sources::playWave(const QStringList& seeds, const QString& title) {
                 return;
             }
             if (!error.isEmpty()) {
-                return ShowStatus(guardedPlayer, QStringLiteral("Ошибка волны: ") + error);
+                return ShowStatus(guardedPlayer, tr("Vibe error: %1").arg(error));
             }
             if (!HasAvailable(batch.tracks)) {  // WAVE-03: no queue, no feedback
-                return ShowStatus(guardedPlayer, title + QStringLiteral(": пусто"));
+                return ShowStatus(guardedPlayer, tr("%1: empty").arg(title));
             }
             auto state = std::make_shared<WaveState>();
             state->session = batch.sessionId;
@@ -227,7 +231,7 @@ void Sources::playWave(const QStringList& seeds, const QString& title) {
 }
 
 void Sources::playMyWave() {
-    playWave({kMyWaveSeed}, QStringLiteral("Моя волна"));
+    playWave({kMyWaveSeed}, tr("My Vibe"));
 }
 
 void Sources::search(const QString& text) {
@@ -235,8 +239,8 @@ void Sources::search(const QString& text) {
         return;
     }
     Yandex::Library* library = yandexLibrary;
-    const QString title = QStringLiteral("Поиск: ") + text;
-    showStatus(title + QStringLiteral("..."));
+    const QString title = tr("Search: %1").arg(text);
+    showStatus(title + QStringLiteral("…"));
     QPointer<Player> guardedPlayer(corePlayer);
     const quint64 ticket = corePlayer->newSourceRequest();
     library->search(
@@ -247,7 +251,7 @@ void Sources::search(const QString& text) {
                 return;
             }
             if (!error.isEmpty()) {
-                return ShowStatus(guardedPlayer, QStringLiteral("Ошибка поиска: ") + error);
+                return ShowStatus(guardedPlayer, tr("Search error: %1").arg(error));
             }
             // The second request belongs to the same pick: a newer one drops it too (SRC-03).
             if (result.bestKind == Yandex::SearchResult::Kind::Artist && !result.bestId.isEmpty()) {
@@ -261,7 +265,7 @@ void Sources::search(const QString& text) {
                 );
             }
             if (!HasAvailable(result.tracks)) {  // SRC-12
-                return ShowStatus(guardedPlayer, QStringLiteral("Ничего не найдено"));
+                return ShowStatus(guardedPlayer, tr("Nothing found"));
             }
             guardedPlayer->setQueue(result.tracks, title, true);
         }
@@ -276,9 +280,9 @@ void Sources::setLiked(const QString& trackId, bool liked) {
         }
         ShowStatus(
             guardedPlayer,
-            !error.isEmpty() ? QStringLiteral("Ошибка: ") + error
-                : liked      ? QStringLiteral("Добавлено в «Мне нравится»")
-                             : QStringLiteral("Убрано из «Мне нравится»")
+            !error.isEmpty() ? tr("Error: %1").arg(error)
+                : liked      ? tr("Added to Liked")
+                             : tr("Removed from Liked")
         );
     });
 }
@@ -289,11 +293,7 @@ void Sources::dislikeAndSkip(const QString& trackId) {
         if (!guardedPlayer) {
             return;
         }
-        ShowStatus(
-            guardedPlayer,
-            error.isEmpty() ? QStringLiteral("Дизлайк поставлен")
-                            : QStringLiteral("Ошибка: ") + error
-        );
+        ShowStatus(guardedPlayer, error.isEmpty() ? tr("Disliked") : tr("Error: %1").arg(error));
     });
     corePlayer->next();
 }

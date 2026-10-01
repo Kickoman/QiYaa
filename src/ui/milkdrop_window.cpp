@@ -415,16 +415,13 @@ void MilkdropWindow::handleKey(int key, Qt::KeyboardModifiers modifiers) {
 void MilkdropWindow::showMenu(const QPoint& globalPos) {
     auto* menu = new QMenu(this);
     menu->setAttribute(Qt::WA_DeleteOnClose);
-    menu->addAction(QStringLiteral("Следующий пресет\tПробел"), this, &MilkdropWindow::nextPreset);
-    menu->addAction(
-        QStringLiteral("Предыдущий пресет\tBackspace"), this, &MilkdropWindow::previousPreset
-    );
+    menu->addAction(tr("Next preset\tSpace"), this, &MilkdropWindow::nextPreset);
+    menu->addAction(tr("Previous preset\tBackspace"), this, &MilkdropWindow::previousPreset);
     if (!presetList.isEmpty()) {
-        QMenu* presetsMenu = menu->addMenu(QStringLiteral("Пресеты"));
+        QMenu* presetsMenu = menu->addMenu(tr("Presets"));
         for (int i = 0; i < presetList.size(); ++i) {
-            const QString label = isBlack(i)
-                ? presetList.at(i).name + QStringLiteral("  (здесь чёрный)")
-                : presetList.at(i).name;
+            const QString label = isBlack(i) ? tr("%1  (black here)").arg(presetList.at(i).name)
+                                             : presetList.at(i).name;
             QAction* action = presetsMenu->addAction(label, this, [this, i] {
                 failuresInARow = 0;
                 selectPreset(i);
@@ -435,21 +432,18 @@ void MilkdropWindow::showMenu(const QPoint& globalPos) {
     }
     menu->addSeparator();
     QAction* shuffle =
-        menu->addAction(QStringLiteral("Случайный порядок\tR"), this, [this](bool on) {
-            setShuffle(on);
-        });
+        menu->addAction(tr("Random order\tR"), this, [this](bool on) { setShuffle(on); });
     shuffle->setCheckable(true);
     shuffle->setChecked(shuffleEnabled);
-    QAction* lock = menu->addAction(QStringLiteral("Не переключать сам\tL"), this, [this](bool on) {
-        setLocked(on);
-    });
+    QAction* lock =
+        menu->addAction(tr("Do not switch by itself\tL"), this, [this](bool on) { setLocked(on); });
     lock->setCheckable(true);
     lock->setChecked(lockEnabled);
-    QMenu* intervalMenu = menu->addMenu(QStringLiteral("Менять пресет каждые"));
+    QMenu* intervalMenu = menu->addMenu(tr("Change the preset every"));
     auto* group = new QActionGroup(intervalMenu);
     for (int seconds : {15, 30, 60, 120, 300}) {
-        const QString label = seconds < 60 ? QStringLiteral("%1 с").arg(seconds)
-                                           : QStringLiteral("%1 мин").arg(seconds / 60);
+        const QString label =
+            seconds < 60 ? tr("%1 s").arg(seconds) : tr("%1 min").arg(seconds / 60);
         QAction* action =
             intervalMenu->addAction(label, this, [this, seconds] { setPresetSeconds(seconds); });
         action->setCheckable(true);
@@ -458,26 +452,23 @@ void MilkdropWindow::showMenu(const QPoint& globalPos) {
     }
     menu->addSeparator();
     QAction* fullScreen =
-        menu->addAction(QStringLiteral("Во весь экран\tF"), this, [this](bool on) {
-            setFullScreenMode(on);
-        });
+        menu->addAction(tr("Full screen\tF"), this, [this](bool on) { setFullScreenMode(on); });
     fullScreen->setCheckable(true);
     fullScreen->setChecked(isFullScreenMode());
     fullScreen->setEnabled(failure().isEmpty());
     menu->addSeparator();
-    menu->addAction(QStringLiteral("Открыть папку своих пресетов"), this, [this] {
+    menu->addAction(tr("Open the folder of your presets"), this, [this] {
         QDir().mkpath(userDirectory);
         QDesktopServices::openUrl(QUrl::fromLocalFile(userDirectory));
     });
-    menu->addAction(QStringLiteral("Перечитать пресеты"), this, &MilkdropWindow::reloadPresets);
+    menu->addAction(tr("Reload the presets"), this, &MilkdropWindow::reloadPresets);
     menu->addAction(
-            QStringLiteral("Скопировать название пресета"), this,
+            tr("Copy the preset's name"), this,
             [this] { QGuiApplication::clipboard()->setText(currentPreset()); }
     )->setEnabled(selectedIndex >= 0);
     if (!blackPresetNames.isEmpty()) {
         menu->addAction(
-            QStringLiteral("Вернуть пропущенные чёрные пресеты (%1)").arg(blackPresetNames.size()),
-            this,
+            tr("Bring back the skipped black presets (%1)").arg(blackPresetNames.size()), this,
             [this] {
                 setBlackPresets({});
                 if (milkdropView) {
@@ -505,7 +496,7 @@ void MilkdropWindow::paintContent(QPainter& painter, const QRect& area) {
     painter.setPen(QColor(0, 200, 0));
     painter.drawText(
         area.adjusted(4, 4, -4, -4), Qt::AlignCenter | Qt::TextWordWrap,
-        QStringLiteral("Milkdrop недоступен: %1").arg(failureText)
+        tr("Milkdrop is not available: %1").arg(failureText)
     );
 }
 

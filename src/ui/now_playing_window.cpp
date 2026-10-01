@@ -34,7 +34,7 @@ NowPlayingWindow::NowPlayingWindow(
     : GenWindow(skin, QStringLiteral("NOW PLAYING"), parent)
     , corePlayer(player)
     , coverCache(covers) {
-    setWindowTitle(QStringLiteral("QiYaa: сейчас играет"));
+    retranslate();
     connect(corePlayer, &Core::Player::currentTrackChanged, this, [this] { update(); });
     connect(corePlayer->library(), &Yandex::Library::likesChanged, this, [this] { update(); });
     connect(coverCache, &Core::CoverCache::ready, this, [this](const QUrl& url) {
@@ -96,7 +96,7 @@ void NowPlayingWindow::paintContent(QPainter& painter, const QRect& area) {
         y += metrics.height() + 1;
     };
     if (!track) {
-        line(font, style.normal, QStringLiteral("Ничего не играет"));
+        line(font, style.normal, tr("Nothing is playing"));
         return;
     }
     line(bold, style.current, track->title);
@@ -114,7 +114,7 @@ void NowPlayingWindow::paintContent(QPainter& painter, const QRect& area) {
         QStringLiteral("%1:%2").arg(seconds / 60).arg(seconds % 60, 2, 10, QLatin1Char('0'))
     );
     if (corePlayer->library()->isLiked(track->id)) {
-        line(font, style.current, QStringLiteral("♥ В «Мне нравится»"));
+        line(font, style.current, tr("♥ In Liked"));
     }
 }
 
@@ -125,6 +125,10 @@ bool NowPlayingWindow::contentMousePress(QPoint pos, Qt::MouseButton button) {
     }
     QDesktopServices::openUrl(track->webUrl());
     return true;
+}
+
+void NowPlayingWindow::retranslate() {
+    setWindowTitle(tr("QiYaa: now playing"));
 }
 
 }  // namespace Ui

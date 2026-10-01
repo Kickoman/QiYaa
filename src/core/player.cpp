@@ -2,6 +2,7 @@
 
 #include "yandex/api_client.h"
 
+#include <QCoreApplication>
 #include <QNetworkAccessManager>
 #include <QNetworkReply>
 #include <QNetworkRequest>
@@ -22,7 +23,7 @@ constexpr int kLoadMoreWhenLeft = 2;
 constexpr int kDownloadTimeoutMs = 30'000;
 
 QString ShuffleOffInWaveText() {
-    return QStringLiteral("Перемешивание не действует в волне");
+    return QCoreApplication::translate("Core::Player", "Shuffle does not apply to a vibe");
 }
 
 bool IsHttpError(const QNetworkReply& reply) {
@@ -80,7 +81,7 @@ Player::Player(Yandex::Library* library, Audio::AudioEngine* engine, QObject* pa
         trackStarted(queuedTracks[playingIndex], upcoming.bitrate);
     });
     connect(audioEngine, &Audio::AudioEngine::errorOccurred, this, [this](const QString& message) {
-        Q_EMIT statusMessage(QStringLiteral("Audio error: ") + message);
+        Q_EMIT statusMessage(tr("Audio error: %1").arg(message));
     });
     connect(audioEngine, &Audio::AudioEngine::streamUndecodable, this, [this](TStreamId stream) {
         if (!stream || stream != streamId) {
@@ -90,7 +91,7 @@ Player::Player(Yandex::Library* library, Audio::AudioEngine* engine, QObject* pa
         // broken (ERR-04).
         handleFailure(
             streamFailure == FailureKind::Network ? FailureKind::Network : FailureKind::Track,
-            QStringLiteral("не удалось декодировать звук")
+            tr("the sound could not be decoded")
         );
     });
     retryTimer.setSingleShot(true);
@@ -371,7 +372,7 @@ void Player::next() {
         stop();
         waitingForMore = true;
         maybeLoadMore();
-        Q_EMIT statusMessage(QStringLiteral("Загружаю ещё треки..."));
+        Q_EMIT statusMessage(tr("Loading more tracks…"));
         return;
     }
     stop();
@@ -499,7 +500,7 @@ void Player::playIndex(int index) {
             resolvingLink = false;
             if (error.isError()) {
                 if (!streamId) {  // no audio output: nothing to wait on or to skip to
-                    Q_EMIT statusMessage(QStringLiteral("Cannot get link: ") + error.text);
+                    Q_EMIT statusMessage(tr("Cannot get the link: %1").arg(error.text));
                     audioEngine->stop();
                     return;
                 }
@@ -574,7 +575,7 @@ void Player::downloadFinished(TStreamId stream, const Yandex::RequestError& erro
             // decode end the same way, through streamUndecodable.
             streamFailure = kind;
             if (kind != FailureKind::Network) {
-                Q_EMIT statusMessage(QStringLiteral("Download failed: ") + error.text);
+                Q_EMIT statusMessage(tr("Download failed: %1").arg(error.text));
             }
             return;
         }
@@ -597,20 +598,20 @@ void Player::handleFailure(FailureKind kind, const QString& text) {
         case FailureAction::WaitForNetwork: return waitForNetwork();
         case FailureAction::Next:  // ERR-04; in a wave at its end next() waits for more (ERR-07)
             ++failuresInRow;
-            Q_EMIT statusMessage(QStringLiteral("Трек не играет: ") + text);
+            Q_EMIT statusMessage(tr("The track does not play: %1").arg(text));
             return next();
         case FailureAction::Stop:
             if (kind == FailureKind::Auth) {  // ERR-08: not the track's fault
-                Q_EMIT statusMessage(QStringLiteral("Ошибка доступа: ") + text);
+                Q_EMIT statusMessage(tr("Access error: %1").arg(text));
             } else {  // ERR-07: no track follows
                 ++failuresInRow;
-                Q_EMIT statusMessage(QStringLiteral("Трек не играет: ") + text);
+                Q_EMIT statusMessage(tr("The track does not play: %1").arg(text));
             }
             return stop();
         case FailureAction::StopAfterLimit:  // ERR-05
             failuresInRow = 0;
             Q_EMIT statusMessage(
-                QStringLiteral("Остановлено: %1 трека подряд не играют").arg(kMaxTrackFailuresInRow)
+                tr("Stopped: %n track(s) in a row did not play", nullptr, kMaxTrackFailuresInRow)
             );
             return stop();
     }
@@ -626,7 +627,7 @@ void Player::waitForNetwork() {
         wait.resume = state != AudioEngine::State::Paused;
         wait.position =
             state == AudioEngine::State::Stopped ? lastPosition : audioEngine->positionSeconds();
-        Q_EMIT statusMessage(QStringLiteral("Нет сети — жду подключения…"));
+        Q_EMIT statusMessage(tr("No network — waiting for it…"));
     }
     ++generation;
     abortDownload();

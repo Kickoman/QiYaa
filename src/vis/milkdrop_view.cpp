@@ -44,14 +44,14 @@ QString MilkdropView::OpenGlProblem() {
         QOpenGLContext probe;
         probe.setFormat(ViewFormat());
         if (!probe.create()) {
-            return QStringLiteral("нет OpenGL");
+            return tr("no OpenGL");
         }
         const QSurfaceFormat contextFormat = probe.format();
         if (probe.isOpenGLES()) {
-            return QStringLiteral("есть только OpenGL ES, а нужен OpenGL 3.3");
+            return tr("only OpenGL ES is here, and OpenGL 3.3 is needed");
         }
         if (contextFormat.majorVersion() * 10 + contextFormat.minorVersion() < 33) {
-            return QStringLiteral("нужен OpenGL 3.3, а доступен %1.%2")
+            return tr("OpenGL 3.3 is needed, and %1.%2 is here")
                 .arg(contextFormat.majorVersion())
                 .arg(contextFormat.minorVersion());
         }
@@ -187,17 +187,17 @@ void MilkdropView::initializeGL() {
     const QSurfaceFormat contextFormat = windowContext ? windowContext->format() : QSurfaceFormat();
     if (!windowContext || !windowContext->isValid()
         || QOpenGLContext::currentContext() != windowContext) {
-        failureReason = QStringLiteral("нет OpenGL");
+        failureReason = tr("no OpenGL");
     } else if (windowContext->isOpenGLES()) {
-        failureReason = QStringLiteral("есть только OpenGL ES, а нужен OpenGL 3.3");
+        failureReason = tr("only OpenGL ES is here, and OpenGL 3.3 is needed");
     } else if (contextFormat.majorVersion() * 10 + contextFormat.minorVersion() < 33) {
-        failureReason = QStringLiteral("нужен OpenGL 3.3, а доступен %1.%2")
+        failureReason = tr("OpenGL 3.3 is needed, and %1.%2 is here")
                             .arg(contextFormat.majorVersion())
                             .arg(contextFormat.minorVersion());
     } else {
         projectM = projectm_create();
         if (!projectM) {
-            failureReason = QStringLiteral("projectM не запустился");
+            failureReason = tr("projectM did not start");
         }
     }
     if (!projectM) {

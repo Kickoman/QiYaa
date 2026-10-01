@@ -55,6 +55,7 @@ Q_SIGNALS:
     void balanceRequested(int balance);
 
 protected:
+    void retranslate() override;
     void closeEvent(QCloseEvent* event) override;
     void paintSkin(QPainter& painter) override;
     bool isDragArea(QPoint skinPos) const override;

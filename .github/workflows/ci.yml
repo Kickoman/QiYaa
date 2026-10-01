@@ -72,7 +72,8 @@ jobs:
         run: |
           sudo apt-get update
           # dbus + gdbus: the MPRIS test talks to the app over a private session bus.
-          sudo apt-get install -y qt6-base-dev libgl1-mesa-dev ninja-build dbus libglib2.0-bin
+          # qt6-tools-dev + qt6-l10n-tools: Qt Linguist, which builds the translations.
+          sudo apt-get install -y qt6-base-dev qt6-tools-dev qt6-l10n-tools libgl1-mesa-dev ninja-build dbus libglib2.0-bin
           # The .deb build has Milkdrop (Qt OpenGL, and Xvfb + Mesa for its rendering test) and the jam
           # (Qt WebSockets).
           if [ "${{ matrix.deb }}" = "true" ]; then

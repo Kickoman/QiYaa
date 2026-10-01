@@ -768,7 +768,7 @@ private Q_SLOTS:
         auto shuffleMessages = [&] {
             int count = 0;
             for (const QList<QVariant>& arguments : status) {
-                count += arguments.at(0).toString().startsWith(QStringLiteral("Перемешивание"));
+                count += arguments.at(0).toString().startsWith(QStringLiteral("Shuffle"));
             }
             return count;
         };

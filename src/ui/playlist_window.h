@@ -53,6 +53,7 @@ Q_SIGNALS:
     void sourcesMenuRequested(QPoint globalPos);
 
 protected:
+    void retranslate() override;
     void closeEvent(QCloseEvent* event) override;
     void paintSkin(QPainter& painter) override;
     bool isDragArea(QPoint skinPos) const override;

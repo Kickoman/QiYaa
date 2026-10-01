@@ -119,7 +119,7 @@ void DeviceLogin::poll() {
         return;
     }
     if (QDateTime::currentMSecsSinceEpoch() > deadlineMs) {
-        Q_EMIT failed(QStringLiteral("код устарел, начните заново"));
+        Q_EMIT failed(tr("the code has expired, start again"));
         return;
     }
     const QByteArray body = FormBody(

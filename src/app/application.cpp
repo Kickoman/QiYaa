@@ -85,19 +85,27 @@ Audio::EqSettings ReadEq(const QSettings& settings) {
 
 #ifdef QIYAA_HAVE_JAM
 QString JamRefusalText(const QString& reason) {
-    static const QHash<QString, QString> texts = {
-        {QStringLiteral("server-full"), QStringLiteral("Сервер джема переполнен, попробуйте позже")
-        },
-        {QStringLiteral("rate-limited"), QStringLiteral("Слишком много запросов, подождите немного")
-        },
+    // Translated on each call: the language can change while the app runs.
+    static const QHash<QString, const char*> texts = {
+        {QStringLiteral("server-full"),
+         QT_TRANSLATE_NOOP("App::Application", "The jam server is full, try later")},
+        {QStringLiteral("rate-limited"),
+         QT_TRANSLATE_NOOP("App::Application", "Too many requests, wait a little")},
         {QStringLiteral("update-required"),
-         QStringLiteral("Обновите QiYaa, чтобы работать с этим сервером джема")},
-        {QStringLiteral("not-allowed"), QStringLiteral("Сервер джема этого не разрешает")},
-        {QStringLiteral("queue-limit"), QStringLiteral("Очередь джема заполнена")},
-        {QStringLiteral("duplicate"), QStringLiteral("Этот трек уже в очереди джема")},
-        {QStringLiteral("stale"), QStringLiteral("Этот трек уже ушёл из очереди")},
+         QT_TRANSLATE_NOOP("App::Application", "Update QiYaa to work with this jam server")},
+        {QStringLiteral("not-allowed"),
+         QT_TRANSLATE_NOOP("App::Application", "The jam server does not allow this")},
+        {QStringLiteral("queue-limit"),
+         QT_TRANSLATE_NOOP("App::Application", "The jam queue is full")},
+        {QStringLiteral("duplicate"),
+         QT_TRANSLATE_NOOP("App::Application", "This track is already in the jam queue")},
+        {QStringLiteral("stale"),
+         QT_TRANSLATE_NOOP("App::Application", "This track has already left the queue")},
     };
-    return texts.value(reason, QStringLiteral("Сервер джема отказал"));
+    return QCoreApplication::translate(
+        "App::Application",
+        texts.value(reason, QT_TRANSLATE_NOOP("App::Application", "The jam server refused"))
+    );
 }
 
 QString JamServer(const QSettings& settings) {
@@ -114,10 +122,18 @@ QString JamServerName(const QString& server) {
 
 QString JamEndText(Jam::HostEnd why) {
     switch (why) {
-        case Jam::HostEnd::ByHost: return QStringLiteral("Джем закончен");
-        case Jam::HostEnd::ByServer: return QStringLiteral("Джем закончили");
-        case Jam::HostEnd::Expired: return QStringLiteral("Джем закрылся, пока вас не было");
-        case Jam::HostEnd::Gone: return QStringLiteral("Джем закончен: сервер его больше не знает");
+        case Jam::HostEnd::ByHost:
+            return QCoreApplication::translate("App::Application", "The jam is over");
+        case Jam::HostEnd::ByServer:
+            return QCoreApplication::translate("App::Application", "The jam was ended");
+        case Jam::HostEnd::Expired:
+            return QCoreApplication::translate(
+                "App::Application", "The jam closed while you were away"
+            );
+        case Jam::HostEnd::Gone:
+            return QCoreApplication::translate(
+                "App::Application", "The jam is over: the server no longer knows it"
+            );
     }
     return {};
 }
@@ -149,6 +165,11 @@ Application::Application(const Options& options, QObject* parent)
     , corePlayer(&yandexLibrary, &audioEngine)
     , sources(&corePlayer, &yandexLibrary)
     , jamMode(&corePlayer, &yandexLibrary) {
+    // Before any window: they take their texts from the translation.
+    translations.apply(options.language.value_or(
+        LanguageFromCode(settings.value(QStringLiteral("language")).toString())
+            .value_or(kDefaultLanguage)
+    ));
     if (startOptions.audio) {
         if (const Audio::AudioEngine::InitResult initResult = audioEngine.init(); !initResult.ok) {
             qWarning("Audio: %s", qPrintable(initResult.message));
@@ -481,7 +502,7 @@ void Application::setUpJam() {
             JamServer(settings), settings.value(QStringLiteral("jam/waveFeedback"), true).toBool()
         };
     };
-    options.queueTitle = QStringLiteral("Джем");
+    options.queueTitle = tr("Jam");
     // Next to the settings: a test's or a read-only run's jam stays in its own directory.
     const Jam::SessionStore store(
         QFileInfo(settings.fileName()).dir().filePath(QStringLiteral("jam-session.json"))
@@ -520,7 +541,7 @@ void Application::setUpJam() {
         }
         const Core::JamSlot& slot = slots[row];
         if (slot.kind == Core::JamSlot::Kind::Wave) {
-            return QStringLiteral("волна джема");
+            return tr("jam vibe");
         }
         if (slot.kind != Core::JamSlot::Kind::Item || !jamHostSession->room()) {
             return {};
@@ -549,12 +570,11 @@ void Application::setUpJam() {
             }
         }
         if (items.isEmpty()) {
-            mainWindowInstance->setStatusText(QStringLiteral("Выделите треки джема, чтобы убрать их"
-            ));
+            mainWindowInstance->setStatusText(tr("Select jam tracks to remove them"));
         } else if (!std::all_of(items.cbegin(), items.cend(), [this](const QString& itemId) {
                        return jamHostSession->remove(itemId);
                    })) {
-            mainWindowInstance->setStatusText(QStringLiteral("Нет связи с сервером джема"));
+            mainWindowInstance->setStatusText(tr("No connection to the jam server"));
         }
         return true;
     };
@@ -562,7 +582,7 @@ void Application::setUpJam() {
         if (!jamMode.isActive()) {
             return false;
         }
-        mainWindowInstance->setStatusText(QStringLiteral("Идёт джем: добавляйте треки в джем"));
+        mainWindowInstance->setStatusText(tr("A jam is on: add tracks to the jam"));
         return true;
     };
     playlistWindowInstance->setQueueHooks(std::move(hooks));
@@ -581,10 +601,10 @@ void Application::setUpJam() {
             playlistWindowInstance->update();
             if (active && wasConnected && !connected) {
                 mainWindowInstance->setStatusText(
-                    QStringLiteral("Нет связи с сервером джема · повторю сам")
+                    tr("No connection to the jam server · trying again by itself")
                 );
             } else if (connected && !wasConnected) {
-                mainWindowInstance->setStatusText(QStringLiteral("Джем на связи"));
+                mainWindowInstance->setStatusText(tr("The jam is connected"));
             }
             wasConnected = connected;
         }
@@ -599,14 +619,13 @@ void Application::offerStoredJam() {
     }
     // HOST-23. Not modal: playback and the windows work while the question waits.
     auto* question = new QMessageBox(
-        QMessageBox::Question, QStringLiteral("Шёл джем"),
-        QStringLiteral("Продолжить? Ссылка у гостей останется прежней."), QMessageBox::NoButton,
+        QMessageBox::Question, tr("A jam was on"),
+        tr("Continue it? The guests' link stays the same."), QMessageBox::NoButton,
         mainWindowInstance.get()
     );
     question->setAttribute(Qt::WA_DeleteOnClose);
-    QPushButton* yes = question->addButton(QStringLiteral("Продолжить"), QMessageBox::AcceptRole);
-    QPushButton* no =
-        question->addButton(QStringLiteral("Закончить"), QMessageBox::DestructiveRole);
+    QPushButton* yes = question->addButton(tr("Continue"), QMessageBox::AcceptRole);
+    QPushButton* no = question->addButton(tr("End it"), QMessageBox::DestructiveRole);
     question->setDefaultButton(yes);
     connect(question, &QMessageBox::finished, this, [this, question, yes, no] {
         // Closed without an answer: the jam stays stored, and the next start asks again.
@@ -712,7 +731,7 @@ void Application::start() {
     offerStoredJam();
     const Yandex::TokenSource token = Yandex::FindToken(TokenFile(), YaampTokenFiles());
     if (token.token.isEmpty()) {
-        mainWindowInstance->setStatusText(QStringLiteral("Войдите: правый клик → Войти"));
+        mainWindowInstance->setStatusText(tr("Log in: right click → Log in"));
         QTimer::singleShot(0, this, &Application::login);
         return;
     }
@@ -724,17 +743,17 @@ void Application::start() {
 
 void Application::applyToken(const QString& token, bool save) {
     apiClient.setToken(token);
-    mainWindowInstance->setStatusText(QStringLiteral("Подключаюсь к Яндекс Музыке..."));
+    mainWindowInstance->setStatusText(tr("Connecting to Yandex Music…"));
     yandexLibrary.connectAccount([this, token,
                                   save](const Yandex::Account& account, const QString& error) {
         if (!error.isEmpty()) {
-            mainWindowInstance->setStatusText(QStringLiteral("Вход не удался: ") + error);
+            mainWindowInstance->setStatusText(tr("Login failed: %1").arg(error));
             return;
         }
         if (save) {
             Yandex::SaveToken(TokenFile(), token);
         }
-        mainWindowInstance->setStatusText(QStringLiteral("Привет, %1!").arg(account.displayName));
+        mainWindowInstance->setStatusText(tr("Hello, %1!").arg(account.displayName));
 #ifdef QIYAA_HAVE_JAM
         jamWindowInstance->setHostName(account.displayName);
 #endif
@@ -764,7 +783,7 @@ void Application::logout() {
     corePlayer.clearQueue();
     yandexLibrary.logout();
     Yandex::ForgetToken(TokenFile());
-    mainWindowInstance->setStatusText(QStringLiteral("Вы вышли из аккаунта"));
+    mainWindowInstance->setStatusText(tr("You have logged out"));
 }
 
 bool Application::loadSkin(const QString& path) {
@@ -773,7 +792,7 @@ bool Application::loadSkin(const QString& path) {
         skin = std::make_unique<Skins::Skin>(Skins::Skin::LoadFile(path, &baseSkin));
     } catch (const Skins::Error& error) {
         mainWindowInstance->setStatusText(
-            QStringLiteral("Не удалось загрузить скин: ") + QString::fromUtf8(error.what())
+            tr("Cannot load the skin: %1").arg(QString::fromUtf8(error.what()))
         );
         return false;
     }
@@ -845,6 +864,12 @@ void Application::setScale(double scale, ScaleScope scope) {
         settings.setValue(QStringLiteral("scale"), newScale);
         saveState();
     }
+}
+
+void Application::setLanguage(Language language) {
+    // Qt sends LanguageChange to every widget; the windows draw their texts again.
+    translations.apply(language);
+    settings.setValue(QStringLiteral("language"), LanguageCode(language));
 }
 
 void Application::setAlwaysOnTop(bool on) {
@@ -988,22 +1013,18 @@ void Application::transportKey(int key) {
 }
 
 void Application::fillWindowActions(QMenu* menu) {
-    QAction* equalizerAction = menu->addAction(QStringLiteral("Эквалайзер"), this, [this](bool on) {
-        setEqualizerVisible(on);
-    });
+    QAction* equalizerAction =
+        menu->addAction(tr("Equalizer"), this, [this](bool on) { setEqualizerVisible(on); });
     equalizerAction->setCheckable(true);
     equalizerAction->setChecked(equalizerWindowInstance->isVisible());
     equalizerAction->setShortcut(QKeySequence(Qt::ALT | Qt::Key_G));
-    QAction* playlistAction = menu->addAction(QStringLiteral("Плейлист"), this, [this](bool on) {
-        setPlaylistVisible(on);
-    });
+    QAction* playlistAction =
+        menu->addAction(tr("Playlist"), this, [this](bool on) { setPlaylistVisible(on); });
     playlistAction->setCheckable(true);
     playlistAction->setChecked(playlistWindowInstance->isVisible());
     playlistAction->setShortcut(QKeySequence(Qt::ALT | Qt::Key_E));
     QAction* nowPlayingAction =
-        menu->addAction(QStringLiteral("Сейчас играет"), this, [this](bool on) {
-            setNowPlayingVisible(on);
-        });
+        menu->addAction(tr("Now playing"), this, [this](bool on) { setNowPlayingVisible(on); });
     nowPlayingAction->setCheckable(true);
     nowPlayingAction->setChecked(nowPlayingWindowInstance->isVisible());
     if (milkdropWindowInstance) {
@@ -1016,12 +1037,12 @@ void Application::fillWindowActions(QMenu* menu) {
         milkdropAction->setShortcut(QKeySequence(Qt::CTRL | Qt::SHIFT | Qt::Key_K));
     }
 
-    QMenu* visualizationMenu = menu->addMenu(QStringLiteral("Визуализация"));
+    QMenu* visualizationMenu = menu->addMenu(tr("Visualization"));
     auto* visualizationGroup = new QActionGroup(visualizationMenu);
     const std::pair<Ui::MainWindow::VisMode, QString> modes[] = {
-        {Ui::MainWindow::VisMode::Spectrum, QStringLiteral("Спектр")},
-        {Ui::MainWindow::VisMode::Oscilloscope, QStringLiteral("Осциллограф")},
-        {Ui::MainWindow::VisMode::Off, QStringLiteral("Выключена")}
+        {Ui::MainWindow::VisMode::Spectrum, tr("Spectrum")},
+        {Ui::MainWindow::VisMode::Oscilloscope, tr("Oscilloscope")},
+        {Ui::MainWindow::VisMode::Off, tr("Off")}
     };
     for (const auto& [mode, name] : modes) {
         QAction* action = visualizationMenu->addAction(name, this, [this, mode] {
@@ -1033,7 +1054,7 @@ void Application::fillWindowActions(QMenu* menu) {
         visualizationGroup->addAction(action);
     }
 
-    QMenu* skinsMenu = menu->addMenu(QStringLiteral("Скины"));
+    QMenu* skinsMenu = menu->addMenu(tr("Skins"));
     const QStringList builtin = QDir(QStringLiteral(":/skins"))
                                     .entryList({QStringLiteral("*.wsz")}, QDir::Files, QDir::Name);
     for (const QString& name : builtin) {
@@ -1041,17 +1062,17 @@ void Application::fillWindowActions(QMenu* menu) {
         skinsMenu->addAction(QString(name).chopped(4), this, [this, path] { loadSkin(path); });
     }
     skinsMenu->addSeparator();
-    skinsMenu->addAction(QStringLiteral("Загрузить скин..."), this, [this] {
+    skinsMenu->addAction(tr("Load a skin…"), this, [this] {
         const QString path = QFileDialog::getOpenFileName(
-            mainWindowInstance.get(), QStringLiteral("Скин Winamp"), QDir::homePath(),
-            QStringLiteral("Скины Winamp (*.wsz *.zip)")
+            mainWindowInstance.get(), tr("Winamp skin"), QDir::homePath(),
+            tr("Winamp skins (*.wsz *.zip)")
         );
         if (!path.isEmpty()) {
             loadSkin(path);
         }
     });
 
-    QMenu* sizeMenu = menu->addMenu(QStringLiteral("Размер"));
+    QMenu* sizeMenu = menu->addMenu(tr("Size"));
     auto* sizeGroup = new QActionGroup(sizeMenu);
     for (double scaleFactor : {1.0, 1.25, 1.5, 1.75, 2.0, 2.5, 3.0}) {
         QAction* action = sizeMenu->addAction(
@@ -1063,15 +1084,29 @@ void Application::fillWindowActions(QMenu* menu) {
         sizeGroup->addAction(action);
     }
     sizeMenu->addSeparator();
-    QAction* doubleSizeAction = sizeMenu->addAction(QStringLiteral("Двойной размер"), this, [this] {
+    QAction* doubleSizeAction = sizeMenu->addAction(tr("Double size"), this, [this] {
         setScale(std::abs(mainWindowInstance->scale() - 2.0) < 1e-6 ? 1.0 : 2.0);
     });
     doubleSizeAction->setShortcut(QKeySequence(Qt::CTRL | Qt::Key_D));
 
-    QAction* alwaysOnTopAction =
-        menu->addAction(QStringLiteral("Поверх всех окон"), this, [this](bool on) {
-            setAlwaysOnTop(on);
+    // Named in each language, and with the English word, so that a wrong pick can be undone.
+    QString languageTitle = tr("Language");
+    if (languageTitle != QLatin1String("Language")) {
+        languageTitle += QStringLiteral(" (Language)");
+    }
+    QMenu* languageMenu = menu->addMenu(languageTitle);
+    auto* languageGroup = new QActionGroup(languageMenu);
+    for (Language language : Languages()) {
+        QAction* action = languageMenu->addAction(LanguageName(language), this, [this, language] {
+            setLanguage(language);
         });
+        action->setCheckable(true);
+        action->setChecked(language == translations.language());
+        languageGroup->addAction(action);
+    }
+
+    QAction* alwaysOnTopAction =
+        menu->addAction(tr("Always on top"), this, [this](bool on) { setAlwaysOnTop(on); });
     alwaysOnTopAction->setCheckable(true);
     alwaysOnTopAction->setChecked(
         mainWindowInstance->windowFlags().testFlag(Qt::WindowStaysOnTopHint)
@@ -1099,35 +1134,37 @@ void Application::showMainMenu(QPoint globalPosition) {
     menu->addSeparator();
     if (yandexLibrary.isLoggedIn()) {
         menu->addAction(
-            QStringLiteral("Выйти из аккаунта (%1)").arg(yandexLibrary.account().displayName), this,
-            &Application::logout
+            tr("Log out (%1)").arg(yandexLibrary.account().displayName), this, &Application::logout
         );
     }
-    menu->addAction(QStringLiteral("Закрыть QiYaa"), this, &Application::quit);
+    menu->addAction(tr("Quit QiYaa"), this, &Application::quit);
     menu->popup(globalPosition);
 }
 
 void Application::addJamMenu(QMenu* menu) {
 #ifdef QIYAA_HAVE_JAM
-    QMenu* jam = menu->addMenu(QStringLiteral("Джем"));
+    QMenu* jam = menu->addMenu(tr("Jam"));
     const Jam::HostPhase phase = jamHostSession->phase();
-    jam->addAction(
-        phase == Jam::HostPhase::None ? QStringLiteral("Начать…") : QStringLiteral("Окно джема"),
-        this, [this] { setJamWindowVisible(true); }
-    );
-    jam->addAction(QStringLiteral("Присоединиться…"))->setEnabled(false);  // Kickoman/QiYaa#16
-    QAction* end = jam->addAction(QStringLiteral("Закончить"), this, [this] {
-        const auto answer = QMessageBox::question(
-            mainWindowInstance.get(), QStringLiteral("Закончить джем"),
-            QStringLiteral("Закончить джем? Гости увидят, что он закончен.")
+    jam->addAction(phase == Jam::HostPhase::None ? tr("Start…") : tr("Jam window"), this, [this] {
+        setJamWindowVisible(true);
+    });
+    jam->addAction(tr("Join…"))->setEnabled(false);  // Kickoman/QiYaa#16
+    QAction* end = jam->addAction(tr("End"), this, [this] {
+        QMessageBox ask(
+            QMessageBox::Question, tr("End the jam"),
+            tr("End the jam? The guests will see that it is over."), QMessageBox::NoButton,
+            mainWindowInstance.get()
         );
-        if (answer == QMessageBox::Yes) {
+        QPushButton* endIt = ask.addButton(tr("End it"), QMessageBox::DestructiveRole);
+        ask.setDefaultButton(ask.addButton(tr("Cancel"), QMessageBox::RejectRole));
+        ask.exec();
+        if (ask.clickedButton() == endIt) {
             jamHostSession->end();
         }
     });
     end->setEnabled(phase == Jam::HostPhase::Active);
     jam->addSeparator();
-    jam->addAction(QStringLiteral("Настройки сервера…"), this, &Application::showJamServerDialog);
+    jam->addAction(tr("Server settings…"), this, &Application::showJamServerDialog);
     menu->addSeparator();
 #else
     Q_UNUSED(menu);

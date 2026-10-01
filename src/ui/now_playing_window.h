@@ -32,6 +32,7 @@ public:
     QRect coverRect() const;
 
 protected:
+    void retranslate() override;
     void paintContent(QPainter& painter, const QRect& area) override;
     bool contentMousePress(QPoint pos, Qt::MouseButton button) override;
 

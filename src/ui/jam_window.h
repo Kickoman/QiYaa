@@ -66,6 +66,7 @@ Q_SIGNALS:
     void serverSettingsRequested();
 
 protected:
+    void retranslate() override;
     void paintContent(QPainter& painter, const QRect& area) override;
     bool contentMousePress(QPoint pos, Qt::MouseButton button) override;
     bool event(QEvent* event) override;

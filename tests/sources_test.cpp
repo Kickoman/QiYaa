@@ -122,12 +122,12 @@ private Q_SLOTS:
         stack.sources.playLikes(false);
         stack.sources.playMyWave();
         QVERIFY(QTest::qWaitFor(
-            [&] { return stack.player.queueTitle() == QStringLiteral("Моя волна"); }, 3000
+            [&] { return stack.player.queueTitle() == QStringLiteral("My Vibe"); }, 3000
         ));
         QTest::qWait(600);  // the likes response arrives now
-        QCOMPARE(stack.player.queueTitle(), QStringLiteral("Моя волна"));
+        QCOMPARE(stack.player.queueTitle(), QStringLiteral("My Vibe"));
         QCOMPARE(stack.player.playlist().first().title, ExpectedTitle("rotor-session-new/ok"));
-        QVERIFY(!stack.saw(QStringLiteral("Мне нравится: 2 треков")));
+        QVERIFY(!stack.saw(QStringLiteral("Liked: 2 track(s)")));
     }
 
     void staleFailureIsSilent() {  // SRC-02
@@ -139,10 +139,10 @@ private Q_SLOTS:
         stack.sources.playLikes(true);
         stack.sources.playMyWave();
         QVERIFY(QTest::qWaitFor(
-            [&] { return stack.player.queueTitle() == QStringLiteral("Моя волна"); }, 3000
+            [&] { return stack.player.queueTitle() == QStringLiteral("My Vibe"); }, 3000
         ));
         QTest::qWait(600);
-        QVERIFY(!stack.sawPrefix(QStringLiteral("Ошибка")));
+        QVERIFY(!stack.sawPrefix(QStringLiteral("Error")));
     }
 
     void searchIsOnePickAcrossItsRequests() {  // SRC-03
@@ -168,10 +168,10 @@ private Q_SLOTS:
         ));
         stack.sources.playMyWave();
         QVERIFY(QTest::qWaitFor(
-            [&] { return stack.player.queueTitle() == QStringLiteral("Моя волна"); }, 3000
+            [&] { return stack.player.queueTitle() == QStringLiteral("My Vibe"); }, 3000
         ));
         QTest::qWait(800);  // the artist's tracks arrive now
-        QCOMPARE(stack.player.queueTitle(), QStringLiteral("Моя волна"));
+        QCOMPARE(stack.player.queueTitle(), QStringLiteral("My Vibe"));
     }
 
     void failedSourceKeepsTheQueue() {  // SRC-04
@@ -179,7 +179,7 @@ private Q_SLOTS:
         stack.player.setQueue({KeptTrack()}, "Kept", false);
         server.fixture("GET", "/albums/4053/with-tracks", "account-status/500-empty");
         stack.sources.playAlbum(QStringLiteral("4053"), QStringLiteral("Звезда"));
-        QVERIFY(QTest::qWaitFor([&] { return stack.sawPrefix(QStringLiteral("Ошибка: ")); }, 3000));
+        QVERIFY(QTest::qWaitFor([&] { return stack.sawPrefix(QStringLiteral("Error: ")); }, 3000));
         QCOMPARE(stack.player.queueTitle(), QStringLiteral("Kept"));
     }
 
@@ -188,10 +188,10 @@ private Q_SLOTS:
         server.fixture("GET", "/users/42/likes/tracks", "users-likes-tracks/string-ids");
         server.fixture("POST", "/tracks/", "tracks/two-tracks");
         stack.sources.playLikes(false);
-        QVERIFY(QTest::qWaitFor(
-            [&] { return stack.saw(QStringLiteral("Мне нравится: 2 треков")); }, 3000
-        ));
-        QCOMPARE(stack.player.queueTitle(), QStringLiteral("Мне нравится"));
+        QVERIFY(
+            QTest::qWaitFor([&] { return stack.saw(QStringLiteral("Liked: 2 track(s)")); }, 3000)
+        );
+        QCOMPARE(stack.player.queueTitle(), QStringLiteral("Liked"));
         QCOMPARE(stack.player.playlist().size(), 2);
         QCOMPARE(stack.player.playlist().first().title, ExpectedTitle("tracks/two-tracks"));
     }
@@ -212,16 +212,14 @@ private Q_SLOTS:
         server.fixture("GET", "/users/42/likes/tracks", likes);
         server.fixture("POST", "/tracks/", tracks);
         stack.sources.playLikes(true);
-        QVERIFY(
-            QTest::qWaitFor([&] { return stack.saw(QStringLiteral("Мне нравится: пусто")); }, 3000)
-        );
+        QVERIFY(QTest::qWaitFor([&] { return stack.saw(QStringLiteral("Liked: empty")); }, 3000));
         QCOMPARE(stack.player.queueTitle(), QStringLiteral("Kept"));
 
         server.fixture("GET", "/artists/9/track-ids-by-rating", "artists-track-ids-by-rating/ok");
         stack.sources.playArtist(QStringLiteral("9"), QStringLiteral("Кино"));
         QVERIFY(QTest::qWaitFor(
             [&] {
-                return stack.saw(QStringLiteral("Кино: пусто"))
+                return stack.saw(QStringLiteral("Кино: empty"))
                     || stack.player.queueTitle() == QStringLiteral("Кино");
             },
             3000
@@ -239,8 +237,7 @@ private Q_SLOTS:
         server.fixture("POST", "/rotor/session/new", "rotor-session-new/all-unavailable");
         const auto before = server.requests().size();
         stack.sources.playMyWave();
-        QVERIFY(QTest::qWaitFor([&] { return stack.saw(QStringLiteral("Моя волна: пусто")); }, 3000)
-        );
+        QVERIFY(QTest::qWaitFor([&] { return stack.saw(QStringLiteral("My Vibe: empty")); }, 3000));
         QTest::qWait(100);
         QCOMPARE(stack.player.queueTitle(), QStringLiteral("Kept"));
         QVERIFY(feedbackEvents(before).isEmpty());  // no radioStarted for a wave that never starts
@@ -255,9 +252,9 @@ private Q_SLOTS:
         QTest::newRow("album") << QStringLiteral("search/best-album")
                                << QStringLiteral("Звезда по имени Солнце") << 3;
         QTest::newRow("track") << QStringLiteral("search/best-track")
-                               << QStringLiteral("Поиск: кино") << 1;
+                               << QStringLiteral("Search: кино") << 1;
         QTest::newRow("playlist") << QStringLiteral("search/best-playlist")
-                                  << QStringLiteral("Поиск: кино") << 1;
+                                  << QStringLiteral("Search: кино") << 1;
         QTest::newRow("nothing") << QStringLiteral("search/no-best") << QString() << 0;
     }
     void searchQueuesTheBestResult() {
@@ -272,9 +269,9 @@ private Q_SLOTS:
         server.fixture("GET", "/albums/4053/with-tracks", "albums-with-tracks/two-volumes");
         stack.sources.search(QStringLiteral("кино"));
         if (title.isEmpty()) {
-            QVERIFY(QTest::qWaitFor(
-                [&] { return stack.saw(QStringLiteral("Ничего не найдено")); }, 3000
-            ));
+            QVERIFY(
+                QTest::qWaitFor([&] { return stack.saw(QStringLiteral("Nothing found")); }, 3000)
+            );
             QCOMPARE(stack.player.queueTitle(), QStringLiteral("Kept"));
             return;
         }

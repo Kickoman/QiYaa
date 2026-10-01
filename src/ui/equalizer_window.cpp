@@ -4,6 +4,7 @@
 #include "audio/error.h"
 #include "skins/skin.h"
 #include "skins/sprites.h"
+#include "ui/input_dialogs.h"
 
 #include <QCloseEvent>
 #include <QColor>
@@ -12,8 +13,6 @@
 #include <QFileDialog>
 #include <QFileInfo>
 #include <QImage>
-#include <QInputDialog>
-#include <QLineEdit>
 #include <QList>
 #include <QMenu>
 #include <QPainter>
@@ -124,7 +123,7 @@ double DbToGraphY(double db) {
 
 EqualizerWindow::EqualizerWindow(const Skins::Skin* skin, QWidget* parent)
     : SkinnedWindow(skin, Skins::EqualizerSprites::kSize, parent) {
-    setWindowTitle(QStringLiteral("QiYaa Equalizer"));
+    retranslate();
 }
 
 void EqualizerWindow::setAutoOn(bool on) {
@@ -505,8 +504,7 @@ void EqualizerWindow::applyPreset(const Audio::EqPreset& preset) {
 
 void EqualizerWindow::loadEqf() {
     const QString path = QFileDialog::getOpenFileName(
-        this, QStringLiteral("Пресет эквалайзера"), QDir::homePath(),
-        QStringLiteral("Пресеты Winamp (*.eqf *.EQF *.q1)")
+        this, tr("Equalizer preset"), QDir::homePath(), tr("Winamp presets (*.eqf *.EQF *.q1)")
     );
     if (path.isEmpty()) {
         return;
@@ -518,7 +516,7 @@ void EqualizerWindow::loadEqf() {
         return;
     }
     if (file.size() > kMaxEqfBytes) {
-        Q_EMIT statusText(QStringLiteral("EQ: %1 — %2 КБ, а пресеты не больше %3 КБ")
+        Q_EMIT statusText(tr("EQ: %1 is %2 KB, and presets are %3 KB at most")
                               .arg(fileName)
                               .arg(file.size() / 1024)
                               .arg(kMaxEqfBytes / 1024));
@@ -540,28 +538,21 @@ void EqualizerWindow::loadEqf() {
     for (const auto& preset : presets) {
         names << preset.name;
     }
-    bool ok = false;
-    const QString name = QInputDialog::getItem(
-        this, QStringLiteral("Пресет"), QStringLiteral("Выберите пресет:"), names, 0, false, &ok
-    );
-    if (ok) {
-        applyPreset(presets.value(names.indexOf(name)));
+    if (const std::optional<QString> name =
+            AskItem(this, tr("Preset"), tr("Pick a preset:"), names)) {
+        applyPreset(presets.value(names.indexOf(*name)));
     }
 }
 
 void EqualizerWindow::saveEqf() {
-    bool ok = false;
-    const QString name = QInputDialog::getText(
-        this, QStringLiteral("Сохранить пресет"), QStringLiteral("Название:"), QLineEdit::Normal,
-        QStringLiteral("QiYaa"), &ok
-    );
-    if (!ok || name.isEmpty()) {
+    const QString name = AskText(this, tr("Save the preset"), tr("Name:"), QStringLiteral("QiYaa"))
+                             .value_or(QString());
+    if (name.isEmpty()) {
         return;
     }
     const QString path = QFileDialog::getSaveFileName(
-        this, QStringLiteral("Сохранить пресет"),
-        QDir::homePath() + u'/' + name + QStringLiteral(".eqf"),
-        QStringLiteral("Пресет Winamp (*.eqf)")
+        this, tr("Save the preset"), QDir::homePath() + u'/' + name + QStringLiteral(".eqf"),
+        tr("Winamp preset (*.eqf)")
     );
     if (path.isEmpty()) {
         return;
@@ -570,25 +561,24 @@ void EqualizerWindow::saveEqf() {
     QFile file(path);
     if (file.open(QIODevice::WriteOnly)
         && file.write(Audio::WriteEqf({{name, equalizerSettings}})) > 0) {
-        Q_EMIT statusText(QStringLiteral("EQ: сохранено в %1").arg(fileName));
+        Q_EMIT statusText(tr("EQ: saved to %1").arg(fileName));
     } else {
-        Q_EMIT statusText(QStringLiteral("EQ: %1 не сохранён: %2").arg(fileName, file.errorString())
-        );
+        Q_EMIT statusText(tr("EQ: %1 is not saved: %2").arg(fileName, file.errorString()));
     }
 }
 
 void EqualizerWindow::showPresets() {
     auto* menu = new QMenu(this);
     menu->setAttribute(Qt::WA_DeleteOnClose);
-    menu->addAction(QStringLiteral("Сбросить (0 дБ)"), this, [this] {
+    menu->addAction(tr("Reset (0 dB)"), this, [this] {
         const bool enabled = equalizerSettings.enabled;
         equalizerSettings = Audio::EqSettings{};
         equalizerSettings.enabled = enabled;
         Q_EMIT settingsChanged(equalizerSettings);
         update();
     });
-    menu->addAction(QStringLiteral("Загрузить .eqf..."), this, &EqualizerWindow::loadEqf);
-    menu->addAction(QStringLiteral("Сохранить в .eqf..."), this, &EqualizerWindow::saveEqf);
+    menu->addAction(tr("Load .eqf…"), this, &EqualizerWindow::loadEqf);
+    menu->addAction(tr("Save to .eqf…"), this, &EqualizerWindow::saveEqf);
     menu->addSeparator();
     for (const Audio::EqPreset& preset : Audio::BuiltinEqPresets()) {
         menu->addAction(preset.name, this, [this, preset] { applyPreset(preset); });
@@ -603,6 +593,10 @@ void EqualizerWindow::showPresets() {
 void EqualizerWindow::closeEvent(QCloseEvent* event) {
     event->ignore();
     Q_EMIT closeRequested();
+}
+
+void EqualizerWindow::retranslate() {
+    setWindowTitle(tr("QiYaa: equalizer"));
 }
 
 }  // namespace Ui

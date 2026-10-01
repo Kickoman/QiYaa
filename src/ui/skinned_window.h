@@ -64,6 +64,8 @@ protected:
     virtual bool skinMouseDoubleClick(QPoint, Qt::MouseButton) { return false; }
     virtual void skinChanged() { }
     virtual QString regionSection() const { return {}; }
+    // Texts kept outside the painting (the window title): set again when the language changes.
+    virtual void retranslate() { }
 
     void resizeKeepingStack(QSize newSkinSize);
     void applyShade(bool shaded, QSize newSkinSize);

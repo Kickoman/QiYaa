@@ -6,6 +6,7 @@
 
 #include <QClipboard>
 #include <QColor>
+#include <QCoreApplication>
 #include <QEvent>
 #include <QFontMetrics>
 #include <QGuiApplication>
@@ -36,9 +37,12 @@ QColor Mix(const QColor& a, const QColor& b) {
 
 QString KindText(Jam::ParticipantKind kind) {
     switch (kind) {
-        case Jam::ParticipantKind::Host: return QStringLiteral("хозяин");
-        case Jam::ParticipantKind::Web: return QStringLiteral("браузер");
-        case Jam::ParticipantKind::Qiyaa: return QStringLiteral("приложение");
+        case Jam::ParticipantKind::Host:
+            return QCoreApplication::translate("Ui::JamWindow", "host");
+        case Jam::ParticipantKind::Web:
+            return QCoreApplication::translate("Ui::JamWindow", "browser");
+        case Jam::ParticipantKind::Qiyaa:
+            return QCoreApplication::translate("Ui::JamWindow", "app");
     }
     return {};
 }
@@ -183,7 +187,7 @@ JamWindow::JamWindow(
     : GenWindow(skin, QStringLiteral("JAM"), parent)
     , jamHost(host)
     , yandexLibrary(library) {
-    setWindowTitle(QStringLiteral("QiYaa: джем"));
+    retranslate();
     setFocusPolicy(Qt::StrongFocus);
     endTimer.setSingleShot(true);
     endTimer.setInterval(kEndConfirmMs);
@@ -270,61 +274,55 @@ QList<JamWindow::Control> JamWindow::render(QPainter* painter) {
 }
 
 void JamWindow::renderStart(Canvas& canvas) {
-    canvas.line(QStringLiteral("Новый джем"), canvas.current, true);
+    canvas.line(tr("New jam"), canvas.current, true);
     canvas.paragraph(
-        QStringLiteral(
-            "Друзья открывают ссылку или QR на своих телефонах и добавляют треки в вашу очередь. "
-            "Играете вы, ищут они через ваш аккаунт."
-        ),
+        tr("Friends open the link or the QR code on their phones and add tracks to your queue. "
+           "You play, they search through your account."),
         canvas.normal
     );
     canvas.y += kGap * 2;
-    canvas.line(QStringLiteral("Ваше имя"), canvas.normal);
+    canvas.line(tr("Your name"), canvas.normal);
     const QRect nameRect(canvas.left, canvas.y, canvas.width(), canvas.buttonHeight());
-    field(canvas, nameRect, Field::Name, QStringLiteral("Как вас покажут гостям"));
+    field(canvas, nameRect, Field::Name, tr("How the guests will see you"));
     canvas.y += nameRect.height() + kGap;
     const bool ready = !nameText.trimmed().isEmpty() && !serverName.isEmpty();
-    canvas.button(canvas.left, canvas.y, QStringLiteral("Начать джем"), ready, [this] { start(); });
+    canvas.button(canvas.left, canvas.y, tr("Start the jam"), ready, [this] { start(); });
     canvas.y += canvas.buttonHeight() + kGap;
     if (!startProblem.isEmpty()) {
         canvas.paragraph(startProblem, canvas.current);
     }
     canvas.y += kGap * 2;
     canvas.line(
-        serverName.isEmpty() ? QStringLiteral("Сервер джема не указан")
-                             : QStringLiteral("Сервер: ") + serverName,
+        serverName.isEmpty() ? tr("The jam server is not set") : tr("Server: %1").arg(serverName),
         canvas.normal
     );
     canvas.y += kGap;
-    canvas.button(canvas.left, canvas.y, QStringLiteral("Настройки сервера…"), true, [this] {
+    canvas.button(canvas.left, canvas.y, tr("Server settings…"), true, [this] {
         Q_EMIT serverSettingsRequested();
     });
 }
 
 void JamWindow::renderCreating(Canvas& canvas) {
-    canvas.line(QStringLiteral("Новый джем"), canvas.current, true);
-    canvas.paragraph(QStringLiteral("Подключаюсь к серверу джема…"), canvas.normal);
+    canvas.line(tr("New jam"), canvas.current, true);
+    canvas.paragraph(tr("Connecting to the jam server…"), canvas.normal);
     canvas.y += kGap;
-    canvas.button(canvas.left, canvas.y, QStringLiteral("Отмена"), true, [this] {
-        jamHost->cancelCreate();
-    });
+    canvas.button(canvas.left, canvas.y, tr("Cancel"), true, [this] { jamHost->cancelCreate(); });
 }
 
 void JamWindow::renderTabs(Canvas& canvas) {
     const QRect jamTab = canvas.button(
-        canvas.left, canvas.y, QStringLiteral("Джем"), true, [this] { showPage(Page::Jam); },
+        canvas.left, canvas.y, tr("Jam"), true, [this] { showPage(Page::Jam); },
         currentPage == Page::Jam
     );
     const QRect searchTab = canvas.button(
-        jamTab.right() + 1 + kGap, canvas.y, QStringLiteral("Добавить треки"), true,
+        jamTab.right() + 1 + kGap, canvas.y, tr("Add tracks"), true,
         [this] { showPage(Page::Search); }, currentPage == Page::Search
     );
     const bool connected = jamHost->isConnected();
     const Jam::Status status = jamHost->connection();
-    const QString state = connected ? QStringLiteral("На связи")
-        : status == Jam::Status::Connecting || status == Jam::Status::Online
-        ? QStringLiteral("Подключаюсь…")
-        : QStringLiteral("Нет связи");
+    const QString state = connected                                          ? tr("Connected")
+        : status == Jam::Status::Connecting || status == Jam::Status::Online ? tr("Connecting…")
+                                                                             : tr("No connection");
     const int stateWidth = canvas.textWidth(state) + 2;  // advances are fractional
     const int stateX = canvas.right - stateWidth;
     if (stateX - 8 > searchTab.right() + kGap) {
@@ -337,7 +335,7 @@ void JamWindow::renderTabs(Canvas& canvas) {
     canvas.y += canvas.buttonHeight() + kGap;
     if (!connected) {
         canvas.paragraph(
-            QStringLiteral("Нет связи с сервером джема · повторю сам"), canvas.current
+            tr("No connection to the jam server · trying again by itself"), canvas.current
         );
         canvas.y += kGap;
     }
@@ -361,23 +359,20 @@ void JamWindow::renderJam(Canvas& canvas) {
     }
     canvas.text(
         QRect(textLeft, canvas.y, canvas.right - textLeft, canvas.lineHeight),
-        QStringLiteral("Ссылка для гостей"), canvas.current, true
+        tr("Link for the guests"), canvas.current, true
     );
     canvas.y += canvas.lineHeight;
     canvas.paragraph(jamHost->joinUrl(), canvas.normal, 3, Qt::TextWrapAnywhere, textLeft);
     canvas.y += kGap;
-    const QRect copy =
-        canvas.button(textLeft, canvas.y, QStringLiteral("Копировать"), true, [this] {
-            copyLink();
-        });
-    const QString newLink = QStringLiteral("Новая ссылка");
+    const QRect copy = canvas.button(textLeft, canvas.y, tr("Copy"), true, [this] { copyLink(); });
+    const QString newLink = tr("New link");
     int newLinkX = copy.right() + 1 + kGap;
     if (newLinkX + canvas.buttonWidth(newLink) > canvas.right) {
         newLinkX = textLeft;
         canvas.y += canvas.buttonHeight() + kGap;
     }
     canvas.button(newLinkX, canvas.y, newLink, connected, [this] {
-        send(jamHost->rotateLink(), QStringLiteral("Ссылка для гостей сменилась"));
+        send(jamHost->rotateLink(), tr("The guests' link has changed"));
     });
     canvas.y = std::max(qrBottom, canvas.y + canvas.buttonHeight()) + kGap * 2;
 
@@ -398,18 +393,15 @@ void JamWindow::renderJam(Canvas& canvas) {
         };
         const bool roundRobin = settings.order == Jam::Order::RoundRobin;
         setting(
-            QStringLiteral("Порядок"),
-            roundRobin ? QStringLiteral("По очереди") : QStringLiteral("Кто первый"),
+            tr("Order"), roundRobin ? tr("Taking turns") : tr("First come"),
             Jam::SettingsPatch{roundRobin ? Jam::Order::Fifo : Jam::Order::RoundRobin, {}, {}, {}}
         );
         setting(
-            QStringLiteral("Гости могут пропускать"),
-            settings.guestsCanSkip ? QStringLiteral("Да") : QStringLiteral("Нет"),
+            tr("Guests can skip"), settings.guestsCanSkip ? tr("Yes") : tr("No"),
             Jam::SettingsPatch{{}, !settings.guestsCanSkip, {}, {}}
         );
         setting(
-            QStringLiteral("Новые гости"),
-            settings.joinOpen ? QStringLiteral("Пускать") : QStringLiteral("Закрыто"),
+            tr("New guests"), settings.joinOpen ? tr("Let in") : tr("Closed"),
             Jam::SettingsPatch{{}, {}, !settings.joinOpen, {}}
         );
         canvas.y += kGap;
@@ -423,24 +415,22 @@ void JamWindow::renderJam(Canvas& canvas) {
             }
         }
     }
-    canvas.line(QStringLiteral("Гости · %1").arg(guests.size()), canvas.current, true);
+    canvas.line(tr("Guests · %1").arg(guests.size()), canvas.current, true);
     const int endTop = canvas.bottom - canvas.buttonHeight();
     const int rowHeight = canvas.buttonHeight() + 1;
     listRows = std::max(0, (endTop - kGap - canvas.y) / rowHeight);
     listScroll = std::clamp(listScroll, 0, std::max(0, int(guests.size()) - listRows));
     if (guests.isEmpty()) {
-        canvas.paragraph(
-            QStringLiteral("Пока никого. Покажите гостям QR-код или ссылку."), canvas.dim
-        );
+        canvas.paragraph(tr("Nobody yet. Show the guests the QR code or the link."), canvas.dim);
     }
     for (int i = listScroll; i < guests.size() && i < listScroll + listRows; ++i) {
         const Jam::Participant& guest = guests[i];
-        const QString kick = QStringLiteral("Убрать");
+        const QString kick = tr("Remove");
         const int kickX = canvas.right - canvas.buttonWidth(kick);
         canvas.light(canvas.left, canvas.y + canvas.buttonHeight() / 2, guest.online);
         QString line = guest.name + QStringLiteral(" · ") + KindText(guest.kind);
         if (guest.pending > 0) {
-            line += QStringLiteral(" · ждут: %1").arg(guest.pending);
+            line += tr(" · waiting: %1").arg(guest.pending);
         }
         canvas.text(
             QRect(canvas.left + 7, canvas.y, kickX - kGap - canvas.left - 7, canvas.buttonHeight()),
@@ -454,20 +444,18 @@ void JamWindow::renderJam(Canvas& canvas) {
     }
 
     canvas.button(
-        canvas.left, endTop,
-        endArmed ? QStringLiteral("Нажмите ещё раз, чтобы закончить")
-                 : QStringLiteral("Закончить джем"),
-        true, [this] { end(); }, endArmed
+        canvas.left, endTop, endArmed ? tr("Press again to end") : tr("End the jam"), true,
+        [this] { end(); }, endArmed
     );
 }
 
 void JamWindow::renderSearch(Canvas& canvas) {
     const bool connected = jamHost->isConnected();
-    const QString find = QStringLiteral("Искать");
+    const QString find = tr("Search");
     const int findX = canvas.right - canvas.buttonWidth(find);
     field(
         canvas, QRect(canvas.left, canvas.y, findX - kGap - canvas.left, canvas.buttonHeight()),
-        Field::Search, QStringLiteral("Поиск треков для джема")
+        Field::Search, tr("Search tracks for the jam")
     );
     canvas.button(findX, canvas.y, find, !searchText.trimmed().isEmpty(), [this] {
         search(searchText);
@@ -477,30 +465,26 @@ void JamWindow::renderSearch(Canvas& canvas) {
     switch (results) {
         case Results::None:
             canvas.paragraph(
-                QStringLiteral(
-                    "Найдите трек: «В джем» ставит его в очередь гостей, «Следом» — сыграет "
-                    "следующим."
-                ),
+                tr("Find a track: “To the jam” puts it in the guests' queue, “Next” plays it "
+                   "next."),
                 canvas.dim
             );
             return;
-        case Results::Loading: canvas.line(QStringLiteral("Ищу…"), canvas.normal); return;
+        case Results::Loading: canvas.line(tr("Searching…"), canvas.normal); return;
         case Results::Failed:
-            canvas.paragraph(
-                QStringLiteral("Поиск не удался: ") + searchProblem, canvas.current, 3
-            );
+            canvas.paragraph(tr("The search failed: %1").arg(searchProblem), canvas.current, 3);
             return;
         case Results::Found: break;
     }
     if (foundTracks.isEmpty()) {
-        canvas.line(QStringLiteral("Ничего не нашлось"), canvas.normal);
+        canvas.line(tr("Nothing found"), canvas.normal);
         return;
     }
     const int rowHeight = canvas.buttonHeight() + 1;
     listRows = std::max(0, (canvas.bottom - canvas.y) / rowHeight);
     listScroll = std::clamp(listScroll, 0, std::max(0, int(foundTracks.size()) - listRows));
-    const QString add = QStringLiteral("В джем");
-    const QString next = QStringLiteral("Следом");
+    const QString add = tr("To the jam");
+    const QString next = tr("Next");
     for (int i = listScroll; i < foundTracks.size() && i < listScroll + listRows; ++i) {
         const Yandex::Track track = foundTracks[i];
         const int nextX = canvas.right - canvas.buttonWidth(next);
@@ -514,10 +498,10 @@ void JamWindow::renderSearch(Canvas& canvas) {
             canvas.normal
         );
         canvas.button(addX, canvas.y, add, connected, [this, track] {
-            send(jamHost->add(track), QStringLiteral("Отправлено в джем"));
+            send(jamHost->add(track), tr("Sent to the jam"));
         });
         canvas.button(nextX, canvas.y, next, connected, [this, track] {
-            send(jamHost->playNext(track), QStringLiteral("Отправлено в джем, сыграет следующим"));
+            send(jamHost->playNext(track), tr("Sent to the jam, plays next"));
         });
         canvas.y += rowHeight;
     }
@@ -584,9 +568,8 @@ const QImage& JamWindow::qrCode() {
 void JamWindow::start() {
     startProblem.clear();
     if (!jamHost->create(nameText)) {
-        startProblem = serverName.isEmpty()
-            ? QStringLiteral("Сначала укажите сервер джема")
-            : QStringLiteral("Не получается начать: проверьте имя и сервер");
+        startProblem = serverName.isEmpty() ? tr("Set the jam server first")
+                                            : tr("Cannot start: check the name and the server");
     }
     focus = Field::None;
     update();
@@ -594,7 +577,7 @@ void JamWindow::start() {
 
 void JamWindow::copyLink() {
     QGuiApplication::clipboard()->setText(jamHost->joinUrl());
-    Q_EMIT statusText(QStringLiteral("Ссылка скопирована"));
+    Q_EMIT statusText(tr("The link is copied"));
 }
 
 void JamWindow::end() {
@@ -611,7 +594,7 @@ void JamWindow::end() {
 
 void JamWindow::send(bool sent, const QString& done) {
     if (!sent) {
-        Q_EMIT statusText(QStringLiteral("Нет связи с сервером джема"));
+        Q_EMIT statusText(tr("No connection to the jam server"));
     } else if (!done.isEmpty()) {
         Q_EMIT statusText(done);
     }
@@ -725,6 +708,10 @@ void JamWindow::wheelEvent(QWheelEvent* event) {
         listScroll = std::max(0, listScroll - steps);
         update();
     }
+}
+
+void JamWindow::retranslate() {
+    setWindowTitle(tr("QiYaa: jam"));
 }
 
 }  // namespace Ui

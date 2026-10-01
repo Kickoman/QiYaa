@@ -22,32 +22,34 @@ JamServerDialog::JamServerDialog(
 )
     : QDialog(parent)
     , fallback(defaultServer) {
-    setWindowTitle(QStringLiteral("Сервер джема"));
+    setWindowTitle(tr("Jam server"));
     setMinimumWidth(kDialogWidth);
     auto* layout = new QVBoxLayout(this);
 
-    layout->addWidget(new QLabel(QStringLiteral("Адрес сервера")));
+    layout->addWidget(new QLabel(tr("Server address")));
     serverField = new QLineEdit(server == defaultServer ? QString() : server);
     serverField->setPlaceholderText(defaultServer);
     layout->addWidget(serverField);
-    serverProblem = new QLabel(QStringLiteral("Нужен адрес вида https://jam.example.org"));
+    serverProblem =
+        new QLabel(tr("An address like %1 is needed").arg(QStringLiteral("https://jam.example.org"))
+        );
     serverProblem->setVisible(false);
     layout->addWidget(serverProblem);
 
-    feedbackBox = new QCheckBox(QStringLiteral("Учить волну джема"));
+    feedbackBox = new QCheckBox(tr("Teach the jam vibe"));
     feedbackBox->setChecked(waveFeedback);
     layout->addWidget(feedbackBox);
-    auto* note = new QLabel(QStringLiteral(
-        "Когда очередь гостей пуста, играет волна джема. Включено: она учится на пропусках во "
-        "время джема и только там. Выключено: никакого фидбека."
+    auto* note = new QLabel(tr(
+        "When the guests' queue is empty, the jam vibe plays. On: it learns from the skips during "
+        "the jam, and only there. Off: no feedback at all."
     ));
     note->setWordWrap(true);
     layout->addWidget(note);
 
     auto* buttons = new QDialogButtonBox(QDialogButtonBox::Save | QDialogButtonBox::Cancel);
     saveButton = buttons->button(QDialogButtonBox::Save);
-    buttons->button(QDialogButtonBox::Cancel)->setText(QStringLiteral("Отмена"));
-    saveButton->setText(QStringLiteral("Сохранить"));
+    buttons->button(QDialogButtonBox::Cancel)->setText(tr("Cancel"));
+    saveButton->setText(tr("Save"));
     layout->addWidget(buttons);
     connect(buttons, &QDialogButtonBox::accepted, this, &QDialog::accept);
     connect(buttons, &QDialogButtonBox::rejected, this, &QDialog::reject);
