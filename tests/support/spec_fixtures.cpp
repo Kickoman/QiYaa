@@ -81,6 +81,10 @@ QJsonObject ExpectedObject(const QString& name) {
     return SpecObject(QStringLiteral("expected/yandex/%1.json").arg(name));
 }
 
+QString SpecPath(const QString& relativePath) {
+    return QStringLiteral(QIYAA_SPEC_DIR "/") + relativePath;
+}
+
 QJsonObject SpecObject(const QString& relativePath) {
     QJsonParseError error{};
     const QJsonDocument document = QJsonDocument::fromJson(ReadSpecFile(relativePath), &error);

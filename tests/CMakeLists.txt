@@ -57,6 +57,11 @@ if(NOT WIN32)
         "QT_QPA_PLATFORM=offscreen:configfile=${CMAKE_CURRENT_SOURCE_DIR}/data/screen-2560x1440.json;QIYAA_AUDIO_BACKEND=null")
 endif()
 
+# The jam: only where it's built (Qt WebSockets). The client talks to a QWebSocketServer on localhost.
+if(QIYAA_HAVE_JAM)
+    qiyaa_add_test(jam_test jam)
+endif()
+
 # MPRIS: only where it's built (Linux with Qt D-Bus; macOS Qt has D-Bus too,
 # but no MPRIS). It needs a session bus, so CTest starts a private one;
 # without dbus-run-session the test skips itself.

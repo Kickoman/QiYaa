@@ -11,7 +11,7 @@ Every folder of `src/` is one module: one namespace, one static library `qiyaa_<
 README. Dependencies point one way, and a module never includes a header of a module to its right:
 
 ```
-audio, yandex, skins  →  vis, core  →  ui, integrations  →  app  →  qiyaa (src/app/main.cpp)
+audio, yandex, skins  →  vis, core  →  jam  →  ui, integrations  →  app  →  qiyaa (src/app/main.cpp)
 ```
 
 | Module | Namespace | What it does | Links PUBLIC | Links PRIVATE |
@@ -21,14 +21,15 @@ audio, yandex, skins  →  vis, core  →  ui, integrations  →  app  →  qiya
 | [src/skins](../src/skins/README.md) | `Skins` | Loads `.wsz` skins: sheets, `region.txt`, `pledit.txt`, `viscolor.txt`, bitmap text; sprite tables | Qt Gui | miniz |
 | [src/vis](../src/vis/README.md) | `Vis` | Spectrum, oscilloscope, FFT; Milkdrop through projectM in a `QOpenGLWindow` | Qt Gui (+ OpenGL) | audio, skins (+ projectM) |
 | [src/core](../src/core/README.md) | `Core` | `Player` (queue, transport, downloads, preload, track events), `Sources` (what a pick plays, wave callbacks) and `CoverCache` | audio, yandex, Qt Gui, Network | |
+| [src/jam](../src/jam/README.md) | `Jam` | The jam client: protocol messages and their JSON, the WebSocket connection to a jam server, the host's stored session. Optional (Qt WebSockets) | Qt Core, WebSockets | |
 | [src/ui](../src/ui/README.md) | `Ui` | The skinned windows, snapping and docking, the Yandex menus, the login dialog | audio, vis, Qt Widgets | core, skins, yandex |
 | [src/integrations](../src/integrations/README.md) | `Integrations` | Media keys and system media panels: MPRIS (Linux) or SMTC (Windows) | Qt Gui (+ DBus) | audio, core, yandex |
 | [src/app](../src/app/README.md) | `App` | `Application`: owns and wires everything, menus, shortcuts, settings, login; `main()` | audio, core, skins, yandex | integrations, ui, vis |
 
 Vendored code lives in `contrib/` (miniaudio, miniz) and is not changed. `spec/` is a submodule
 with the behaviour and test data shared with the Android app ([spec/README.md](../spec/README.md)).
-Milkdrop (`QIYAA_HAVE_MILKDROP`), MPRIS (`QIYAA_HAVE_MPRIS`) and SMTC (`QIYAA_HAVE_SMTC`) are
-optional; the build options are in [building.md](building.md#параметры-cmake).
+Milkdrop (`QIYAA_HAVE_MILKDROP`), the jam (`QIYAA_HAVE_JAM`), MPRIS (`QIYAA_HAVE_MPRIS`) and SMTC
+(`QIYAA_HAVE_SMTC`) are optional; the build options are in [building.md](building.md#параметры-cmake).
 
 ## Who owns what
 

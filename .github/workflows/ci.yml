@@ -29,7 +29,7 @@ jobs:
       matrix:
         include:
           # Distro Qt (6.4 on Ubuntu 24.04): proves we build with the minimum
-          # version, and without Milkdrop.
+          # version, and without Milkdrop and the jam (no Qt WebSockets installed).
           - name: Linux (system Qt 6.4)
             os: ubuntu-24.04
             system_qt: true
@@ -40,24 +40,24 @@ jobs:
             os: ubuntu-24.04
             system_qt: true
             deb: true
-            cmake_args: -DQIYAA_REQUIRE_MILKDROP=ON -DCMAKE_INSTALL_PREFIX=/usr
+            cmake_args: -DQIYAA_REQUIRE_MILKDROP=ON -DQIYAA_REQUIRE_JAM=ON -DCMAKE_INSTALL_PREFIX=/usr
             artifact: QiYaa-Linux-deb
           # Built on the oldest supported base so the AppImage runs on Ubuntu 22.04+ (glibc 2.35).
           - name: Linux (Qt 6.8, AppImage)
             os: ubuntu-22.04
             qt_arch: linux_gcc_64
             # linuxdeploy gathers all libraries in usr/lib anyway.
-            cmake_args: -DQIYAA_REQUIRE_MILKDROP=ON -DQIYAA_BUNDLED_LIBDIR=lib
+            cmake_args: -DQIYAA_REQUIRE_MILKDROP=ON -DQIYAA_REQUIRE_JAM=ON -DQIYAA_BUNDLED_LIBDIR=lib
             artifact: QiYaa-Linux-AppImage
           - name: Windows (Qt 6.8, MSVC)
             os: windows-2022
             qt_arch: win64_msvc2022_64
-            cmake_args: -DQIYAA_REQUIRE_MILKDROP=ON
+            cmake_args: -DQIYAA_REQUIRE_MILKDROP=ON -DQIYAA_REQUIRE_JAM=ON
             artifact: QiYaa-Windows
           - name: macOS (Qt 6.8, arm64)
             os: macos-14
             qt_arch: clang_64
-            cmake_args: -DQIYAA_REQUIRE_MILKDROP=ON
+            cmake_args: -DQIYAA_REQUIRE_MILKDROP=ON -DQIYAA_REQUIRE_JAM=ON
             artifact: QiYaa-macOS
 
     steps:
@@ -71,9 +71,11 @@ jobs:
           sudo apt-get update
           # dbus + gdbus: the MPRIS test talks to the app over a private session bus.
           sudo apt-get install -y qt6-base-dev libgl1-mesa-dev ninja-build dbus libglib2.0-bin
-          # The .deb build has Milkdrop: Qt OpenGL, and Xvfb + Mesa for its rendering test.
+          # The .deb build has Milkdrop (Qt OpenGL, and Xvfb + Mesa for its rendering test) and the jam
+          # (Qt WebSockets).
           if [ "${{ matrix.deb }}" = "true" ]; then
-            sudo apt-get install -y libqt6opengl6-dev libgl-dev qt6-qpa-plugins xvfb libgl1-mesa-dri dpkg-dev
+            sudo apt-get install -y libqt6opengl6-dev libgl-dev qt6-qpa-plugins xvfb libgl1-mesa-dri dpkg-dev \
+              qt6-websockets-dev
           fi
 
       - name: Install Qt 6.8
@@ -82,6 +84,7 @@ jobs:
         with:
           version: '6.8.3'
           arch: ${{ matrix.qt_arch }}
+          modules: qtwebsockets
           cache: true
 
       - name: Linux build deps
@@ -129,7 +132,8 @@ jobs:
         run: |
           GEN="-G Ninja"
           [ "$RUNNER_OS" = "macOS" ] && GEN=""
-          # Packaged builds must have Milkdrop; the plain system-Qt build checks building without it.
+          # Packaged builds must have Milkdrop and the jam; the plain system-Qt build checks building
+          # without them.
           cmake -S . -B build $GEN -DCMAKE_BUILD_TYPE=Release ${{ matrix.cmake_args }} $CMAKE_EXTRA
           echo "VERSION=$(cat build/version.txt)" >> "$GITHUB_ENV"
 

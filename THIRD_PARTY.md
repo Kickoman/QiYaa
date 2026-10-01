@@ -6,7 +6,7 @@ QiYaa itself is MIT-licensed (see `LICENSE`). It includes or links the following
 
 | Component | License | How it is used |
 |---|---|---|
-| [Qt 6](https://www.qt.io/) — Core, Gui, Widgets, Network, OpenGL, DBus (Linux) | LGPLv3 | Linked **dynamically**. You may replace the Qt libraries shipped with a build by your own. Qt sources: https://download.qt.io/official_releases/qt/ |
+| [Qt 6](https://www.qt.io/) — Core, Gui, Widgets, Network, WebSockets, OpenGL, DBus (Linux) | LGPLv3 | Linked **dynamically**. You may replace the Qt libraries shipped with a build by your own. Qt sources: https://download.qt.io/official_releases/qt/ |
 | [projectM](https://github.com/projectM-visualizer/projectm) 4.1.7 — the Milkdrop engine | LGPL-2.1 | Linked **dynamically** (`libprojectM-4.so` / `projectM-4.dll` / `.dylib`, shipped next to the app); replaceable by your own build of the same version. Sources: https://github.com/projectM-visualizer/projectm/tree/v4.1.7 |
 
 Only LGPL-licensed Qt modules are used. GPL-only modules (Qt HTTP Server, Qt Network Authorization, etc.) are deliberately not used.

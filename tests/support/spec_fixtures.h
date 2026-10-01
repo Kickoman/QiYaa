@@ -26,6 +26,9 @@ QByteArray Json(const QJsonObject& object);
 // Any JSON object of spec/, by its path there ("dsp/eq-response.json").
 QJsonObject SpecObject(const QString& relativePath);
 
+// The absolute path of a file or folder of spec/ ("jam/protocol/examples").
+QString SpecPath(const QString& relativePath);
+
 // Writes a JSON object into spec/ the way its files are kept: 2-space indentation, sorted keys,
 // arrays of numbers or strings on one line. For generators run by hand, never by CTest.
 void WriteSpecObject(const QString& relativePath, const QJsonObject& object);

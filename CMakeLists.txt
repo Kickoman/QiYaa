@@ -43,7 +43,7 @@ elseif(UNIX)
 endif()
 
 # One static library per folder of src/. Dependencies point one way:
-#   audio, yandex, skins  ->  vis, core  ->  ui, integrations  ->  app  ->  qiyaa (main)
+#   audio, yandex, skins  ->  vis, core  ->  jam  ->  ui, integrations  ->  app  ->  qiyaa (main)
 function(qiyaa_target_defaults target)
     target_compile_definitions(${target} PUBLIC QT_NO_KEYWORDS)
     if(MSVC)
@@ -105,6 +105,32 @@ qiyaa_add_module(core
     src/core/player.cpp         src/core/player.h
     src/core/sources.cpp        src/core/sources.h)
 target_link_libraries(qiyaa_core PUBLIC qiyaa_audio qiyaa_yandex Qt6::Gui Qt6::Network)
+
+# Jam: a shared queue the app hosts for guests (spec/jam). Needs Qt WebSockets; without it the
+# app builds without the jam, like without Milkdrop.
+option(QIYAA_WITH_JAM "Jam: host a shared queue for guests (needs Qt WebSockets)" ON)
+option(QIYAA_REQUIRE_JAM "Stop with an error instead of building without the jam" OFF)
+set(QIYAA_JAM_URL "https://qiyaa.kanstancin.net" CACHE STRING "The jam server the app offers by default")
+set(QIYAA_HAVE_JAM OFF)
+if(QIYAA_WITH_JAM)
+    find_package(Qt6 6.4 QUIET COMPONENTS WebSockets)
+    if(TARGET Qt6::WebSockets)
+        qiyaa_add_module(jam
+            src/jam/client.cpp          src/jam/client.h
+            src/jam/codec.cpp           src/jam/codec.h
+            src/jam/protocol.h
+            src/jam/session_store.cpp   src/jam/session_store.h)
+        target_link_libraries(qiyaa_jam PUBLIC Qt6::Core Qt6::WebSockets)
+        target_compile_definitions(qiyaa_jam PUBLIC QIYAA_HAVE_JAM)
+        set(QIYAA_HAVE_JAM ON)
+        message(STATUS "Jam: enabled (default server ${QIYAA_JAM_URL})")
+    else()
+        message(STATUS "Jam: disabled (Qt6::WebSockets not found)")
+    endif()
+endif()
+if(QIYAA_REQUIRE_JAM AND NOT QIYAA_HAVE_JAM)
+    message(FATAL_ERROR "The jam was required but can't be built (see above)")
+endif()
 
 qiyaa_add_module(ui
     src/ui/equalizer_window.cpp src/ui/equalizer_window.h

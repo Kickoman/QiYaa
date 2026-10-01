@@ -17,7 +17,7 @@ is formatting (the clang-format check in `.github/workflows/ci.yml`).
 |---|---|
 | `CMakeLists.txt` | `qiyaa_test_support`, `qiyaa_test_yandex`, the `qiyaa_add_test` helper, one CTest entry per suite, and `milkdrop_gl_test`; stops the configuration when `spec/` is not checked out |
 | `support/mock_http_server.h/.cpp` | `Tests::MockRequest`, `Tests::MockResponse`, `Tests::MockHttpServer` |
-| `support/spec_fixtures.h/.cpp` | `Tests::Fixture`, `FixtureStatus`, `Expected`, `ExpectedObject`, `Json`: reading `spec/fixtures/yandex` and `spec/expected/yandex` |
+| `support/spec_fixtures.h/.cpp` | `Tests::Fixture`, `FixtureStatus`, `Expected`, `ExpectedObject`, `Json`: reading `spec/fixtures/yandex` and `spec/expected/yandex`; `SpecObject` and `SpecPath` for any file of `spec/` |
 | `support/yandex_json.h/.cpp` | `Tests::ToJson` and friends: the `Yandex::` models in the neutral JSON of `spec/expected/yandex`; `CheckError` |
 | `snap_test.cpp` | `Ui::SnapToOthers`, `SnapWithin`, `ClampInside`, `PickScreen`, `ResolveDragPosition`, and `StackBelow` (which windows follow a shade change of window 0). Pure `QRect` arithmetic, no windows |
 | `region_test.cpp` | `Skins::ParseRegionTxt` and `RegionFromPolygons`: sections, several polygons, degenerate and missing points, empty input |
@@ -31,6 +31,7 @@ is formatting (the clang-format check in `.github/workflows/ci.yml`).
 | `main_window_test.cpp` | One `Ui::MainWindow` on the default offscreen screen: position clamping, dragging and edge snapping, shuffle click, the shuffle light off during a wave, volume slider, ×2 and fractional scale |
 | `windows_test.cpp` | The whole `App::Application` window set: docking, detaching, scaling, playlist selection/scroll/resize, EQ sliders, shade modes, login dialog layout, Milkdrop and Now Playing windows, `snapshot()` |
 | `screenshots_test.cpp` | Golden screenshots of the main window and the equalizer (see **Golden screenshots**) |
+| `jam_test.cpp` | `Jam::` (only with Qt WebSockets): every example of `spec/jam/protocol/examples` through the codec (valid ones pass, `invalid-*` fail) and client examples through encode and decode; the client against a `QWebSocketServer` on localhost — hello and the clock offset, reconnects after the delays and at once on `networkBack`, the outbox, `ended` stopping it for good, refusing to send what the server would refuse, invalid and unknown-reason messages; the stored session across a restart and broken, foreign or oversized files |
 | `mpris_test.cpp` | `Integrations::Mpris` over a session bus, driven by `gdbus` as an external client |
 | `milkdrop_test.cpp` | `Vis::MilkdropPresets`, preset switching and black-preset handling in `Ui::MilkdropWindow`; with OpenGL 3.3, projectM rendering, the black-picture detector and fullscreen |
 | `data/sine440_3s.mp3` | 3 s of a 440 Hz sine: MPEG-1 Layer III, 64 kbps, 44.1 kHz, stereo, ID3v2.4 tag, 24,494 bytes |
