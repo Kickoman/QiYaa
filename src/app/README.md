@@ -80,6 +80,7 @@ public:
     Ui::PlaylistWindow* playlistWindow() const;
     Ui::NowPlayingWindow* nowPlayingWindow() const;
     Ui::MilkdropWindow* milkdropWindow() const;  // null without QIYAA_HAVE_MILKDROP
+    Ui::JamWindow* jamWindow() const;            // null without QIYAA_HAVE_JAM
     Core::CoverCache* covers() const;
     Core::Player* player();
     Audio::AudioEngine* engine();
@@ -96,6 +97,7 @@ public:
     void setPlaylistVisible(bool on);
     void setNowPlayingVisible(bool on);
     void setMilkdropVisible(bool on);                  // no-op without Milkdrop
+    void setJamWindowVisible(bool on);                 // no-op without the jam
 
     void login();                                      // modal dialog
     void logout();
@@ -113,7 +115,8 @@ callback stay inside [src/audio](../audio/README.md)). `Application` owns everyt
 `QSettings`, the base and the current `Skins::Skin`, `ApiClient`, `Library`, `AudioEngine`,
 `Player`, `Sources` and `JamMode` as members; its own `QNetworkAccessManager` unless
 `Options::network` lends one; the `Jam::HostSession`, `CoverCache`, `MediaControls`, the `Mpris` or
-`Smtc` object (held as `std::unique_ptr<QObject>`) and the five windows through `std::unique_ptr`.
+`Smtc` object (held as `std::unique_ptr<QObject>`) and the windows (five, and the jam window in a
+jam build) through `std::unique_ptr`.
 The accessors return non-owning pointers, valid until the `Application` is destroyed.
 
 Member order is load-bearing. Members are constructed in declaration order, and the initialiser
@@ -140,7 +143,24 @@ that may hold its file.
    with built-in presets from `:/milkdrop` and user presets from `<ConfigDirectory>/milkdrop`
    (`<temp dir>/milkdrop` when `readOnlySettings`). Every window gets the shortcuts listed below;
    all but the main window are "secondary" (no taskbar button on Windows).
-6. Restores the settings listed in [Settings](#settings) and connects the windows:
+6. Gives `Sources` the `JamMode` (a pick during a jam is refused, HOST-21). In a jam build
+   (`setUpJam()`) creates the `Jam::HostSession`: the server and the wave feedback from the
+   `jam/*` settings at each use, the queue title `Джем`, the app's version for `hello`, and the
+   session file `jam-session.json` next to the settings file (so `readOnlySettings` and a test's
+   `settingsFile` keep it in their own folder). Its signals go to the marquee: a refusal by its
+   reason (below), the end of the jam (`Джем закончен`, `Джем закончили`, `Джем закрылся, пока вас
+   не было`, `Джем закончен: сервер его больше не знает`), and, while the jam is on, a lost
+   connection (`Нет связи с сервером джема · повторю сам`) and its return (`Джем на связи`). Then
+   the jam window (`Ui::JamWindow`, steps `jamWindow/steps`, the server's host from `jam/server`;
+   its `statusText` to the marquee, its "Настройки сервера…" to `showJamServerDialog()`), and the
+   jam's part in the other windows (HOST-34, HOST-21): the playlist's rows and the marquee get a
+   note, `+ <name>` for a jam item (the participant whose `publicId` is the slot's `addedBy`) and
+   `волна джема` for a jam wave track; during a jam the playlist's remove sends `remove` for the
+   selected jam items (`Выделите треки джема, чтобы убрать их` when none is one, `Нет связи с
+   сервером джема` when a send fails) and its clear only says `Идёт джем: добавляйте треки в
+   джем`; neither touches the `Player`. It is done here, before the loops below over `windows()`,
+   which take the jam window in.
+7. Restores the settings listed in [Settings](#settings) and connects the windows:
    - the equalizer's shade mode shows and sets the main window's volume and balance (`setMixer`,
      `volumeRequested`, `balanceRequested`);
    - the equalizer's `statusText` goes to the main window's marquee;
@@ -149,20 +169,12 @@ that may hold its file.
    - Milkdrop's `transportKey` (transport keys pressed while the visualization has the focus)
      goes to the same handler as the shortcuts;
    - Milkdrop is told whether the engine state is `Playing`.
-7. Applies the saved shade state of the main, equalizer and playlist windows, then `scale` to every
+8. Applies the saved shade state of the main, equalizer and playlist windows, then `scale` to every
    window, then `alwaysOnTop`.
-8. With `mediaIntegration`, creates `Integrations::MediaControls` with four hooks: volume, set
+9. With `mediaIntegration`, creates `Integrations::MediaControls` with four hooks: volume, set
    volume, raise (un-minimise the main window, raise every visible window, activate the main one)
    and quit (`quit()`). On top of it, `Mpris` in a build with `QIYAA_HAVE_MPRIS`, or `Smtc` in a
    build with `QIYAA_HAVE_SMTC`.
-9. Gives `Sources` the `JamMode` (a pick during a jam is refused, HOST-21). In a jam build creates
-   the `Jam::HostSession`: the server and the wave feedback from the `jam/*` settings at each
-   use, the queue title `Джем`, the app's version for `hello`, and the session file
-   `jam-session.json` next to the settings file (so `readOnlySettings` and a test's
-   `settingsFile` keep it in their own folder). Its signals go to the marquee: a refusal by its
-   reason (below), the end of the jam (`Джем закончен`, `Джем закончили`, `Джем закрылся, пока вас
-   не было`, `Джем закончен: сервер его больше не знает`), and, while the jam is on, a lost
-   connection (`Нет связи с сервером джема · повторю сам`) and its return (`Джем на связи`).
 10. With audio on and not offline, `watchNetwork()` (see the traps).
 11. Connects `QApplication::aboutToQuit` to `saveState()` followed by `Player::stop()`.
 
@@ -180,7 +192,7 @@ token (see [Login, logout and the token](#login-logout-and-the-token)).
 **"Continue the jam?"** (HOST-23). When the host session has a stored jam, `start()` opens a
 `QMessageBox` "Шёл джем" / "Продолжить? Ссылка у гостей останется прежней." with "Продолжить"
 and "Закончить". It is not modal (`open()`): playback and the windows work while it waits, and a
-test on the offscreen platform does not block. "Продолжить" calls `continueStored()`; "Закончить"
+test on the offscreen platform does not block. "Продолжить" calls `continueStored()` and shows the jam window; "Закончить"
 calls `discardStored()` and queues the likes like a login does; closing it without an answer keeps
 the jam stored for the next start. While it is open, or a jam is on, `applyToken` does not queue
 the likes.
@@ -188,7 +200,7 @@ the likes.
 **Layout.** `layoutWindows()`, called only from `start()`, places each window at its saved
 `*/pos`, or at the Winamp default: the equalizer right below the main window, the playlist right
 below the equalizer, now-playing to the right of the main window, Milkdrop at main position +
-(main width, main height). The defaults use the sizes the windows have at that moment,
+(main width, main height), the jam window to the right of the main window like now-playing. The defaults use the sizes the windows have at that moment,
 after shade and scale. `SkinnedWindow::placeAt` clamps every position to the screens that exist
 now.
 
@@ -327,6 +339,12 @@ The sources menu holds the Yandex items from `Ui::AddLibraryActions` (only "Во
 Музыку..." while logged out; it calls `login()`). The main menu, top to bottom:
 
 - the same Yandex items;
+- in a jam build, Джем: "Начать…" (no jam) or "Окно джема" (a jam is on or being created), which
+  show the jam window; "Присоединиться…", disabled until Kickoman/QiYaa#16; "Закончить", enabled
+  while a jam is on, which asks "Закончить джем? Гости увидят, что он закончен." in a modal
+  `QMessageBox::question` and then calls `HostSession::end()`; "Настройки сервера…"
+  (`showJamServerDialog()`: `Ui::JamServerDialog`, modal, which writes `jam/server` and
+  `jam/waveFeedback` on Save and tells the jam window the server's host);
 - Эквалайзер (Alt+G), Плейлист (Alt+E), Сейчас играет (no shortcut), Milkdrop (Ctrl+Shift+K, only
   in a Milkdrop build): checkable, checked when the window is visible;
 - Визуализация: Спектр, Осциллограф, Выключена (exclusive; a choice calls `saveState()`);
@@ -340,7 +358,8 @@ The sources menu holds the Yandex items from `Ui::AddLibraryActions` (only "Во
 
 ### Shortcuts
 
-`installShortcuts(widget)` adds one `QAction` per key to each of the five windows. `QAction`'s
+`installShortcuts(widget)` adds one `QAction` per key to each window (the jam window's fields
+take the keys while they have the focus). `QAction`'s
 default context is the window, so the keys work while any of the player's windows is active.
 
 | Key | Action |
@@ -392,11 +411,14 @@ constructor; "setter" is the matching `set*Visible`.
 | `milkdrop/preset` | QString: preset name | empty = the window's own pick | ctor | on `settingsChanged` |
 | `milkdrop/black` | QStringList: names of blacklisted presets | empty | ctor | on `settingsChanged` |
 
-| `jam/server` | QString: the jam server's address, `https://…` | `QIYAA_JAM_URL` | each time the host session connects | nothing yet (the jam window, Kickoman/QiYaa#15) |
-| `jam/waveFeedback` | bool: the jam wave learns from skips (HOST-12) | true | when a jam starts | nothing yet |
+| `jam/server` | QString: the jam server's address, `https://…` | `QIYAA_JAM_URL` | each time the host session connects; ctor and the dialog for the jam window | "Настройки сервера…" |
+| `jam/waveFeedback` | bool: the jam wave learns from skips (HOST-12, HOST-16) | true | when a jam starts | "Настройки сервера…" |
+| `jamWindow/visible` | bool | false | un-minimise only: the jam window is shown by the menu and by "Продолжить" | `setJamWindowVisible()` |
+| `jamWindow/pos` | QPoint | main position + (main width, 0) | `start()` | `saveState()` |
+| `jamWindow/steps` | QSize: resize steps of 25×29 skin px | (1, 8): 300×348 | ctor | on `sizeStepsChanged` |
 
 The `milkdrop/*` keys are read and written only in a build with `QIYAA_HAVE_MILKDROP`, the `jam/*`
-keys only in a jam build. The resize
+and `jamWindow/*` keys only in a jam build. The resize
 steps are clamped to 0..40 per axis by the windows.
 
 ## File format: `settings.ini`

@@ -10,7 +10,9 @@
 #include <QTimer>
 #include <QWidget>
 
+#include <functional>
 #include <memory>
+#include <utility>
 #include <vector>
 
 namespace Core {
@@ -41,6 +43,8 @@ public:
     void setShowsRemainingTime(bool on);
 
     void setStatusText(const QString& text);
+    // A word after the current track's title in the marquee, by its row ("+ Аня" in a jam).
+    void setTrackNote(std::function<QString(int row)> note) { trackNote = std::move(note); }
 
     void setShaded(bool shaded) override;
 
@@ -128,6 +132,7 @@ private:
     bool remainingTimeShown = false;
 
     QString statusText;
+    std::function<QString(int row)> trackNote;
     QElapsedTimer statusAge;
     int marqueeOffset = 0;
     QElapsedTimer marqueeStep;

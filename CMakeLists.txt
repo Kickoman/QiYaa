@@ -147,6 +147,16 @@ qiyaa_add_module(ui
 target_link_libraries(qiyaa_ui
     PUBLIC qiyaa_audio qiyaa_vis Qt6::Widgets
     PRIVATE qiyaa_core qiyaa_skins qiyaa_yandex)
+if(QIYAA_HAVE_JAM)
+    # The jam window and its QR code (contrib/qrcodegen, MIT).
+    add_library(qiyaa_qrcodegen STATIC contrib/qrcodegen/qrcodegen.cpp)
+    target_include_directories(qiyaa_qrcodegen PUBLIC contrib/qrcodegen)
+    set_target_properties(qiyaa_qrcodegen PROPERTIES POSITION_INDEPENDENT_CODE ON)
+    target_sources(qiyaa_ui PRIVATE
+        src/ui/jam_server_dialog.cpp src/ui/jam_server_dialog.h
+        src/ui/jam_window.cpp        src/ui/jam_window.h)
+    target_link_libraries(qiyaa_ui PUBLIC qiyaa_jam PRIVATE qiyaa_qrcodegen)
+endif()
 
 qiyaa_add_module(integrations
     src/integrations/media_controls.cpp src/integrations/media_controls.h)

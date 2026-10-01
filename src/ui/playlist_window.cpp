@@ -12,6 +12,7 @@
 #include <QFontMetrics>
 #include <QKeyEvent>
 #include <QLatin1Char>
+#include <QList>
 #include <QMenu>
 #include <QPainter>
 #include <QPoint>
@@ -21,6 +22,7 @@
 
 #include <algorithm>
 #include <cmath>
+#include <utility>
 
 namespace Ui {
 
@@ -294,7 +296,15 @@ void PlaylistWindow::drawRows(QPainter& painter) const {
         painter.setPen(row == current ? style.current : style.normal);
         const QString duration = FormatTime(tracks[row].durationMs / 1000);
         const int durationWidth = metrics.horizontalAdvance(duration) + 3;
-        const QRect titleRect = rowRect.adjusted(2, 0, -durationWidth - 4, 0);
+        const QString note = queueHooks.note ? queueHooks.note(row) : QString();
+        const int noteWidth = note.isEmpty() ? 0 : metrics.horizontalAdvance(note) + 6;
+        const QRect titleRect = rowRect.adjusted(2, 0, -durationWidth - 4 - noteWidth, 0);
+        if (!note.isEmpty()) {
+            painter.drawText(
+                rowRect.adjusted(0, 0, -durationWidth - 4, 0), Qt::AlignRight | Qt::AlignVCenter,
+                note
+            );
+        }
         const QString title = QStringLiteral("%1. %2").arg(row + 1).arg(tracks[row].displayTitle());
         painter.drawText(
             titleRect, Qt::AlignLeft | Qt::AlignVCenter,
@@ -582,14 +592,10 @@ void PlaylistWindow::skinMouseRelease(QPoint pos, Qt::MouseButton button) {
             case Button::Remove: {
                 auto* menu = new QMenu(this);
                 menu->addAction(
-                        QStringLiteral("Удалить выбранные"), this,
-                        [this] {
-                            corePlayer->removeTracks(selectedRows.values());
-                            selectedRows.clear();
-                        }
+                        QStringLiteral("Удалить выбранные"), this, [this] { removeSelected(); }
                 )->setEnabled(!selectedRows.isEmpty());
                 menu->addAction(QStringLiteral("Очистить плейлист"), this, [this] {
-                    corePlayer->clearQueue();
+                    clearQueue();
                 });
                 popupAt(menu, {43, skinSize().height() - 30});
                 break;
@@ -663,14 +669,32 @@ void PlaylistWindow::keyPressEvent(QKeyEvent* event) {
                 corePlayer->playIndex(cursorRow);
             }
             return;
-        case Qt::Key_Delete:
-            corePlayer->removeTracks(selectedRows.values());
-            selectedRows.clear();
-            return;
+        case Qt::Key_Delete: removeSelected(); return;
         default: return QWidget::keyPressEvent(event);
     }
     selectRow(targetRow, event->modifiers() & Qt::ShiftModifier);
     ensureRowVisible(targetRow);
+}
+
+void PlaylistWindow::setQueueHooks(QueueHooks hooks) {
+    queueHooks = std::move(hooks);
+    update();
+}
+
+void PlaylistWindow::removeSelected() {
+    QList<int> rows = selectedRows.values();
+    std::sort(rows.begin(), rows.end());
+    if (!queueHooks.remove || !queueHooks.remove(rows)) {
+        corePlayer->removeTracks(rows);
+    }
+    selectedRows.clear();
+    update();
+}
+
+void PlaylistWindow::clearQueue() {
+    if (!queueHooks.clear || !queueHooks.clear()) {
+        corePlayer->clearQueue();
+    }
 }
 
 void PlaylistWindow::popupAt(QMenu* menu, QPoint skinPos) {

@@ -8,6 +8,8 @@
 #include "skins/error.h"
 #include "ui/equalizer_window.h"
 #include "ui/gen_window.h"
+#include "ui/jam_server_dialog.h"
+#include "ui/jam_window.h"
 #include "ui/library_menu.h"
 #include "ui/login_dialog.h"
 #include "ui/main_window.h"
@@ -48,6 +50,7 @@
 #include <QString>
 #include <QStringList>
 #include <QTimer>
+#include <QUrl>
 
 #include <algorithm>
 #include <cmath>
@@ -95,6 +98,18 @@ QString JamRefusalText(const QString& reason) {
         {QStringLiteral("stale"), QStringLiteral("Этот трек уже ушёл из очереди")},
     };
     return texts.value(reason, QStringLiteral("Сервер джема отказал"));
+}
+
+QString JamServer(const QSettings& settings) {
+    return settings.value(QStringLiteral("jam/server"), QStringLiteral(QIYAA_JAM_URL))
+        .toString()
+        .trimmed();
+}
+
+// What the jam window shows of the server: its host, and a port that is not the default one.
+QString JamServerName(const QString& server) {
+    const QUrl url(server);
+    return url.port() > 0 ? QStringLiteral("%1:%2").arg(url.host()).arg(url.port()) : url.host();
 }
 
 QString JamEndText(Jam::HostEnd why) {
@@ -252,6 +267,10 @@ Application::Application(const Options& options, QObject* parent)
     }
 #endif
 
+    // Before the loops over windows() below, which take in the jam window.
+    sources.setJamMode(&jamMode);
+    setUpJam();
+
     mainWindowInstance->setVolume(settings.value(QStringLiteral("volume"), 75).toInt());
     mainWindowInstance->setBalance(settings.value(QStringLiteral("balance"), 0).toInt());
     mainWindowInstance->setVisMode(Ui::MainWindow::VisMode(
@@ -284,6 +303,9 @@ Application::Application(const Options& options, QObject* parent)
                 if (milkdropWindowInstance) {
                     milkdropWindowInstance->hide();
                 }
+                if (jamWindowInstance) {
+                    jamWindowInstance->hide();
+                }
             } else {
                 if (settings.value(QStringLiteral("equalizer/visible"), true).toBool()) {
                     equalizerWindowInstance->show();
@@ -297,6 +319,10 @@ Application::Application(const Options& options, QObject* parent)
                 if (milkdropWindowInstance
                     && settings.value(QStringLiteral("milkdrop/visible"), false).toBool()) {
                     milkdropWindowInstance->show();
+                }
+                if (jamWindowInstance
+                    && settings.value(QStringLiteral("jamWindow/visible"), false).toBool()) {
+                    jamWindowInstance->show();
                 }
             }
         }
@@ -405,9 +431,6 @@ Application::Application(const Options& options, QObject* parent)
 #endif
     }
 
-    sources.setJamMode(&jamMode);
-    setUpJam();
-
     // The system's view of the network ends a wait for it at once (spec ERR-02); without a
     // backend that can tell, the Player retries on its timer alone.
     if (startOptions.audio && !startOptions.offline) {
@@ -455,10 +478,7 @@ void Application::setUpJam() {
     options.client.appVersion = QCoreApplication::applicationVersion();
     options.config = [this] {
         return Jam::HostConfig{
-            settings.value(QStringLiteral("jam/server"), QStringLiteral(QIYAA_JAM_URL))
-                .toString()
-                .trimmed(),
-            settings.value(QStringLiteral("jam/waveFeedback"), true).toBool()
+            JamServer(settings), settings.value(QStringLiteral("jam/waveFeedback"), true).toBool()
         };
     };
     options.queueTitle = QStringLiteral("Джем");
@@ -468,6 +488,84 @@ void Application::setUpJam() {
     );
     jamHostSession =
         std::make_unique<Jam::HostSession>(&jamMode, &yandexLibrary, store, std::move(options));
+
+    jamWindowInstance =
+        std::make_unique<Ui::JamWindow>(jamHostSession.get(), &yandexLibrary, currentSkin.get());
+    installShortcuts(jamWindowInstance.get());
+    jamWindowInstance->setSecondary();
+    jamWindowInstance->setSizeSteps(
+        settings.value(QStringLiteral("jamWindow/steps"), QSize(1, 8)).toSize()
+    );
+    jamWindowInstance->setServerName(JamServerName(JamServer(settings)));
+    connect(jamWindowInstance.get(), &Ui::JamWindow::closeRequested, this, [this] {
+        setJamWindowVisible(false);
+    });
+    connect(jamWindowInstance.get(), &Ui::GenWindow::sizeStepsChanged, this, [this](QSize steps) {
+        settings.setValue(QStringLiteral("jamWindow/steps"), steps);
+    });
+    connect(
+        jamWindowInstance.get(), &Ui::JamWindow::statusText, mainWindowInstance.get(),
+        &Ui::MainWindow::setStatusText
+    );
+    connect(
+        jamWindowInstance.get(), &Ui::JamWindow::serverSettingsRequested, this,
+        &Application::showJamServerDialog
+    );
+
+    // HOST-34: who added each jam item, and the jam wave, in the playlist and the marquee.
+    const auto note = [this](int row) -> QString {
+        const QList<Core::JamSlot>& slots = jamMode.queueSlots();
+        if (!jamMode.isActive() || row < 0 || row >= slots.size()) {
+            return {};
+        }
+        const Core::JamSlot& slot = slots[row];
+        if (slot.kind == Core::JamSlot::Kind::Wave) {
+            return QStringLiteral("волна джема");
+        }
+        if (slot.kind != Core::JamSlot::Kind::Item || !jamHostSession->room()) {
+            return {};
+        }
+        for (const Jam::Participant& participant : jamHostSession->room()->participants) {
+            if (participant.publicId == slot.addedBy) {
+                return QStringLiteral("+ ") + participant.name;
+            }
+        }
+        return {};
+    };
+    mainWindowInstance->setTrackNote(note);
+    Ui::PlaylistWindow::QueueHooks hooks;
+    hooks.note = note;
+    // HOST-21: during a jam the selected jam items leave the room's queue, and nothing else
+    // changes the queue.
+    hooks.remove = [this](const QList<int>& rows) {
+        if (!jamMode.isActive()) {
+            return false;
+        }
+        QStringList items;
+        for (int row : rows) {
+            if (row >= 0 && row < jamMode.queueSlots().size()
+                && jamMode.queueSlots()[row].kind == Core::JamSlot::Kind::Item) {
+                items << jamMode.queueSlots()[row].itemId;
+            }
+        }
+        if (items.isEmpty()) {
+            mainWindowInstance->setStatusText(QStringLiteral("Выделите треки джема, чтобы убрать их"
+            ));
+        } else if (!std::all_of(items.cbegin(), items.cend(), [this](const QString& itemId) {
+                       return jamHostSession->remove(itemId);
+                   })) {
+            mainWindowInstance->setStatusText(QStringLiteral("Нет связи с сервером джема"));
+        }
+        return true;
+    };
+    hooks.clear = [this] {
+        if (!jamMode.isActive()) {
+            return false;
+        }
+        mainWindowInstance->setStatusText(QStringLiteral("Идёт джем: добавляйте треки в джем"));
+        return true;
+    };
+    playlistWindowInstance->setQueueHooks(std::move(hooks));
     connect(jamHostSession.get(), &Jam::HostSession::refused, this, [this](const QString& reason) {
         mainWindowInstance->setStatusText(JamRefusalText(reason));
     });
@@ -480,6 +578,7 @@ void Application::setUpJam() {
         [this, wasConnected = false]() mutable {
             const bool active = jamHostSession->phase() == Jam::HostPhase::Active;
             const bool connected = active && jamHostSession->isConnected();
+            playlistWindowInstance->update();
             if (active && wasConnected && !connected) {
                 mainWindowInstance->setStatusText(
                     QStringLiteral("Нет связи с сервером джема · повторю сам")
@@ -513,6 +612,7 @@ void Application::offerStoredJam() {
         // Closed without an answer: the jam stays stored, and the next start asks again.
         if (question->clickedButton() == yes) {
             jamHostSession->continueStored();
+            setJamWindowVisible(true);
         } else if (question->clickedButton() == no) {
             jamHostSession->discardStored();
             if (corePlayer.playlist().isEmpty() && yandexLibrary.isLoggedIn()) {
@@ -532,6 +632,9 @@ QList<Ui::SkinnedWindow*> Application::windows() const {
     };
     if (milkdropWindowInstance) {
         out << milkdropWindowInstance.get();
+    }
+    if (jamWindowInstance) {
+        out << jamWindowInstance.get();
     }
     return out;
 }
@@ -572,6 +675,14 @@ void Application::layoutWindows() {
                 )
                 .toPoint()
         );
+    }
+    if (jamWindowInstance) {
+        jamWindowInstance->placeAt(settings
+                                       .value(
+                                           QStringLiteral("jamWindow/pos"),
+                                           mainPosition + QPoint(mainWindowInstance->width(), 0)
+                                       )
+                                       .toPoint());
     }
 }
 
@@ -624,6 +735,9 @@ void Application::applyToken(const QString& token, bool save) {
             Yandex::SaveToken(TokenFile(), token);
         }
         mainWindowInstance->setStatusText(QStringLiteral("Привет, %1!").arg(account.displayName));
+#ifdef QIYAA_HAVE_JAM
+        jamWindowInstance->setHostName(account.displayName);
+#endif
         const bool jam = jamMode.isActive() || storedJamQuestion;
         if (corePlayer.playlist().isEmpty() && !jam) {
             sources.playLikes(false);
@@ -773,6 +887,18 @@ void Application::setMilkdropVisible(bool on) {
     settings.setValue(QStringLiteral("milkdrop/visible"), on);
 }
 
+void Application::setJamWindowVisible(bool on) {
+    if (!jamWindowInstance) {
+        return;
+    }
+    jamWindowInstance->setVisible(on);
+    if (on) {
+        jamWindowInstance->ensureVisible();
+        jamWindowInstance->raise();
+    }
+    settings.setValue(QStringLiteral("jamWindow/visible"), on);
+}
+
 void Application::setNowPlayingVisible(bool on) {
     nowPlayingWindowInstance->setVisible(on);
     if (on) {
@@ -818,6 +944,9 @@ void Application::saveState() {
     settings.setValue(QStringLiteral("nowPlaying/pos"), nowPlayingWindowInstance->pos());
     if (milkdropWindowInstance) {
         settings.setValue(QStringLiteral("milkdrop/pos"), milkdropWindowInstance->pos());
+    }
+    if (jamWindowInstance) {
+        settings.setValue(QStringLiteral("jamWindow/pos"), jamWindowInstance->pos());
     }
 }
 
@@ -965,6 +1094,7 @@ void Application::showMainMenu(QPoint globalPosition) {
         login();
     });
     menu->addSeparator();
+    addJamMenu(menu);
     fillWindowActions(menu);
     menu->addSeparator();
     if (yandexLibrary.isLoggedIn()) {
@@ -975,6 +1105,48 @@ void Application::showMainMenu(QPoint globalPosition) {
     }
     menu->addAction(QStringLiteral("Закрыть QiYaa"), this, &Application::quit);
     menu->popup(globalPosition);
+}
+
+void Application::addJamMenu(QMenu* menu) {
+#ifdef QIYAA_HAVE_JAM
+    QMenu* jam = menu->addMenu(QStringLiteral("Джем"));
+    const Jam::HostPhase phase = jamHostSession->phase();
+    jam->addAction(
+        phase == Jam::HostPhase::None ? QStringLiteral("Начать…") : QStringLiteral("Окно джема"),
+        this, [this] { setJamWindowVisible(true); }
+    );
+    jam->addAction(QStringLiteral("Присоединиться…"))->setEnabled(false);  // Kickoman/QiYaa#16
+    QAction* end = jam->addAction(QStringLiteral("Закончить"), this, [this] {
+        const auto answer = QMessageBox::question(
+            mainWindowInstance.get(), QStringLiteral("Закончить джем"),
+            QStringLiteral("Закончить джем? Гости увидят, что он закончен.")
+        );
+        if (answer == QMessageBox::Yes) {
+            jamHostSession->end();
+        }
+    });
+    end->setEnabled(phase == Jam::HostPhase::Active);
+    jam->addSeparator();
+    jam->addAction(QStringLiteral("Настройки сервера…"), this, &Application::showJamServerDialog);
+    menu->addSeparator();
+#else
+    Q_UNUSED(menu);
+#endif
+}
+
+void Application::showJamServerDialog() {
+#ifdef QIYAA_HAVE_JAM
+    Ui::JamServerDialog dialog(
+        JamServer(settings), settings.value(QStringLiteral("jam/waveFeedback"), true).toBool(),
+        QStringLiteral(QIYAA_JAM_URL), mainWindowInstance.get()
+    );
+    if (dialog.exec() != QDialog::Accepted) {
+        return;
+    }
+    settings.setValue(QStringLiteral("jam/server"), dialog.server());
+    settings.setValue(QStringLiteral("jam/waveFeedback"), dialog.waveFeedback());
+    jamWindowInstance->setServerName(JamServerName(dialog.server()));
+#endif
 }
 
 QImage Application::snapshot() const {

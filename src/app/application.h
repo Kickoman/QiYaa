@@ -35,6 +35,7 @@ class MediaControls;
 namespace Ui {
 class EqualizerWindow;
 class MainWindow;
+class JamWindow;
 class MilkdropWindow;
 class NowPlayingWindow;
 class PlaylistWindow;
@@ -67,6 +68,7 @@ public:
     Ui::PlaylistWindow* playlistWindow() const { return playlistWindowInstance.get(); }
     Ui::NowPlayingWindow* nowPlayingWindow() const { return nowPlayingWindowInstance.get(); }
     Ui::MilkdropWindow* milkdropWindow() const { return milkdropWindowInstance.get(); }
+    Ui::JamWindow* jamWindow() const { return jamWindowInstance.get(); }  // null without the jam
     Core::CoverCache* covers() const { return coverCache.get(); }
     Core::Player* player() { return &corePlayer; }
     Audio::AudioEngine* engine() { return &audioEngine; }
@@ -84,6 +86,7 @@ public:
     void setPlaylistVisible(bool on);
     void setNowPlayingVisible(bool on);
     void setMilkdropVisible(bool on);
+    void setJamWindowVisible(bool on);
 
     void login();
     void logout();
@@ -105,6 +108,8 @@ private:
     void raiseWindows();
     void setUpJam();
     void offerStoredJam();
+    void addJamMenu(QMenu* menu);
+    void showJamServerDialog();
 
     Options startOptions;
     std::unique_ptr<QTemporaryDir> temporaryDirectory;
@@ -134,6 +139,7 @@ private:
     std::unique_ptr<Ui::PlaylistWindow> playlistWindowInstance;
     std::unique_ptr<Ui::NowPlayingWindow> nowPlayingWindowInstance;
     std::unique_ptr<Ui::MilkdropWindow> milkdropWindowInstance;
+    std::unique_ptr<Ui::JamWindow> jamWindowInstance;
 };
 
 }  // namespace App

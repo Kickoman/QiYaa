@@ -21,6 +21,13 @@ and [GLM](https://github.com/g-truc/glm) (MIT). On Windows it uses [GLEW](https:
 |---|---|---|---|
 | [miniaudio](https://github.com/mackron/miniaudio) — David Reid | 0.11.25 (`9634bed`) | Public domain / MIT-0 | `contrib/miniaudio/` |
 | [miniz](https://github.com/richgel999/miniz) — Rich Geldreich, RAD Game Tools, Valve | 3.1.2 (`77d0dce`) | MIT | `contrib/miniz/` |
+| [QR Code generator](https://github.com/nayuki/QR-Code-generator) (C++) — Project Nayuki | 1.8.0 (`7ad95ce`) | MIT | `contrib/qrcodegen/` (only in builds with the jam) |
+
+## Test data
+
+| Component | Version | License | Location |
+|---|---|---|---|
+| [Tiny5](https://github.com/Gissio/font_tiny5) — The Tiny5 Project Authors | 1.002 (google/fonts `b272357`) | SIL Open Font License 1.1 | `tests/data/fonts/`, used only by the tests; not shipped |
 
 ## Code and data derived from other projects
 

@@ -1,7 +1,9 @@
 #include "app/application.h"
 #include "core/cover_cache.h"
+#include "core/jam_mode.h"
 #include "support/mock_http_server.h"
 #include "ui/equalizer_window.h"
+#include "ui/jam_window.h"
 #include "ui/login_dialog.h"
 #include "ui/main_window.h"
 #include "ui/milkdrop_window.h"
@@ -522,6 +524,44 @@ private Q_SLOTS:
         const QImage image = application->snapshot();
         QCOMPARE(image.width(), 275);
         QCOMPARE(image.height(), 116 + 116 + 232);
+    }
+
+    void theJamWindowIsOneOfTheWindows() {
+#ifdef QIYAA_HAVE_JAM
+        Ui::JamWindow* jam = application->jamWindow();
+        QVERIFY(jam);
+        QVERIFY(!jam->isVisible());
+        application->setJamWindowVisible(true);
+        QVERIFY(jam->isVisible());
+        QCOMPARE(jam->skinSize(), QSize(300, 348));
+        application->setScale(2.0);
+        QCOMPARE(jam->scale(), 2.0);
+        application->setScale(1.0);
+        application->setJamWindowVisible(false);
+        QVERIFY(!jam->isVisible());
+#else
+        QSKIP("built without the jam");
+#endif
+    }
+
+    void duringAJamThePlaylistDoesNotEditTheQueue() {  // HOST-21
+#ifdef QIYAA_HAVE_JAM
+        application->player()->setQueue(MakeTracks(3), "A", false);
+        application->player()->playIndex(0);
+        application->jam()->start(QStringLiteral("Джем"), false);
+        QVERIFY(application->jam()->isActive());
+        const qsizetype size = application->player()->playlist().size();
+        Click(playlist, {60, 20 + 3 + 6});  // row 0
+        QKeyEvent deleteKey(QEvent::KeyPress, Qt::Key_Delete, Qt::NoModifier);
+        QCoreApplication::sendEvent(playlist, &deleteKey);
+        QCOMPARE(application->player()->playlist().size(), size);
+        application->jam()->end();
+        Click(playlist, {60, 20 + 3 + 6});
+        QCoreApplication::sendEvent(playlist, &deleteKey);
+        QCOMPARE(application->player()->playlist().size(), size - 1);
+#else
+        QSKIP("built without the jam");
+#endif
     }
 };
 

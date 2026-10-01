@@ -2,11 +2,15 @@
 
 #include "ui/skinned_window.h"
 
+#include <QList>
 #include <QPoint>
 #include <QRect>
 #include <QSet>
 #include <QSize>
+#include <QString>
 #include <QWidget>
+
+#include <functional>
 
 class QMenu;
 class QPainter;
@@ -32,6 +36,16 @@ public:
     void ensureRowVisible(int row);
     const QSet<int>& selection() const { return selectedRows; }
     int rowAt(QPoint skinPos) const;
+
+    // What a jam changes in the playlist (HOST-21, HOST-34): `note` is a word after a row's
+    // title ("+ Аня", "волна джема"); `remove` and `clear` get the edits first and return true
+    // when they took them, so the Player's queue is left alone. Unset: the Player's own edits.
+    struct QueueHooks {
+        std::function<QString(int row)> note;
+        std::function<bool(const QList<int>& rows)> remove;
+        std::function<bool()> clear;
+    };
+    void setQueueHooks(QueueHooks hooks);
 
 Q_SIGNALS:
     void closeRequested();
@@ -78,8 +92,11 @@ private:
     void popupAt(QMenu* menu, QPoint skinPos);
     Button buttonAt(QPoint point) const;
     void selectRow(int row, Qt::KeyboardModifiers modifiers);
+    void removeSelected();
+    void clearQueue();
 
     Core::Player* corePlayer;
+    QueueHooks queueHooks;
     QSize resizeSteps{0, 4};
     int scrollRow = 0;
     QSet<int> selectedRows;

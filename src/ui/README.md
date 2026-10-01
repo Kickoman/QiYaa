@@ -1,7 +1,7 @@
-# `src/ui` — the skinned Winamp windows, the Yandex menus and the login dialog
+# `src/ui` — the skinned Winamp windows, the Yandex menus, the login dialog and the jam window
 
 Namespace `Ui`. This folder holds the widgets the user sees: the main, equalizer and playlist
-windows, the GEN.BMP-framed "Now playing" and Milkdrop windows, their common base class (frameless,
+windows, the GEN.BMP-framed "Now playing", Milkdrop and jam windows, their common base class (frameless,
 scaled, snapping, docking, shade mode), the pure geometry behind snapping, the Yandex part of the
 context menus, and the login dialog. The windows paint sprites and turn clicks into calls on
 `Core::Player` or into signals. They do not load skins or parse skin files
@@ -22,6 +22,8 @@ to Yandex ([src/yandex](../yandex/README.md)), or create, lay out, connect and s
 | `milkdrop_window.h/.cpp` | `MilkdropWindow` — projectM view in a GEN frame: preset switching, black-preset skipping, full screen. Built only with Milkdrop |
 | `library_menu.h/.cpp` | `AddLibraryActions`: the Yandex menu items, which call `Core::Sources` |
 | `login_dialog.h/.cpp` | `LoginDialog` — Yandex login by device code or by a pasted token |
+| `jam_window.h/.cpp` | `JamWindow` — the host's jam in a GEN frame: start, QR code and link, settings, guests, end, search that adds tracks. Built only with the jam |
+| `jam_server_dialog.h/.cpp` | `JamServerDialog` — the jam server's address and "Учить волну джема". Built only with the jam |
 
 ## Dependencies
 
@@ -31,6 +33,9 @@ to Yandex ([src/yandex](../yandex/README.md)), or create, lay out, connect and s
 `qiyaa_skins` and `qiyaa_yandex` (the headers only forward-declare `Core::Player`,
 `Core::CoverCache`, `Skins::Skin`, `Yandex::DeviceLogin`). `milkdrop_window.*` is added to the
 target only when Milkdrop is built; `QIYAA_HAVE_MILKDROP` then comes PUBLIC from `qiyaa_vis`.
+`jam_window.*` and `jam_server_dialog.*` are added only when the jam is built: `qiyaa_ui` then
+links PUBLIC `qiyaa_jam` (`QIYAA_HAVE_JAM` comes with it) and PRIVATE `qiyaa_qrcodegen`
+(`contrib/qrcodegen`, MIT).
 
 It deliberately does not link `qiyaa_app` or `qiyaa_integrations` (both sit above it),
 `libprojectM` or `Qt6::OpenGL` (the OpenGL window is `Vis::MilkdropView`; `Qt6::OpenGL` arrives only
@@ -295,6 +300,7 @@ public:
     void setShowsRemainingTime(bool on);
 
     void setStatusText(const QString& text);    // replaces the marquee for 3 s
+    void setTrackNote(std::function<QString(int row)> note);  // after the title: "+ Аня" in a jam
 
     void setShaded(bool shaded) override;
 
@@ -331,7 +337,8 @@ stops animating.
 
 The marquee shows, first match wins: the status text; `VOLUME: n%`, `BALANCE: CENTER` /
 `BALANCE: n% LEFT|RIGHT` or `SEEK TO: m:ss/m:ss (p%)` while that slider is held;
-`QiYaa <version>` without a track; `<n>. <title> (<m:ss>)`. Text wider than the marquee scrolls one
+`QiYaa <version>` without a track; `<n>. <title> (<m:ss>)`, followed by ` · <note>` when the track
+note gives one for the current row (who added a jam item, HOST-34). Text wider than the marquee scrolls one
 character per 220 ms with `  ***  ` between repeats, except while a status text is shown or a
 control is held. The time shows minutes up to 99; remaining time is `ceil(duration − position)`.
 
@@ -466,6 +473,11 @@ buttons, 9x9 each, which act on release inside.
   (the anchor stays). Up, Down, PgUp, PgDn, Home and End move the keyboard row (Shift extends),
   Enter plays it, Delete removes the selection (`Player::removeTracks`). The window takes
   `Qt::StrongFocus`.
+- `setQueueHooks(QueueHooks)` is how a jam changes the playlist (HOST-21, HOST-34): `note(row)` is
+  drawn right-aligned before the duration, in the row's colour, and the title is elided before it;
+  Delete and REM's "remove selected" call `remove(rows)` (sorted) and REM's "clear" calls
+  `clear()` first, and the `Player` is changed only when the hook is unset or returns false. The
+  selection is cleared either way.
 - `Player::queueReplaced` clears selection, anchor, keyboard row and scroll; `playlistChanged` drops
   selected indices past the end and re-clamps the scroll; `currentTrackChanged` scrolls the current
   row into view.
@@ -489,6 +501,15 @@ buttons, 9x9 each, which act on release inside.
 - `setScrollOffset(scrollRow)` is not a no-op: it re-clamps after the row count or the height
   changed (resize, shade, unshade, queue change).
 - Resizing does not move the windows docked below (see `SkinnedWindow`).
+
+```cpp
+struct PlaylistWindow::QueueHooks {
+    std::function<QString(int row)> note;
+    std::function<bool(const QList<int>& rows)> remove;
+    std::function<bool()> clear;
+};
+void PlaylistWindow::setQueueHooks(QueueHooks hooks);
+```
 
 ## GenWindow — `gen_window.h/.cpp`
 
@@ -556,6 +577,87 @@ browser. `Player` and `CoverCache` are not owned.
 **Traps:**
 - `CoverCache::get` starts the download as a side effect of painting; the repaint comes from
   `ready`. The URL includes the size, so another size is another cache entry.
+
+## JamWindow — `jam_window.h/.cpp`
+
+```cpp
+class JamWindow : public GenWindow {
+public:
+    enum class Page { Jam, Search };
+    JamWindow(Jam::HostSession* host, Yandex::Library* library, const Skins::Skin* skin, QWidget* parent = nullptr);
+    void setHostName(const QString& name);       // offered on the start page until the user types
+    void setServerName(const QString& server);   // shown on the start page; empty: "not set"
+    void setTextFont(const std::optional<QFont>& font);  // tests; default: PLEDIT.TXT font, 9 px
+    Page page() const;  void showPage(Page page);
+    void search(const QString& text);
+    struct Control { QRect rect; QString label; bool enabled; std::function<void()> action; };
+    QList<Control> controls();                   // what can be clicked now, in skin pixels
+Q_SIGNALS:
+    void statusText(const QString& text);        // for the marquee
+    void serverSettingsRequested();
+};
+```
+
+The host's side of the jam on screen (spec/jam/host.md HOST-20, HOST-25, HOST-35), title `JAM`,
+in the PLEDIT.TXT colours and font like the "Now playing" window. What it shows follows
+`HostSession::phase()`:
+
+- **None:** "Новый джем", what a jam is, "Ваше имя" (a field), "Начать джем" (enabled with a name
+  and a server), a problem line when `create` refused, the server and "Настройки сервера…"
+  (`serverSettingsRequested`).
+- **Creating:** "Подключаюсь к серверу джема…" and "Отмена" (`cancelCreate`).
+- **Active:** two tabs, "Джем" and "Добавить треки", with the connection on the right ("На связи",
+  "Подключаюсь…", "Нет связи" and a light), and without a connection the line "Нет связи с
+  сервером джема · повторю сам".
+  - **Jam page:** the QR code of `joinUrl`, dark on white whatever the skin (not every camera
+    reads an inverted code), ECC M with a 4-module quiet zone, the largest whole number of pixels
+    per module within 120 px and half the width; "Ссылка для гостей" with the link (up to three
+    lines), "Копировать" (to the clipboard, `statusText("Ссылка скопирована")`) and "Новая
+    ссылка" (`rotateLink`); the settings, each a label and a button with its value that flips
+    it ("Порядок": "По очереди" / "Кто первый", "Гости могут пропускать": "Да" / "Нет", "Новые
+    гости": "Пускать" / "Закрыто"); "Гости · N" with a row per guest (light for online, name,
+    kind, "ждут: N", "Убрать" to kick), scrolled by the wheel; at the bottom "Закончить джем",
+    which asks "Нажмите ещё раз, чтобы закончить" and ends on a second click within 3 s.
+  - **Search page:** a field and "Искать" (Enter too), then `Library::searchTracks`: the available
+    tracks, 20 at most, each with "В джем" (`add`) and "Следом" (`playNext`), and their
+    `statusText`; "Ищу…", "Ничего не нашлось", "Поиск не удался: …". A newer search replaces an
+    older one's answer.
+- Without a connection (`!isConnected()`) "Новая ссылка", the settings, "Убрать", "В джем" and
+  "Следом" are drawn dim and do nothing (HOST-25); the link, the tabs, the search and the end work.
+  An action the session refuses says `Нет связи с сервером джема`.
+
+**How it is drawn.** One pass, `render(QPainter*)`, both paints the page (with a painter) and
+lists its controls (without one), so a click always finds what is drawn. Controls are boxes in the
+`normal` colour (dim when disabled; a selected tab on `selectedBackground`). Fields show the end of
+their text and a caret while focused; a click on a field focuses it, a click elsewhere drops the
+focus. Keys while a field is focused: text, Backspace, Ctrl+V (one line), Enter (start or search),
+Esc (drop the focus); the name is cut to 24 and the search to 100 characters.
+
+**Traps:**
+- The app's shortcuts are actions on every window (Z, X, C, V, B, arrows…). While a field has the
+  focus, the window takes `ShortcutOverride` for keys without Ctrl or Alt (and for Paste), or
+  typing "x" would start playback.
+- `qrcodegen::QrCode::encodeText` throws `data_too_long` for text no QR code holds; the window
+  catches it there (a warning, no code). A join link is far below that limit.
+- The pictures in `tests/data/golden/jam-*.png` are drawn with `setTextFont` set to the Tiny5
+  pixel font without antialiasing (`tests/data/fonts`), the same on every system; the PLEDIT.TXT
+  font is the system's and is not compared.
+
+## JamServerDialog — `jam_server_dialog.h/.cpp`
+
+```cpp
+class JamServerDialog : public QDialog {
+public:
+    JamServerDialog(const QString& server, bool waveFeedback, const QString& defaultServer, QWidget* parent = nullptr);
+    QString server() const;           // as typed, or the default for an empty field
+    bool waveFeedback() const;
+    static bool IsServerAddress(const QString& text);   // http(s) with a host
+};
+```
+
+"Сервер джема": the address (empty shows and means the default, `QIYAA_JAM_URL`), with "Нужен
+адрес вида https://jam.example.org" and Save disabled until it is an http(s) URL with a host;
+"Учить волну джема" (HOST-16) with what it means. The owner writes the settings.
 
 ## MilkdropWindow — `milkdrop_window.h/.cpp`
 

@@ -35,12 +35,14 @@ is formatting (the clang-format check in `.github/workflows/ci.yml`).
 | `screenshots_test.cpp` | Golden screenshots of the main window and the equalizer (see **Golden screenshots**) |
 | `jam_test.cpp` | `Jam::` (only with Qt WebSockets): every example of `spec/jam/protocol/examples` through the codec (valid ones pass, `invalid-*` fail) and client examples through encode and decode; the client against a `QWebSocketServer` on localhost — hello with a version the server takes and the clock offset, reconnects after the delays and at once on `networkBack`, the outbox, `ended` stopping it for good, refusing to send what the server would refuse, invalid and unknown-reason messages; the stored session across a restart and broken, foreign or oversized files |
 | `jam_host_test.cpp` | `Jam::HostSession` against `spec/jam/host.md` by ID, with `JamStubServer`, a real `Core::JamMode` on a player without a sound card and the MockHttpServer as Yandex: create and its refusal, states and their versions, started in the stored outbox offline and resume, the stored snapshot and link, "Continue the jam?" yes and no, a resume refused for a gone room or another reason, the guests' search and checks, the skip command, the end by the host and by the server, the host's add and play next, and `JamTrackOf` |
+| `jam_window_test.cpp` | `Ui::JamWindow` against `spec/jam/host.md` (HOST-20, HOST-25, HOST-35), its controls found by label and clicked like a mouse, driving a `HostSession` on `JamStubServer`: the start with the name given or typed (and typing that does not trigger the app's shortcuts), the settings, kick and new link, copying the link, the end asked twice, what stays enabled without a connection, the search with "В джем" and "Следом"; its pictures on every built-in skin and of the start, search and offline pages |
 | `jam_e2e_test.cpp` | The jam end to end: the app (offscreen, the Null output) hosts on a real jam server (`QIYAA_JAM_TEST_SERVER`, its `PUBLIC_URL`; CI runs the server's image on Linux, elsewhere the test skips), a guest joins over WebSocket, searches and adds; the track plays with no `/play-audio`, and after the end it is reported again |
 | `mpris_test.cpp` | `Integrations::Mpris` over a session bus, driven by `gdbus` as an external client |
 | `milkdrop_test.cpp` | `Vis::MilkdropPresets`, preset switching and black-preset handling in `Ui::MilkdropWindow`; with OpenGL 3.3, projectM rendering, the black-picture detector and fullscreen |
 | `data/sine440_3s.mp3` | 3 s of a 440 Hz sine: MPEG-1 Layer III, 64 kbps, 44.1 kHz, stereo, ID3v2.4 tag, 24,494 bytes |
 | `data/screen-2560x1440.json` | Offscreen-platform config: one screen `"qhd"`, 2560×1440 at (0, 0), logical DPI 96, device pixel ratio 1 |
-| `data/golden/*.png` | The seven expected screenshots |
+| `data/golden/*.png` | The expected screenshots: seven of `screenshots_test`, eleven `jam-*` of `jam_window_test` |
+| `data/fonts/Tiny5-Regular.ttf` | The pixel font `jam_window_test` draws with, the same on every system (SIL OFL 1.1, `OFL-Tiny5.txt`) |
 
 ## Building and running
 
@@ -89,6 +91,7 @@ QT_QPA_PLATFORM=offscreen QIYAA_AUDIO_BACKEND=null build/tests/audio_test queued
 | `screenshots_test` | audio core skins ui yandex | plain; `QIYAA_TEST_DATA` |
 | `jam_test` | jam (+ `qiyaa_test_jam`) | only with `QIYAA_HAVE_JAM` |
 | `jam_host_test` | audio core jam yandex (+ `qiyaa_test_jam`) | only with `QIYAA_HAVE_JAM`; `QIYAA_TEST_DATA` |
+| `jam_window_test` | audio core jam skins ui yandex (+ `qiyaa_test_jam`) | only with `QIYAA_HAVE_JAM`; `QIYAA_TEST_DATA` |
 | `jam_e2e_test` | app audio core jam ui yandex | only with `QIYAA_HAVE_JAM`; `QIYAA_TEST_DATA`; skips without `QIYAA_JAM_TEST_SERVER` |
 | `mpris_test` | core integrations, Qt6::DBus | only with `QIYAA_HAVE_MPRIS`; under `dbus-run-session` |
 | `milkdrop_test` | audio skins ui vis | only with `QIYAA_HAVE_MILKDROP`; offscreen, so the GL functions skip |
@@ -145,7 +148,12 @@ pictures into an existing directory; nothing creates it:
   `audio_test` checks 44,100 Hz and 2 channels on it. `rapidSeeksWhileDownloadingLandOnTheLastTarget` joins 13
   copies into a stream of about 39 s, which works because MP3 frames concatenate.
 - `screen-2560x1440.json` is used only by `windows_test`.
-- `golden/` holds the seven PNGs of `screenshots_test`. Recording writes here, into the source
+- `golden/` holds the seven PNGs of `screenshots_test` and the eleven `jam-*.png` of
+  `jam_window_test` (the jam page on each built-in skin, and the start, search and offline pages
+  on the base skin).
+- `fonts/Tiny5-Regular.ttf` (Tiny5 1.002, google/fonts `b272357`) is loaded by `jam_window_test`
+  and drawn at 8 px without antialiasing or hinting: the jam window's text is the system's PLEDIT
+  font otherwise, which differs between systems. Recording writes here, into the source
   tree.
 
 ## Dependencies

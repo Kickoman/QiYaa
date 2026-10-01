@@ -262,9 +262,14 @@ QString MainWindow::marqueeText() const {
     if (!track) {
         return QStringLiteral("QiYaa %1").arg(QApplication::applicationVersion());
     }
-    return QStringLiteral("%1. %2 (%3)")
-        .arg(corePlayer->currentIndex() + 1)
-        .arg(track->displayTitle(), FormatTime(track->durationMs / 1000.0));
+    QString text = QStringLiteral("%1. %2 (%3)")
+                       .arg(corePlayer->currentIndex() + 1)
+                       .arg(track->displayTitle(), FormatTime(track->durationMs / 1000.0));
+    if (const QString note = trackNote ? trackNote(corePlayer->currentIndex()) : QString();
+        !note.isEmpty()) {
+        text += QStringLiteral(" · ") + note;  // HOST-34
+    }
+    return text;
 }
 
 void MainWindow::drawButton(
