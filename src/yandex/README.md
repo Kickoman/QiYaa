@@ -80,6 +80,7 @@ public:
     template <typename T>
     using TCallback = std::function<void(const T& value, const QString& error)>;
     using TJsonCallback = std::function<void(const QJsonValue& result, const QString& error)>;
+    using TClassifiedJsonCallback = std::function<void(const QJsonValue& result, const RequestError& error)>;
 
     explicit ApiClient(QNetworkAccessManager* networkAccessManager, QObject* parent = nullptr);
 
@@ -90,6 +91,7 @@ public:
     void setBaseUrl(const QString& base);   // tests: the mock server
 
     void getJson(const QString& path, const QUrlQuery& query, TJsonCallback callback);
+    void getClassifiedJson(const QString& path, const QUrlQuery& query, TClassifiedJsonCallback callback);
     void postForm(const QString& path, const TForm& form, TJsonCallback callback);
     void postJson(const QString& path, const QJsonObject& body, TJsonCallback callback);
 
@@ -217,6 +219,8 @@ public:
     void startWave(const QStringList& seeds, TCallback<WaveBatch> callback);
     void moreWave(const QString& sessionId, const QStringList& queue, TCallback<WaveBatch> callback);
     void search(const QString& text, TCallback<SearchResult> callback);
+    void searchTracks(const QString& text,
+                      std::function<void(const QList<Track>& tracks, const RequestError& error)> callback);
 
     void personalPlaylists(TCallback<QList<PlaylistReference>> callback);   // "Для вас"
     void playlistRecommendations(const PlaylistReference& playlist, TCallback<QList<Track>> callback);
@@ -506,6 +510,7 @@ Replies are listed after unwrapping. `<uid>` is the logged-in account's uid.
 | `startWave` | `POST /rotor/session/new` JSON `{"seeds": [...], "includeTracksInResponse": true, "includeWaveModel": true, "interactive": true}` | `radioSessionId` (required), `batchId`, `sequence[]` |
 | `moreWave` | `POST /rotor/session/<sessionId>/tracks` JSON `{"queue": ["<track id>", ...]}` | `radioSessionId` (optional), `batchId`, `sequence[]` |
 | `search` | `GET /search?text=<text>&type=all&page=0` | `best.type`, `best.result.id`, `best.result.name` or else `best.result.title`, `tracks.results[]` |
+| `searchTracks` | `GET /search?text=<text>&type=track&page=0` (the jam's search for guests, HOST-28) | `tracks.results[]`; the error by kind and HTTP status, so a 401 or 403 can be told apart |
 | `setLiked` | `POST /users/<uid>/likes/tracks/add-multiple` (like) or `…/likes/tracks/remove` (unlike), form `track-ids=<id>` | none |
 | `dislike` | `POST /users/<uid>/dislikes/tracks/add-multiple` form `track-ids=<id>` | none |
 

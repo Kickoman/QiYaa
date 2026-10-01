@@ -602,6 +602,32 @@ void Library::moreWave(
     );
 }
 
+void Library::searchTracks(
+    const QString& text,
+    std::function<void(const QList<Track>& tracks, const RequestError& error)> callback
+) {
+    QUrlQuery query;
+    query.addQueryItem(QStringLiteral("text"), text);
+    query.addQueryItem(QStringLiteral("type"), QStringLiteral("track"));
+    query.addQueryItem(QStringLiteral("page"), QStringLiteral("0"));
+    apiClient->getClassifiedJson(
+        QStringLiteral("/search"), query,
+        [callback](const QJsonValue& result, const RequestError& error) {
+            if (error.isError()) {
+                return callback({}, error);
+            }
+            callback(
+                ParseTrackArray(result.toObject()
+                                    .value(QStringLiteral("tracks"))
+                                    .toObject()
+                                    .value(QStringLiteral("results"))
+                                    .toArray()),
+                error
+            );
+        }
+    );
+}
+
 void Library::search(const QString& text, TCallback<SearchResult> callback) {
     QUrlQuery query;
     query.addQueryItem(QStringLiteral("text"), text);

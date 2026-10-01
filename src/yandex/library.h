@@ -81,6 +81,11 @@ public:
     void
     moreWave(const QString& sessionId, const QStringList& queue, TCallback<WaveBatch> callback);
     void search(const QString& text, TCallback<SearchResult> callback);
+    // Tracks only (type=track), as a jam host searches for its guests.
+    void searchTracks(
+        const QString& text,
+        std::function<void(const QList<Track>& tracks, const RequestError& error)> callback
+    );
 
     void personalPlaylists(TCallback<QList<PlaylistReference>> callback);
     void

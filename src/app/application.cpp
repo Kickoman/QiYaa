@@ -4,6 +4,7 @@
 #include "audio/equalizer.h"
 #include "core/cover_cache.h"
 #include "integrations/media_controls.h"
+#include "jam/host_session.h"
 #include "skins/error.h"
 #include "ui/equalizer_window.h"
 #include "ui/gen_window.h"
@@ -25,19 +26,24 @@
 #include <QAction>
 #include <QActionGroup>
 #include <QApplication>
+#include <QCoreApplication>
 #include <QDialog>
 #include <QDir>
 #include <QFileDialog>
+#include <QFileInfo>
 #include <QGuiApplication>
+#include <QHash>
 #include <QImage>
 #include <QKeySequence>
 #include <QLatin1String>
 #include <QList>
 #include <QMenu>
+#include <QMessageBox>
 #include <QNetworkInformation>
 #include <QPainter>
 #include <QPoint>
 #include <QPointF>
+#include <QPushButton>
 #include <QScreen>
 #include <QString>
 #include <QStringList>
@@ -74,6 +80,34 @@ Audio::EqSettings ReadEq(const QSettings& settings) {
     return eq;
 }
 
+#ifdef QIYAA_HAVE_JAM
+QString JamRefusalText(const QString& reason) {
+    static const QHash<QString, QString> texts = {
+        {QStringLiteral("server-full"), QStringLiteral("Сервер джема переполнен, попробуйте позже")
+        },
+        {QStringLiteral("rate-limited"), QStringLiteral("Слишком много запросов, подождите немного")
+        },
+        {QStringLiteral("update-required"),
+         QStringLiteral("Обновите QiYaa, чтобы работать с этим сервером джема")},
+        {QStringLiteral("not-allowed"), QStringLiteral("Сервер джема этого не разрешает")},
+        {QStringLiteral("queue-limit"), QStringLiteral("Очередь джема заполнена")},
+        {QStringLiteral("duplicate"), QStringLiteral("Этот трек уже в очереди джема")},
+        {QStringLiteral("stale"), QStringLiteral("Этот трек уже ушёл из очереди")},
+    };
+    return texts.value(reason, QStringLiteral("Сервер джема отказал"));
+}
+
+QString JamEndText(Jam::HostEnd why) {
+    switch (why) {
+        case Jam::HostEnd::ByHost: return QStringLiteral("Джем закончен");
+        case Jam::HostEnd::ByServer: return QStringLiteral("Джем закончили");
+        case Jam::HostEnd::Expired: return QStringLiteral("Джем закрылся, пока вас не было");
+        case Jam::HostEnd::Gone: return QStringLiteral("Джем закончен: сервер его больше не знает");
+    }
+    return {};
+}
+#endif
+
 void WriteEq(QSettings& settings, const Audio::EqSettings& eq) {
     settings.setValue(QStringLiteral("equalizer/enabled"), eq.enabled);
     settings.setValue(QStringLiteral("equalizer/preamp"), eq.preampDb);
@@ -93,10 +127,13 @@ Application::Application(const Options& options, QObject* parent)
     , settings(SettingsPath(options, temporaryDirectory.get()), QSettings::IniFormat)
     , baseSkin(Skins::Skin::BuiltinBase())
     , currentSkin(std::make_unique<Skins::Skin>(baseSkin))
-    , apiClient(&networkManager)
+    , ownNetworkManager(options.network ? nullptr : std::make_unique<QNetworkAccessManager>())
+    , networkManager(options.network ? options.network : ownNetworkManager.get())
+    , apiClient(networkManager)
     , yandexLibrary(&apiClient)
     , corePlayer(&yandexLibrary, &audioEngine)
-    , sources(&corePlayer, &yandexLibrary) {
+    , sources(&corePlayer, &yandexLibrary)
+    , jamMode(&corePlayer, &yandexLibrary) {
     if (startOptions.audio) {
         if (const Audio::AudioEngine::InitResult initResult = audioEngine.init(); !initResult.ok) {
             qWarning("Audio: %s", qPrintable(initResult.message));
@@ -120,7 +157,7 @@ Application::Application(const Options& options, QObject* parent)
     equalizerWindowInstance = std::make_unique<Ui::EqualizerWindow>(currentSkin.get());
     playlistWindowInstance = std::make_unique<Ui::PlaylistWindow>(&corePlayer, currentSkin.get());
     coverCache = std::make_unique<Core::CoverCache>(
-        &networkManager,
+        networkManager,
         temporaryDirectory ? temporaryDirectory->filePath(QStringLiteral("covers")) : QString()
     );
     nowPlayingWindowInstance =
@@ -368,6 +405,9 @@ Application::Application(const Options& options, QObject* parent)
 #endif
     }
 
+    sources.setJamMode(&jamMode);
+    setUpJam();
+
     // The system's view of the network ends a wait for it at once (spec ERR-02); without a
     // backend that can tell, the Player retries on its timer alone.
     if (startOptions.audio && !startOptions.offline) {
@@ -399,9 +439,90 @@ void Application::watchNetwork() {
                 : reachability == Information::Reachability::Disconnected ? std::optional(false)
                                                                           : std::nullopt
         );
+#ifdef QIYAA_HAVE_JAM
+        if (jamHostSession && reachability == Information::Reachability::Online) {
+            jamHostSession->networkBack();  // HOST-26
+        }
+#endif
     };
     connect(information, &Information::reachabilityChanged, this, apply);
     apply(information->reachability());
+}
+
+void Application::setUpJam() {
+#ifdef QIYAA_HAVE_JAM
+    Jam::HostOptions options;
+    options.client.appVersion = QCoreApplication::applicationVersion();
+    options.config = [this] {
+        return Jam::HostConfig{
+            settings.value(QStringLiteral("jam/server"), QStringLiteral(QIYAA_JAM_URL))
+                .toString()
+                .trimmed(),
+            settings.value(QStringLiteral("jam/waveFeedback"), true).toBool()
+        };
+    };
+    options.queueTitle = QStringLiteral("Джем");
+    // Next to the settings: a test's or a read-only run's jam stays in its own directory.
+    const Jam::SessionStore store(
+        QFileInfo(settings.fileName()).dir().filePath(QStringLiteral("jam-session.json"))
+    );
+    jamHostSession =
+        std::make_unique<Jam::HostSession>(&jamMode, &yandexLibrary, store, std::move(options));
+    connect(jamHostSession.get(), &Jam::HostSession::refused, this, [this](const QString& reason) {
+        mainWindowInstance->setStatusText(JamRefusalText(reason));
+    });
+    connect(jamHostSession.get(), &Jam::HostSession::ended, this, [this](Jam::HostEnd why) {
+        mainWindowInstance->setStatusText(JamEndText(why));
+    });
+    // HOST-25, HOST-26: the status follows the connection while the jam is on.
+    connect(
+        jamHostSession.get(), &Jam::HostSession::changed, this,
+        [this, wasConnected = false]() mutable {
+            const bool active = jamHostSession->phase() == Jam::HostPhase::Active;
+            const bool connected = active && jamHostSession->isConnected();
+            if (active && wasConnected && !connected) {
+                mainWindowInstance->setStatusText(
+                    QStringLiteral("Нет связи с сервером джема · повторю сам")
+                );
+            } else if (connected && !wasConnected) {
+                mainWindowInstance->setStatusText(QStringLiteral("Джем на связи"));
+            }
+            wasConnected = connected;
+        }
+    );
+#endif
+}
+
+void Application::offerStoredJam() {
+#ifdef QIYAA_HAVE_JAM
+    if (!jamHostSession || !jamHostSession->hasStoredSession()) {
+        return;
+    }
+    // HOST-23. Not modal: playback and the windows work while the question waits.
+    auto* question = new QMessageBox(
+        QMessageBox::Question, QStringLiteral("Шёл джем"),
+        QStringLiteral("Продолжить? Ссылка у гостей останется прежней."), QMessageBox::NoButton,
+        mainWindowInstance.get()
+    );
+    question->setAttribute(Qt::WA_DeleteOnClose);
+    QPushButton* yes = question->addButton(QStringLiteral("Продолжить"), QMessageBox::AcceptRole);
+    QPushButton* no =
+        question->addButton(QStringLiteral("Закончить"), QMessageBox::DestructiveRole);
+    question->setDefaultButton(yes);
+    connect(question, &QMessageBox::finished, this, [this, question, yes, no] {
+        // Closed without an answer: the jam stays stored, and the next start asks again.
+        if (question->clickedButton() == yes) {
+            jamHostSession->continueStored();
+        } else if (question->clickedButton() == no) {
+            jamHostSession->discardStored();
+            if (corePlayer.playlist().isEmpty() && yandexLibrary.isLoggedIn()) {
+                sources.playLikes(false);
+            }
+        }
+    });
+    storedJamQuestion = question;
+    question->open();
+#endif
 }
 
 QList<Ui::SkinnedWindow*> Application::windows() const {
@@ -477,6 +598,7 @@ void Application::start() {
     if (startOptions.offline) {
         return;
     }
+    offerStoredJam();
     const Yandex::TokenSource token = Yandex::FindToken(TokenFile(), YaampTokenFiles());
     if (token.token.isEmpty()) {
         mainWindowInstance->setStatusText(QStringLiteral("Войдите: правый клик → Войти"));
@@ -502,14 +624,15 @@ void Application::applyToken(const QString& token, bool save) {
             Yandex::SaveToken(TokenFile(), token);
         }
         mainWindowInstance->setStatusText(QStringLiteral("Привет, %1!").arg(account.displayName));
-        if (corePlayer.playlist().isEmpty()) {
+        const bool jam = jamMode.isActive() || storedJamQuestion;
+        if (corePlayer.playlist().isEmpty() && !jam) {
             sources.playLikes(false);
         }
     });
 }
 
 void Application::login() {
-    Ui::LoginDialog dialog(&networkManager, mainWindowInstance.get());
+    Ui::LoginDialog dialog(networkManager, mainWindowInstance.get());
     if (dialog.exec() != QDialog::Accepted) {
         return;
     }
@@ -517,6 +640,13 @@ void Application::login() {
 }
 
 void Application::logout() {
+#ifdef QIYAA_HAVE_JAM
+    if (jamHostSession) {
+        // HOST-32: the guests search through this account.
+        jamHostSession->cancelCreate();
+        jamHostSession->end();
+    }
+#endif
     corePlayer.clearQueue();
     yandexLibrary.logout();
     Yandex::ForgetToken(TokenFile());

@@ -69,6 +69,8 @@ public:
     using TCallback = std::function<void(const T& value, const QString& error)>;
     using TJsonCallback = std::function<void(const QJsonValue& result, const QString& error)>;
     using TUrlCallback = std::function<void(const ResolvedUrl& link, const RequestError& error)>;
+    using TClassifiedJsonCallback =
+        std::function<void(const QJsonValue& result, const RequestError& error)>;
 
     explicit ApiClient(QNetworkAccessManager* networkAccessManager, QObject* parent = nullptr);
 
@@ -80,6 +82,12 @@ public:
     void setBaseUrl(const QString& base) { baseUrl = base; }
 
     void getJson(const QString& path, const QUrlQuery& query, TJsonCallback callback);
+    // The same GET, with the error by kind and HTTP status (a 401 tells a rejected token apart).
+    void getClassifiedJson(
+        const QString& path,
+        const QUrlQuery& query,
+        TClassifiedJsonCallback callback
+    );
     void postForm(const QString& path, const TForm& form, TJsonCallback callback);
     void postJson(const QString& path, const QJsonObject& body, TJsonCallback callback);
 
@@ -97,8 +105,6 @@ Q_SIGNALS:
     void postsSettled();
 
 private:
-    using TClassifiedJsonCallback =
-        std::function<void(const QJsonValue& result, const RequestError& error)>;
     void handleJson(QNetworkReply* reply, TJsonCallback callback);
     void handleClassifiedJson(QNetworkReply* reply, TClassifiedJsonCallback callback);
     void trackPost(QNetworkReply* reply);

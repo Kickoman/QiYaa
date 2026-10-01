@@ -61,7 +61,17 @@ endif()
 
 # The jam: only where it's built (Qt WebSockets). The client talks to a QWebSocketServer on localhost.
 if(QIYAA_HAVE_JAM)
+    add_library(qiyaa_test_jam STATIC support/jam_stub_server.cpp support/jam_stub_server.h)
+    target_link_libraries(qiyaa_test_jam PUBLIC qiyaa_test_support qiyaa_jam)
+    qiyaa_target_defaults(qiyaa_test_jam)
     qiyaa_add_test(jam_test jam)
+    target_link_libraries(jam_test PRIVATE qiyaa_test_jam)
+    qiyaa_add_test(jam_host_test audio core jam yandex)
+    target_link_libraries(jam_host_test PRIVATE qiyaa_test_jam)
+    target_compile_definitions(jam_host_test PRIVATE QIYAA_TEST_DATA="${CMAKE_CURRENT_SOURCE_DIR}/data")
+    # Against a real jam server: QIYAA_JAM_TEST_SERVER (its PUBLIC_URL), or the test skips.
+    qiyaa_add_test(jam_e2e_test app audio core jam ui yandex)
+    target_compile_definitions(jam_e2e_test PRIVATE QIYAA_TEST_DATA="${CMAKE_CURRENT_SOURCE_DIR}/data")
 endif()
 
 # MPRIS: only where it's built (Linux with Qt D-Bus; macOS Qt has D-Bus too,

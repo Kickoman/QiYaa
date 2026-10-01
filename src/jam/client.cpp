@@ -23,6 +23,20 @@ bool EndsTheJam(const ServerMessage& message) {
     return rejected && rejected->reason == QLatin1String("update-required");
 }
 
+// The server refuses a hello whose version is not 1 to 32 of [0-9A-Za-z.+_-], and a client that
+// keeps sending one is banned: anything else is dropped, and an empty version says so.
+QString HelloVersion(const QString& version) {
+    QString kept;
+    for (const QChar character : version) {
+        const bool allowed = (character.isLetterOrNumber() && character.unicode() < 0x80)
+            || QStringLiteral(".+_-").contains(character);
+        if (allowed && kept.size() < 32) {
+            kept += character;
+        }
+    }
+    return kept.isEmpty() ? QStringLiteral("unknown") : kept;
+}
+
 }  // namespace
 
 Client::Client(ClientOptions clientOptions, QObject* parent)
@@ -31,6 +45,7 @@ Client::Client(ClientOptions clientOptions, QObject* parent)
     if (!options.clock) {
         options.clock = [] { return QDateTime::currentMSecsSinceEpoch(); };
     }
+    options.appVersion = HelloVersion(options.appVersion);
     if (options.reconnectDelaysMs.empty()) {
         options.reconnectDelaysMs = {1'000};
     }

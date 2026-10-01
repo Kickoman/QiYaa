@@ -40,12 +40,14 @@ jobs:
             os: ubuntu-24.04
             system_qt: true
             deb: true
+            jam_server: true
             cmake_args: -DQIYAA_REQUIRE_MILKDROP=ON -DQIYAA_REQUIRE_JAM=ON -DCMAKE_INSTALL_PREFIX=/usr
             artifact: QiYaa-Linux-deb
           # Built on the oldest supported base so the AppImage runs on Ubuntu 22.04+ (glibc 2.35).
           - name: Linux (Qt 6.8, AppImage)
             os: ubuntu-22.04
             qt_arch: linux_gcc_64
+            jam_server: true
             # linuxdeploy gathers all libraries in usr/lib anyway.
             cmake_args: -DQIYAA_REQUIRE_MILKDROP=ON -DQIYAA_REQUIRE_JAM=ON -DQIYAA_BUNDLED_LIBDIR=lib
             artifact: QiYaa-Linux-AppImage
@@ -140,10 +142,21 @@ jobs:
       - name: Build
         run: cmake --build build --config Release --parallel
 
+      # The jam end to end (tests/jam_e2e_test.cpp) talks to the jam server's own image; elsewhere
+      # it skips.
+      - name: Jam server
+        if: matrix.jam_server
+        run: |
+          docker run -d --name qiyaa-jam -p 8090:8090 -e PUBLIC_URL=http://localhost:8090 ghcr.io/kickoman/qiyaa-jam:0.3.1
+          for attempt in $(seq 30); do curl -sf http://localhost:8090/healthz && exit 0; sleep 1; done
+          docker logs qiyaa-jam
+          exit 1
+
       - name: Test
         run: ctest --test-dir build -C Release --output-on-failure
         env:
           QT_QPA_PLATFORM: offscreen
+          QIYAA_JAM_TEST_SERVER: ${{ matrix.jam_server && 'http://localhost:8090' || '' }}
 
       - name: Screenshot (offscreen)
         shell: bash

@@ -18,6 +18,7 @@ is formatting (the clang-format check in `.github/workflows/ci.yml`).
 | `CMakeLists.txt` | `qiyaa_test_support`, `qiyaa_test_yandex`, the `qiyaa_add_test` helper, one CTest entry per suite, and `milkdrop_gl_test`; stops the configuration when `spec/` is not checked out |
 | `support/mock_http_server.h/.cpp` | `Tests::MockRequest`, `Tests::MockResponse`, `Tests::MockHttpServer` |
 | `support/spec_fixtures.h/.cpp` | `Tests::Fixture`, `FixtureStatus`, `Expected`, `ExpectedObject`, `Json`: reading `spec/fixtures/yandex` and `spec/expected/yandex`; `SpecObject` and `SpecPath` for any file of `spec/` |
+| `support/jam_stub_server.h/.cpp` | `Tests::JamStubServer`: the server's end of the jam protocol on localhost for `jam_test` and `jam_host_test` (built only with the jam) |
 | `support/yandex_json.h/.cpp` | `Tests::ToJson` and friends: the `Yandex::` models in the neutral JSON of `spec/expected/yandex`; `CheckError` |
 | `snap_test.cpp` | `Ui::SnapToOthers`, `SnapWithin`, `ClampInside`, `PickScreen`, `ResolveDragPosition`, and `StackBelow` (which windows follow a shade change of window 0). Pure `QRect` arithmetic, no windows |
 | `region_test.cpp` | `Skins::ParseRegionTxt` and `RegionFromPolygons`: sections, several polygons, degenerate and missing points, empty input |
@@ -32,7 +33,9 @@ is formatting (the clang-format check in `.github/workflows/ci.yml`).
 | `main_window_test.cpp` | One `Ui::MainWindow` on the default offscreen screen: position clamping, dragging and edge snapping, shuffle click, the shuffle light off during a wave, volume slider, ×2 and fractional scale |
 | `windows_test.cpp` | The whole `App::Application` window set: docking, detaching, scaling, playlist selection/scroll/resize, EQ sliders, shade modes, login dialog layout, Milkdrop and Now Playing windows, `snapshot()` |
 | `screenshots_test.cpp` | Golden screenshots of the main window and the equalizer (see **Golden screenshots**) |
-| `jam_test.cpp` | `Jam::` (only with Qt WebSockets): every example of `spec/jam/protocol/examples` through the codec (valid ones pass, `invalid-*` fail) and client examples through encode and decode; the client against a `QWebSocketServer` on localhost — hello and the clock offset, reconnects after the delays and at once on `networkBack`, the outbox, `ended` stopping it for good, refusing to send what the server would refuse, invalid and unknown-reason messages; the stored session across a restart and broken, foreign or oversized files |
+| `jam_test.cpp` | `Jam::` (only with Qt WebSockets): every example of `spec/jam/protocol/examples` through the codec (valid ones pass, `invalid-*` fail) and client examples through encode and decode; the client against a `QWebSocketServer` on localhost — hello with a version the server takes and the clock offset, reconnects after the delays and at once on `networkBack`, the outbox, `ended` stopping it for good, refusing to send what the server would refuse, invalid and unknown-reason messages; the stored session across a restart and broken, foreign or oversized files |
+| `jam_host_test.cpp` | `Jam::HostSession` against `spec/jam/host.md` by ID, with `JamStubServer`, a real `Core::JamMode` on a player without a sound card and the MockHttpServer as Yandex: create and its refusal, states and their versions, started in the stored outbox offline and resume, the stored snapshot and link, "Continue the jam?" yes and no, a resume refused for a gone room or another reason, the guests' search and checks, the skip command, the end by the host and by the server, the host's add and play next, and `JamTrackOf` |
+| `jam_e2e_test.cpp` | The jam end to end: the app (offscreen, the Null output) hosts on a real jam server (`QIYAA_JAM_TEST_SERVER`, its `PUBLIC_URL`; CI runs the server's image on Linux, elsewhere the test skips), a guest joins over WebSocket, searches and adds; the track plays with no `/play-audio`, and after the end it is reported again |
 | `mpris_test.cpp` | `Integrations::Mpris` over a session bus, driven by `gdbus` as an external client |
 | `milkdrop_test.cpp` | `Vis::MilkdropPresets`, preset switching and black-preset handling in `Ui::MilkdropWindow`; with OpenGL 3.3, projectM rendering, the black-picture detector and fullscreen |
 | `data/sine440_3s.mp3` | 3 s of a 440 Hz sine: MPEG-1 Layer III, 64 kbps, 44.1 kHz, stereo, ID3v2.4 tag, 24,494 bytes |
@@ -79,10 +82,14 @@ QT_QPA_PLATFORM=offscreen QIYAA_AUDIO_BACKEND=null build/tests/audio_test queued
 | `main_window_test` | audio core skins ui yandex | plain |
 | `library_test` | audio core yandex (+ `qiyaa_test_yandex`) | plain; `QIYAA_TEST_DATA` |
 | `sources_test` | audio core yandex (+ `qiyaa_test_yandex`) | plain; `QIYAA_TEST_DATA` |
+| `jam_mode_test` | audio core yandex | plain; `QIYAA_TEST_DATA` |
 | `failures_test` | audio core yandex | plain; `QIYAA_TEST_DATA` |
 | `dsp_test` | audio skins ui vis | plain |
 | `windows_test` | app core ui | 2560×1440 virtual screen (not on Windows) |
 | `screenshots_test` | audio core skins ui yandex | plain; `QIYAA_TEST_DATA` |
+| `jam_test` | jam (+ `qiyaa_test_jam`) | only with `QIYAA_HAVE_JAM` |
+| `jam_host_test` | audio core jam yandex (+ `qiyaa_test_jam`) | only with `QIYAA_HAVE_JAM`; `QIYAA_TEST_DATA` |
+| `jam_e2e_test` | app audio core jam ui yandex | only with `QIYAA_HAVE_JAM`; `QIYAA_TEST_DATA`; skips without `QIYAA_JAM_TEST_SERVER` |
 | `mpris_test` | core integrations, Qt6::DBus | only with `QIYAA_HAVE_MPRIS`; under `dbus-run-session` |
 | `milkdrop_test` | audio skins ui vis | only with `QIYAA_HAVE_MILKDROP`; offscreen, so the GL functions skip |
 | `milkdrop_gl_test` | the `milkdrop_test` binary | only with `xvfb-run` and Qt's xcb plugin; three GL functions |
@@ -111,6 +118,19 @@ and `fullScreenTakesOverRenderingAndGivesItBack` under `xvfb-run -a -s "-screen 
 `QT_QPA_PLATFORM=xcb`, `LIBGL_ALWAYS_SOFTWARE=1` (Mesa's software renderer),
 `QIYAA_AUDIO_BACKEND=null` and `QIYAA_EXPECT_GL=1`. `QIYAA_EXPECT_GL` turns "no OpenGL here"
 from a skip into a failure, because on that runner OpenGL must work (but see **Traps**).
+
+**jam_e2e_test** needs a jam server whose `PUBLIC_URL` is the address in
+`QIYAA_JAM_TEST_SERVER` (the guest sends that origin). CI runs the server's image on the Linux
+jobs that build the jam. By hand, either of:
+
+```bash
+docker run -d --rm -p 8090:8090 -e PUBLIC_URL=http://localhost:8090 ghcr.io/kickoman/qiyaa-jam:0.3.1
+(cd ../qiyaa-jam/server && npm run build && PORT=8090 DATA_DIR=$(mktemp -d) node dist/main.js)
+QIYAA_JAM_TEST_SERVER=http://localhost:8090 ctest --test-dir build -R jam_e2e_test --output-on-failure
+```
+
+The server allows two live rooms and five new ones an hour from one address (ROOM-02): a run
+ends its room even when it fails, but more than five runs an hour need a fresh server.
 
 **QIYAA_UPDATE_GOLDEN=1** records missing golden images. **QIYAA_TEST_SHOTS=<dir>** saves
 pictures into an existing directory; nothing creates it:

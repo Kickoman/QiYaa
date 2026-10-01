@@ -73,6 +73,18 @@ void ApiClient::getJson(const QString& path, const QUrlQuery& query, TJsonCallba
     handleJson(networkManager->get(MakeRequest(url, accessToken)), std::move(callback));
 }
 
+void ApiClient::getClassifiedJson(
+    const QString& path,
+    const QUrlQuery& query,
+    TClassifiedJsonCallback callback
+) {
+    QUrl url(baseUrl + path);
+    if (!query.isEmpty()) {
+        url.setQuery(query);
+    }
+    handleClassifiedJson(networkManager->get(MakeRequest(url, accessToken)), std::move(callback));
+}
+
 void ApiClient::postForm(const QString& path, const TForm& form, TJsonCallback callback) {
     QByteArray body;
     for (const auto& [key, value] : form) {

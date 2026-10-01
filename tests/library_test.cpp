@@ -283,6 +283,41 @@ private Q_SLOTS:
         QCOMPARE(server.last("/search")->query.queryItemValue("text"), QStringLiteral("кино"));
     }
 
+    void searchTracksAsksForTracksOnlyAndTellsARejectedToken() {  // spec HOST-28, HOST-29
+        server.fixture("GET", "/search", "search/best-track");
+        Result<Yandex::SearchResult> all;
+        library.search("кино", all.callback());
+        QVERIFY(all.wait());
+        QList<Yandex::Track> tracks;
+        Yandex::RequestError failure;
+        bool done = false;
+        library.searchTracks(
+            "кино",
+            [&](const QList<Yandex::Track>& found, const Yandex::RequestError& error) {
+                tracks = found;
+                failure = error;
+                done = true;
+            }
+        );
+        QVERIFY(QTest::qWaitFor([&] { return done; }, 5000));
+        QVERIFY(!failure.isError());
+        QCOMPARE(server.last("/search")->query.queryItemValue("type"), QStringLiteral("track"));
+        QCOMPARE(tracks.size(), all.value.tracks.size());
+        QCOMPARE(tracks.first().id, all.value.tracks.first().id);
+
+        server.fixture("GET", "/search", "users-likes-artists/401-session-expired");
+        done = false;
+        library.searchTracks(
+            "кино",
+            [&](const QList<Yandex::Track>&, const Yandex::RequestError& error) {
+                failure = error;
+                done = true;
+            }
+        );
+        QVERIFY(QTest::qWaitFor([&] { return done; }, 5000));
+        QCOMPARE(failure.httpStatus, 401);
+    }
+
     void likeUnlikeAndDislikeUpdateTheLikes() {
         server.fixture(
             "POST", "/users/42/likes/tracks/add-multiple", "users-likes-tracks-add-multiple/ok"

@@ -1,11 +1,11 @@
 #include "jam/client.h"
 #include "jam/codec.h"
 #include "jam/session_store.h"
+#include "support/jam_stub_server.h"
 #include "support/spec_fixtures.h"
 
 #include <QDir>
 #include <QFile>
-#include <QHostAddress>
 #include <QJsonArray>
 #include <QJsonDocument>
 #include <QRegularExpression>
@@ -13,9 +13,7 @@
 #include <QTemporaryDir>
 #include <QTest>
 #include <QWebSocket>
-#include <QWebSocketServer>
 
-#include <memory>
 #include <vector>
 
 namespace {
@@ -40,72 +38,6 @@ QByteArray ReadFile(const QString& path) {
 QByteArray Example(const QString& name) {
     return ReadFile(Tests::SpecPath(QStringLiteral("jam/protocol/examples/%1.json").arg(name)));
 }
-
-// One end of the protocol for the client under test: accepts connections on localhost and keeps
-// what arrives on each.
-class StubServer : public QObject {
-public:
-    StubServer()
-        : server(QStringLiteral("jam-stub"), QWebSocketServer::NonSecureMode) {
-        if (!server.listen(QHostAddress::LocalHost, 0)) {
-            qFatal("the stub server cannot listen");
-        }
-        connect(&server, &QWebSocketServer::newConnection, this, [this] {
-            while (QWebSocket* socket = server.nextPendingConnection()) {
-                Connection connection{std::unique_ptr<QWebSocket>(socket), {}};
-                connections.push_back(std::move(connection));
-                Connection& added = connections.back();
-                QWebSocket* raw = added.socket.get();
-                connect(
-                    raw, &QWebSocket::textMessageReceived, this,
-                    [this, raw](const QString& text) {
-                        for (Connection& each : connections) {
-                            if (each.socket.get() == raw) {
-                                each.received.append(text);
-                            }
-                        }
-                    }
-                );
-            }
-        });
-    }
-
-    QUrl url() const {
-        return QUrl(QStringLiteral("ws://127.0.0.1:%1/ws").arg(server.serverPort()));
-    }
-    int count() const { return int(connections.size()); }
-    QWebSocket& last() { return *connections.back().socket; }
-    QStringList received() const {
-        return connections.empty() ? QStringList() : connections.back().received;
-    }
-
-    std::vector<Jam::ClientMessage> messages() const {
-        std::vector<Jam::ClientMessage> decoded;
-        for (const QString& text : received()) {
-            const Jam::Decoded<Jam::ClientMessage> message = Jam::DecodeClient(text.toUtf8());
-            if (message.message) {
-                decoded.push_back(*message.message);
-            }
-        }
-        return decoded;
-    }
-
-    void send(const QByteArray& text) { last().sendTextMessage(QString::fromUtf8(text)); }
-    void welcome(qint64 serverTime = 0) {
-        send(QStringLiteral(R"({"type":"welcome","protocol":1,"serverTime":%1})")
-                 .arg(serverTime)
-                 .toUtf8());
-    }
-
-private:
-    struct Connection {
-        std::unique_ptr<QWebSocket> socket;
-        QStringList received;
-    };
-
-    QWebSocketServer server;
-    std::vector<Connection> connections;
-};
 
 Jam::ClientOptions FastOptions(qint64* now = nullptr) {
     Jam::ClientOptions options;
@@ -141,6 +73,7 @@ private Q_SLOTS:
     void anUnknownTypeIsNotAnError();
     void socketUrlFollowsTheServerAddress();
     void saysHelloAndGoesOnlineWithTheClockOffset();
+    void helloCarriesAVersionTheServerTakes();
     void reconnectsAfterTheDelaysAndAtOnceWhenTheNetworkIsBack();
     void aServerThatIsDownIsOfflineAndTriedAgain();
     void startedWaitsInTheOutboxUntilItCanBeSent();
@@ -233,7 +166,7 @@ void JamTest::socketUrlFollowsTheServerAddress() {
 }
 
 void JamTest::saysHelloAndGoesOnlineWithTheClockOffset() {
-    StubServer server;
+    Tests::JamStubServer server;
     qint64 now = 1'000'000;
     Jam::Client client(FastOptions(&now));
     QSignalSpy welcomed(&client, &Jam::Client::welcomed);
@@ -252,8 +185,26 @@ void JamTest::saysHelloAndGoesOnlineWithTheClockOffset() {
     QCOMPARE(client.serverNow(), now + 1'500);
 }
 
+void JamTest::helloCarriesAVersionTheServerTakes() {
+    const std::pair<QString, QString> versions[] = {
+        {QString(), QStringLiteral("unknown")},
+        {QStringLiteral("0.9.1 (dev) é"), QStringLiteral("0.9.1dev")},
+        {QString(40, u'1'), QString(32, u'1')},
+    };
+    for (const auto& [given, sent] : versions) {
+        Tests::JamStubServer server;
+        Jam::ClientOptions options = FastOptions();
+        options.appVersion = given;
+        Jam::Client client(options);
+        client.start(server.url());
+        QTRY_COMPARE(server.received().size(), 1);
+        QVERIFY(Jam::DecodeClient(server.received().front().toUtf8()).isValid());
+        QCOMPARE(std::get<Jam::Hello>(server.messages().front()).appVersion, sent);
+    }
+}
+
 void JamTest::reconnectsAfterTheDelaysAndAtOnceWhenTheNetworkIsBack() {
-    StubServer server;
+    Tests::JamStubServer server;
     Jam::Client client(FastOptions());
     client.start(server.url());
     QTRY_COMPARE(server.count(), 1);
@@ -285,7 +236,7 @@ void JamTest::aServerThatIsDownIsOfflineAndTriedAgain() {
 }
 
 void JamTest::startedWaitsInTheOutboxUntilItCanBeSent() {
-    StubServer server;
+    Tests::JamStubServer server;
     Jam::Client client(FastOptions());
     QSignalSpy outboxChanged(&client, &Jam::Client::outboxChanged);
     client.started(QStringLiteral("i4"));
@@ -306,7 +257,7 @@ void JamTest::startedWaitsInTheOutboxUntilItCanBeSent() {
 }
 
 void JamTest::endedStopsTheClientForGood() {
-    StubServer server;
+    Tests::JamStubServer server;
     Jam::Client client(FastOptions());
     std::vector<Jam::ServerMessage> received;
     connect(
@@ -326,7 +277,7 @@ void JamTest::endedStopsTheClientForGood() {
 }
 
 void JamTest::neverSendsWhatTheServerWouldRefuse() {
-    StubServer server;
+    Tests::JamStubServer server;
     Jam::Client client(FastOptions());
     QVERIFY(!client.send(Jam::End{QStringLiteral("e1")}));
     client.start(server.url());
@@ -346,7 +297,7 @@ void JamTest::neverSendsWhatTheServerWouldRefuse() {
 }
 
 void JamTest::invalidMessagesAreSkippedAndUnknownReasonsArrive() {
-    StubServer server;
+    Tests::JamStubServer server;
     Jam::Client client(FastOptions());
     std::vector<Jam::ServerMessage> received;
     connect(

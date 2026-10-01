@@ -119,9 +119,10 @@ if(QIYAA_WITH_JAM)
         qiyaa_add_module(jam
             src/jam/client.cpp          src/jam/client.h
             src/jam/codec.cpp           src/jam/codec.h
+            src/jam/host_session.cpp    src/jam/host_session.h
             src/jam/protocol.h
             src/jam/session_store.cpp   src/jam/session_store.h)
-        target_link_libraries(qiyaa_jam PUBLIC Qt6::Core Qt6::WebSockets)
+        target_link_libraries(qiyaa_jam PUBLIC qiyaa_core qiyaa_yandex Qt6::Core Qt6::WebSockets)
         target_compile_definitions(qiyaa_jam PUBLIC QIYAA_HAVE_JAM)
         set(QIYAA_HAVE_JAM ON)
         message(STATUS "Jam: enabled (default server ${QIYAA_JAM_URL})")
@@ -237,6 +238,10 @@ qiyaa_add_module(app
 target_link_libraries(qiyaa_app
     PUBLIC qiyaa_audio qiyaa_core qiyaa_skins qiyaa_yandex
     PRIVATE qiyaa_integrations qiyaa_ui qiyaa_vis)
+if(QIYAA_HAVE_JAM)
+    target_link_libraries(qiyaa_app PRIVATE qiyaa_jam)
+    target_compile_definitions(qiyaa_app PRIVATE QIYAA_JAM_URL="${QIYAA_JAM_URL}")
+endif()
 qt_add_resources(qiyaa_app "icons"
     PREFIX "/icons"
     BASE resources/icons

@@ -1,19 +1,20 @@
-# `src/jam` — the jam client: protocol, connection, the host's stored session
+# `src/jam` — the jam: protocol, connection, the host's session
 
 The connection to a jam server (Kickoman/QiYaa-jam) by the protocol of `spec/jam/protocol`: the
 message model, its JSON with the schema's checks, the WebSocket client with its handshake,
-reconnects, clock offset and outbox, and the file where the host keeps its jam between runs. It
-does **not** decide what plays (the jam mode of `Core::Player` and `Core::Sources`, Kickoman/QiYaa#13),
-does not talk to Yandex or the player (the host session, Kickoman/QiYaa#14) and has no windows
-(Kickoman/QiYaa#15). It reads no `QSettings` and does not know where files live: `src/app` passes
-the server address and the session file's path.
+reconnects, clock offset and outbox, the file where the host keeps its jam between runs, and the
+host's session that ties them to the queue and to Yandex. It does **not** decide what plays (the
+jam mode of the queue is `Core::JamMode`) and has no windows (Kickoman/QiYaa#15). It reads no
+`QSettings` and does not know where files live: `src/app` passes the server address and the
+session file's path.
 
 The module is optional: it is built only with Qt WebSockets (`QIYAA_HAVE_JAM`, see
-[docs/building.md](../../docs/building.md#параметры-cmake)). It links Qt Core and Qt WebSockets
-and no other QiYaa module.
+[docs/building.md](../../docs/building.md#параметры-cmake)). It links Qt Core, Qt WebSockets,
+`qiyaa_core` and `qiyaa_yandex`; only `host_session.*` uses the last two.
 
 ```bash
-grep -rln 'include "\(core\|ui\|app\|yandex\|audio\)/' src/jam/   # must print nothing
+grep -rln 'include "\(ui\|app\|audio\|skins\|vis\|integrations\)/' src/jam/   # must print nothing
+grep -ln 'include "\(core\|yandex\)/' src/jam/*                                # host_session.cpp only
 ```
 
 | File | Contains |
@@ -22,6 +23,7 @@ grep -rln 'include "\(core\|ui\|app\|yandex\|audio\)/' src/jam/   # must print n
 | `codec.h/.cpp` | `Encode`, `DecodeServer`, `DecodeClient`, `Decoded<T>`, `IsKnownReason`, `TypeOf` |
 | `client.h/.cpp` | `Client`, `ClientOptions`, `Status` — one connection to the server at a time |
 | `session_store.h/.cpp` | `Session`, `SessionStore`, `EncodeSession`, `DecodeSession` |
+| `host_session.h/.cpp` | `HostSession`, `HostOptions`, `HostConfig`, `HostPhase`, `HostEnd`, `JamTrackOf`, `YandexTrackOf` |
 
 ## `protocol.h`
 
@@ -94,7 +96,9 @@ Q_SIGNALS:
 };
 ```
 
-- On open the client sends `hello{protocol: 1, app: desktop, appVersion}`. `welcome` makes it
+- On open the client sends `hello{protocol: 1, app: desktop, appVersion}`. The version keeps only
+  what the schema allows (`[0-9A-Za-z.+_-]`, 32 at most; `unknown` when nothing is left): the
+  server refuses any other `hello`, and bans an address that keeps sending one. `welcome` makes it
   `Online`, sets the clock offset (server time − `clock()`) and emits `welcomed()`: the owner then
   sends `create`, `resume` or `join`. Every `state` updates the offset too.
 - A close or an error of the socket makes it `Offline` and schedules a new connection after
@@ -134,8 +138,82 @@ returns false and logs when the file cannot be written. `load` gives `nullopt` f
 broken or foreign file (another `version`, a required field missing) and for one over
 `kMaxSessionFileBytes` (4 MiB) before reading it. `clear` deletes it.
 
+## `host_session.h`
+
+```cpp
+struct HostConfig { QString serverUrl; bool waveFeedback = true; };
+struct HostOptions { ClientOptions client; std::function<HostConfig()> config; QString queueTitle;
+                     std::function<QString()> newId; int resumeRetryMs = 30'000; };
+enum class HostPhase { None, Creating, Active };
+enum class HostEnd { ByHost, ByServer, Expired, Gone };
+std::optional<Track> JamTrackOf(const Yandex::Track& track);   // nullopt: the protocol cannot carry it
+Yandex::Track YandexTrackOf(const Track& track);
+class HostSession : public QObject {
+    HostSession(Core::JamMode*, Yandex::Library*, SessionStore, HostOptions, QObject* parent = nullptr);
+    HostPhase phase() const;  Status connection() const;  bool isConnected() const;
+    const std::optional<Room>& room() const;  QString joinUrl() const;  bool hasStoredSession() const;
+    bool create(const QString& hostName, const std::optional<SettingsPatch>& settings = {});
+    void cancelCreate();  void continueStored();  void discardStored();  void end();
+    bool add(const Yandex::Track&);  bool playNext(const Yandex::Track&);  bool pin(const QString& itemId);
+    bool remove(const QString& itemId);  bool kick(const QString& publicId);
+    bool changeSettings(const SettingsPatch&);  bool rotateLink();
+    void networkBack();
+Q_SIGNALS:
+    void changed();  void refused(const QString& reason);  void ended(Jam::HostEnd why);
+};
+```
+
+The host's side of `spec/jam/host.md`, a port of the Android app's `JamHost`: the `Client` to the
+server, `Core::JamMode` for the queue, `Yandex::Library` for the guests' search and checks, the
+`SessionStore` for the jam between runs.
+
+- **Create.** `create` trims the name and cuts it to 24 characters; it returns false while a jam
+  is on or being created, without a server address (`config().serverUrl`), and for a name or
+  settings the server would refuse. After `welcome` it sends `create`; `created` stores the session
+  and starts `JamMode` with `queueTitle`. A refused `create` (`rate-limited`, `server-full`…) is
+  `refused(reason)` and no jam.
+- **Resume.** Every `welcome` of an active jam sends `resume` with the stored snapshot and the
+  client's outbox (the last 500). After `resumed` the outbox is cleared and `JamMode` reports what
+  plays (HOST-26). `room-not-found` or `bad-secret` ends the jam here (`ended(Gone)`, HOST-24);
+  another refusal is `refused` and a new try after `resumeRetryMs`.
+- **"Continue the jam?"** (HOST-23). The constructor loads the stored session; `hasStoredSession()`
+  asks the app to put the question. `continueStored()` starts `JamMode` at once (the queue is not
+  kept between runs: its jam part comes with the first `state`) and connects. `discardStored()`
+  clears the file at once, then connects only to `resume` and `end` the room; the guests see the
+  end.
+- **State.** A `state` older than the last one of the same connection is ignored; the first after
+  a `welcome` is taken whatever its version. It goes to `JamMode::setQueue`, and to `room()`.
+- **The queue's events.** `JamMode::itemStarted` → `Client::started` (to the outbox while not
+  connected, HOST-25); `JamMode::playback` → `playing`, only while connected. A wave track the
+  protocol cannot carry is not reported.
+- **Guests.** `searchRequest` → `Library::searchTracks` (`type=track`), the available tracks that
+  `JamTrackOf` takes, 20 at most; a 401 or 403 is `error: unauthorized`, any other failure `failed`
+  (HOST-28, HOST-29). `validateRequest` → `Library::tracksByIds`: an entry per id in order, a track
+  or `track-unavailable`; a failed request fails them all (HOST-30). Answers go only while
+  connected.
+- **The host's actions** (HOST-20) return false without a connection. `playNext` pins a track
+  already waiting; otherwise it adds it and pins the item when a `state` brings it (added by the
+  host), unless it came pinned. A refused add of `playNext` is `refused` and nothing is pinned.
+- **End.** `end()` sends `end` when connected, then ends here: the file is cleared, `JamMode::end`
+  keeps the jam items as ordinary tracks (HOST-32), the client stops, `ended(ByHost)`. `ended` from
+  the server does the same without `end` (`ByServer`, `Expired`).
+- `changed()` follows any change of `phase()`, the connection, `room()` or `joinUrl()`.
+
+`JamTrackOf` builds the protocol's track like the server checks it: a catalog id
+(`[0-9A-Za-z_-]{1,64}`, else nullopt), the album id only when it is one, control characters as
+spaces, the title cut to 150 characters (nullopt when empty), up to 10 non-empty artists of 64
+characters, the duration within 0 … 24 h, and the cover only as a template with `%%`, no scheme
+and no spaces, 300 characters at most. Cutting never splits a surrogate pair.
+
+**Traps:**
+- The search's and the check's callbacks may come after the session is gone or the connection
+  changed: they hold a `QPointer` and send only while connected.
+- `request` takes a builder, so a refused action does not use up a request id.
+
 ## Not here
 
 - What the server does and the protocol's rules: Kickoman/QiYaa-jam and `spec/jam/`.
-- The host's behaviour (mirror of the queue, the jam wave, search for guests): `spec/jam/host.md`;
-  in the app from Kickoman/QiYaa#13 and #14.
+- The jam mode of the queue (mirror of the state, the jam wave, reports): `Core::JamMode`,
+  [src/core/README.md](../core/README.md).
+- Where the settings and the session file live, the question at start and the texts of refusals:
+  [src/app/README.md](../app/README.md).

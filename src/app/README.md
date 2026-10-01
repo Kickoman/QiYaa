@@ -1,9 +1,9 @@
 # `src/app` — composition root and the `qiyaa` entry point
 
 `src/app` assembles the running player. `App::Application` creates and owns every long-lived
-object (the audio engine, the Yandex API client and library, the player, the cover cache, the
-media controls and the windows: main, equalizer, playlist, now-playing and, in a Milkdrop build,
-Milkdrop), connects their signals, places and re-stacks the windows,
+object (the audio engine, the Yandex API client and library, the player, the jam mode and, in a
+jam build, the jam's host session, the cover cache, the media controls and the windows: main,
+equalizer, playlist, now-playing and, in a Milkdrop build, Milkdrop), connects their signals, places and re-stacks the windows,
 builds the context menus and keyboard shortcuts, keeps `settings.ini`, finds and saves the Yandex
 token, swaps skins and shuts down in order. `paths.*` says where QiYaa's own files and the old
 Yaamp's files live. `offline_sources.*` holds what `--play-file` and `--demo` play without
@@ -30,6 +30,9 @@ HTTP, OAuth and the token file format in [src/yandex](../yandex/README.md); `.ws
   by value.
 - PRIVATE `qiyaa_integrations`, `qiyaa_ui`, `qiyaa_vis`: the header only forward-declares the
   windows, `Core::CoverCache` and `Integrations::MediaControls`.
+- PRIVATE `qiyaa_jam` in a jam build (`QIYAA_HAVE_JAM`), with the define
+  `QIYAA_JAM_URL="<the CMake option>"`, the default jam server. The header forward-declares
+  `Jam::HostSession`; the code that calls it is under `#ifdef QIYAA_HAVE_JAM`.
 - Resources `:/icons` (`qiyaa-16.png` … `qiyaa-256.png`, seven sizes), used by `main.cpp` for the
   window icon.
 - `QT_NO_KEYWORDS` and `-Wall -Wextra -Wshadow` (`/W4 /utf-8` on MSVC), like every target.
@@ -42,7 +45,7 @@ and `resources/icons/qiyaa.icns` on macOS.
 `app` deliberately does not link the vendored `qiyaa_miniaudio`, `qiyaa_miniz` or projectM (it
 reaches them only through `audio`, `skins` and `vis`), nor Qt D-Bus or WinRT (only through
 `integrations`). Nothing links `qiyaa_app` except the executable and, among the tests,
-`windows_test`.
+`windows_test` and `jam_e2e_test`.
 
 `app` is the top of the one-way order `audio`, `yandex`, `skins` → `vis`, `core` → `ui`,
 `integrations` → `app` → `qiyaa`:
@@ -65,6 +68,7 @@ public:
         bool audio = true;              // false: AudioEngine::init() is never called
         bool readOnlySettings = false;  // settings, covers, Milkdrop presets in a temp dir
         bool mediaIntegration = true;   // MPRIS or SMTC
+        QNetworkAccessManager* network = nullptr;  // tests: one that reaches a mock server
     };
 
     explicit Application(const Options& options, QObject* parent = nullptr);
@@ -81,6 +85,8 @@ public:
     Audio::AudioEngine* engine();
     Yandex::ApiClient* api();
     Yandex::Library* library();
+    Core::JamMode* jam();
+    Jam::HostSession* jamHost() const;                 // null without QIYAA_HAVE_JAM
 
     bool loadSkin(const QString& path);                // false: message in the marquee
     enum class ScaleScope { Saved, ThisRun };
@@ -104,14 +110,16 @@ public:
 **Threads and ownership.** Everything runs on the GUI thread: `Application` starts no thread,
 and every method must be called from the GUI thread (the audio engine's decoder thread and device
 callback stay inside [src/audio](../audio/README.md)). `Application` owns everything it wires:
-`QSettings`, the base and the current `Skins::Skin`, `QNetworkAccessManager`, `ApiClient`,
-`Library`, `AudioEngine` and `Player` as members; `CoverCache`, `MediaControls`, the `Mpris` or
+`QSettings`, the base and the current `Skins::Skin`, `ApiClient`, `Library`, `AudioEngine`,
+`Player`, `Sources` and `JamMode` as members; its own `QNetworkAccessManager` unless
+`Options::network` lends one; the `Jam::HostSession`, `CoverCache`, `MediaControls`, the `Mpris` or
 `Smtc` object (held as `std::unique_ptr<QObject>`) and the five windows through `std::unique_ptr`.
 The accessors return non-owning pointers, valid until the `Application` is destroyed.
 
 Member order is load-bearing. Members are constructed in declaration order, and the initialiser
 list relies on it: the settings file after the temporary directory, `ApiClient` after the network
-manager, `Player` after the library and the engine. The windows are declared last, so they are
+manager, `Player` after the library and the engine, `JamMode` after the player. The host session
+is declared after `JamMode` and destroyed before it. The windows are declared last, so they are
 destroyed first, while the player, engine and skins they point at still exist. The `Mpris`/`Smtc`
 object dies before the `MediaControls` it wraps, and `QSettings` before the temporary directory
 that may hold its file.
@@ -147,12 +155,35 @@ that may hold its file.
    volume, raise (un-minimise the main window, raise every visible window, activate the main one)
    and quit (`quit()`). On top of it, `Mpris` in a build with `QIYAA_HAVE_MPRIS`, or `Smtc` in a
    build with `QIYAA_HAVE_SMTC`.
-9. Connects `QApplication::aboutToQuit` to `saveState()` followed by `Player::stop()`.
+9. Gives `Sources` the `JamMode` (a pick during a jam is refused, HOST-21). In a jam build creates
+   the `Jam::HostSession`: the server and the wave feedback from the `jam/*` settings at each
+   use, the queue title `Джем`, the app's version for `hello`, and the session file
+   `jam-session.json` next to the settings file (so `readOnlySettings` and a test's
+   `settingsFile` keep it in their own folder). Its signals go to the marquee: a refusal by its
+   reason (below), the end of the jam (`Джем закончен`, `Джем закончили`, `Джем закрылся, пока вас
+   не было`, `Джем закончен: сервер его больше не знает`), and, while the jam is on, a lost
+   connection (`Нет связи с сервером джема · повторю сам`) and its return (`Джем на связи`).
+10. With audio on and not offline, `watchNetwork()` (see the traps).
+11. Connects `QApplication::aboutToQuit` to `saveState()` followed by `Player::stop()`.
+
+The refusals of the jam server, by reason: `server-full` "Сервер джема переполнен, попробуйте
+позже", `rate-limited` "Слишком много запросов, подождите немного", `update-required` "Обновите
+QiYaa, чтобы работать с этим сервером джема", `not-allowed` "Сервер джема этого не разрешает",
+`queue-limit` "Очередь джема заполнена", `duplicate` "Этот трек уже в очереди джема", `stale`
+"Этот трек уже ушёл из очереди", any other "Сервер джема отказал". The texts are the Android app's.
 
 **`start()`** shows the main window, then each other window whose `*/visible` setting is true,
 places them all (`layoutWindows()`), sets the main window's EQ and PL buttons to match, and
-activates the main window. Unless `offline`, it then looks for a token (see
-[Login, logout and the token](#login-logout-and-the-token)).
+activates the main window. Unless `offline`, it then asks about a stored jam and looks for a
+token (see [Login, logout and the token](#login-logout-and-the-token)).
+
+**"Continue the jam?"** (HOST-23). When the host session has a stored jam, `start()` opens a
+`QMessageBox` "Шёл джем" / "Продолжить? Ссылка у гостей останется прежней." with "Продолжить"
+and "Закончить". It is not modal (`open()`): playback and the windows work while it waits, and a
+test on the offscreen platform does not block. "Продолжить" calls `continueStored()`; "Закончить"
+calls `discardStored()` and queues the likes like a login does; closing it without an answer keeps
+the jam stored for the next start. While it is open, or a jam is on, `applyToken` does not queue
+the likes.
 
 **Layout.** `layoutWindows()`, called only from `start()`, places each window at its saved
 `*/pos`, or at the Winamp default: the equalizer right below the main window, the playlist right
@@ -213,6 +244,8 @@ stay transparent. With no visible window the image is null.
 `tests/windows_test.cpp` drives a real `Application` with `offline`, `audio = false`,
 `readOnlySettings` and no media integration, on a 2560×1440 offscreen screen (on Windows on Qt's
 default offscreen screen, where the scale tests skip themselves).
+`tests/jam_e2e_test.cpp` runs one with `offline`, the Null output, a `settingsFile` that points
+`jam/server` at a real jam server and `Options::network` at the test's MockHttpServer.
 
 **Traps:**
 - Do not reorder the members in `application.h` (see above). A new window goes after the
@@ -220,7 +253,7 @@ default offscreen screen, where the scale tests skip themselves).
 - `Options::offline` only skips the token lookup in `start()`. The menu item "Войти в Яндекс
   Музыку..." still logs in. `readOnlySettings` does not redirect the token file: a login during
   such a run writes the real `<ConfigDirectory>/token`.
-- `Options::settingsFile` is not set by anyone now, neither `main.cpp` nor the tests.
+- `Options::settingsFile` is set only by `jam_e2e_test`, to point `jam/server` at its server.
 - After `--scale`, window positions are not saved for the rest of the run, unless the user picks a
   size from the menu (a `setScale` with `ScaleScope::Saved` clears `transientScale`).
 - `saveState()` skips positions while the main window is hidden, which is why `quit()` saves before
@@ -245,7 +278,8 @@ default offscreen screen, where the scale tests skip themselves).
   main menu, not the sources menu.
 - With audio on and not offline, `watchNetwork()` loads a `QNetworkInformation` backend that can
   tell reachability and passes it to `Player::setNetworkOnline`: Online is true, Disconnected
-  false, anything else (Local, Site, Unknown) "cannot tell". Without such a backend the `Player`'s
+  false, anything else (Local, Site, Unknown) "cannot tell". Online also reconnects the jam at
+  once (`HostSession::networkBack`, HOST-26). Without such a backend the `Player`'s
   retry timer alone ends a wait for the network ([src/core](../core/README.md#failures-during-playback)).
 
 ### Login, logout and the token
@@ -265,11 +299,12 @@ accepted token formats and the rule that an empty own file means "logged out" ar
 `applyToken(token, save)` sets the token on `ApiClient`, shows `Подключаюсь к Яндекс Музыке...`
 and calls `Library::connectAccount`. On error the marquee shows `Вход не удался: <error>`. On
 success it calls `Yandex::SaveToken(TokenFile(), token)` if `save`, shows
-`Привет, <displayName>!`, and, if the play queue is empty, calls `Core::Sources::playLikes(false)`
-(queues the liked tracks without starting playback).
+`Привет, <displayName>!`, and, if the play queue is empty and no jam is on or offered, calls
+`Core::Sources::playLikes(false)` (queues the liked tracks without starting playback).
 
 `login()` runs `Ui::LoginDialog` modally (`exec()`, a nested event loop) and, on accept, calls
-`applyToken(dialog.token(), true)`. `logout()` clears the play queue, calls `Library::logout()`
+`applyToken(dialog.token(), true)`. `logout()` first ends a jam being created or on (the guests
+search through this account, HOST-32), then clears the play queue, calls `Library::logout()`
 (which also clears the API token) and `Yandex::ForgetToken(TokenFile())` (leaves an empty token
 file), and shows `Вы вышли из аккаунта`.
 
@@ -357,7 +392,11 @@ constructor; "setter" is the matching `set*Visible`.
 | `milkdrop/preset` | QString: preset name | empty = the window's own pick | ctor | on `settingsChanged` |
 | `milkdrop/black` | QStringList: names of blacklisted presets | empty | ctor | on `settingsChanged` |
 
-The `milkdrop/*` keys are read and written only in a build with `QIYAA_HAVE_MILKDROP`. The resize
+| `jam/server` | QString: the jam server's address, `https://…` | `QIYAA_JAM_URL` | each time the host session connects | nothing yet (the jam window, Kickoman/QiYaa#15) |
+| `jam/waveFeedback` | bool: the jam wave learns from skips (HOST-12) | true | when a jam starts | nothing yet |
+
+The `milkdrop/*` keys are read and written only in a build with `QIYAA_HAVE_MILKDROP`, the `jam/*`
+keys only in a jam build. The resize
 steps are clamped to 0..40 per axis by the windows.
 
 ## File format: `settings.ini`
@@ -409,8 +448,9 @@ product name spelled `Yaamp` and then `yaamp`:
 | Windows | `%LOCALAPPDATA%\QiYaa` | `%APPDATA%\Yaamp`, `%APPDATA%\yaamp`; none when `APPDATA` is unset |
 | macOS | `~/Library/Preferences/QiYaa` | `~/Library/Application Support/Yaamp`, `…/yaamp` |
 
-What lives in `ConfigDirectory()`: `settings.ini`, `token` and, in a Milkdrop build, `milkdrop/` (the
-user's own presets). The cover cache is not there: [src/core](../core/README.md) chooses its
+What lives in `ConfigDirectory()`: `settings.ini`, `token`, in a Milkdrop build `milkdrop/` (the
+user's own presets), and while a jam is on `jam-session.json` (next to `settings.ini`, see
+[src/jam](../jam/README.md#session_storeh)). The cover cache is not there: [src/core](../core/README.md) chooses its
 place.
 
 **Traps:**
