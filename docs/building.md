@@ -4,7 +4,9 @@
 
 - CMake ≥ 3.21 и компилятор C++20. CI собирает GCC 12 и 13, Apple Clang из Xcode на macOS 14 и
   MSVC 2022.
-- Qt ≥ 6.4: Core, Gui, Widgets, Network; для тестов — Test.
+- Qt ≥ 6.4: Core, Gui, Widgets, Network и Qt Linguist (`lrelease` собирает переводы интерфейса;
+  на Ubuntu это `qt6-tools-dev` и `qt6-l10n-tools`, в установщике Qt он есть всегда); для тестов —
+  Test.
 - Linux: Qt DBus — для медиаклавиш (MPRIS). Без него QiYaa собирается и просто не публикует себя.
 - Milkdrop: Qt OpenGL и заголовки OpenGL (на Ubuntu это `libgl-dev`), плюс projectM 4.1. projectM
   берётся установленный (vcpkg, Homebrew, пакет дистрибутива); если его нет, CMake скачивает
@@ -42,7 +44,8 @@ presets)`, `Jam: enabled (default server …)` или причину, почем
 ## Ubuntu 24.04
 
 ```sh
-sudo apt install build-essential cmake ninja-build qt6-base-dev libqt6opengl6-dev libgl-dev qt6-websockets-dev
+sudo apt install build-essential cmake ninja-build qt6-base-dev qt6-tools-dev qt6-l10n-tools \
+  libqt6opengl6-dev libgl-dev qt6-websockets-dev
 cmake -S . -B build -G Ninja -DCMAKE_BUILD_TYPE=RelWithDebInfo
 cmake --build build
 ./build/QiYaa

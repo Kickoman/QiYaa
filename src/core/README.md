@@ -218,7 +218,7 @@ above.
 - **`next()`**: with an empty queue, nothing happens. If a preload exists in any phase:
   `playIndex(preload index)`. Else if `pickNext() >= 0`: `playIndex` of it. Else, if the source is
   endless: `stop()`, mark waiting, run the load-more check, then emit
-  `statusMessage("Загружаю ещё треки...")`. Else (the end of a finite queue with repeat off):
+  `statusMessage("Loading more tracks…")`. Else (the end of a finite queue with repeat off):
   `stop()`, and the cursor stays on the last track.
 - **`previous()`** (spec TR-01, TR-02; the choice is `PreviousTarget()`): more than
   `kPreviousRestartsAfterSeconds` (3 s) into a playing or paused track, it restarts that track
@@ -261,7 +261,7 @@ above.
   `refreshPreload()`.
 - **`setShuffle`, `setRepeat`**: nothing happens without a change. With a change:
   `modesChanged`, then `refreshPreload()`. Switching shuffle on while the queue is endless also
-  emits `statusMessage("Перемешивание не действует в волне")`; `setQueue` emits the same when an
+  emits `statusMessage("Shuffle does not apply to a vibe")`; `setQueue` emits the same when an
   endless queue starts with shuffle on.
 - **`seekTo(seconds)`**: clamps the target to `[0, durationSeconds()]`, or to `>= 0` when the
   duration is 0. It returns `false` and emits nothing when `AudioEngine::seek` refuses, which
@@ -354,12 +354,12 @@ FailureAction DecideOnFailure(FailureKind kind, int failuresInRow, bool hasNext,
 - **Where a failure comes from:** the link (`resolveTrackUrl`'s `RequestError`), the download
   (`ClassifyReply` of the stream's reply) and `AudioEngine::streamUndecodable` (a Track failure,
   or a Network one if the download had already broken off).
-- **Track** (ERR-04, ERR-05, ERR-07): `"Трек не играет: <text>"` and `next()`, which in a wave at
-  its end waits for more. The third in a row stops instead, with `"Остановлено: 3 трека подряд
-  не играют"`; with no next track in a finite queue it stops at once. The count goes back to 0
+- **Track** (ERR-04, ERR-05, ERR-07): `"The track does not play: <text>"` and `next()`, which in a wave at
+  its end waits for more. The third in a row stops instead, with `"Stopped: 3 tracks in a row did
+  not play"`; with no next track in a finite queue it stops at once. The count goes back to 0
   when the engine reaches Playing, and in `setQueue` (ERR-06).
-- **Auth** (ERR-08): `"Ошибка доступа: <text>"` and a stop. It is not counted.
-- **Network** (ERR-01 to ERR-03): the track is parked. `"Нет сети — жду подключения…"` once; the
+- **Auth** (ERR-08): `"Access error: <text>"` and a stop. It is not counted.
+- **Network** (ERR-01 to ERR-03): the track is parked. `"No network — waiting for it…"` once; the
   download and the preload are dropped, and a new stream is begun at the position the track had
   reached and paused, so every view shows it paused there. The track stays open: no `Skipped`
   now, and no new `Started` or play report when it continues. A retry follows after 2 s, then
@@ -438,7 +438,7 @@ FailureAction DecideOnFailure(FailureKind kind, int failuresInRow, bool hasNext,
 
 | Signal | Emitted |
 |---|---|
-| `statusMessage(text)` | `"Audio error: <message>"` (from `AudioEngine::errorOccurred`), the failure statuses (`"Трек не играет: …"`, `"Остановлено: 3 трека подряд не играют"`, `"Ошибка доступа: …"`, `"Нет сети — жду подключения…"`, `"Cannot get link: …"` without an output device, `"Download failed: …"`), and `"Загружаю ещё треки..."` (loading more tracks). `Sources` also emits it on the `Player` for source loads, likes and dislikes, which makes it the app's one status line |
+| `statusMessage(text)` | `"Audio error: <message>"` (from `AudioEngine::errorOccurred`), the failure statuses (`"The track does not play: …"`, `"Stopped: 3 tracks in a row did not play"`, `"Access error: …"`, `"No network — waiting for it…"`, `"Cannot get link: …"` without an output device, `"Download failed: …"`), and `"Loading more tracks…"` (loading more tracks). `Sources` also emits it on the `Player` for source loads, likes and dislikes, which makes it the app's one status line |
 | `playlistChanged` | by `setQueue`; by `appendTracks` when something was added; by `removeTracks` always, even when no index was valid |
 | `queueReplaced` | by `setQueue` and `clearQueue` only, before `playlistChanged` |
 | `currentTrackChanged` | by `setQueue`, even for an empty queue; by `playIndex` at once; again from `trackStarted` once the bitrate is known; twice on a gapless advance; by `removeTracks` when the current track was removed |
@@ -456,7 +456,7 @@ FailureAction DecideOnFailure(FailureKind kind, int failuresInRow, bool hasNext,
   call `newSourceRequest()` and throw the ticket away. Do not remove those calls.
 - A `TLoadMoreCallback` must call `done` exactly once, on the `Player`'s thread, with an empty list
   on failure. Until it does, that queue never asks again. After `done({})`, a waiting `next()` stays
-  stopped with "Загружаю ещё треки..." on the status line; the next `next()` asks again. If `done`
+  stopped with "Loading more tracks…" on the status line; the next `next()` asks again. If `done`
   runs synchronously inside the `TLoadMoreCallback`, playback has already moved on when `next()`
   emits that message.
 - `TLoadMoreCallback` and `TEventCallback` run synchronously inside `Player` methods and the timer's
@@ -492,14 +492,14 @@ public:
     static inline const QString kMyWaveSeed = "user:onyourwave";
     Sources(Player* player, Yandex::Library* library, QObject* parent = nullptr);
 
-    void playLikes(bool autoplay);                               // "Мне нравится"
+    void playLikes(bool autoplay);                               // "Liked"
     void playPlaylist(const Yandex::PlaylistReference& playlist);
-    void playRecommendations(const Yandex::PlaylistReference& playlist);   // "<title>: похожие"
+    void playRecommendations(const Yandex::PlaylistReference& playlist);   // "<title>: similar"
     void playArtist(const QString& artistId, const QString& name);        // top tracks
     void playAlbum(const QString& albumId, const QString& title);
     void playWave(const QStringList& seeds, const QString& title);        // waves and stations
-    void playMyWave();                                           // {kMyWaveSeed}, "Моя волна"
-    void search(const QString& text);                            // "Поиск: <text>"
+    void playMyWave();                                           // {kMyWaveSeed}, "My Vibe"
+    void search(const QString& text);                            // "Search: <text>"
 
     void setLiked(const QString& trackId, bool liked);
     void dislikeAndSkip(const QString& trackId);                 // dislike, then Player::next()
@@ -517,15 +517,16 @@ The scenarios are [spec/player/sources.md](../../spec/player/sources.md),
   A search whose best result is an artist or album asks for that one's tracks with the same
   ticket (SRC-03). Replies are dropped silently; the HTTP request is not aborted. The `Player` is
   held through `QPointer`.
-- **Statuses**, all through `Player::statusMessage`: `<title>: загрузка...` (waves, likes),
-  `Поиск: <text>...`, `Ошибка: …`, `Ошибка волны: …`, `Ошибка поиска: …`, `<title>: пусто`,
-  `Ничего не найдено`, `Мне нравится: N треков`, `Добавлено в «Мне нравится»`,
-  `Убрано из «Мне нравится»`, `Дизлайк поставлен`.
+- **Statuses**, all through `Player::statusMessage` (English sources, shown translated; see
+  [translations](../../translations/README.md)): `<title>: loading…` (vibes, likes),
+  `Search: <text>…`, `Error: …`, `Vibe error: …`, `Search error: …`, `<title>: empty`,
+  `Nothing found`, `Liked: N tracks`, `Added to Liked`,
+  `Removed from Liked`, `Disliked`.
 - **An empty source keeps the queue** (SRC-07, SRC-08, WAVE-03): when a reply has no available
-  track (none at all, or all `available: false`), the status is `<title>: пусто` (search:
-  `Ничего не найдено`) and nothing else happens: no `setQueue`, and for a wave no `RadioStarted`.
+  track (none at all, or all `available: false`), the status is `<title>: empty` (search:
+  `Nothing found`) and nothing else happens: no `setQueue`, and for a wave no `RadioStarted`.
 - **Search** (SRC-09 to SRC-12): a best artist queues its top 100 under its name, a best album its
-  tracks under its title, anything else the found tracks as `Поиск: <text>`.
+  tracks under its title, anything else the found tracks as `Search: <text>`.
 - **A wave** (`playWave`): `Library::startWave(seeds)`. On success the wave state (session,
   station = first seed, track id → batch id) is shared by two callbacks for the life of that
   queue: `more` asks `moreWave` with the ids of the last 5 queued tracks (WAVE-05), and `events`
@@ -608,7 +609,7 @@ its two signals.
   ordinary tracks, the current track plays on, and `changeSource` with the default rules brings the
   play reports and a finite queue back.
 - `Sources::setJamMode(jam)`: while the jam is on, every pick (likes, playlists, artists, albums,
-  waves, stations, search) leaves the queue alone and says `Идёт джем: добавляйте треки в джем`
+  waves, stations, search) leaves the queue alone and says `A jam is on: add tracks to the jam`
   (HOST-21). Likes and dislikes still work (HOST-17).
 
 **Traps:**

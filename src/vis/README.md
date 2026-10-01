@@ -63,8 +63,8 @@ public:
     virtual void reset() { }
 };
 
-std::unique_ptr<Visualizer> MakeSpectrum();      // name() "Спектр"
-std::unique_ptr<Visualizer> MakeOscilloscope();  // name() "Осциллограф"
+std::unique_ptr<Visualizer> MakeSpectrum();      // name() "Spectrum"
+std::unique_ptr<Visualizer> MakeOscilloscope();  // name() "Oscilloscope"
 
 inline constexpr int kSpectrumBars = 19;
 struct SpectrumBand { double lowHz, highHz; int firstBin, endBin; };   // bins [firstBin, endBin)
@@ -455,10 +455,10 @@ failure is data:
 
 | Reason | When |
 |---|---|
-| `нет OpenGL` | the probe context can't be created; or in `initializeGL` there is no context, it is invalid, or it isn't the current one |
-| `есть только OpenGL ES, а нужен OpenGL 3.3` | the context is OpenGL ES |
-| `нужен OpenGL 3.3, а доступен X.Y` | the context is older than 3.3 |
-| `projectM не запустился` | `projectm_create()` returned null (`initializeGL` only) |
+| `no OpenGL` | the probe context can't be created; or in `initializeGL` there is no context, it is invalid, or it isn't the current one |
+| `only OpenGL ES is here, and OpenGL 3.3 is needed` | the context is OpenGL ES |
+| `OpenGL 3.3 is needed, and X.Y is here` | the context is older than 3.3 |
+| `projectM did not start` | `projectm_create()` returned null (`initializeGL` only) |
 
 ## Not here
 

@@ -22,8 +22,15 @@ to Yandex ([src/yandex](../yandex/README.md)), or create, lay out, connect and s
 | `milkdrop_window.h/.cpp` | `MilkdropWindow` — projectM view in a GEN frame: preset switching, black-preset skipping, full screen. Built only with Milkdrop |
 | `library_menu.h/.cpp` | `AddLibraryActions`: the Yandex menu items, which call `Core::Sources` |
 | `login_dialog.h/.cpp` | `LoginDialog` — Yandex login by device code or by a pasted token |
+| `input_dialogs.h/.cpp` | `AskText`, `AskItem`: `QInputDialog` questions with the app's own OK and Cancel |
 | `jam_window.h/.cpp` | `JamWindow` — the host's jam in a GEN frame: start, QR code and link, settings, guests, end, search that adds tracks. Built only with the jam |
-| `jam_server_dialog.h/.cpp` | `JamServerDialog` — the jam server's address and "Учить волну джема". Built only with the jam |
+| `jam_server_dialog.h/.cpp` | `JamServerDialog` — the jam server's address and "Teach the jam vibe". Built only with the jam |
+
+The windows' texts are English sources in `tr()` (in free functions
+`QCoreApplication::translate` with the class-like context `Ui::LibraryMenu`, `Ui::InputDialogs`),
+translated in [translations](../../translations/README.md). Painted texts follow the language at
+the next repaint; `SkinnedWindow::changeEvent` answers `QEvent::LanguageChange` with
+`retranslate()` (the window title) and `update()`.
 
 ## Dependencies
 
@@ -568,9 +575,9 @@ min(inset height, inset width / 2).
 Title `NOW PLAYING`. The content uses the PLEDIT.TXT colours and font (`Skin::playlistStyle()`).
 The cover is requested at 400 px (`Track::coverUrl(400)`) from `Core::CoverCache` and drawn with
 smooth scaling (a photo, unlike the sprites); until it arrives an outline stands in. Next to it: the
-title (bold 11 px, `current` colour), artists, album with year, duration and `♥ В «Мне нравится»`
+title (bold 11 px, `current` colour), artists, album with year, duration and `♥ In Liked`
 for a liked track, each elided on the right; lines that do not fit are left out. Without a track:
-`Ничего не играет`. Repaints on `currentTrackChanged`, `Library::likesChanged` and
+`Nothing is playing`. Repaints on `currentTrackChanged`, `Library::likesChanged` and
 `CoverCache::ready` for the current cover. A left click on the cover opens `Track::webUrl()` in the
 browser. `Player` and `CoverCache` are not owned.
 
@@ -602,29 +609,29 @@ The host's side of the jam on screen (spec/jam/host.md HOST-20, HOST-25, HOST-35
 in the PLEDIT.TXT colours and font like the "Now playing" window. What it shows follows
 `HostSession::phase()`:
 
-- **None:** "Новый джем", what a jam is, "Ваше имя" (a field), "Начать джем" (enabled with a name
-  and a server), a problem line when `create` refused, the server and "Настройки сервера…"
+- **None:** "New jam", what a jam is, "Your name" (a field), "Start the jam" (enabled with a name
+  and a server), a problem line when `create` refused, the server and "Server settings…"
   (`serverSettingsRequested`).
-- **Creating:** "Подключаюсь к серверу джема…" and "Отмена" (`cancelCreate`).
-- **Active:** two tabs, "Джем" and "Добавить треки", with the connection on the right ("На связи",
-  "Подключаюсь…", "Нет связи" and a light), and without a connection the line "Нет связи с
-  сервером джема · повторю сам".
+- **Creating:** "Connecting to the jam server…" and "Cancel" (`cancelCreate`).
+- **Active:** two tabs, "Jam" and "Add tracks", with the connection on the right ("Connected",
+  "Connecting…", "No connection" and a light), and without a connection the line "No connection to
+  the jam server · trying again by itself".
   - **Jam page:** the QR code of `joinUrl`, dark on white whatever the skin (not every camera
     reads an inverted code), ECC M with a 4-module quiet zone, the largest whole number of pixels
-    per module within 120 px and half the width; "Ссылка для гостей" with the link (up to three
-    lines), "Копировать" (to the clipboard, `statusText("Ссылка скопирована")`) and "Новая
-    ссылка" (`rotateLink`); the settings, each a label and a button with its value that flips
-    it ("Порядок": "По очереди" / "Кто первый", "Гости могут пропускать": "Да" / "Нет", "Новые
-    гости": "Пускать" / "Закрыто"); "Гости · N" with a row per guest (light for online, name,
-    kind, "ждут: N", "Убрать" to kick), scrolled by the wheel; at the bottom "Закончить джем",
-    which asks "Нажмите ещё раз, чтобы закончить" and ends on a second click within 3 s.
-  - **Search page:** a field and "Искать" (Enter too), then `Library::searchTracks`: the available
-    tracks, 20 at most, each with "В джем" (`add`) and "Следом" (`playNext`), and their
-    `statusText`; "Ищу…", "Ничего не нашлось", "Поиск не удался: …". A newer search replaces an
+    per module within 120 px and half the width; "Link for the guests" with the link (up to three
+    lines), "Copy" (to the clipboard, `statusText("The link is copied")`) and "New
+    link" (`rotateLink`); the settings, each a label and a button with its value that flips
+    it ("Order": "Taking turns" / "First come", "Guests can skip": "Yes" / "No", "New
+    guests": "Let in" / "Closed"); "Guests · N" with a row per guest (light for online, name,
+    kind, "waiting: N", "Remove" to kick), scrolled by the wheel; at the bottom "End the jam",
+    which asks "Press again to end" and ends on a second click within 3 s.
+  - **Search page:** a field and "Search" (Enter too), then `Library::searchTracks`: the available
+    tracks, 20 at most, each with "To the jam" (`add`) and "Next" (`playNext`), and their
+    `statusText`; "Searching…", "Nothing found", "The search failed: …". A newer search replaces an
     older one's answer.
-- Without a connection (`!isConnected()`) "Новая ссылка", the settings, "Убрать", "В джем" and
-  "Следом" are drawn dim and do nothing (HOST-25); the link, the tabs, the search and the end work.
-  An action the session refuses says `Нет связи с сервером джема`.
+- Without a connection (`!isConnected()`) "New link", the settings, "Remove", "To the jam" and
+  "Next" are drawn dim and do nothing (HOST-25); the link, the tabs, the search and the end work.
+  An action the session refuses says `No connection to the jam server`.
 
 **How it is drawn.** One pass, `render(QPainter*)`, both paints the page (with a painter) and
 lists its controls (without one), so a click always finds what is drawn. Controls are boxes in the
@@ -655,9 +662,9 @@ public:
 };
 ```
 
-"Сервер джема": the address (empty shows and means the default, `QIYAA_JAM_URL`), with "Нужен
-адрес вида https://jam.example.org" and Save disabled until it is an http(s) URL with a host;
-"Учить волну джема" (HOST-16) with what it means. The owner writes the settings.
+"Jam server": the address (empty shows and means the default, `QIYAA_JAM_URL`), with "An
+address like https://jam.example.org is needed" and Save disabled until it is an http(s) URL with a host;
+"Teach the jam vibe" (HOST-16) with what it means. The owner writes the settings.
 
 ## MilkdropWindow — `milkdrop_window.h/.cpp`
 
@@ -726,7 +733,7 @@ that view. Texture search paths are `userPresetDirectory` and `userPresetDirecto
 the view is ready it starts with the selected preset, or the first `followingPreset()`, without
 blending, and emits `presetChanged(name, PresetOrigin::Automatic)`. When a view fails, the embedded
 one is hidden and stops rendering, a full-screen one closes; `failure()` then returns the reason and
-the frame shows `Milkdrop недоступен: <reason>`.
+the frame shows `Milkdrop is not available: <reason>`.
 
 Rendering: the embedded view renders while the window is visible and the view has not failed; in
 full screen only the full-screen view renders. `setPlaying` switches between 60 and 20 fps. Full
@@ -763,7 +770,7 @@ view watches for that (`setBlackWatch`); silence may legitimately fade a preset 
 watch is off otherwise. `staysBlack` adds the current preset's name to the black list, emits
 `settingsChanged` (the app stores `blackPresets()` in its settings) and switches on without
 blending. Black presets are skipped by every automatic choice and by `previousPreset` in order
-mode, and stay selectable by hand; the preset menu marks them `(здесь чёрный)`. A streak of black
+mode, and stay selectable by hand; the preset menu marks them `(black here)`. A streak of black
 presets means something else is wrong (no sound reaching the view, a driver problem), so the sixth
 `staysBlack` in a row turns the watch off on both views and blacklists nothing: at most 5 presets
 per streak. `drawsPicture`, `switchRequested` (a preset played its full time) and
@@ -804,12 +811,12 @@ void AddLibraryActions(
 The menu only builds items; what they play, and every status they report, is `Core::Sources`
 ([src/core](../core/README.md#sourcesh-sources)).
 
-- When logged in: Моя волна, Мне нравится, submenus Колесо волн (the waves around
-  `Sources::lastWaveSeeds()`), Для вас, Плейлисты (Слушать / Похожие треки), Исполнители,
-  Альбомы, Станции (grouped by station type), Поиск..., then like/unlike, dislike (which also
+- When logged in: My Vibe, Liked, submenus Wheel of vibes (the vibes around
+  `Sources::lastWaveSeeds()`), For you, Playlists (Listen / Similar tracks), Artists, Albums,
+  Stations (grouped by station type), Search…, then like/unlike, dislike (which also
   skips) and open in the browser; those three are disabled without a current track.
 - Submenus load their lists straight from `Yandex::Library` on their first `aboutToShow`, once per
-  menu instance: a disabled `Загрузка...`, then the items, `(пусто)` or a disabled `Ошибка: …`.
+  menu instance: a disabled `Loading…`, then the items, `(empty)` or a disabled `Error: …`.
 
 **Traps:**
 - Menu actions capture `Player*`, `Sources*` and `Library*` unguarded; that is safe only because
@@ -864,8 +871,8 @@ Nothing in `src/ui` throws. The only `catch` is `EqualizerWindow`'s around `Audi
 
 | Failure | Reported as |
 |---|---|
-| `.eqf` cannot be opened, is above 1 MiB, cannot be saved | `EqualizerWindow::statusText`: `EQ: <file>: <reason>`, `EQ: <file> — <n> КБ, а пресеты не больше 1024 КБ`, `EQ: <file> не сохранён: <reason>` |
-| Yandex request fails | a source's error goes out through `Core::Sources` as `Player::statusMessage`; a submenu's list shows a disabled `Ошибка: …` item |
+| `.eqf` cannot be opened, is above 1 MiB, cannot be saved | `EqualizerWindow::statusText`: `EQ: <file>: <reason>`, `EQ: <file> is <n> KB, and presets are 1024 KB at most`, `EQ: <file> не сохранён: <reason>` |
+| Yandex request fails | a source's error goes out through `Core::Sources` as `Player::statusMessage`; a submenu's list shows a disabled `Error: …` item |
 | Device login fails, pasted text holds no token | labels in `LoginDialog` |
 | No usable OpenGL, projectM fails | `MilkdropWindow::failure()`, painted in the frame; `qWarning` |
 | A preset fails or stays black | handled by switching (see `MilkdropWindow`); `qWarning` |

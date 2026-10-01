@@ -26,7 +26,9 @@ audio, yandex, skins  →  vis, core  →  jam  →  ui, integrations  →  app 
 | [src/integrations](../src/integrations/README.md) | `Integrations` | Media keys and system media panels: MPRIS (Linux) or SMTC (Windows) | Qt Gui (+ DBus) | audio, core, yandex |
 | [src/app](../src/app/README.md) | `App` | `Application`: owns and wires everything, menus, shortcuts, settings, login, "Continue the jam?"; `main()` | audio, core, skins, yandex | integrations, jam, ui, vis |
 
-Vendored code lives in `contrib/` (miniaudio, miniz, qrcodegen) and is not changed. `spec/` is a submodule
+Vendored code lives in `contrib/` (miniaudio, miniz, qrcodegen) and is not changed. The interface
+texts are English sources in the code, translated into Belarusian (the default) and Russian in
+[translations/](../translations/README.md). `spec/` is a submodule
 with the behaviour and test data shared with the Android app ([spec/README.md](../spec/README.md)).
 Milkdrop (`QIYAA_HAVE_MILKDROP`), the jam (`QIYAA_HAVE_JAM`), MPRIS (`QIYAA_HAVE_MPRIS`) and SMTC
 (`QIYAA_HAVE_SMTC`) are optional; the build options are in [building.md](building.md#параметры-cmake).

@@ -49,6 +49,11 @@ README is its file-level reference.
 - **Language.** Code, comments, module READMEs and the developer documents
   (`docs/architecture.md`, `docs/code-style.md`, this file) are in English. The top-level README
   and the rest of `docs/` are for users and are in Russian.
+- **Interface texts are English sources in `tr()`** (or `QCoreApplication::translate` outside a
+  `QObject`), translated into Belarusian (the default) and Russian in `translations/*.ts`. Never
+  write Russian or Belarusian into the code; update the `.ts` files in the same change
+  ([translations/README.md](translations/README.md) has the commands and the words). In English,
+  Yandex's "волна" is a "vibe": "My Vibe", never "wave".
 
 ## Behaviour lives in `spec/`
 

@@ -35,8 +35,9 @@ is formatting (the clang-format check in `.github/workflows/ci.yml`).
 | `screenshots_test.cpp` | Golden screenshots of the main window and the equalizer (see **Golden screenshots**) |
 | `jam_test.cpp` | `Jam::` (only with Qt WebSockets): every example of `spec/jam/protocol/examples` through the codec (valid ones pass, `invalid-*` fail) and client examples through encode and decode; the client against a `QWebSocketServer` on localhost — hello with a version the server takes and the clock offset, reconnects after the delays and at once on `networkBack`, the outbox, `ended` stopping it for good, refusing to send what the server would refuse, invalid and unknown-reason messages; the stored session across a restart and broken, foreign or oversized files |
 | `jam_host_test.cpp` | `Jam::HostSession` against `spec/jam/host.md` by ID, with `JamStubServer`, a real `Core::JamMode` on a player without a sound card and the MockHttpServer as Yandex: create and its refusal, states and their versions, started in the stored outbox offline and resume, the stored snapshot and link, "Continue the jam?" yes and no, a resume refused for a gone room or another reason, the guests' search and checks, the skip command, the end by the host and by the server, the host's add and play next, and `JamTrackOf` |
-| `jam_window_test.cpp` | `Ui::JamWindow` against `spec/jam/host.md` (HOST-20, HOST-25, HOST-35), its controls found by label and clicked like a mouse, driving a `HostSession` on `JamStubServer`: the start with the name given or typed (and typing that does not trigger the app's shortcuts), the settings, kick and new link, copying the link, the end asked twice, what stays enabled without a connection, the search with "В джем" and "Следом"; its pictures on every built-in skin and of the start, search and offline pages |
+| `jam_window_test.cpp` | `Ui::JamWindow` against `spec/jam/host.md` (HOST-20, HOST-25, HOST-35), its controls found by label and clicked like a mouse, driving a `HostSession` on `JamStubServer`: the start with the name given or typed (and typing that does not trigger the app's shortcuts), the settings, kick and new link, copying the link, the end asked twice, what stays enabled without a connection, the search with "To the jam" and "Next"; its pictures, in Belarusian, on every built-in skin and of the start, search and offline pages |
 | `jam_e2e_test.cpp` | The jam end to end: the app (offscreen, the Null output) hosts on a real jam server (`QIYAA_JAM_TEST_SERVER`, its `PUBLIC_URL`; CI runs the server's image on Linux, elsewhere the test skips), a guest joins over WebSocket, searches and adds; the track plays with no `/play-audio`, and after the end it is reported again |
+| `translations_test.cpp` | The interface languages: every text of `translations/*.ts` translated with the placeholders of its source and the right number of plural forms, no English text saying "wave", the app starting in Belarusian or in the saved language, another language applied while it runs (a window title, a menu text), and the plural forms of Belarusian, Russian and English |
 | `mpris_test.cpp` | `Integrations::Mpris` over a session bus, driven by `gdbus` as an external client |
 | `milkdrop_test.cpp` | `Vis::MilkdropPresets`, preset switching and black-preset handling in `Ui::MilkdropWindow`; with OpenGL 3.3, projectM rendering, the black-picture detector and fullscreen |
 | `data/sine440_3s.mp3` | 3 s of a 440 Hz sine: MPEG-1 Layer III, 64 kbps, 44.1 kHz, stereo, ID3v2.4 tag, 24,494 bytes |
@@ -89,6 +90,7 @@ QT_QPA_PLATFORM=offscreen QIYAA_AUDIO_BACKEND=null build/tests/audio_test queued
 | `dsp_test` | audio skins ui vis | plain |
 | `windows_test` | app core ui | 2560×1440 virtual screen (not on Windows) |
 | `screenshots_test` | audio core skins ui yandex | plain; `QIYAA_TEST_DATA` |
+| `translations_test` | app ui | plain; `QIYAA_SOURCE_DIR` (it reads `translations/*.ts`) |
 | `jam_test` | jam (+ `qiyaa_test_jam`) | only with `QIYAA_HAVE_JAM` |
 | `jam_host_test` | audio core jam yandex (+ `qiyaa_test_jam`) | only with `QIYAA_HAVE_JAM`; `QIYAA_TEST_DATA` |
 | `jam_window_test` | audio core jam skins ui yandex (+ `qiyaa_test_jam`) | only with `QIYAA_HAVE_JAM`; `QIYAA_TEST_DATA` |
@@ -134,6 +136,11 @@ QIYAA_JAM_TEST_SERVER=http://localhost:8090 ctest --test-dir build -R jam_e2e_te
 
 The server allows two live rooms and five new ones an hour from one address (ROOM-02): a run
 ends its room even when it fails, but more than five runs an hour need a fresh server.
+
+**Languages.** A test without an `App::Application` has no translation installed and sees the
+English source texts; `windows_test` sets `Options::language` to English. `jam_window_test`
+installs the default language, Belarusian, for its pictures only, and finds its controls by
+`QCoreApplication::translate` of their source labels.
 
 **QIYAA_UPDATE_GOLDEN=1** records missing golden images. **QIYAA_TEST_SHOTS=<dir>** saves
 pictures into an existing directory; nothing creates it:
@@ -535,7 +542,7 @@ collects `org.freedesktop.DBus.Properties.PropertiesChanged`.
 - Now Playing is docked right of the main window. Its cover is a red 64×64 PNG served by a
   local `MockHttpServer` at `/cover/400x400`.
 - `loginDialogFitsItsText` points OAuth at `http://127.0.0.1:1`, so the device flow fails fast
-  with a long "… не удался …" message. At 150 px height, the size GNOME's window manager
+  with a long "… failed …" message. At 150 px height, the size GNOME's window manager
   squeezed it to, every visible label must still fit.
 
 ## Errors

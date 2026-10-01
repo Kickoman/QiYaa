@@ -14,7 +14,7 @@ cover images or decide what plays next: that is [src/core](../core/README.md) (`
 | File | Contains |
 |---|---|
 | `api_client.h/.cpp` | `ApiClient` — authorised GET/POST, the `{"result": …}` envelope, the pending-POST count; `Account`, `Track`, `ResolvedUrl`, `RequestError`, `ClassifyReply`, `TForm`; `accountStatus`, `tracks`, `resolveTrackUrl`, `reportPlayStarted` |
-| `library.h/.cpp` | `Library` — the logged-in account, likes and dislikes, playlists, "Для вас" playlists, artists, albums, stations, waves (rotor sessions, feedback, the wheel), search; `NamedReference`, `PlaylistReference`, `Station`, `WaveBatch`, `Wave`, `WaveEvent`, `SearchResult` |
+| `library.h/.cpp` | `Library` — the logged-in account, likes and dislikes, playlists, "For you" playlists, artists, albums, stations, waves (rotor sessions, feedback, the wheel), search; `NamedReference`, `PlaylistReference`, `Station`, `WaveBatch`, `Wave`, `WaveEvent`, `SearchResult` |
 | `oauth.h/.cpp` | `DeviceLogin` — the OAuth device-code flow; `BrowserLoginUrl` for the implicit-grant fallback |
 | `token.h/.cpp` | `NormalizeToken`, `FindToken`, `SaveToken`, `ForgetToken`; `TokenSource` |
 | `track_url.h/.cpp` | `ParseDownloadVariants`, `PickBestVariant`, `ParseDownloadInfo`, `BuildTrackUrl` — from download-info to a signed mp3 link; `DownloadVariant`, `DownloadInfo` |
@@ -222,7 +222,7 @@ public:
     void searchTracks(const QString& text,
                       std::function<void(const QList<Track>& tracks, const RequestError& error)> callback);
 
-    void personalPlaylists(TCallback<QList<PlaylistReference>> callback);   // "Для вас"
+    void personalPlaylists(TCallback<QList<PlaylistReference>> callback);   // "For you"
     void playlistRecommendations(const PlaylistReference& playlist, TCallback<QList<Track>> callback);
     void wheelWaves(const QStringList& seeds, TCallback<QList<Wave>> callback);
 
@@ -277,10 +277,10 @@ Q_SIGNALS:
 - `startWave` opens a rotor session and fails when the reply has no `radioSessionId`. `moreWave`
   asks the session for the next batch, given the ids of the queued tracks; when the reply has no
   session id, the batch keeps the one passed in.
-- `personalPlaylists` returns the "Для вас" playlists (Плейлист дня, Дежавю, Премьера,
+- `personalPlaylists` returns the "For you" playlists (Плейлист дня, Дежавю, Премьера,
   Тайник, …). `wheelWaves` returns waves suggested around `seeds`, for example the wave that is
   playing.
-- `waveFeedback` tells the wave what the user did, so that "Моя волна" adapts. It is
+- `waveFeedback` tells the wave what the user did, so that "My Vibe" adapts. It is
   fire-and-forget: no callback, failures are logged. It builds one
   [event object](#wave-feedback-event) and sends it:
   1. to the station endpoint when `sessionId` is empty or the session is already marked;
@@ -349,7 +349,7 @@ Two ways to a token without an embedded browser:
 - Polling uses a single-shot timer with the server's `interval` (default 5 s, at least 1 s).
   `authorization_pending` polls again; `slow_down` adds 2 s to the interval, then polls again. The
   code lives `expires_in` seconds (default 300); the first poll after that emits
-  `failed("код устарел, начните заново")`.
+  `failed("the code has expired, start again")`.
 - `cancel()` stops the timer, aborts the request in flight and forgets the device code. It emits
   nothing, and the aborted reply is ignored.
 - Requests carry no `Authorization` header and have a 20 s transfer timeout. The client id and
@@ -596,7 +596,7 @@ The error strings, all in English except the device-code expiry:
 | `download-info: <Qt error>` | `resolveTrackUrl`: the second request failed |
 | `download-info: no host, path and s in a <n>-byte reply` | `resolveTrackUrl`: `ParseDownloadInfo` refused the reply |
 | `/rotor/session/new: the reply has no radioSessionId` | `startWave` |
-| `код устарел, начните заново` | `DeviceLogin`: the device code expired |
+| `the code has expired, start again` | `DeviceLogin`: the device code expired |
 | the server's `error_description` or `error`, else Qt's error text | other `DeviceLogin` failures |
 
 ## Not here

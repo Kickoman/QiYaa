@@ -26,12 +26,14 @@
    для Linux, установщик или zip для Windows, `.dmg` для macOS
    ([как поставить](docs/install.md)).
 2. Запустите QiYaa: откроется окно входа. Откройте ya.ru/device и введите показанный код.
-3. Правый клик по любому окну → «Моя волна».
+3. Правый клик по любому окну → «Мая хваля» (интерфейс по умолчанию на белорусском; язык
+   меняется в меню → «Мова»).
 
 Собрать самому (Ubuntu 24.04):
 
 ```sh
-sudo apt install build-essential cmake ninja-build qt6-base-dev libqt6opengl6-dev libgl-dev
+sudo apt install build-essential cmake ninja-build qt6-base-dev qt6-tools-dev qt6-l10n-tools \
+  libqt6opengl6-dev libgl-dev
 cmake -S . -B build -G Ninja -DCMAKE_BUILD_TYPE=RelWithDebInfo && cmake --build build
 ./build/QiYaa
 ```

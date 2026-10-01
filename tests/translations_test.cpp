@@ -51,11 +51,17 @@ QList<Message> ReadTs(const QString& path) {
         if (name == QLatin1String("name")) {
             context = xml.readElementText();
         } else if (name == QLatin1String("message")) {
-            message = Message{context, {}, {}, {}, xml.attributes().value("numerus") == "yes"};
+            message = Message{
+                context,
+                {},
+                {},
+                {},
+                xml.attributes().value(QLatin1String("numerus")) == QLatin1String("yes")
+            };
         } else if (name == QLatin1String("source")) {
             message.source = xml.readElementText();
         } else if (name == QLatin1String("translation")) {
-            message.type = xml.attributes().value("type").toString();
+            message.type = xml.attributes().value(QLatin1String("type")).toString();
             if (!message.numerus) {
                 message.translations << xml.readElementText();
             }

@@ -18,6 +18,7 @@ HTTP, OAuth and the token file format in [src/yandex](../yandex/README.md); `.ws
 |---|---|
 | `application.h/.cpp` | `App::Application` and its `Options`: ownership, wiring, layout, menus, shortcuts, settings, login, skins, quit, `snapshot()` |
 | `paths.h/.cpp` | `ConfigDirectory`, `YaampDataDirectories`, `TokenFile`, `YaampTokenFiles`: where settings and tokens live |
+| `translations.h/.cpp` | `Language`, `Languages`, `LanguageCode`, `LanguageFromCode`, `LanguageName`, `Translations`: the interface language |
 | `offline_sources.h/.cpp` | `StreamLocalFile` (a local file fed to the engine like a download) and `DemoTracks` (nine sample entries) |
 | `main.cpp` | `main()` of the `qiyaa` executable: platform choice, command-line options, `--screenshot`, exit codes |
 
@@ -34,7 +35,9 @@ HTTP, OAuth and the token file format in [src/yandex](../yandex/README.md); `.ws
   `QIYAA_JAM_URL="<the CMake option>"`, the default jam server. The header forward-declares
   `Jam::HostSession`; the code that calls it is under `#ifdef QIYAA_HAVE_JAM`.
 - Resources `:/icons` (`qiyaa-16.png` … `qiyaa-256.png`, seven sizes), used by `main.cpp` for the
-  window icon.
+  window icon, and `:/i18n/qiyaa_be.qm`, `qiyaa_en.qm`, `qiyaa_ru.qm`, built from
+  [translations](../../translations/README.md) by `qt_add_translations` (Qt LinguistTools is
+  required).
 - `QT_NO_KEYWORDS` and `-Wall -Wextra -Wshadow` (`/W4 /utf-8` on MSVC), like every target.
 
 The executable `qiyaa` (output name `QiYaa`) is `main.cpp` linked PRIVATE with `qiyaa_app` and
@@ -69,6 +72,7 @@ public:
         bool readOnlySettings = false;  // settings, covers, Milkdrop presets in a temp dir
         bool mediaIntegration = true;   // MPRIS or SMTC
         QNetworkAccessManager* network = nullptr;  // tests: one that reaches a mock server
+        std::optional<Language> language;          // this run only; unset: the `language` setting
     };
 
     explicit Application(const Options& options, QObject* parent = nullptr);
@@ -98,6 +102,9 @@ public:
     void setNowPlayingVisible(bool on);
     void setMilkdropVisible(bool on);                  // no-op without Milkdrop
     void setJamWindowVisible(bool on);                 // no-op without the jam
+
+    Language language() const;
+    void setLanguage(Language language);               // applies now and saves `language`
 
     void login();                                      // modal dialog
     void logout();
@@ -131,6 +138,8 @@ that may hold its file.
 
 1. Picks the settings file (INI format): `settings.ini` in a new `QTemporaryDir` when
    `readOnlySettings`, else `settingsFile`, else `<ConfigDirectory>/settings.ini`.
+   Then installs the interface language (`Options::language`, else the `language` setting, else
+   Belarusian), before any window takes its texts.
 2. Loads the built-in base skin `:/skins/base-2.91.wsz` (`Skins::Skin::BuiltinBase()`). It is also
    the fallback for bitmaps other skins lack.
 3. With `audio`, calls `AudioEngine::init()`. On failure it logs `Audio: <message>` and the app
@@ -145,20 +154,20 @@ that may hold its file.
    all but the main window are "secondary" (no taskbar button on Windows).
 6. Gives `Sources` the `JamMode` (a pick during a jam is refused, HOST-21). In a jam build
    (`setUpJam()`) creates the `Jam::HostSession`: the server and the wave feedback from the
-   `jam/*` settings at each use, the queue title `Джем`, the app's version for `hello`, and the
+   `jam/*` settings at each use, the queue title `Jam`, the app's version for `hello`, and the
    session file `jam-session.json` next to the settings file (so `readOnlySettings` and a test's
    `settingsFile` keep it in their own folder). Its signals go to the marquee: a refusal by its
-   reason (below), the end of the jam (`Джем закончен`, `Джем закончили`, `Джем закрылся, пока вас
-   не было`, `Джем закончен: сервер его больше не знает`), and, while the jam is on, a lost
-   connection (`Нет связи с сервером джема · повторю сам`) and its return (`Джем на связи`). Then
+   reason (below), the end of the jam (`The jam is over`, `The jam was ended`, `The jam closed while you
+   were away`, `The jam is over: the server no longer knows it`), and, while the jam is on, a lost
+   connection (`No connection to the jam server · trying again by itself`) and its return (`The jam is connected`). Then
    the jam window (`Ui::JamWindow`, steps `jamWindow/steps`, the server's host from `jam/server`;
-   its `statusText` to the marquee, its "Настройки сервера…" to `showJamServerDialog()`), and the
+   its `statusText` to the marquee, its "Server settings…" to `showJamServerDialog()`), and the
    jam's part in the other windows (HOST-34, HOST-21): the playlist's rows and the marquee get a
    note, `+ <name>` for a jam item (the participant whose `publicId` is the slot's `addedBy`) and
-   `волна джема` for a jam wave track; during a jam the playlist's remove sends `remove` for the
-   selected jam items (`Выделите треки джема, чтобы убрать их` when none is one, `Нет связи с
-   сервером джема` when a send fails) and its clear only says `Идёт джем: добавляйте треки в
-   джем`; neither touches the `Player`. It is done here, before the loops below over `windows()`,
+   `jam vibe` for a jam wave track; during a jam the playlist's remove sends `remove` for the
+   selected jam items (`Select jam tracks to remove them` when none is one, `No connection to the
+   jam server` when a send fails) and its clear only says `A jam is on: add tracks to
+   the jam`; neither touches the `Player`. It is done here, before the loops below over `windows()`,
    which take the jam window in.
 7. Restores the settings listed in [Settings](#settings) and connects the windows:
    - the equalizer's shade mode shows and sets the main window's volume and balance (`setMixer`,
@@ -178,11 +187,11 @@ that may hold its file.
 10. With audio on and not offline, `watchNetwork()` (see the traps).
 11. Connects `QApplication::aboutToQuit` to `saveState()` followed by `Player::stop()`.
 
-The refusals of the jam server, by reason: `server-full` "Сервер джема переполнен, попробуйте
-позже", `rate-limited` "Слишком много запросов, подождите немного", `update-required` "Обновите
-QiYaa, чтобы работать с этим сервером джема", `not-allowed` "Сервер джема этого не разрешает",
-`queue-limit` "Очередь джема заполнена", `duplicate` "Этот трек уже в очереди джема", `stale`
-"Этот трек уже ушёл из очереди", any other "Сервер джема отказал". The texts are the Android app's.
+The refusals of the jam server, by reason: `server-full` "The jam server is full, try
+later", `rate-limited` "Too many requests, wait a little", `update-required` "Update
+QiYaa to work with this jam server", `not-allowed` "The jam server does not allow this",
+`queue-limit` "The jam queue is full", `duplicate` "This track is already in the jam queue", `stale`
+"This track has already left the queue", any other "The jam server refused". The texts are the Android app's.
 
 **`start()`** shows the main window, then each other window whose `*/visible` setting is true,
 places them all (`layoutWindows()`), sets the main window's EQ and PL buttons to match, and
@@ -190,9 +199,9 @@ activates the main window. Unless `offline`, it then asks about a stored jam and
 token (see [Login, logout and the token](#login-logout-and-the-token)).
 
 **"Continue the jam?"** (HOST-23). When the host session has a stored jam, `start()` opens a
-`QMessageBox` "Шёл джем" / "Продолжить? Ссылка у гостей останется прежней." with "Продолжить"
-and "Закончить". It is not modal (`open()`): playback and the windows work while it waits, and a
-test on the offscreen platform does not block. "Продолжить" calls `continueStored()` and shows the jam window; "Закончить"
+`QMessageBox` "A jam was on" / "Continue it? The guests' link stays the same." with "Continue"
+and "End it". It is not modal (`open()`): playback and the windows work while it waits, and a
+test on the offscreen platform does not block. "Continue" calls `continueStored()` and shows the jam window; "End it"
 calls `discardStored()` and queues the likes like a login does; closing it without an answer keeps
 the jam stored for the next start. While it is open, or a jam is on, `applyToken` does not queue
 the likes.
@@ -246,7 +255,7 @@ ignores anything that would start playback again), hides every window, and then 
 application with a queued call, so that a `quit()` made inside a nested event loop (a menu) ends
 the main loop. The queued quit happens right away if `ApiClient::pendingPosts()` is 0, otherwise
 on `ApiClient::postsSettled` or after 1500 ms, whichever comes first. `quit()` is reached from the
-main window's close button (and the window manager's close), the menu item "Закрыть QiYaa" and the
+main window's close button (and the window manager's close), the menu item "Quit QiYaa" and the
 media controls' quit.
 
 **`snapshot()`** paints `grab()` of each visible window into an `ARGB32_Premultiplied` image the
@@ -262,8 +271,8 @@ default offscreen screen, where the scale tests skip themselves).
 **Traps:**
 - Do not reorder the members in `application.h` (see above). A new window goes after the
   existing ones, and needs `installShortcuts()`, an entry in `windows()` and its settings keys.
-- `Options::offline` only skips the token lookup in `start()`. The menu item "Войти в Яндекс
-  Музыку..." still logs in. `readOnlySettings` does not redirect the token file: a login during
+- `Options::offline` only skips the token lookup in `start()`. The menu item "Log in to Yandex
+  Music…" still logs in. `readOnlySettings` does not redirect the token file: a login during
   such a run writes the real `<ConfigDirectory>/token`.
 - `Options::settingsFile` is set only by `jam_e2e_test`, to point `jam/server` at its server.
 - After `--scale`, window positions are not saved for the rest of the run, unless the user picks a
@@ -301,29 +310,29 @@ Unless `offline`, `start()` calls `Yandex::FindToken(TokenFile(), YaampTokenFile
 accepted token formats and the rule that an empty own file means "logged out" are in
 [src/yandex](../yandex/README.md).
 
-- No token: the marquee shows `Войдите: правый клик → Войти`, and `login()` is queued, so it runs
+- No token: the marquee shows `Log in: right click → Log in`, and `login()` is queued, so it runs
   once the event loop starts.
 - A token: logs `Using Yandex token from <origin>` and calls `applyToken(token, save)`. `save` is
   true only when the origin is neither under `ConfigDirectory()` nor the environment variable (an
   origin starting with `environment`), so a token imported from Yaamp is copied into QiYaa's own
   token file once the account connects.
 
-`applyToken(token, save)` sets the token on `ApiClient`, shows `Подключаюсь к Яндекс Музыке...`
-and calls `Library::connectAccount`. On error the marquee shows `Вход не удался: <error>`. On
+`applyToken(token, save)` sets the token on `ApiClient`, shows `Connecting to Yandex Music…`
+and calls `Library::connectAccount`. On error the marquee shows `Login failed: <error>`. On
 success it calls `Yandex::SaveToken(TokenFile(), token)` if `save`, shows
-`Привет, <displayName>!`, and, if the play queue is empty and no jam is on or offered, calls
+`Hello, <displayName>!`, and, if the play queue is empty and no jam is on or offered, calls
 `Core::Sources::playLikes(false)` (queues the liked tracks without starting playback).
 
 `login()` runs `Ui::LoginDialog` modally (`exec()`, a nested event loop) and, on accept, calls
 `applyToken(dialog.token(), true)`. `logout()` first ends a jam being created or on (the guests
 search through this account, HOST-32), then clears the play queue, calls `Library::logout()`
 (which also clears the API token) and `Yandex::ForgetToken(TokenFile())` (leaves an empty token
-file), and shows `Вы вышли из аккаунта`.
+file), and shows `You have logged out`.
 
 ### Skins
 
 `loadSkin(path)` loads `path` with the base skin as the fallback. On `Skins::Error` it shows
-`Не удалось загрузить скин: <what>` in the marquee, keeps the current skin and returns false. On
+`Cannot load the skin: <what>` in the marquee, keeps the current skin and returns false. On
 success it points every window at the new skin first, and only then replaces (and frees) the old
 one; it stores `skin` = `path` and returns true. The Skins submenu passes `:/skins/<file>.wsz` for a
 bundled skin, or the path picked in the file dialog.
@@ -335,26 +344,30 @@ playlist's ADD button and right-click. `showSourcesMenu(globalPosition)` answers
 eject button. Both build a `QMenu` parented to the main window, open it with `popup()` and delete it
 on close.
 
-The sources menu holds the Yandex items from `Ui::AddLibraryActions` (only "Войти в Яндекс
-Музыку..." while logged out; it calls `login()`). The main menu, top to bottom:
+The sources menu holds the Yandex items from `Ui::AddLibraryActions` (only "Log in to Yandex
+Music…" while logged out; it calls `login()`). The texts here are the English sources; the user sees
+them in the interface language. The main menu, top to bottom:
 
 - the same Yandex items;
-- in a jam build, Джем: "Начать…" (no jam) or "Окно джема" (a jam is on or being created), which
-  show the jam window; "Присоединиться…", disabled until Kickoman/QiYaa#16; "Закончить", enabled
-  while a jam is on, which asks "Закончить джем? Гости увидят, что он закончен." in a modal
-  `QMessageBox::question` and then calls `HostSession::end()`; "Настройки сервера…"
+- in a jam build, Jam: "Start…" (no jam) or "Jam window" (a jam is on or being created), which
+  show the jam window; "Join…", disabled until Kickoman/QiYaa#16; "End it", enabled
+  while a jam is on, which asks "End the jam? The guests will see that it is over." in a modal
+  `QMessageBox::question` and then calls `HostSession::end()`; "Server settings…"
   (`showJamServerDialog()`: `Ui::JamServerDialog`, modal, which writes `jam/server` and
   `jam/waveFeedback` on Save and tells the jam window the server's host);
-- Эквалайзер (Alt+G), Плейлист (Alt+E), Сейчас играет (no shortcut), Milkdrop (Ctrl+Shift+K, only
+- Equalizer (Alt+G), Playlist (Alt+E), Now playing (no shortcut), Milkdrop (Ctrl+Shift+K, only
   in a Milkdrop build): checkable, checked when the window is visible;
-- Визуализация: Спектр, Осциллограф, Выключена (exclusive; a choice calls `saveState()`);
-- Скины: every `*.wsz` in `:/skins`, sorted by name, shown without the extension; then "Загрузить
-  скин..." (file dialog starting in the home directory, filter `*.wsz *.zip`);
-- Размер: 100 %, 125 %, 150 %, 175 %, 200 %, 250 %, 300 % (exclusive, checked when the current
-  scale is within 1e-6), then "Двойной размер" (Ctrl+D);
-- Поверх всех окон: checkable, checked from the main window's current flag;
-- "Выйти из аккаунта (<displayName>)", only while logged in: `logout()`;
-- "Закрыть QiYaa": `quit()`.
+- Visualization: Spectrum, Oscilloscope, Off (exclusive; a choice calls `saveState()`);
+- Skins: every `*.wsz` in `:/skins`, sorted by name, shown without the extension; then "Load a
+  skin…" (file dialog starting in the home directory, filter `*.wsz *.zip`);
+- Size: 100 %, 125 %, 150 %, 175 %, 200 %, 250 %, 300 % (exclusive, checked when the current
+  scale is within 1e-6), then "Double size" (Ctrl+D);
+- the language: "Мова (Language)" in Belarusian, "Язык (Language)" in Russian, "Language" in
+  English, so that a wrong pick can be undone; "Беларуская", "Русский", "English" (exclusive, each
+  in its own language) call `setLanguage()`;
+- Always on top: checkable, checked from the main window's current flag;
+- "Log out (<displayName>)", only while logged in: `logout()`;
+- "Quit QiYaa": `quit()`.
 
 ### Shortcuts
 
@@ -380,6 +393,7 @@ constructor; "setter" is the matching `set*Visible`.
 | Key | Type | Default | Read | Written |
 |---|---|---|---|---|
 | `skin` | QString: a file path or `:/skins/<file>.wsz` | empty = built-in `base-2.91.wsz` | ctor, unless `--skin` | `loadSkin()` on success |
+| `language` | QString: `be`, `ru` or `en` | `be` (anything else too) | ctor, unless `Options::language` | `setLanguage()` |
 | `scale` | double | 1.0 | ctor | `setScale(…, ScaleScope::Saved)` |
 | `alwaysOnTop` | bool | false | ctor | `setAlwaysOnTop()` |
 | `volume` | int, 0..100 | 75 | ctor | `saveState()` |
@@ -411,9 +425,9 @@ constructor; "setter" is the matching `set*Visible`.
 | `milkdrop/preset` | QString: preset name | empty = the window's own pick | ctor | on `settingsChanged` |
 | `milkdrop/black` | QStringList: names of blacklisted presets | empty | ctor | on `settingsChanged` |
 
-| `jam/server` | QString: the jam server's address, `https://…` | `QIYAA_JAM_URL` | each time the host session connects; ctor and the dialog for the jam window | "Настройки сервера…" |
-| `jam/waveFeedback` | bool: the jam wave learns from skips (HOST-12, HOST-16) | true | when a jam starts | "Настройки сервера…" |
-| `jamWindow/visible` | bool | false | un-minimise only: the jam window is shown by the menu and by "Продолжить" | `setJamWindowVisible()` |
+| `jam/server` | QString: the jam server's address, `https://…` | `QIYAA_JAM_URL` | each time the host session connects; ctor and the dialog for the jam window | "Server settings…" |
+| `jam/waveFeedback` | bool: the jam wave learns from skips (HOST-12, HOST-16) | true | when a jam starts | "Server settings…" |
+| `jamWindow/visible` | bool | false | un-minimise only: the jam window is shown by the menu and by "Continue" | `setJamWindowVisible()` |
 | `jamWindow/pos` | QPoint | main position + (main width, 0) | `start()` | `saveState()` |
 | `jamWindow/steps` | QSize: resize steps of 25×29 skin px | (1, 8): 300×348 | ctor | on `sizeStepsChanged` |
 
@@ -448,6 +462,37 @@ from the table, and malformed values are converted as described in the traps abo
 `equalizer/bands`, the first 10 entries are used, and bands without an entry stay at 0.0 dB. The
 module reads no other file itself: the token files are read by [src/yandex](../yandex/README.md),
 skins by [src/skins](../skins/README.md).
+
+## `translations.h/.cpp`
+
+```cpp
+enum class Language { Belarusian, Russian, English };
+inline constexpr Language kDefaultLanguage = Language::Belarusian;
+const QList<Language>& Languages();                     // in the menu's order
+QString LanguageCode(Language);                         // "be", "ru", "en"
+std::optional<Language> LanguageFromCode(const QString&);
+QString LanguageName(Language);                         // "Беларуская", "Русский", "English"
+class Translations {
+    bool apply(Language language);                      // false: the app's .qm is missing
+    Language language() const;
+};
+```
+
+`apply` removes the translators it installed before, sets `QLocale::setDefault`, loads
+`:/i18n/qiyaa_<code>.qm` (for English only the plural forms) and Qt's `qtbase_<code>.qm` from
+`QLibraryInfo::TranslationsPath` when Qt has one (Russian; not Belarusian), and installs them on
+the application. Qt then sends `QEvent::LanguageChange` to every widget: the skinned windows draw
+their texts again and set their titles in `retranslate()` (see [src/ui](../ui/README.md)); menus
+and dialogs take the new texts when they open next. A text already shown in the marquee stays
+until the next one. The destructor removes the translators.
+
+**Traps:**
+- Install before the windows exist: a text set in a constructor (a window title, a dialog's
+  label) is taken in the language of that moment, unless the widget sets it again on
+  `LanguageChange`.
+- Qt has no Belarusian translation: its standard buttons and its own file dialog stay in English
+  there. The app's dialogs set their buttons' texts themselves (`Ui::AskText`, `Ui::AskItem`,
+  the jam's questions).
 
 ## `paths.h/.cpp`
 
@@ -600,7 +645,7 @@ build and package.
 
 - the constructor, for the skin from `--skin` or the `skin` setting: logs
   `Skin: <what>; using the built-in one` and keeps the base skin;
-- `loadSkin()`: shows `Не удалось загрузить скин: <what>` and returns false.
+- `loadSkin()`: shows `Cannot load the skin: <what>` and returns false.
 
 `Skins::Skin::BuiltinBase()`, in the member initialiser, is not caught: a broken bundled
 `:/skins/base-2.91.wsz` is a bug. The `Skins::Error` leaves `Run`, and `main` turns it into exit
@@ -612,7 +657,7 @@ Failures that are data:
 | Failure | How it shows |
 |---|---|
 | audio device | `AudioEngine::InitResult{ok, message}`: logs `Audio: <message>`, the app runs without sound |
-| account connection | error string in the `Library::connectAccount` callback: marquee `Вход не удался: <error>` |
+| account connection | error string in the `Library::connectAccount` callback: marquee `Login failed: <error>` |
 | login dialog cancelled | nothing happens |
 | saving the token | `Yandex::SaveToken` returns false; ignored |
 | `--play-file` cannot open | logs `Cannot open <path>` |
