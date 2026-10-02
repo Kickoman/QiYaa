@@ -290,9 +290,8 @@ bool IsListenUrl(const QString& url) {
 
 namespace {
 
-// Listening along (experimental): absent is an empty string.
-QString ListenUrlIn(Reader& reader) {
-    const QString key = QStringLiteral("listenUrl");
+// Listening along (spec/jam/listen.md): absent is an empty string.
+QString ListenUrlIn(Reader& reader, const QString& key) {
     if (!reader.has(key)) {
         return {};
     }
@@ -417,7 +416,8 @@ NowPlaying ReadNowPlaying(Reader reader) {
     nowPlaying.positionMs = reader.time(QStringLiteral("positionMs"));
     nowPlaying.paused = reader.boolean(QStringLiteral("paused"));
     nowPlaying.reportedAt = reader.time(QStringLiteral("reportedAt"));
-    nowPlaying.listenUrl = ListenUrlIn(reader);
+    nowPlaying.listenUrl = ListenUrlIn(reader, QStringLiteral("listenUrl"));
+    nowPlaying.listenNextUrl = ListenUrlIn(reader, QStringLiteral("listenNextUrl"));
     if (reader.ok() && nowPlaying.source == Source::Item) {
         reader.require(
             !nowPlaying.itemId.isEmpty() && nowPlaying.track && !nowPlaying.addedBy.isEmpty(),
@@ -729,7 +729,8 @@ ReadClient(const QString& type, const QJsonObject& json, QString* problem) {
         }
         message.positionMs = reader.time(QStringLiteral("positionMs"));
         message.paused = reader.boolean(QStringLiteral("paused"));
-        message.listenUrl = ListenUrlIn(reader);
+        message.listenUrl = ListenUrlIn(reader, QStringLiteral("listenUrl"));
+        message.listenNextUrl = ListenUrlIn(reader, QStringLiteral("listenNextUrl"));
         if (reader.ok()) {
             reader.require(
                 message.source != Source::Item || !message.itemId.isEmpty(),
@@ -1010,6 +1011,9 @@ QJsonObject Body(const Playing& message) {
     }
     if (!message.listenUrl.isEmpty()) {
         json.insert(QStringLiteral("listenUrl"), message.listenUrl);
+    }
+    if (!message.listenNextUrl.isEmpty()) {
+        json.insert(QStringLiteral("listenNextUrl"), message.listenNextUrl);
     }
     return json;
 }

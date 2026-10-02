@@ -25,7 +25,7 @@ Decoded<ServerMessage> DecodeServer(QByteArrayView text);
 Decoded<ClientMessage> DecodeClient(QByteArrayView text);
 
 bool IsKnownReason(const QString& reason);
-// A file of Yandex Music's storage that guests may listen to (listening along, experimental).
+// A file of Yandex Music's storage that guests may listen to (spec/jam/listen.md).
 bool IsListenUrl(const QString& url);
 
 QString TypeOf(const ClientMessage& message);

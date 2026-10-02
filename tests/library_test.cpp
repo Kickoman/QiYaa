@@ -650,6 +650,7 @@ private Q_SLOTS:
             [&] { return playback.engine.state() == Audio::AudioEngine::State::Playing; }, 3000
         ));
         QVERIFY(playback.player.currentLink().path().endsWith(QStringLiteral("/t11")));
+        QVERIFY(playback.player.nextLink().path().endsWith(QStringLiteral("/t12")));  // LISTEN-03
         QTest::qWait(300);  // let the preload download complete
         QVERIFY(playback.player.seekTo(2.4));
         QVERIFY(advanced.wait(4000));

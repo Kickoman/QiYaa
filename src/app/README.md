@@ -427,7 +427,7 @@ constructor; "setter" is the matching `set*Visible`.
 
 | `jam/server` | QString: the jam server's address, `https://…` | `QIYAA_JAM_URL` | each time the host session connects; ctor and the dialog for the jam window | "Server settings…" |
 | `jam/waveFeedback` | bool: the jam wave learns from skips (HOST-12, HOST-16) | true | when a jam starts | "Server settings…" |
-| `jam/shareAudio` | bool: guests may listen along (experimental) | false | at each `playing` | "Server settings…" |
+| `jam/shareAudio` | bool: guests may listen along (spec/jam/listen.md) | false | at each `playing` | "Server settings…" |
 | `jamWindow/visible` | bool | false | un-minimise only: the jam window is shown by the menu and by "Continue" | `setJamWindowVisible()` |
 | `jamWindow/pos` | QPoint | main position + (main width, 0) | `start()` | `saveState()` |
 | `jamWindow/steps` | QSize: resize steps of 25×29 skin px | (1, 8): 300×348 | ctor | on `sizeStepsChanged` |

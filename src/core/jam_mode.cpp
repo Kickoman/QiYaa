@@ -239,6 +239,7 @@ void JamMode::reportPlayback() {
         report.itemId = slot.kind == JamSlot::Kind::Item ? slot.itemId : QString();
         report.track = *track;
         report.link = corePlayer->currentLink();
+        report.nextLink = corePlayer->nextLink();
         report.positionMs = stopped ? 0 : qint64(corePlayer->engine()->positionSeconds() * 1000);
         report.paused = state != Audio::AudioEngine::State::Playing;
     }

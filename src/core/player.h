@@ -89,6 +89,8 @@ public:
     // The file of the current track once its link resolved (valid for about an hour): what a
     // jam's guests may listen to. Empty before that.
     const QUrl& currentLink() const { return currentLinkUrl; }
+    // The file of the preloaded next track, once its link resolved; empty without a preload.
+    QUrl nextLink() const { return preload ? preload->link : QUrl(); }
 
     const QList<Yandex::Track>& playlist() const { return queuedTracks; }
     const QString& queueTitle() const { return titleText; }

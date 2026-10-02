@@ -647,7 +647,7 @@ private Q_SLOTS:
         QTRY_VERIFY(!OfType<Jam::ChangeSettings>(stack.sent()).empty());
     }
 
-    void listeningAlongSendsTheFileOnlyWhenTheHostSharesIt() {  // experimental
+    void listeningAlongSendsTheFilesOnlyWhenTheHostSharesThem() {  // LISTEN-01 to LISTEN-05
         Stack stack(&library);
         QVERIFY(stack.created());
         const QUrl file(QStringLiteral("https://s1.storage.yandex.net/get-mp3/"
@@ -657,19 +657,33 @@ private Q_SLOTS:
         playback.itemId = QStringLiteral("i1");
         playback.paused = false;
         playback.link = file;
+        const QUrl next(
+            QString(file.toString()).replace(QStringLiteral("t.mp3"), QStringLiteral("n.mp3"))
+        );
+        playback.nextLink = next;
         const auto lastPlaying = [&] { return OfType<Jam::Playing>(stack.sent()).back(); };
         Q_EMIT stack.jam.playback(playback);
         QTRY_COMPARE(OfType<Jam::Playing>(stack.sent()).size(), size_t(2));
         QCOMPARE(lastPlaying().listenUrl, QString());
+        QCOMPARE(lastPlaying().listenNextUrl, QString());
         stack.share = true;
         Q_EMIT stack.jam.playback(playback);
         QTRY_COMPARE(OfType<Jam::Playing>(stack.sent()).size(), size_t(3));
         QCOMPARE(lastPlaying().listenUrl, file.toString());
+        QCOMPARE(lastPlaying().listenNextUrl, next.toString());
         playback.link = QUrl(QStringLiteral("http://127.0.0.1:8080/get-mp3/a/b/t1"));
+        playback.nextLink = QUrl();
         Q_EMIT stack.jam.playback(playback);  // not Yandex's: the server would refuse it
         QTRY_COMPARE(OfType<Jam::Playing>(stack.sent()).size(), size_t(4));
         QCOMPARE(lastPlaying().listenUrl, QString());
+        QCOMPARE(lastPlaying().listenNextUrl, QString());
         QCOMPARE(lastPlaying().itemId, QStringLiteral("i1"));
+        playback = Core::JamPlayback{};  // idle: never a link
+        playback.link = file;
+        Q_EMIT stack.jam.playback(playback);
+        QTRY_COMPARE(OfType<Jam::Playing>(stack.sent()).size(), size_t(5));
+        QCOMPARE(lastPlaying().source, Jam::Source::Idle);
+        QCOMPARE(lastPlaying().listenUrl, QString());
     }
 
     void aRefusedPlayNextTellsTheReason() {  // HOST-20

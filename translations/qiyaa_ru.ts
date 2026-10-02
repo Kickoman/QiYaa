@@ -443,12 +443,12 @@
         <translation>Сохранить</translation>
     </message>
     <message>
-        <source>Guests may listen (experimental)</source>
-        <translation>Гости могут слушать (эксперимент)</translation>
-    </message>
-    <message>
         <source>The jam page gets a Listen button: the guests&apos; browsers play the files you play, roughly in time with you. They are your subscription&apos;s files: Yandex Music licenses them for your own listening.</source>
         <translation>На странице джема появится кнопка «Слушать»: браузеры гостей играют те же файлы, что и вы, примерно одновременно с вами. Это файлы вашей подписки: Яндекс Музыка даёт их для вашего личного прослушивания.</translation>
+    </message>
+    <message>
+        <source>Guests may listen</source>
+        <translation>Гости могут слушать</translation>
     </message>
 </context>
 <context>

@@ -47,7 +47,7 @@ JamServerDialog::JamServerDialog(
     note->setWordWrap(true);
     layout->addWidget(note);
 
-    shareBox = new QCheckBox(tr("Guests may listen (experimental)"));
+    shareBox = new QCheckBox(tr("Guests may listen"));
     shareBox->setChecked(shareAudio);
     layout->addWidget(shareBox);
     auto* shareNote = new QLabel(tr(

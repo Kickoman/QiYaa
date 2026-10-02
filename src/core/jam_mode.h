@@ -40,7 +40,8 @@ struct JamPlayback {
     std::optional<Yandex::Track> track;
     qint64 positionMs = 0;
     bool paused = true;
-    QUrl link;  // the current file, for guests who listen along (experimental)
+    QUrl link;  // the current file, for guests who listen along (spec/jam/listen.md)
+    QUrl nextLink;  // the preloaded next file
 };
 
 inline constexpr int kJamPlayingReportMs = 10'000;

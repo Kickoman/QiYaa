@@ -513,10 +513,12 @@ void HostSession::sendPlaying(const Core::JamPlayback& playback) {
             message.paused = true;
             break;
     }
-    // Listening along (experimental): only a Yandex file, which the server takes.
-    const QString link = playback.link.toString();
-    if (message.source != Source::Idle && options.config().shareAudio && IsListenUrl(link)) {
-        message.listenUrl = link;
+    // Listening along (LISTEN-01 to LISTEN-04): only Yandex files, which the server takes.
+    if (message.source != Source::Idle && options.config().shareAudio) {
+        const QString link = playback.link.toString();
+        const QString next = playback.nextLink.toString();
+        message.listenUrl = IsListenUrl(link) ? link : QString();
+        message.listenNextUrl = IsListenUrl(next) ? next : QString();
     }
     client.send(message);
 }
