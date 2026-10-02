@@ -24,7 +24,7 @@ to Yandex ([src/yandex](../yandex/README.md)), or create, lay out, connect and s
 | `login_dialog.h/.cpp` | `LoginDialog` — Yandex login by device code or by a pasted token |
 | `input_dialogs.h/.cpp` | `AskText`, `AskItem`: `QInputDialog` questions with the app's own OK and Cancel |
 | `jam_window.h/.cpp` | `JamWindow` — the host's jam in a GEN frame: start, QR code and link, settings, guests, end, search that adds tracks. Built only with the jam |
-| `jam_server_dialog.h/.cpp` | `JamServerDialog` — the jam server's address and "Teach the jam vibe". Built only with the jam |
+| `jam_server_dialog.h/.cpp` | `JamServerDialog` — the jam server's address, "Teach the jam vibe" and "Guests may listen (experimental)". Built only with the jam |
 
 The windows' texts are English sources in `tr()` (in free functions
 `QCoreApplication::translate` with the class-like context `Ui::LibraryMenu`, `Ui::InputDialogs`),
@@ -655,16 +655,18 @@ Esc (drop the focus); the name is cut to 24 and the search to 100 characters.
 ```cpp
 class JamServerDialog : public QDialog {
 public:
-    JamServerDialog(const QString& server, bool waveFeedback, const QString& defaultServer, QWidget* parent = nullptr);
+    JamServerDialog(const QString& server, bool waveFeedback, bool shareAudio, const QString& defaultServer, QWidget* parent = nullptr);
     QString server() const;           // as typed, or the default for an empty field
     bool waveFeedback() const;
+    bool shareAudio() const;
     static bool IsServerAddress(const QString& text);   // http(s) with a host
 };
 ```
 
 "Jam server": the address (empty shows and means the default, `QIYAA_JAM_URL`), with "An
 address like https://jam.example.org is needed" and Save disabled until it is an http(s) URL with a host;
-"Teach the jam vibe" (HOST-16) with what it means. The owner writes the settings.
+"Teach the jam vibe" (HOST-16) with what it means; "Guests may listen (experimental)" with what it
+does and that the files are the host's subscription's. The owner writes the settings.
 
 ## MilkdropWindow — `milkdrop_window.h/.cpp`
 

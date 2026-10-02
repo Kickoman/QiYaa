@@ -354,7 +354,7 @@ them in the interface language. The main menu, top to bottom:
   while a jam is on, which asks "End the jam? The guests will see that it is over." in a modal
   `QMessageBox::question` and then calls `HostSession::end()`; "Server settings…"
   (`showJamServerDialog()`: `Ui::JamServerDialog`, modal, which writes `jam/server` and
-  `jam/waveFeedback` on Save and tells the jam window the server's host);
+  `jam/waveFeedback` and `jam/shareAudio` on Save and tells the jam window the server's host);
 - Equalizer (Alt+G), Playlist (Alt+E), Now playing (no shortcut), Milkdrop (Ctrl+Shift+K, only
   in a Milkdrop build): checkable, checked when the window is visible;
 - Visualization: Spectrum, Oscilloscope, Off (exclusive; a choice calls `saveState()`);
@@ -427,6 +427,7 @@ constructor; "setter" is the matching `set*Visible`.
 
 | `jam/server` | QString: the jam server's address, `https://…` | `QIYAA_JAM_URL` | each time the host session connects; ctor and the dialog for the jam window | "Server settings…" |
 | `jam/waveFeedback` | bool: the jam wave learns from skips (HOST-12, HOST-16) | true | when a jam starts | "Server settings…" |
+| `jam/shareAudio` | bool: guests may listen along (experimental) | false | at each `playing` | "Server settings…" |
 | `jamWindow/visible` | bool | false | un-minimise only: the jam window is shown by the menu and by "Continue" | `setJamWindowVisible()` |
 | `jamWindow/pos` | QPoint | main position + (main width, 0) | `start()` | `saveState()` |
 | `jamWindow/steps` | QSize: resize steps of 25×29 skin px | (1, 8): 300×348 | ctor | on `sizeStepsChanged` |
