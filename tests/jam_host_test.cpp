@@ -166,6 +166,7 @@ private:
         QString serverUrl = server.serverUrl();
         int ids = 0;
         int greeted = 0;
+        bool share = false;
         Audio::AudioEngine engine;  // not initialised: no sound card
         Core::Player player;
         Core::JamMode jam;
@@ -192,7 +193,7 @@ private:
             Jam::HostOptions options;
             options.client.appVersion = QStringLiteral("test");
             options.client.reconnectDelaysMs = {50, 100, 200};
-            options.config = [this] { return Jam::HostConfig{serverUrl, false}; };
+            options.config = [this] { return Jam::HostConfig{serverUrl, false, share}; };
             options.queueTitle = QStringLiteral("Джем");
             options.newId = [this] { return QStringLiteral("r%1").arg(++ids); };
             options.resumeRetryMs = 500;
@@ -644,6 +645,31 @@ private Q_SLOTS:
         QVERIFY(stack.host.rotateLink());
         QVERIFY(stack.host.changeSettings(Jam::SettingsPatch{Jam::Order::Fifo, {}, {}, {}}));
         QTRY_VERIFY(!OfType<Jam::ChangeSettings>(stack.sent()).empty());
+    }
+
+    void listeningAlongSendsTheFileOnlyWhenTheHostSharesIt() {  // experimental
+        Stack stack(&library);
+        QVERIFY(stack.created());
+        const QUrl file(QStringLiteral("https://s1.storage.yandex.net/get-mp3/"
+                                       "0123456789abcdef0123456789abcdef/65cd937b03427/t.mp3"));
+        Core::JamPlayback playback;
+        playback.kind = Core::JamPlayback::Kind::Item;
+        playback.itemId = QStringLiteral("i1");
+        playback.paused = false;
+        playback.link = file;
+        const auto lastPlaying = [&] { return OfType<Jam::Playing>(stack.sent()).back(); };
+        Q_EMIT stack.jam.playback(playback);
+        QTRY_COMPARE(OfType<Jam::Playing>(stack.sent()).size(), size_t(2));
+        QCOMPARE(lastPlaying().listenUrl, QString());
+        stack.share = true;
+        Q_EMIT stack.jam.playback(playback);
+        QTRY_COMPARE(OfType<Jam::Playing>(stack.sent()).size(), size_t(3));
+        QCOMPARE(lastPlaying().listenUrl, file.toString());
+        playback.link = QUrl(QStringLiteral("http://127.0.0.1:8080/get-mp3/a/b/t1"));
+        Q_EMIT stack.jam.playback(playback);  // not Yandex's: the server would refuse it
+        QTRY_COMPARE(OfType<Jam::Playing>(stack.sent()).size(), size_t(4));
+        QCOMPARE(lastPlaying().listenUrl, QString());
+        QCOMPARE(lastPlaying().itemId, QStringLiteral("i1"));
     }
 
     void aRefusedPlayNextTellsTheReason() {  // HOST-20

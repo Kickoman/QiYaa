@@ -10,6 +10,7 @@
 #include <QPointer>
 #include <QString>
 #include <QTimer>
+#include <QUrl>
 
 #include <functional>
 #include <optional>
@@ -85,6 +86,9 @@ public:
     bool isWaitingForMore() const { return waitingForMore; }
     // A track is starting, open or parked by the network: something is playing or about to.
     bool trackInProgress() const { return openTrack || resolvingLink || networkWait; }
+    // The file of the current track once its link resolved (valid for about an hour): what a
+    // jam's guests may listen to. Empty before that.
+    const QUrl& currentLink() const { return currentLinkUrl; }
 
     const QList<Yandex::Track>& playlist() const { return queuedTracks; }
     const QString& queueTitle() const { return titleText; }
@@ -123,6 +127,7 @@ private:
         int bitrate = 0;
         QPointer<QNetworkReply> reply;
         bool downloadDone = false;
+        QUrl link;
     };
     // A track parked by a network failure (spec ERR-01 to ERR-03): its stream starts again at
     // `position`, and plays on if `resume`.
@@ -177,6 +182,7 @@ private:
     quint64 queueGeneration = 0;
     int playingIndex = -1;
     int bitrateKbps = 0;
+    QUrl currentLinkUrl;
     bool shuffleEnabled = false;
     bool repeatEnabled = false;
     quint64 generation = 0;

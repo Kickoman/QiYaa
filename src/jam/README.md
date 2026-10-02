@@ -141,7 +141,7 @@ broken or foreign file (another `version`, a required field missing) and for one
 ## `host_session.h`
 
 ```cpp
-struct HostConfig { QString serverUrl; bool waveFeedback = true; };
+struct HostConfig { QString serverUrl; bool waveFeedback = true; bool shareAudio = false; };
 struct HostOptions { ClientOptions client; std::function<HostConfig()> config; QString queueTitle;
                      std::function<QString()> newId; int resumeRetryMs = 30'000; };
 enum class HostPhase { None, Creating, Active };
@@ -197,6 +197,10 @@ server, `Core::JamMode` for the queue, `Yandex::Library` for the guests' search 
 - **End.** `end()` sends `end` when connected, then ends here: the file is cleared, `JamMode::end`
   keeps the jam items as ordinary tracks (HOST-32), the client stops, `ended(ByHost)`. `ended` from
   the server does the same without `end` (`ByServer`, `Expired`).
+- **Listening along (experimental).** With `config().shareAudio`, a `playing` for an item or a
+  wave track carries `listenUrl`: the file the host plays (`JamPlayback::link`), when it is one of
+  Yandex Music's storage (`IsListenUrl`); any other link (a test's mock server) is left out, so
+  the server takes the report. Guests on the jam page may then play it.
 - `changed()` follows any change of `phase()`, the connection, `room()` or `joinUrl()`.
 
 `JamTrackOf` builds the protocol's track like the server checks it: a catalog id

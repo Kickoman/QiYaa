@@ -11,14 +11,15 @@ class QPushButton;
 
 namespace Ui {
 
-// "Настройки сервера…" of the jam menu: the jam server's address and whether the jam wave
-// learns from skips (HOST-16).
+// "Server settings…" of the jam menu: the jam server's address, whether the jam wave learns
+// from skips (HOST-16), and whether guests may listen along (experimental).
 class JamServerDialog : public QDialog {
     Q_OBJECT
 public:
     JamServerDialog(
         const QString& server,
         bool waveFeedback,
+        bool shareAudio,
         const QString& defaultServer,
         QWidget* parent = nullptr
     );
@@ -26,6 +27,7 @@ public:
     // The address as typed, or the default for an empty field.
     QString server() const;
     bool waveFeedback() const;
+    bool shareAudio() const;
 
     // http(s) with a host: what the app can turn into the server's socket address.
     static bool IsServerAddress(const QString& text);
@@ -37,6 +39,7 @@ private:
     QLineEdit* serverField;
     QLabel* serverProblem;
     QCheckBox* feedbackBox;
+    QCheckBox* shareBox;
     QPushButton* saveButton;
 };
 

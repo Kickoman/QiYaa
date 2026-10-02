@@ -649,6 +649,7 @@ private Q_SLOTS:
         QVERIFY(QTest::qWaitFor(
             [&] { return playback.engine.state() == Audio::AudioEngine::State::Playing; }, 3000
         ));
+        QVERIFY(playback.player.currentLink().path().endsWith(QStringLiteral("/t11")));
         QTest::qWait(300);  // let the preload download complete
         QVERIFY(playback.player.seekTo(2.4));
         QVERIFY(advanced.wait(4000));
@@ -657,12 +658,15 @@ private Q_SLOTS:
         QCOMPARE(log, (QStringList{"0:11", "1:11", "0:12"}));
         QCOMPARE(requestsTo("/tracks/12/download-info"), 1);
         QVERIFY(playback.engine.positionSeconds() < 0.5);
+        // The link of the file that plays follows the gapless advance (listening along).
+        QVERIFY(playback.player.currentLink().path().endsWith(QStringLiteral("/t12")));
 
         // "Next" takes the preloaded track too.
         QVERIFY(QTest::qWaitFor([&] { return playback.player.preloadedIndex() == 2; }, 5000));
         playback.player.next();
         QCOMPARE(playback.player.currentIndex(), 2);
         QCOMPARE(log.mid(3), (QStringList{"2:12", "0:13"}));
+        QVERIFY(playback.player.currentLink().path().endsWith(QStringLiteral("/t13")));
         QCOMPARE(requestsTo("/tracks/13/download-info"), 1);
         playback.player.stop();
     }

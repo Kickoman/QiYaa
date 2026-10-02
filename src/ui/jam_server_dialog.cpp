@@ -17,6 +17,7 @@ constexpr int kDialogWidth = 420;
 JamServerDialog::JamServerDialog(
     const QString& server,
     bool waveFeedback,
+    bool shareAudio,
     const QString& defaultServer,
     QWidget* parent
 )
@@ -46,6 +47,17 @@ JamServerDialog::JamServerDialog(
     note->setWordWrap(true);
     layout->addWidget(note);
 
+    shareBox = new QCheckBox(tr("Guests may listen (experimental)"));
+    shareBox->setChecked(shareAudio);
+    layout->addWidget(shareBox);
+    auto* shareNote = new QLabel(tr(
+        "The jam page gets a Listen button: the guests' browsers play the files you play, roughly "
+        "in time with you. They are your subscription's files: Yandex Music licenses them for "
+        "your own listening."
+    ));
+    shareNote->setWordWrap(true);
+    layout->addWidget(shareNote);
+
     auto* buttons = new QDialogButtonBox(QDialogButtonBox::Save | QDialogButtonBox::Cancel);
     saveButton = buttons->button(QDialogButtonBox::Save);
     buttons->button(QDialogButtonBox::Cancel)->setText(tr("Cancel"));
@@ -60,6 +72,10 @@ JamServerDialog::JamServerDialog(
 QString JamServerDialog::server() const {
     const QString typed = serverField->text().trimmed();
     return typed.isEmpty() ? fallback : typed;
+}
+
+bool JamServerDialog::shareAudio() const {
+    return shareBox->isChecked();
 }
 
 bool JamServerDialog::waveFeedback() const {

@@ -499,7 +499,8 @@ void Application::setUpJam() {
     options.client.appVersion = QCoreApplication::applicationVersion();
     options.config = [this] {
         return Jam::HostConfig{
-            JamServer(settings), settings.value(QStringLiteral("jam/waveFeedback"), true).toBool()
+            JamServer(settings), settings.value(QStringLiteral("jam/waveFeedback"), true).toBool(),
+            settings.value(QStringLiteral("jam/shareAudio"), false).toBool()
         };
     };
     options.queueTitle = tr("Jam");
@@ -1175,6 +1176,7 @@ void Application::showJamServerDialog() {
 #ifdef QIYAA_HAVE_JAM
     Ui::JamServerDialog dialog(
         JamServer(settings), settings.value(QStringLiteral("jam/waveFeedback"), true).toBool(),
+        settings.value(QStringLiteral("jam/shareAudio"), false).toBool(),
         QStringLiteral(QIYAA_JAM_URL), mainWindowInstance.get()
     );
     if (dialog.exec() != QDialog::Accepted) {
@@ -1182,6 +1184,7 @@ void Application::showJamServerDialog() {
     }
     settings.setValue(QStringLiteral("jam/server"), dialog.server());
     settings.setValue(QStringLiteral("jam/waveFeedback"), dialog.waveFeedback());
+    settings.setValue(QStringLiteral("jam/shareAudio"), dialog.shareAudio());
     jamWindowInstance->setServerName(JamServerName(dialog.server()));
 #endif
 }

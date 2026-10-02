@@ -66,6 +66,7 @@ struct NowPlaying {
     qint64 positionMs = 0;
     bool paused = true;
     qint64 reportedAt = 0;
+    QString listenUrl;  // listening along (experimental)
 
     bool operator==(const NowPlaying&) const = default;
 };
@@ -152,6 +153,7 @@ struct Playing {
     std::optional<Track> track;
     qint64 positionMs = 0;
     bool paused = true;
+    QString listenUrl;  // listening along (experimental): the file the host plays
 
     bool operator==(const Playing&) const = default;
 };

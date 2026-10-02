@@ -517,6 +517,9 @@ The scenarios are [spec/player/sources.md](../../spec/player/sources.md),
   A search whose best result is an artist or album asks for that one's tracks with the same
   ticket (SRC-03). Replies are dropped silently; the HTTP request is not aborted. The `Player` is
   held through `QPointer`.
+- **Listening along (experimental).** `JamPlayback::link` is `Player::currentLink()`: the file of
+  the current track once its link resolved, including a preloaded track that took over. The host
+  session sends it to the jam's guests when the host allows it.
 - **Statuses**, all through `Player::statusMessage` (English sources, shown translated; see
   [translations](../../translations/README.md)): `<title>: loading…` (vibes, likes),
   `Search: <text>…`, `Error: …`, `Vibe error: …`, `Search error: …`, `<title>: empty`,

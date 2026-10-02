@@ -26,6 +26,7 @@ namespace Jam {
 struct HostConfig {
     QString serverUrl;
     bool waveFeedback = true;
+    bool shareAudio = false;  // listening along (experimental): guests may play the host's file
 };
 
 struct HostOptions {

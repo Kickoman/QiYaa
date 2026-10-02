@@ -32,6 +32,7 @@ constexpr int kMaxSeeds = 5;
 constexpr int kMaxOutbox = 500;
 constexpr int kMaxDetailLength = 200;
 constexpr int kMaxJoinUrlLength = 200;
+constexpr int kMaxListenUrlLength = 400;
 constexpr int kMinPendingPerGuest = 1;
 constexpr int kMaxPendingPerGuest = 50;
 
@@ -77,6 +78,8 @@ const char* const kSeed = "^track:[0-9A-Za-z_-]{1,64}$";
 const char* const kCoverUri = "^\\S*%%\\S*$";
 const char* const kJoinUrl =
     "^https?://[^\\s#/]+(?:/[^\\s#]*)?/j/[0-9a-hjkmnp-tv-z]{8}#[A-Za-z0-9_-]{22}$";
+const char* const kListenUrl = "^https://[A-Za-z0-9-]+\\.storage\\.yandex\\.net/get-mp3/"
+                               "[0-9a-f]{32}/[0-9a-f]{1,32}/[^\\s#?]+$";
 const char* const kName = "^[^\\s\\x00-\\x1F\\x7F](?:[^\\x00-\\x1F\\x7F]*[^\\s\\x00-\\x1F\\x7F])?$";
 
 qsizetype CodePoints(const QString& text) {
@@ -279,6 +282,29 @@ QString SearchTextIn(Reader& reader, const QString& key) {
     return value;
 }
 
+}  // namespace
+
+bool IsListenUrl(const QString& url) {
+    return url.size() <= kMaxListenUrlLength && Pattern(kListenUrl).match(url).hasMatch();
+}
+
+namespace {
+
+// Listening along (experimental): absent is an empty string.
+QString ListenUrlIn(Reader& reader) {
+    const QString key = QStringLiteral("listenUrl");
+    if (!reader.has(key)) {
+        return {};
+    }
+    const QString value = reader.string(key);
+    if (reader.ok()) {
+        reader.require(
+            IsListenUrl(value), key + QStringLiteral(" is not a file of Yandex Music's storage")
+        );
+    }
+    return value;
+}
+
 QString JoinUrlIn(Reader& reader, const QString& key) {
     const QString value = reader.string(key);
     if (reader.ok()) {
@@ -391,6 +417,7 @@ NowPlaying ReadNowPlaying(Reader reader) {
     nowPlaying.positionMs = reader.time(QStringLiteral("positionMs"));
     nowPlaying.paused = reader.boolean(QStringLiteral("paused"));
     nowPlaying.reportedAt = reader.time(QStringLiteral("reportedAt"));
+    nowPlaying.listenUrl = ListenUrlIn(reader);
     if (reader.ok() && nowPlaying.source == Source::Item) {
         reader.require(
             !nowPlaying.itemId.isEmpty() && nowPlaying.track && !nowPlaying.addedBy.isEmpty(),
@@ -702,6 +729,7 @@ ReadClient(const QString& type, const QJsonObject& json, QString* problem) {
         }
         message.positionMs = reader.time(QStringLiteral("positionMs"));
         message.paused = reader.boolean(QStringLiteral("paused"));
+        message.listenUrl = ListenUrlIn(reader);
         if (reader.ok()) {
             reader.require(
                 message.source != Source::Item || !message.itemId.isEmpty(),
@@ -979,6 +1007,9 @@ QJsonObject Body(const Playing& message) {
     }
     if (message.track) {
         json.insert(QStringLiteral("track"), TrackJson(*message.track));
+    }
+    if (!message.listenUrl.isEmpty()) {
+        json.insert(QStringLiteral("listenUrl"), message.listenUrl);
     }
     return json;
 }

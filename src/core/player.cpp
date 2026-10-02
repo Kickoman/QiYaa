@@ -70,6 +70,7 @@ Player::Player(Yandex::Library* library, Audio::AudioEngine* engine, QObject* pa
         const Preload upcoming = *std::exchange(preload, std::nullopt);
         ++generation;
         download = upcoming.reply;
+        currentLinkUrl = upcoming.link;
         streamId = upcoming.stream;
         playingIndex = upcoming.index;
         currentDownloaded = upcoming.downloadDone;
@@ -467,6 +468,7 @@ void Player::playIndex(int index) {
     abortDownload();
     playingIndex = index;
     bitrateKbps = 0;
+    currentLinkUrl.clear();
     currentDownloaded = false;
     streamFailure.reset();
     currentBytes = 0;
@@ -477,6 +479,7 @@ void Player::playIndex(int index) {
         const Preload upcoming = *std::exchange(preload, std::nullopt);
         streamId = audioEngine->playQueuedNow();
         download = upcoming.reply;
+        currentLinkUrl = upcoming.link;
         currentDownloaded = upcoming.downloadDone;
         currentBytes = 1;  // the preload's bytes went to its own stream id
         Q_EMIT currentTrackChanged();
@@ -506,6 +509,7 @@ void Player::playIndex(int index) {
                 }
                 return handleFailure(KindOf(error), error.text);
             }
+            currentLinkUrl = link.url;
             download = startDownload(link.url, streamId);
             trackStarted(track, link.bitrateKbps);
         }
@@ -667,6 +671,7 @@ void Player::retryAfterNetwork() {
                 return handleFailure(KindOf(error), error.text);
             }
             const NetworkWait wait = *std::exchange(networkWait, std::nullopt);
+            currentLinkUrl = link.url;
             download = startDownload(link.url, streamId);
             if (openTrack) {
                 bitrateKbps = link.bitrateKbps;
@@ -747,6 +752,7 @@ void Player::maybePreload() {
             }
             self->preload->stream = stream;
             self->preload->bitrate = link.bitrateKbps;
+            self->preload->link = link.url;
             self->preload->reply = self->startDownload(link.url, stream);
         }
     );
