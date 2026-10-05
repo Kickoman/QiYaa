@@ -11,6 +11,7 @@
 #include "ui/playlist_window.h"
 #include "yandex/api_client.h"
 
+#include <QAction>
 #include <QApplication>
 #include <QBuffer>
 #include <QColor>
@@ -19,14 +20,17 @@
 #include <QGuiApplication>
 #include <QLabel>
 #include <QList>
+#include <QMenu>
 #include <QMouseEvent>
 #include <QNetworkAccessManager>
 #include <QPoint>
 #include <QPointF>
 #include <QScreen>
 #include <QSet>
+#include <QSettings>
 #include <QSignalSpy>
 #include <QString>
+#include <QTemporaryDir>
 #include <QTest>
 #include <QWidget>
 
@@ -113,6 +117,56 @@ private Q_SLOTS:
         QVERIFY(QTest::qWaitForWindowExposed(main));
     }
     void cleanup() { application.reset(); }
+
+    void shuffleMenuChoosesAndPersistsThePreferredAlgorithm() {
+        QTemporaryDir directory;
+        QVERIFY(directory.isValid());
+        App::Application::Options options;
+        options.offline = true;
+        options.audio = false;
+        options.mediaIntegration = false;
+        options.language = App::Language::English;
+        options.settingsFile = directory.filePath(QStringLiteral("settings.ini"));
+        {
+            App::Application configured(options);
+            QCOMPARE(
+                configured.player()->shuffleAlgorithm(), Core::ShuffleAlgorithm::WithoutRepeats
+            );
+            configured.mainWindow()->menuRequested(QPoint(100, 100));
+            auto* menu = configured.mainWindow()->findChild<QMenu*>(QStringLiteral("shuffleMenu"));
+            QVERIFY(menu);
+            QCOMPARE(menu->actions().size(), 2);
+            QCOMPARE(menu->actions()[0]->text(), QStringLiteral("Random track"));
+            QVERIFY(menu->actions()[1]->isChecked());
+            menu->actions()[0]->trigger();
+            QCOMPARE(configured.player()->shuffleAlgorithm(), Core::ShuffleAlgorithm::Random);
+            QVERIFY(menu->actions()[0]->isChecked());
+            QVERIFY(!menu->actions()[1]->isChecked());
+            QVERIFY(!configured.player()->shuffle());
+            configured.player()->setShuffle(true);
+            QCOMPARE(configured.player()->shuffleAlgorithm(), Core::ShuffleAlgorithm::Random);
+        }
+        {
+            App::Application restored(options);
+            QCOMPARE(restored.player()->shuffleAlgorithm(), Core::ShuffleAlgorithm::Random);
+            QVERIFY(!restored.player()->shuffle());
+            restored.mainWindow()->menuRequested(QPoint(100, 100));
+            auto* menu = restored.mainWindow()->findChild<QMenu*>(QStringLiteral("shuffleMenu"));
+            QVERIFY(menu);
+            QVERIFY(menu->actions()[0]->isChecked());
+            menu->actions()[1]->trigger();
+            QCOMPARE(restored.player()->shuffleAlgorithm(), Core::ShuffleAlgorithm::WithoutRepeats);
+        }
+        {
+            App::Application restored(options);
+            QCOMPARE(restored.player()->shuffleAlgorithm(), Core::ShuffleAlgorithm::WithoutRepeats);
+        }
+        QSettings saved(options.settingsFile, QSettings::IniFormat);
+        saved.setValue(QStringLiteral("shuffle/algorithm"), QStringLiteral("unknown"));
+        saved.sync();
+        App::Application fallback(options);
+        QCOMPARE(fallback.player()->shuffleAlgorithm(), Core::ShuffleAlgorithm::WithoutRepeats);
+    }
 
     void defaultLayoutIsStacked() {
         QVERIFY(eq->isVisible() && playlist->isVisible());

@@ -826,8 +826,8 @@ private Q_SLOTS:
 
     void shuffleRebuildsAfterQueueEdits_data() {
         QTest::addColumn<QString>("operation");
-        for (const QString& operation : {"append", "insert", "remove", "remove current"}) {
-            QTest::newRow(qPrintable(operation)) << operation;
+        for (const char* operation : {"append", "insert", "remove", "remove current"}) {
+            QTest::newRow(operation) << QString::fromLatin1(operation);
         }
     }
 
@@ -869,13 +869,21 @@ private Q_SLOTS:
         QCOMPARE(player.currentIndex(), -1);
     }
 
+    void shuffleToggleKeepsPlaybackAndGaplessAdvanceFollowsTheOrder_data() {
+        QTest::addColumn<int>("algorithm");
+        QTest::newRow("without repeats") << int(Core::ShuffleAlgorithm::WithoutRepeats);
+        QTest::newRow("random") << int(Core::ShuffleAlgorithm::Random);
+    }
+
     void shuffleToggleKeepsPlaybackAndGaplessAdvanceFollowsTheOrder(
     ) {  // proposed spec SHUF-03, SHUF-05 (docs/shuffle-spec.patch)
+        QFETCH(int, algorithm);
         PlaybackStack playback;
         if (!setUpAudio(playback, {31, 32, 33})) {
             QSKIP("no audio output");
         }
         auto& player = playback.player;
+        player.setShuffleAlgorithm(Core::ShuffleAlgorithm(algorithm));
         player.setQueue(NumberedTracks({31, 32, 33}), "Plain", true);
         QVERIFY(QTest::qWaitFor([&] { return player.preloadedIndex() == 1; }, 5000));
         QVERIFY(player.seekTo(0.5));
@@ -898,13 +906,27 @@ private Q_SLOTS:
         QCOMPARE(player.currentIndex(), next);
         QVERIFY(QTest::qWaitFor([&] { return player.preloadedIndex() >= 0; }, 5000));
         const int last = player.preloadedIndex();
-        QVERIFY(last != 0 && last != next);
+        QVERIFY(last != next);
+        if (player.shuffleAlgorithm() == Core::ShuffleAlgorithm::WithoutRepeats) {
+            QVERIFY(last != 0);
+        }
         player.next();
         QCOMPARE(player.currentIndex(), last);
-        QCOMPARE(player.preloadedIndex(), -1);
+        if (player.shuffleAlgorithm() == Core::ShuffleAlgorithm::WithoutRepeats) {
+            QCOMPARE(player.preloadedIndex(), -1);
+        }
         player.pause();
         const double lastPosition = playback.engine.positionSeconds();
         changed.clear();
+        player.setShuffleAlgorithm(
+            player.shuffleAlgorithm() == Core::ShuffleAlgorithm::Random
+                ? Core::ShuffleAlgorithm::WithoutRepeats
+                : Core::ShuffleAlgorithm::Random
+        );
+        QCOMPARE(player.currentIndex(), last);
+        QCOMPARE(changed.count(), 0);
+        QCOMPARE(playback.engine.state(), Audio::AudioEngine::State::Paused);
+        QCOMPARE(playback.engine.positionSeconds(), lastPosition);
         player.setShuffle(false);
         QCOMPARE(player.currentIndex(), last);
         QCOMPARE(changed.count(), 0);

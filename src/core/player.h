@@ -2,6 +2,7 @@
 
 #include "audio/audio_engine.h"
 #include "core/failure_policy.h"
+#include "core/track_navigator.h"
 #include "yandex/api_client.h"
 #include "yandex/library.h"
 
@@ -13,6 +14,7 @@
 #include <QUrl>
 
 #include <functional>
+#include <memory>
 #include <optional>
 
 class QNetworkReply;
@@ -77,6 +79,8 @@ public:
     bool seekTo(double seconds);
     bool seekFraction(double fraction);
     void setShuffle(bool on);
+    void setShuffleAlgorithm(ShuffleAlgorithm algorithm);
+    ShuffleAlgorithm shuffleAlgorithm() const { return preferredShuffleAlgorithm; }
     void setRepeat(bool on);
     bool shuffle() const { return shuffleEnabled; }  // the user's choice
     // Shuffle as it applies now: never in an endless queue (a wave plays in queue order).
@@ -147,9 +151,8 @@ private:
     void cancelNetworkWait();
     void abortDownload();
     void trackStarted(const Yandex::Track& track, int bitrate);
-    int sequentialNext() const;
     int pickNext() const;
-    void rebuildShuffleOrder();
+    void resetNavigator();
     void maybePreload();
     void cancelPreload();
     void refreshPreload();
@@ -160,8 +163,8 @@ private:
     Yandex::Library* yandexLibrary;
     Audio::AudioEngine* audioEngine;
     QList<Yandex::Track> queuedTracks;
-    QList<int> shuffleOrder;
-    int shufflePosition = -1;
+    std::unique_ptr<TrackNavigator> navigator = MakeTrackNavigator(std::nullopt);
+    ShuffleAlgorithm preferredShuffleAlgorithm = ShuffleAlgorithm::WithoutRepeats;
     QString titleText;
     TLoadMoreCallback loadMore;
     TEventCallback reportEvent;

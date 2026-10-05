@@ -359,6 +359,8 @@ them in the interface language. The main menu, top to bottom:
 - Equalizer (Alt+G), Playlist (Alt+E), Now playing (no shortcut), Milkdrop (Ctrl+Shift+K, only
   in a Milkdrop build): checkable, checked when the window is visible;
 - Visualization: Spectrum, Oscilloscope, Off (exclusive; a choice calls `saveState()`);
+- Shuffle: "Random track" or "Without repeats" (exclusive); chooses the preferred algorithm
+  and saves `shuffle/algorithm`. It does not toggle the shuffle button or restart audio.
 - Skins: every `*.wsz` in `:/skins`, sorted by name, shown without the extension; then "Load a
   skin…" (file dialog starting in the home directory, filter `*.wsz *.zip`);
 - Size: 100 %, 125 %, 150 %, 175 %, 200 %, 250 %, 300 % (exclusive, checked when the current
@@ -394,6 +396,7 @@ constructor; "setter" is the matching `set*Visible`.
 | Key | Type | Default | Read | Written |
 |---|---|---|---|---|
 | `skin` | QString: a file path or `:/skins/<file>.wsz` | empty = built-in `base-2.91.wsz` | ctor, unless `--skin` | `loadSkin()` on success |
+| `shuffle/algorithm` | QString: `random` or `without-repeats` | `without-repeats` (anything else too) | ctor | on `Player::modesChanged` |
 | `language` | QString: `be`, `ru` or `en` | `be` (anything else too) | ctor, unless `Options::language` | `setLanguage()` |
 | `scale` | double | 1.0 | ctor | `setScale(…, ScaleScope::Saved)` |
 | `alwaysOnTop` | bool | false | ctor | `setAlwaysOnTop()` |

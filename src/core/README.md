@@ -19,6 +19,7 @@ builds no menus ([src/ui](../ui/README.md), `library_menu.cpp`) and shows nothin
 | File | Contains |
 |---|---|
 | `player.h/.cpp` | `Player`: the queue and cursor, transport, shuffle and repeat, source-request tickets, the endless-source hook `TLoadMoreCallback`, track events `TEventCallback`, link resolution, download streaming, the gapless preload, and the engine's poll timer |
+| `track_navigator.h/.cpp` | `TrackNavigator`, `ShuffleAlgorithm`, `MakeTrackNavigator`: sequential, random and stored shuffled traversal |
 | `failure_policy.h/.cpp` | `FailureKind`, `FailureAction`, `DecideOnFailure`: what the `Player` does about a track that cannot play |
 | `jam_mode.h/.cpp` | `JamMode`, `JamEntry`, `JamSlot`, `JamPlayback`: the jam mode of the queue; it knows nothing of the network or the protocol |
 | `sources.h/.cpp` | `Sources`: playing a source (likes, playlist, recommendations, artist, album, wave or station, search) with a ticket each, the wave's load-more and feedback callbacks, like and dislike of the current track |
@@ -84,6 +85,8 @@ public:
     bool seekTo(double seconds);                      // false if the engine can't seek (yet)
     bool seekFraction(double fraction);               // 0..1 of durationSeconds()
     void setShuffle(bool on);
+    void setShuffleAlgorithm(ShuffleAlgorithm algorithm);
+    ShuffleAlgorithm shuffleAlgorithm() const;
     void setRepeat(bool on);
     bool shuffle() const;                             // the user's choice
     bool shuffleActive() const;                       // shuffle && the queue is not endless
@@ -220,12 +223,12 @@ above.
   endless: `stop()`, mark waiting, run the load-more check, then emit
   `statusMessage("Loading more tracks…")`. Else (the end of a finite queue with repeat off):
   `stop()`, and the cursor stays on the last track.
-- **`previous()`** (spec TR-01, TR-02; the choice is `PreviousTarget()`): more than
+- **`previous()`** (spec TR-01, TR-02): more than
   `kPreviousRestartsAfterSeconds` (3 s) into a playing or paused track, it restarts that track
   with `seekTo(0)`. That is a seek, not a new start: no events and no play report; if the engine
   refuses the seek, `playIndex(cursor)`. Earlier, or while stopped: `playIndex(cursor - 1)`; at
   position 0 the last track if repeat is on, the first otherwise. With shuffle, the cursor
-  and target are positions in the stored shuffled order, mapped back to queue indices.
+  and target follow the navigator: stored order for WithoutRepeats, source order for Random.
 - **`play()`**, by engine state: Paused resumes. Playing calls `playIndex(cursor)`, which restarts
   the track as Winamp does, with `Skipped` and then a new `Started`. Buffering does nothing.
   Stopped calls `playIndex(cursor)`, or `playIndex(0)` when the cursor is -1.
@@ -240,7 +243,7 @@ above.
 - **Engine `trackAdvanced`** (the engine crossed into the queued stream with no gap): the open track
   gets `Finished` or `Skipped` as above. If there is no preload, or its stream is not the engine's
   `currentStream()`, or its index is out of range, the player resyncs:
-  `playIndex(sequentialNext())`, or `stop()` when that is -1. A cancelled preload is always cleared
+  `playIndex(pickNext())`, or `stop()` when that is -1. A cancelled preload is always cleared
   from the engine, so this branch is not expected to run. Otherwise the preload becomes the current
   track: `generation` is bumped, the preload's reply, stream, index and download flags are taken
   over, the wait ends, and then `currentTrackChanged`, the load-more check and `trackStarted`.
@@ -287,7 +290,7 @@ Tickets start at 1, so 0 never matches. `Sources` takes one for every pick.
 
 ### Endless sources (`TLoadMoreCallback`)
 
-- A queue is endless when `setQueue` got a `TLoadMoreCallback`. At its end `sequentialNext()`
+- A queue is endless when `setQueue` got a `TLoadMoreCallback`. At its end `pickNext()`
   returns -1 even with repeat on, so it never wraps. `next()` waits for more instead.
 - The load-more check (`maybeLoadMore`) calls the `TLoadMoreCallback` when all of these hold: the
   queue has one, no request is in flight for it, and `playlist().size() - currentIndex() <=
@@ -306,29 +309,20 @@ Tickets start at 1, so 0 never matches. `Sources` takes one for every pick.
 
 ### Next, shuffle, repeat
 
-- `sequentialNext()` returns `cursor + 1`. At the end of a finite queue it returns 0 if repeat is
-  on, and -1 otherwise. At the end of an endless queue it returns -1.
-- Shuffle does not apply to an endless queue (spec WAVE-10, WAVE-11): a wave plays in queue order.
-  `shuffle()` stays the user's choice, and MPRIS reads and writes that choice. `shuffleActive()`
-  is what applies now, and the main window draws the shuffle button from it. An ordinary queue
-  after a wave shuffles again without the user doing anything.
-- Active shuffle stores one permutation of queue indices and a position in it. The current
-  track is first when the order is built; the rest is shuffled with `std::shuffle` and
-  `QRandomGenerator::global()`. The displayed queue stays in its original order. Each queue
-  entry plays once per forward pass; duplicate track ids in the queue remain separate entries.
-- `pickNext()` reads the following position, or returns -1 at the end with repeat off. Repeat
-  wraps to the beginning of the same order. Previous follows that order with the usual 3 s rule.
-  A direct `playIndex` moves to that entry's position; replaying a track does not reshuffle.
-- A new queue, a source change, edits (append, insert, remove), or switching shuffle rebuilds the
-  order from the current track. Queue edits therefore start a new pass, which can include tracks
-  heard before the edit. Switching shuffle does not restart audio or change pause state.
-- `next()` and preload use the same next position. Looking ahead never consumes an entry.
-  Both explicit Next and gapless advance update the position when the track becomes current.
-- Storage is one `int` per queue entry plus the cursor. Building the order is O(n); reading the
-  next entry is O(1), and locating an entry after a transition or manual selection is O(n).
-- Repeat with a single track: `trackFinished` replays it. On a finite queue `sequentialNext()` is
-  0 then, so the same track is preloaded again and loops without a gap. An endless queue with one
-  track does not replay it: it waits for more (spec WAVE-12).
+- `pickNext()` delegates to `TrackNavigator::next`, passing Repeat only for finite queues.
+  Previous uses the navigator too, unless it must restart the current track after 3 s.
+- Shuffle does not apply to an endless queue (spec WAVE-10, WAVE-11): a wave always uses sequential
+  traversal. The shuffle button and preferred algorithm retain the user's choices for finite queues.
+- `shuffleAlgorithm()` defaults to WithoutRepeats. The application restores and saves it. Switching
+  algorithms while shuffle is active rebuilds navigation and refreshes preload; while inactive it
+  changes only the preference. Audio, position and pause state are preserved in either case.
+- A new queue, a source change, edits (append, insert, remove), or switching shuffle resets the
+  navigator from the current track. Queue edits start a new shuffled pass, which can include
+  tracks heard before the edit. A direct `playIndex` selects the entry in the existing order.
+- `next()` and preload read the same next entry. Looking ahead never consumes it. Explicit Next
+  and gapless advance call `select` when a track becomes current.
+- Repeat with a single track replays it, including through gapless preload. An endless queue with
+  one track does not replay it: it waits for more (spec WAVE-12).
 
 ### Downloads
 
@@ -450,7 +444,7 @@ FailureAction DecideOnFailure(FailureKind kind, int failuresInRow, bool hasNext,
 | `queueReplaced` | by `setQueue` and `clearQueue` only, before `playlistChanged` |
 | `currentTrackChanged` | by `setQueue`, even for an empty queue; by `playIndex` at once; again from `trackStarted` once the bitrate is known; twice on a gapless advance; by `removeTracks` when the current track was removed |
 | `positionTick` | after each timer tick's `poll()`, every 100 ms while the engine is Buffering, Playing or Paused |
-| `modesChanged` | by `setShuffle` and `setRepeat` on a change |
+| `modesChanged` | by `setShuffle`, `setShuffleAlgorithm` and `setRepeat` on a change |
 | `seeked(target)` | after a successful `seekTo` or `seekFraction`, with the clamped target |
 
 **Traps:**
@@ -490,6 +484,39 @@ FailureAction DecideOnFailure(FailureKind kind, int failuresInRow, bool hasNext,
 - `stop()` and `setQueue` do not reset `currentBitrate()`.
 - The timer starts on the engine's next `stateChanged`. An engine that is already playing when
   the `Player` is constructed is not polled until its state changes.
+
+## `track_navigator.h`: `TrackNavigator`
+
+```cpp
+enum class ShuffleAlgorithm { Random, WithoutRepeats };
+class TrackNavigator {
+    virtual void reset(int size, int current) = 0;
+    virtual void select(int index) = 0;
+    virtual int next(bool repeat) const = 0;
+    virtual int previous(bool repeat) const = 0;
+};
+std::unique_ptr<TrackNavigator> MakeTrackNavigator(std::optional<ShuffleAlgorithm> algorithm);
+```
+
+No algorithm means sequential traversal. The three implementations are private to the `.cpp`;
+Player knows only the interface. Navigation is independent of audio, networking, settings and UI.
+`reset` takes a queue size and its valid current index (or -1 for an empty queue). `select` takes
+an existing queue index. `next` and `previous` return queue indices, or -1 when no entry follows.
+Repeated lookahead returns the same candidate and does not advance. Empty queues return -1.
+
+- `SequentialNavigator`: follows source order. Repeat wraps at boundaries; Previous without
+  Repeat on the first entry returns that entry. O(1) space and operations.
+- `RandomNavigator`: chooses uniformly from all indices except the current one on `select` or
+  `reset`. The candidate is cached for lookahead/preload. Repeats across transitions are allowed;
+  with at least two entries playback continues even with Repeat off, matching the old random
+  behaviour. Previous follows source order. O(1) space and operations.
+- `ShuffledNavigator`: keeps a permutation, with the current entry first and the rest shuffled
+  via `std::shuffle` and `QRandomGenerator::global()`. Each entry appears once per forward pass;
+  duplicate track ids remain separate entries. Repeat wraps through the same permutation and
+  Previous follows it. Storage is one `int` per entry; reset and select are O(n), lookahead O(1).
+  The order is session-only. The displayed playlist stays in source order.
+
+Tests cover the interface without an audio engine, plus Player's real preload and gapless transitions.
 
 ## `sources.h`: `Sources`
 
