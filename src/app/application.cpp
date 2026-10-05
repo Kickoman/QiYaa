@@ -24,6 +24,9 @@
 #ifdef QIYAA_HAVE_SMTC
 #include "integrations/smtc.h"
 #endif
+#ifdef QIYAA_HAVE_MAC_MEDIA_CONTROLS
+#include "integrations/mac_media_controls.h"
+#endif
 
 #include <QAction>
 #include <QActionGroup>
@@ -449,6 +452,8 @@ Application::Application(const Options& options, QObject* parent)
 #elif defined(QIYAA_HAVE_SMTC)
         systemMediaControls =
             std::make_unique<Integrations::Smtc>(mediaControls.get(), mainWindowInstance.get());
+#elif defined(QIYAA_HAVE_MAC_MEDIA_CONTROLS)
+        systemMediaControls = std::make_unique<Integrations::MacMediaControls>(mediaControls.get());
 #endif
     }
 

@@ -1,4 +1,4 @@
-# `src/integrations` — the desktop's media controls: MPRIS on Linux, SMTC on Windows
+# `src/integrations` — the desktop's media controls: MPRIS on Linux, SMTC on Windows, MediaPlayer on macOS
 
 This folder lets the operating system drive the player and show what is playing: media keys,
 the GNOME/KDE media panels, `playerctl` and the lock screen on Linux/BSD through MPRIS 2 on the
@@ -6,15 +6,15 @@ D-Bus session bus; media keys, the media panel of the volume flyout and the lock
 Windows 10 and later through the System Media Transport Controls (SMTC). `MediaControls` is the
 platform-neutral part: it turns `Core::Player` into the commands and the state an OS expects, and
 takes volume, raise and quit as `Hooks`, so nothing here knows the windows. Exactly one backend
-(`Mpris` or `Smtc`) is compiled, or none. The folder does not play, queue or download anything
+(`Mpris`, `Smtc` or `MacMediaControls`) is compiled, or none. The folder does not play, queue or download anything
 ([src/core](../core/README.md), [src/audio](../audio/README.md)), does not decide whether media
-integration is on, build the hooks or pick the backend ([src/app](../app/README.md)), and has no
-macOS backend.
+integration is on, build the hooks or pick the backend ([src/app](../app/README.md)), and uses Apple MediaPlayer on macOS.
 
 | File | Contains |
 |---|---|
 | `media_controls.h/.cpp` | `MediaControls` and its `Hooks` — commands, status, cover URLs and change signals over `Core::Player` |
 | `mpris.h/.cpp` | `Mpris` (bus name, registration, `PropertiesChanged`) and its two D-Bus adaptors, `MprisRootAdaptor` (`org.mpris.MediaPlayer2`) and `MprisPlayerAdaptor` (`org.mpris.MediaPlayer2.Player`); built only with `QIYAA_HAVE_MPRIS` |
+| `mac_media_controls.h/.mm` | `MacMediaControls` — remote commands and Now Playing through Apple MediaPlayer; built only on macOS |
 | `smtc.h/.cpp` | `Smtc` — SMTC through C++/WinRT; built only with `QIYAA_HAVE_SMTC` |
 
 ## Dependencies
@@ -28,8 +28,9 @@ and below `app`. The top-level `CMakeLists.txt` adds at most one backend:
 |---|---|---|
 | MPRIS | `UNIX AND NOT APPLE`, and `find_package(Qt6 6.4 COMPONENTS DBus)` succeeds | `mpris.*`, PUBLIC `Qt6::DBus`, PUBLIC define `QIYAA_HAVE_MPRIS` |
 | SMTC | `WIN32 AND MSVC`, option `QIYAA_WITH_SMTC` (ON by default), and `winrt/Windows.Media.h` compiles with `/std:c++20 /EHsc` | `smtc.*`, PRIVATE `windowsapp` and `Qt6::Widgets`, PUBLIC define `QIYAA_HAVE_SMTC` |
+| MediaPlayer | `APPLE` | `mac_media_controls.h/.mm`, Objective-C++20 with ARC, PRIVATE Foundation and MediaPlayer frameworks, PUBLIC define `QIYAA_HAVE_MAC_MEDIA_CONTROLS` |
 
-Everywhere else (macOS, MinGW, Linux without Qt D-Bus) only `media_controls.*` is built; the app
+Everywhere else (MinGW, Linux without Qt D-Bus) only `media_controls.*` is built; the app
 still constructs a `MediaControls` there, with no backend attached. On Linux/BSD CMake prints
 `MPRIS: enabled` or `MPRIS: disabled (...)`, and on MSVC `SMTC: enabled` or `SMTC: disabled (...)`.
 
@@ -320,6 +321,20 @@ public:
   native handle were ever recreated, SMTC would stay bound to the old one.
 - `window` is dereferenced unchecked.
 - No test covers `Smtc`; the only check is that an MSVC build with C++/WinRT compiles it.
+
+## `MacMediaControls` (`mac_media_controls.h`)
+
+Registers play, pause, toggle, stop, next and previous handlers with
+`MPRemoteCommandCenter`. Commands are queued onto the backend's Qt thread and use
+`MediaControls` semantics. A `QPointer` guards pending commands during teardown.
+The native handler tokens are retained with ARC and removed on destruction.
+
+`MPNowPlayingInfoCenter` publishes title, artists, duration, elapsed time, playback rate
+and playback state on track/status changes, seeks and position ticks. No current track
+clears the metadata; destruction also clears it and marks playback stopped. macOS routes
+media keys to the active Now Playing application; this backend does not capture global
+keyboard events and needs no Accessibility permission. Artwork and system seeking are
+not implemented. The app's `mediaIntegration` option controls its lifetime, as for MPRIS/SMTC.
 
 ## Errors
 

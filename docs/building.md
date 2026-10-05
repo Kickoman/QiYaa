@@ -7,6 +7,8 @@
 - Qt ≥ 6.4: Core, Gui, Widgets, Network и Qt Linguist (`lrelease` собирает переводы интерфейса;
   на Ubuntu это `qt6-tools-dev` и `qt6-l10n-tools`, в установщике Qt он есть всегда); для тестов —
   Test.
+- macOS: медиаклавиши используют системные Foundation и MediaPlayer; нужен компилятор
+  Objective-C++ из Xcode Command Line Tools. Поддержка включается автоматически.
 - Linux: Qt DBus — для медиаклавиш (MPRIS). Без него QiYaa собирается и просто не публикует себя.
 - Milkdrop: Qt OpenGL и заголовки OpenGL (на Ubuntu это `libgl-dev`), плюс projectM 4.1. projectM
   берётся установленный (vcpkg, Homebrew, пакет дистрибутива); если его нет, CMake скачивает
