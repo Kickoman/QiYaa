@@ -163,7 +163,19 @@ qiyaa_add_module(integrations
     src/integrations/media_controls.cpp src/integrations/media_controls.h)
 target_link_libraries(qiyaa_integrations PUBLIC Qt6::Gui PRIVATE qiyaa_audio qiyaa_core qiyaa_yandex)
 
-# System media integration: MPRIS on Linux/BSD (needs Qt D-Bus), SMTC on Windows.
+# System media integration: MPRIS, macOS MediaPlayer, or Windows SMTC.
+if(APPLE)
+    enable_language(OBJCXX)
+    set_target_properties(qiyaa_integrations PROPERTIES
+        OBJCXX_STANDARD 20 OBJCXX_STANDARD_REQUIRED ON OBJCXX_EXTENSIONS OFF)
+    target_sources(qiyaa_integrations PRIVATE
+        src/integrations/mac_media_controls.mm src/integrations/mac_media_controls.h)
+    set_source_files_properties(src/integrations/mac_media_controls.mm
+        PROPERTIES COMPILE_OPTIONS "-fobjc-arc")
+    target_link_libraries(qiyaa_integrations PRIVATE "-framework Foundation" "-framework MediaPlayer")
+    target_compile_definitions(qiyaa_integrations PUBLIC QIYAA_HAVE_MAC_MEDIA_CONTROLS)
+    message(STATUS "macOS media controls: enabled")
+endif()
 if(UNIX AND NOT APPLE)
     find_package(Qt6 6.4 QUIET COMPONENTS DBus)
     if(Qt6DBus_FOUND)

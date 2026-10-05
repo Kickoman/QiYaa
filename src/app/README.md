@@ -12,7 +12,7 @@ Qt platform, parses the command line and runs the application. The folder only w
 together. Drawing, dragging, snapping, shading and resizing a window are in
 [src/ui](../ui/README.md); the queue, playback and wave reports in [src/core](../core/README.md);
 HTTP, OAuth and the token file format in [src/yandex](../yandex/README.md); `.wsz` parsing in
-[src/skins](../skins/README.md); MPRIS and SMTC in [src/integrations](../integrations/README.md).
+[src/skins](../skins/README.md); MPRIS, SMTC and macOS MediaPlayer in [src/integrations](../integrations/README.md).
 
 | File | Contains |
 |---|---|
@@ -70,7 +70,7 @@ public:
         bool offline = false;           // start() does not look for a token
         bool audio = true;              // false: AudioEngine::init() is never called
         bool readOnlySettings = false;  // settings, covers, Milkdrop presets in a temp dir
-        bool mediaIntegration = true;   // MPRIS or SMTC
+        bool mediaIntegration = true;   // MPRIS, SMTC or macOS MediaPlayer
         QNetworkAccessManager* network = nullptr;  // tests: one that reaches a mock server
         std::optional<Language> language;          // this run only; unset: the `language` setting
     };
@@ -121,7 +121,7 @@ and every method must be called from the GUI thread (the audio engine's decoder 
 callback stay inside [src/audio](../audio/README.md)). `Application` owns everything it wires:
 `QSettings`, the base and the current `Skins::Skin`, `ApiClient`, `Library`, `AudioEngine`,
 `Player`, `Sources` and `JamMode` as members; its own `QNetworkAccessManager` unless
-`Options::network` lends one; the `Jam::HostSession`, `CoverCache`, `MediaControls`, the `Mpris` or
+`Options::network` lends one; the `Jam::HostSession`, `CoverCache`, `MediaControls`, the `Mpris`, `MacMediaControls` or
 `Smtc` object (held as `std::unique_ptr<QObject>`) and the windows (five, and the jam window in a
 jam build) through `std::unique_ptr`.
 The accessors return non-owning pointers, valid until the `Application` is destroyed.
@@ -130,7 +130,7 @@ Member order is load-bearing. Members are constructed in declaration order, and 
 list relies on it: the settings file after the temporary directory, `ApiClient` after the network
 manager, `Player` after the library and the engine, `JamMode` after the player. The host session
 is declared after `JamMode` and destroyed before it. The windows are declared last, so they are
-destroyed first, while the player, engine and skins they point at still exist. The `Mpris`/`Smtc`
+destroyed first, while the player, engine and skins they point at still exist. The `Mpris`/`Smtc`/`MacMediaControls`
 object dies before the `MediaControls` it wraps, and `QSettings` before the temporary directory
 that may hold its file.
 
@@ -183,7 +183,8 @@ that may hold its file.
 9. With `mediaIntegration`, creates `Integrations::MediaControls` with four hooks: volume, set
    volume, raise (un-minimise the main window, raise every visible window, activate the main one)
    and quit (`quit()`). On top of it, `Mpris` in a build with `QIYAA_HAVE_MPRIS`, or `Smtc` in a
-   build with `QIYAA_HAVE_SMTC`.
+   build with `QIYAA_HAVE_SMTC`, or `MacMediaControls` with
+   `QIYAA_HAVE_MAC_MEDIA_CONTROLS` on macOS.
 10. With audio on and not offline, `watchNetwork()` (see the traps).
 11. Connects `QApplication::aboutToQuit` to `saveState()` followed by `Player::stop()`.
 
@@ -679,7 +680,7 @@ Failures that are data:
 - `.wsz` loading and the bundled skins: [src/skins](../skins/README.md).
 - The audio backend (`QIYAA_AUDIO_BACKEND`), equalizer DSP, `.eqf` presets:
   [src/audio](../audio/README.md).
-- MPRIS and SMTC: [src/integrations](../integrations/README.md).
+- MPRIS, SMTC and macOS MediaPlayer: [src/integrations](../integrations/README.md).
 - Milkdrop rendering and the preset list: [src/vis](../vis/README.md).
 - The user-facing command-line reference: [docs/cli.md](../../docs/cli.md).
 - The `.desktop` file, the Windows resource file and the installers: `packaging/`.
