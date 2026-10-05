@@ -149,6 +149,7 @@ private:
     void trackStarted(const Yandex::Track& track, int bitrate);
     int sequentialNext() const;
     int pickNext() const;
+    void rebuildShuffleOrder();
     void maybePreload();
     void cancelPreload();
     void refreshPreload();
@@ -159,6 +160,8 @@ private:
     Yandex::Library* yandexLibrary;
     Audio::AudioEngine* audioEngine;
     QList<Yandex::Track> queuedTracks;
+    QList<int> shuffleOrder;
+    int shufflePosition = -1;
     QString titleText;
     TLoadMoreCallback loadMore;
     TEventCallback reportEvent;

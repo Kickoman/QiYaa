@@ -63,7 +63,7 @@ Player::Player(Yandex::Library* library, Audio::AudioEngine* engine, QObject* pa
         openTrack.reset();
         if (!preload || preload->stream != audioEngine->currentStream()
             || preload->index >= queuedTracks.size()) {
-            const int nextIndex = sequentialNext();
+            const int nextIndex = pickNext();
             nextIndex >= 0 ? playIndex(nextIndex) : stop();
             return;
         }
@@ -73,6 +73,7 @@ Player::Player(Yandex::Library* library, Audio::AudioEngine* engine, QObject* pa
         currentLinkUrl = upcoming.link;
         streamId = upcoming.stream;
         playingIndex = upcoming.index;
+        shufflePosition = int(shuffleOrder.indexOf(playingIndex));
         currentDownloaded = upcoming.downloadDone;
         streamFailure.reset();
         currentBytes = 1;  // a preload that chained has audio
@@ -141,6 +142,7 @@ void Player::setQueue(
     failuresInRow = 0;  // ERR-06
     ++queueGeneration;
     playingIndex = queuedTracks.isEmpty() ? -1 : 0;
+    rebuildShuffleOrder();
     Q_EMIT queueReplaced();
     Q_EMIT playlistChanged();
     Q_EMIT currentTrackChanged();
@@ -166,6 +168,7 @@ void Player::appendTracks(const QList<Yandex::Track>& tracks) {
     if (playingIndex < 0) {
         playingIndex = 0;
     }
+    rebuildShuffleOrder();
     Q_EMIT playlistChanged();
     refreshPreload();
 }
@@ -189,6 +192,7 @@ void Player::insertTracks(int index, const QList<Yandex::Track>& tracks) {
     } else if (at <= playingIndex) {
         playingIndex += int(added.size());
     }
+    rebuildShuffleOrder();
     Q_EMIT playlistChanged();
     refreshPreload();
 }
@@ -206,6 +210,7 @@ void Player::changeSource(
     loadingMore = false;
     waitingForMore = false;
     ++queueGeneration;
+    rebuildShuffleOrder();
     Q_EMIT playlistChanged();
     Q_EMIT modesChanged();
     refreshPreload();
@@ -234,6 +239,7 @@ void Player::removeTracks(QList<int> indices) {
     if (queuedTracks.isEmpty()) {
         playingIndex = -1;
     }
+    rebuildShuffleOrder();
     Q_EMIT playlistChanged();
     refreshPreload();
 }
@@ -305,6 +311,7 @@ void Player::setShuffle(bool on) {
         return;
     }
     shuffleEnabled = on;
+    rebuildShuffleOrder();
     Q_EMIT modesChanged();
     if (on && loadMore) {
         Q_EMIT statusMessage(ShuffleOffInWaveText());
@@ -347,15 +354,32 @@ int Player::sequentialNext() const {
     return 0;
 }
 
+void Player::rebuildShuffleOrder() {
+    shuffleOrder.clear();
+    shufflePosition = -1;
+    if (!shuffleActive() || playingIndex < 0) {
+        return;
+    }
+    shuffleOrder.reserve(queuedTracks.size());
+    shuffleOrder << playingIndex;
+    for (int index = 0; index < queuedTracks.size(); ++index) {
+        if (index != playingIndex) {
+            shuffleOrder << index;
+        }
+    }
+    std::shuffle(shuffleOrder.begin() + 1, shuffleOrder.end(), *QRandomGenerator::global());
+    shufflePosition = 0;
+}
+
 int Player::pickNext() const {
-    if (!shuffleActive() || queuedTracks.size() < 2) {
+    if (!shuffleActive()) {
         return sequentialNext();
     }
-    int randomIndex;
-    do {
-        randomIndex = int(QRandomGenerator::global()->bounded(queuedTracks.size()));
-    } while (randomIndex == playingIndex);
-    return randomIndex;
+    const int nextPosition = shufflePosition + 1;
+    if (nextPosition < shuffleOrder.size()) {
+        return shuffleOrder[nextPosition];
+    }
+    return repeatEnabled && !shuffleOrder.isEmpty() ? shuffleOrder.front() : -1;
 }
 
 void Player::next() {
@@ -398,11 +422,11 @@ void Player::previous() {
     }
     const bool active = audioEngine->state() != Audio::AudioEngine::State::Stopped;
     const int target = PreviousTarget(
-        active ? audioEngine->positionSeconds() : 0.0, playingIndex, int(queuedTracks.size()),
-        repeatEnabled
+        active ? audioEngine->positionSeconds() : 0.0,
+        shuffleActive() ? shufflePosition : playingIndex, int(queuedTracks.size()), repeatEnabled
     );
     if (target >= 0) {
-        playIndex(target);
+        playIndex(shuffleActive() ? shuffleOrder[target] : target);
     } else if (!seekTo(0)) {  // the restart is a seek: no new start, no events
         playIndex(playingIndex);
     }
@@ -467,6 +491,7 @@ void Player::playIndex(int index) {
     const quint64 requestGeneration = ++generation;
     abortDownload();
     playingIndex = index;
+    shufflePosition = int(shuffleOrder.indexOf(index));
     bitrateKbps = 0;
     currentLinkUrl.clear();
     currentDownloaded = false;
@@ -776,14 +801,8 @@ void Player::cancelPreload() {
 void Player::refreshPreload() {
     if (preload) {
         int index = -1;
-        if (shuffleActive()) {
-            for (int i = 0; i < queuedTracks.size() && index < 0; ++i) {
-                if (i != playingIndex && queuedTracks[i].id == preload->trackId) {
-                    index = i;
-                }
-            }
-        } else if (const int nextIndex = sequentialNext();
-                   nextIndex >= 0 && queuedTracks[nextIndex].id == preload->trackId) {
+        if (const int nextIndex = pickNext();
+            nextIndex >= 0 && queuedTracks[nextIndex].id == preload->trackId) {
             index = nextIndex;
         }
         if (index >= 0) {

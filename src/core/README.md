@@ -224,8 +224,8 @@ above.
   `kPreviousRestartsAfterSeconds` (3 s) into a playing or paused track, it restarts that track
   with `seekTo(0)`. That is a seek, not a new start: no events and no play report; if the engine
   refuses the seek, `playIndex(cursor)`. Earlier, or while stopped: `playIndex(cursor - 1)`; at
-  index 0 the last track if repeat is on, track 0 otherwise. It ignores shuffle; there is no
-  history.
+  position 0 the last track if repeat is on, the first otherwise. With shuffle, the cursor
+  and target are positions in the stored shuffled order, mapped back to queue indices.
 - **`play()`**, by engine state: Paused resumes. Playing calls `playIndex(cursor)`, which restarts
   the track as Winamp does, with `Skipped` and then a new `Started`. Buffering does nothing.
   Stopped calls `playIndex(cursor)`, or `playIndex(0)` when the cursor is -1.
@@ -312,12 +312,20 @@ Tickets start at 1, so 0 never matches. `Sources` takes one for every pick.
   `shuffle()` stays the user's choice, and MPRIS reads and writes that choice. `shuffleActive()`
   is what applies now, and the main window draws the shuffle button from it. An ordinary queue
   after a wave shuffles again without the user doing anything.
-- `pickNext()` is `sequentialNext()` when `shuffleActive()` is false or the queue has fewer than
-  2 tracks. Otherwise it draws uniformly from every index except the cursor, using
-  `QRandomGenerator::global()`. Repeats are allowed, nothing records history, and the draws are
-  not reproducible.
-- The pick is made when the preload starts, and `next()` goes to the preload's index. So with
-  shuffle, "next" is the track already downloading. Before a preload exists, `next()` draws again.
+- Active shuffle stores one permutation of queue indices and a position in it. The current
+  track is first when the order is built; the rest is shuffled with `std::shuffle` and
+  `QRandomGenerator::global()`. The displayed queue stays in its original order. Each queue
+  entry plays once per forward pass; duplicate track ids in the queue remain separate entries.
+- `pickNext()` reads the following position, or returns -1 at the end with repeat off. Repeat
+  wraps to the beginning of the same order. Previous follows that order with the usual 3 s rule.
+  A direct `playIndex` moves to that entry's position; replaying a track does not reshuffle.
+- A new queue, a source change, edits (append, insert, remove), or switching shuffle rebuilds the
+  order from the current track. Queue edits therefore start a new pass, which can include tracks
+  heard before the edit. Switching shuffle does not restart audio or change pause state.
+- `next()` and preload use the same next position. Looking ahead never consumes an entry.
+  Both explicit Next and gapless advance update the position when the track becomes current.
+- Storage is one `int` per queue entry plus the cursor. Building the order is O(n); reading the
+  next entry is O(1), and locating an entry after a transition or manual selection is O(n).
 - Repeat with a single track: `trackFinished` replays it. On a finite queue `sequentialNext()` is
   0 then, so the same track is preloaded again and loops without a gap. An endless queue with one
   track does not replay it: it waits for more (spec WAVE-12).
@@ -397,8 +405,7 @@ FailureAction DecideOnFailure(FailureKind kind, int failuresInRow, bool hasNext,
   follows, so `next()` picks again: the result is a gap, never the wrong track.
 - **Refreshed** by `refreshPreload()` after `appendTracks`, `removeTracks`, and any actual change of
   shuffle or repeat. The preload is kept, and its index updated, when its track id is still what
-  follows. Without active shuffle, that means the id at `sequentialNext()`. With it, the
-  first index other than the cursor that holds the id. Otherwise the preload is cancelled.
+  follows at `pickNext()`, in either mode. Otherwise the preload is cancelled.
   Whenever no preload is kept, `maybePreload()` tries a new one.
 - A queued stream that the engine cannot decode is forgotten by the engine, and
   `queuedStream()` returns 0 for it. The next `playIndex` of that track then fetches it again the
