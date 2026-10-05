@@ -173,6 +173,19 @@ Application::Application(const Options& options, QObject* parent)
         LanguageFromCode(settings.value(QStringLiteral("language")).toString())
             .value_or(kDefaultLanguage)
     ));
+    corePlayer.setShuffleAlgorithm(
+        settings.value(QStringLiteral("shuffle/algorithm")).toString() == QLatin1String("random")
+            ? Core::ShuffleAlgorithm::Random
+            : Core::ShuffleAlgorithm::WithoutRepeats
+    );
+    connect(&corePlayer, &Core::Player::modesChanged, this, [this] {
+        settings.setValue(
+            QStringLiteral("shuffle/algorithm"),
+            corePlayer.shuffleAlgorithm() == Core::ShuffleAlgorithm::Random
+                ? QStringLiteral("random")
+                : QStringLiteral("without-repeats")
+        );
+    });
     if (startOptions.audio) {
         if (const Audio::AudioEngine::InitResult initResult = audioEngine.init(); !initResult.ok) {
             qWarning("Audio: %s", qPrintable(initResult.message));
@@ -1058,6 +1071,22 @@ void Application::fillWindowActions(QMenu* menu) {
         action->setCheckable(true);
         action->setChecked(mainWindowInstance->visMode() == mode);
         visualizationGroup->addAction(action);
+    }
+
+    QMenu* shuffleMenu = menu->addMenu(tr("Shuffle"));
+    shuffleMenu->setObjectName(QStringLiteral("shuffleMenu"));
+    auto* shuffleGroup = new QActionGroup(shuffleMenu);
+    const std::pair<Core::ShuffleAlgorithm, QString> algorithms[] = {
+        {Core::ShuffleAlgorithm::Random, tr("Random track")},
+        {Core::ShuffleAlgorithm::WithoutRepeats, tr("Without repeats")}
+    };
+    for (const auto& [algorithm, name] : algorithms) {
+        QAction* action = shuffleMenu->addAction(name, this, [this, algorithm] {
+            corePlayer.setShuffleAlgorithm(algorithm);
+        });
+        action->setCheckable(true);
+        action->setChecked(corePlayer.shuffleAlgorithm() == algorithm);
+        shuffleGroup->addAction(action);
     }
 
     QMenu* skinsMenu = menu->addMenu(tr("Skins"));
