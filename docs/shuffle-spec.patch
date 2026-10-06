@@ -1,0 +1,45 @@
+--- a/player/transport.md
++++ b/player/transport.md
+@@ -11,11 +11,24 @@
+ |---|---|---|---|---|---|
+ | TR-01 | The current track has played for at most 3 s | Previous | The previous track plays. On the first track it goes to the last track if repeat is on, and restarts the first track if repeat is off. | yes | yes |
+ | TR-02 | The current track has played for more than 3 s | Previous | The current track restarts from 0. This is a seek, not a new start: no events and no `/play-audio` (unlike Play's restart, [TRK-02](tracking.md)). | yes | yes |
+-| TR-03 | A track is current | Next, or the current track ends | The next track in play order plays. Without shuffle that is the following one. With shuffle it is a random other track of the queue. | yes | yes |
+-| TR-04 | Repeat is off, the last track is current | Next, or the last track ends | Playback stops. The cursor stays on the last track, and the queue stays. | yes | yes |
+-| TR-05 | Repeat is on, the last track is current | Next, or the last track ends | The first track plays. | yes | yes |
++| TR-03 | A track is current | Next, or the current track ends | The next track in play order plays. Without shuffle that is the following one. With shuffle it follows the preferred algorithm: Random chooses another entry, WithoutRepeats follows a stored permutation. | yes | yes |
++| TR-04 | Repeat is off, the last entry in sequential or WithoutRepeats order is current | Next, or the last track ends | Playback stops. The cursor stays on the last track, and the queue stays. | yes | yes |
++| TR-05 | Repeat is on, the last entry in sequential or WithoutRepeats order is current | Next, or the last track ends | The first track plays. | yes | yes |
+ | TR-06 | — | The user switches repeat | Repeat has two states, off and on (the whole queue). There is no repeat of one track. | yes | yes |
+ | TR-07 | A finite queue | The user dislikes the current track | The dislike request of [TRK-07](tracking.md), then the same as Next: TR-03, TR-04 or TR-05. | yes | yes |
+ 
+-Not fixed yet: which track Previous goes to when shuffle is on. The desktop goes to the one before
+-it in the queue, and Android to the one before it in the shuffled order.
++## Stored shuffle order (proposed desktop behaviour)
++
++The displayed queue stays in source order. The playback order is held in memory for the current
++session. "Once" means once per queue entry; duplicate track ids remain separate entries.
++
++| ID | Given | When | Then | Desktop | Android |
++|---|---|---|---|---|---|
++| SHUF-01 | A finite queue, WithoutRepeats on | Advance through one pass | Each queue entry is visited once. Repeat off stops at the end; repeat on wraps through the same permutation. | yes | verify |
++| SHUF-02 | WithoutRepeats on | Previous or direct track selection | Previous follows the stored order with TR-01/TR-02. Direct selection moves the cursor to that entry in the order. | yes | verify |
++| SHUF-03 | A track is playing or paused | Switch shuffle or its preferred algorithm | Current audio, position and pause state stay unchanged. Enabling WithoutRepeats starts a new permutation with the current track first; Random selects a cached next candidate. Disabling uses source order. | yes | verify |
++| SHUF-04 | WithoutRepeats on | Append, insert or remove queue entries | Rebuild the permutation from the current entry; a new pass can include previously heard entries. Removing the current entry retains the existing stop behaviour. An empty queue stays stopped. | yes | verify |
++| SHUF-05 | Shuffle on | Preload, manual Next or gapless advance | All use the same next entry. Preload lookahead does not advance the cursor; it advances only when that entry becomes current. | yes | verify |
++| SHUF-06 | Shuffle on | A wave starts, or an ordinary queue replaces it | WAVE-10/WAVE-11 apply; no stored shuffle order is used in a wave. | yes | yes |
++| SHUF-07 | Random is selected and shuffle on | Next, Previous or preload | Next chooses another entry; repeats across transitions are allowed. With at least two entries playback continues with Repeat off. Lookahead is stable until select/reset. Previous follows source order. | yes | verify |
++| SHUF-08 | A preferred shuffle algorithm | Restart the desktop app | Restore Random or WithoutRepeats from settings; missing/unknown values default to WithoutRepeats. The button remains the independent on/off control. | yes | verify |
+--- a/parity.md
++++ b/parity.md
+@@ -36,8 +36,9 @@
+ |---|---|---|---|
+ | Play, pause, stop, next, previous, seek | yes | yes | |
+ | Previous: the previous track within 3 s, otherwise restart | yes | yes | [TR-01, TR-02](player/transport.md) |
+-| Previous while shuffle is on | differs | differs | Not decided yet ([transport.md](player/transport.md)) |
++| Previous while shuffle is on | yes | verify | Stored play order, with the 3 s restart rule ([SHUF-02](player/transport.md)) |
+ | Shuffle | yes | yes | Android keeps the choice in memory only |
++| Stored shuffle permutation without repeats per pass | yes | verify | [SHUF-01 to SHUF-08](player/transport.md); verify Android before marking parity |
+ | Repeat (whole queue; no repeat-one) | yes | yes | [TR-06](player/transport.md) |
+ | Gapless: the next track is fetched ahead and follows without silence | yes | unclear | Android relies on ExoPlayer's playlist |
+ | Volume and balance | yes | yes | |

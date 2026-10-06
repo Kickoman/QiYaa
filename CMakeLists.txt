@@ -104,7 +104,8 @@ qiyaa_add_module(core
     src/core/failure_policy.cpp src/core/failure_policy.h
     src/core/jam_mode.cpp       src/core/jam_mode.h
     src/core/player.cpp         src/core/player.h
-    src/core/sources.cpp        src/core/sources.h)
+    src/core/sources.cpp        src/core/sources.h
+    src/core/track_navigator.cpp src/core/track_navigator.h)
 target_link_libraries(qiyaa_core PUBLIC qiyaa_audio qiyaa_yandex Qt6::Gui Qt6::Network)
 
 # Jam: a shared queue the app hosts for guests (spec/jam). Needs Qt WebSockets; without it the

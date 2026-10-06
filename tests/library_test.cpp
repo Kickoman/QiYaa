@@ -17,6 +17,7 @@
 #include <QNetworkAccessManager>
 #include <QNetworkRequest>
 #include <QObject>
+#include <QSet>
 #include <QSignalSpy>
 #include <QString>
 #include <QStringList>
@@ -764,6 +765,193 @@ private Q_SLOTS:
         QTest::qWait(300);
         QCOMPARE(playback.engine.state(), Audio::AudioEngine::State::Stopped);
         QVERIFY(!playback.player.trackInProgress());
+    }
+
+    void shuffleVisitsEachTrackOnceAndStops() {  // proposed spec SHUF-01 (docs/shuffle-spec.patch)
+        Audio::AudioEngine engine;
+        Core::Player player(&library, &engine);
+        player.setShuffle(true);
+        player.setQueue(NumberedTracks({1, 2, 3, 4, 5, 6}), "Plain", false);
+        QSet<int> visited;
+        for (int count = 0; count < 6; ++count) {
+            QVERIFY(!visited.contains(player.currentIndex()));
+            visited.insert(player.currentIndex());
+            if (count < 5) {
+                player.next();
+            }
+        }
+        QCOMPARE(visited.size(), 6);
+        const int last = player.currentIndex();
+        QSignalSpy changed(&player, &Core::Player::currentTrackChanged);
+        player.next();
+        QCOMPARE(player.currentIndex(), last);
+        QCOMPARE(changed.count(), 0);
+        QVERIFY(!player.trackInProgress());
+        for (int index = 0; index < 6; ++index) {
+            QCOMPARE(player.playlist()[index].id, QString::number(index + 1));
+        }
+    }
+
+    void shufflePreviousAndRepeatFollowTheStoredOrder(
+    ) {  // proposed spec SHUF-01, SHUF-02 (docs/shuffle-spec.patch)
+        Audio::AudioEngine engine;
+        Core::Player player(&library, &engine);
+        player.setQueue(NumberedTracks({1, 2, 3, 4, 5}), "Plain", false);
+        player.setShuffle(true);
+        player.setRepeat(true);
+        QList<int> order{player.currentIndex()};
+        for (int count = 1; count < 5; ++count) {
+            player.next();
+            order << player.currentIndex();
+        }
+        QCOMPARE(QSet<int>(order.begin(), order.end()).size(), 5);
+        player.next();
+        QCOMPARE(player.currentIndex(), order[0]);
+        player.previous();
+        QCOMPARE(player.currentIndex(), order[4]);
+        for (int position = 3; position >= 0; --position) {
+            player.previous();
+            QCOMPARE(player.currentIndex(), order[position]);
+        }
+        player.playIndex(order[2]);
+        player.next();
+        QCOMPARE(player.currentIndex(), order[3]);
+        player.setRepeat(false);
+        player.next();
+        QCOMPARE(player.currentIndex(), order[4]);
+        player.next();
+        QCOMPARE(player.currentIndex(), order[4]);
+        QVERIFY(!player.trackInProgress());
+    }
+
+    void shuffleRebuildsAfterQueueEdits_data() {
+        QTest::addColumn<QString>("operation");
+        for (const char* operation : {"append", "insert", "remove", "remove current"}) {
+            QTest::newRow(operation) << QString::fromLatin1(operation);
+        }
+    }
+
+    void shuffleRebuildsAfterQueueEdits() {  // proposed spec SHUF-04 (docs/shuffle-spec.patch)
+        QFETCH(QString, operation);
+        Audio::AudioEngine engine;
+        Core::Player player(&library, &engine);
+        player.setQueue(NumberedTracks({1, 2, 3, 4}), "Plain", false);
+        player.playIndex(2);
+        player.setShuffle(true);
+        if (operation == "append") {
+            player.appendTracks(NumberedTracks({5}));
+        } else if (operation == "insert") {
+            player.insertTracks(0, NumberedTracks({5}));
+        } else if (operation == "remove") {
+            player.removeTracks({0});
+        } else {
+            player.removeTracks({2});
+        }
+        if (operation != "remove current") {
+            QCOMPARE(player.currentTrack()->id, QStringLiteral("3"));
+        }
+        QSet<QString> visited;
+        const int size = int(player.playlist().size());
+        for (int count = 0; count < size; ++count) {
+            const QString id = player.currentTrack()->id;
+            QVERIFY(!visited.contains(id));
+            visited.insert(id);
+            if (count + 1 < size) {
+                player.next();
+            }
+        }
+        QCOMPARE(visited.size(), size);
+        player.next();
+        QVERIFY(!player.trackInProgress());
+        player.removeTracks({0, 1, 2, 3, 4});
+        player.next();
+        player.previous();
+        QCOMPARE(player.currentIndex(), -1);
+    }
+
+    void shuffleToggleKeepsPlaybackAndGaplessAdvanceFollowsTheOrder_data() {
+        QTest::addColumn<int>("algorithm");
+        QTest::newRow("without repeats") << int(Core::ShuffleAlgorithm::WithoutRepeats);
+        QTest::newRow("random") << int(Core::ShuffleAlgorithm::Random);
+    }
+
+    void shuffleToggleKeepsPlaybackAndGaplessAdvanceFollowsTheOrder(
+    ) {  // proposed spec SHUF-03, SHUF-05 (docs/shuffle-spec.patch)
+        QFETCH(int, algorithm);
+        PlaybackStack playback;
+        if (!setUpAudio(playback, {31, 32, 33})) {
+            QSKIP("no audio output");
+        }
+        auto& player = playback.player;
+        player.setShuffleAlgorithm(Core::ShuffleAlgorithm(algorithm));
+        player.setQueue(NumberedTracks({31, 32, 33}), "Plain", true);
+        QVERIFY(QTest::qWaitFor([&] { return player.preloadedIndex() == 1; }, 5000));
+        QVERIFY(player.seekTo(0.5));
+        player.pause();
+        const double position = playback.engine.positionSeconds();
+        QSignalSpy changed(&player, &Core::Player::currentTrackChanged);
+        player.setShuffle(true);
+        QCOMPARE(player.currentIndex(), 0);
+        QCOMPARE(changed.count(), 0);
+        QCOMPARE(playback.engine.state(), Audio::AudioEngine::State::Paused);
+        QCOMPARE(playback.engine.positionSeconds(), position);
+        QVERIFY(QTest::qWaitFor([&] { return player.preloadedIndex() >= 0; }, 5000));
+        const int next = player.preloadedIndex();
+        QVERIFY(next != 0);
+        QTest::qWait(300);
+        player.play();
+        QSignalSpy advanced(&playback.engine, &Audio::AudioEngine::trackAdvanced);
+        QVERIFY(player.seekTo(2.4));
+        QVERIFY(advanced.wait(4000));
+        QCOMPARE(player.currentIndex(), next);
+        QVERIFY(QTest::qWaitFor([&] { return player.preloadedIndex() >= 0; }, 5000));
+        const int last = player.preloadedIndex();
+        QVERIFY(last != next);
+        if (player.shuffleAlgorithm() == Core::ShuffleAlgorithm::WithoutRepeats) {
+            QVERIFY(last != 0);
+        }
+        player.next();
+        QCOMPARE(player.currentIndex(), last);
+        if (player.shuffleAlgorithm() == Core::ShuffleAlgorithm::WithoutRepeats) {
+            QCOMPARE(player.preloadedIndex(), -1);
+        }
+        player.pause();
+        const double lastPosition = playback.engine.positionSeconds();
+        changed.clear();
+        player.setShuffleAlgorithm(
+            player.shuffleAlgorithm() == Core::ShuffleAlgorithm::Random
+                ? Core::ShuffleAlgorithm::WithoutRepeats
+                : Core::ShuffleAlgorithm::Random
+        );
+        QCOMPARE(player.currentIndex(), last);
+        QCOMPARE(changed.count(), 0);
+        QCOMPARE(playback.engine.state(), Audio::AudioEngine::State::Paused);
+        QCOMPARE(playback.engine.positionSeconds(), lastPosition);
+        player.setShuffle(false);
+        QCOMPARE(player.currentIndex(), last);
+        QCOMPARE(changed.count(), 0);
+        QCOMPARE(playback.engine.state(), Audio::AudioEngine::State::Paused);
+        QCOMPARE(playback.engine.positionSeconds(), lastPosition);
+        player.stop();
+    }
+
+    void shuffleHandlesEmptyAndSingleTrackQueues(
+    ) {  // proposed spec SHUF-01, SHUF-04 (docs/shuffle-spec.patch)
+        Audio::AudioEngine engine;
+        Core::Player player(&library, &engine);
+        player.setShuffle(true);
+        player.setQueue({}, "Empty", false);
+        player.next();
+        player.previous();
+        QCOMPARE(player.currentIndex(), -1);
+        player.setQueue(NumberedTracks({1}), "Single", false);
+        player.playIndex(0);
+        player.next();
+        QVERIFY(!player.trackInProgress());
+        player.setRepeat(true);
+        player.next();
+        QCOMPARE(player.currentIndex(), 0);
+        QVERIFY(player.trackInProgress());
     }
 
     void shuffleDoesNotApplyInAWave() {  // spec WAVE-10, WAVE-11

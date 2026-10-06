@@ -148,6 +148,18 @@
         <translation>Выключана</translation>
     </message>
     <message>
+        <source>Shuffle</source>
+        <translation>Шафл</translation>
+    </message>
+    <message>
+        <source>Random track</source>
+        <translation>Выпадковы трэк</translation>
+    </message>
+    <message>
+        <source>Without repeats</source>
+        <translation>Без паўтораў</translation>
+    </message>
+    <message>
         <source>Skins</source>
         <translation>Скіны</translation>
     </message>
