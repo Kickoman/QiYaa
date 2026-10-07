@@ -106,7 +106,7 @@ public:
 private:
     void layoutWindows();
     void installShortcuts(QWidget* widget);
-    void showMainMenu(QPoint globalPosition);
+    void showMainMenu(QPoint globalPosition, const Yandex::Track* track);
     void showSourcesMenu(QPoint globalPosition);
     void fillWindowActions(QMenu* menu);
     void transportKey(int key);

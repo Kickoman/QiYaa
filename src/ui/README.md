@@ -465,7 +465,8 @@ public:
 Q_SIGNALS:
     void closeRequested();
     void sizeStepsChanged(QSize steps);     // only on a change
-    void sourcesMenuRequested(QPoint globalPos);  // ADD button or right click
+    void sourcesMenuRequested(QPoint globalPos);  // ADD button or right click outside a row
+    void trackMenuRequested(QPoint globalPos, int row);  // right click on a track
 };
 ```
 
@@ -493,7 +494,9 @@ buttons, 9x9 each, which act on release inside.
   handle drags and a click on the track jumps there. The bottom-right 20x20 grip resizes in steps
   of 25x29 px of mouse travel.
 - Right click selects the row under the cursor unless it is already selected, then emits
-  `sourcesMenuRequested`, so the owner's menu acts on the selection.
+  `trackMenuRequested` with that row, even within a larger selection. A keyboard context menu
+  uses the focused row, falling back to the current track. A click outside the rows emits
+  `sourcesMenuRequested`.
 - Bottom bar (base = width − 150, height − 38): running time `selected/total` at base + (7, 10);
   elapsed time at base + (66, 23), repainted alone when `Player::positionTick` crosses a second.
   Buttons 22x18 at y = height − 30: ADD (x 14) emits `sourcesMenuRequested` at the button, REM
@@ -803,8 +806,9 @@ screen; a right click in the view or in the frame's content opens the preset men
 ```cpp
 void AddLibraryActions(
     QMenu* menu,
-    Core::Player* player,                 // the current track, for like/dislike/open
+    Core::Player* player,                 // library and current track for the dislike label
     Core::Sources* sources,               // what every item plays
+    const Yandex::Track* track,            // target of like/dislike/open; nullptr disables them
     QWidget* dialogParent,                // parent of the search input dialog
     std::function<void()> loginRequested  // the only item when not logged in
 );
@@ -815,8 +819,11 @@ The menu only builds items; what they play, and every status they report, is `Co
 
 - When logged in: My Vibe, Liked, submenus Wheel of vibes (the vibes around
   `Sources::lastWaveSeeds()`), For you, Playlists (Listen / Similar tracks), Artists, Albums,
-  Stations (grouped by station type), Search…, then like/unlike, dislike (which also
-  skips) and open in the browser; those three are disabled without a current track.
+  Stations (grouped by station type), Search…, then like/unlike, dislike and open in the browser;
+  those three are disabled without a target track. The target's ID, liked state and browser URL
+  are captured when the menu is built, so changing the queue does not retarget an open menu.
+  The dislike label includes "(skip)" when the target is current at menu creation; `Sources`
+  checks again when the action runs and skips only if that track is still current.
 - Submenus load their lists straight from `Yandex::Library` on their first `aboutToShow`, once per
   menu instance: a disabled `Loading…`, then the items, `(empty)` or a disabled `Error: …`.
 

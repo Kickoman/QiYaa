@@ -789,6 +789,10 @@
         <translation>Не нравится (пропустить)</translation>
     </message>
     <message>
+        <source>Dislike</source>
+        <translation>Не нравится</translation>
+    </message>
+    <message>
         <source>Open the track in the browser</source>
         <translation>Открыть трек в браузере</translation>
     </message>

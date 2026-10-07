@@ -701,11 +701,17 @@ void PlaylistWindow::popupAt(QMenu* menu, QPoint skinPos) {
 }
 
 void PlaylistWindow::contextMenuEvent(QContextMenuEvent* event) {
-    const int row = rowAt(toSkin(event->pos()));
-    if (row >= 0 && !selectedRows.contains(row)) {
+    const int row = event->reason() == QContextMenuEvent::Keyboard
+        ? (cursorRow >= 0 ? cursorRow : corePlayer->currentIndex())
+        : rowAt(toSkin(event->pos()));
+    if (row < 0) {
+        Q_EMIT sourcesMenuRequested(event->globalPos());
+        return;
+    }
+    if (!selectedRows.contains(row)) {
         selectRow(row, {});
     }
-    Q_EMIT sourcesMenuRequested(event->globalPos());
+    Q_EMIT trackMenuRequested(event->globalPos(), row);
 }
 
 void PlaylistWindow::closeEvent(QCloseEvent* event) {

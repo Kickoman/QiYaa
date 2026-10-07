@@ -22,7 +22,7 @@ builds no menus ([src/ui](../ui/README.md), `library_menu.cpp`) and shows nothin
 | `track_navigator.h/.cpp` | `TrackNavigator`, `ShuffleAlgorithm`, `MakeTrackNavigator`: sequential, random and stored shuffled traversal |
 | `failure_policy.h/.cpp` | `FailureKind`, `FailureAction`, `DecideOnFailure`: what the `Player` does about a track that cannot play |
 | `jam_mode.h/.cpp` | `JamMode`, `JamEntry`, `JamSlot`, `JamPlayback`: the jam mode of the queue; it knows nothing of the network or the protocol |
-| `sources.h/.cpp` | `Sources`: playing a source (likes, playlist, recommendations, artist, album, wave or station, search) with a ticket each, the wave's load-more and feedback callbacks, like and dislike of the current track |
+| `sources.h/.cpp` | `Sources`: playing a source (likes, playlist, recommendations, artist, album, wave or station, search) with a ticket each, the wave's load-more and feedback callbacks, like and dislike by track ID |
 | `cover_cache.h/.cpp` | `CoverCache`: cover images by URL, with an LRU of 30 in memory, files in a cache directory and one download per URL at a time |
 
 ## Dependencies
@@ -536,7 +536,7 @@ public:
     void search(const QString& text);                            // "Search: <text>"
 
     void setLiked(const QString& trackId, bool liked);
-    void dislikeAndSkip(const QString& trackId);                 // dislike, then Player::next()
+    void dislikeAndSkip(const QString& trackId);                 // skip only if the ID is current
 
     const QStringList& lastWaveSeeds() const;                    // what the wheel of waves matches
 };
@@ -573,7 +573,9 @@ The scenarios are [spec/player/sources.md](../../spec/player/sources.md),
   `setQueue`, so before the first track's `trackStarted` (TRK-03). The seeds become
   `lastWaveSeeds()`.
 - **Likes**: `setLiked` and `dislikeAndSkip` call the `Library` and report in the status line;
-  `dislikeAndSkip` calls `Player::next()` at once, which closes the track with `Skip` (TRK-07).
+  `dislikeAndSkip` calls `Player::next()` at once only when `trackId` matches the current track,
+  which closes it with `Skip` (TRK-07). Disliking another track leaves playback alone, including
+  when playback advances while a menu for the previous track is open.
 
 **Traps:**
 - The wave's callbacks hold the `Library` and a `QPointer<Player>`, not the `Sources`: the
