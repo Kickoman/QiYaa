@@ -14,8 +14,11 @@
 #include <QAction>
 #include <QApplication>
 #include <QBuffer>
+#include <QByteArray>
 #include <QColor>
+#include <QContextMenuEvent>
 #include <QCoreApplication>
+#include <QDesktopServices>
 #include <QEvent>
 #include <QGuiApplication>
 #include <QLabel>
@@ -32,6 +35,7 @@
 #include <QString>
 #include <QTemporaryDir>
 #include <QTest>
+#include <QUrl>
 #include <QWidget>
 
 #include <memory>
@@ -72,6 +76,25 @@ void Click(QWidget* widget, QPoint local) {
     SendMouseEvent(widget, QEvent::MouseButtonRelease, local, global, Qt::LeftButton, Qt::NoButton);
 }
 
+QMenu* OpenContextMenu(
+    QWidget* widget,
+    QPoint local,
+    QContextMenuEvent::Reason reason = QContextMenuEvent::Mouse
+) {
+    QContextMenuEvent event(reason, local, widget->mapToGlobal(local));
+    QCoreApplication::sendEvent(widget, &event);
+    return qobject_cast<QMenu*>(QApplication::activePopupWidget());
+}
+
+QAction* FindAction(QMenu* menu, const QString& text) {
+    for (QAction* action : menu->actions()) {
+        if (action->text() == text) {
+            return action;
+        }
+    }
+    return nullptr;
+}
+
 QList<Yandex::Track> MakeTracks(int count) {
     QList<Yandex::Track> tracks;
     for (int i = 0; i < count; ++i) {
@@ -94,6 +117,26 @@ private:
     Ui::MainWindow* main = nullptr;
     Ui::EqualizerWindow* eq = nullptr;
     Ui::PlaylistWindow* playlist = nullptr;
+    QUrl openedUrl;
+
+    bool connectLibrary(Tests::MockHttpServer& server) {
+        application->api()->setBaseUrl(server.baseUrl());
+        application->api()->setToken(QStringLiteral("test-token"));
+        server.fixture("GET", "/account/status", "account-status/ok");
+        server.fixture(
+            "POST", "/users/42/likes/tracks/add-multiple", "users-likes-tracks-add-multiple/ok"
+        );
+        server.fixture("POST", "/users/42/likes/tracks/remove", "users-likes-tracks-remove/ok");
+        server.fixture(
+            "POST", "/users/42/dislikes/tracks/add-multiple",
+            "users-dislikes-tracks-add-multiple/ok"
+        );
+        bool done = false;
+        application->library()->connectAccount([&](const Yandex::Account&, const QString&) {
+            done = true;
+        });
+        return QTest::qWaitFor([&] { return done; }, 5000) && application->library()->isLoggedIn();
+    }
 
     void requireBigScreen() {
         if (QGuiApplication::primaryScreen()->availableGeometry().height() < 1200) {
@@ -116,7 +159,13 @@ private Q_SLOTS:
         playlist = application->playlistWindow();
         QVERIFY(QTest::qWaitForWindowExposed(main));
     }
-    void cleanup() { application.reset(); }
+    void cleanup() {
+        QDesktopServices::unsetUrlHandler(QStringLiteral("https"));
+        openedUrl.clear();
+        application.reset();
+    }
+
+    void recordTrackUrl(const QUrl& url) { openedUrl = url; }
 
     void shuffleMenuChoosesAndPersistsThePreferredAlgorithm() {
         QTemporaryDir directory;
@@ -252,6 +301,197 @@ private Q_SLOTS:
             QCoreApplication::sendEvent(playlist, &down);
         }
         QCOMPARE(playlist->selection(), (QSet<int>{0, 1, 2, 3}));
+    }
+
+    void playlistTrackActionsUseTheClickedTrack_data() {
+        QTest::addColumn<QString>("actionText");
+        QTest::addColumn<QString>("requestPath");
+        QTest::addColumn<bool>("alreadySelected");
+        for (bool selected : {false, true}) {
+            const QByteArray suffix = selected ? "-selected" : "-unselected";
+            QTest::newRow(("like" + suffix).constData())
+                << QStringLiteral("Like") << QStringLiteral("/users/42/likes/tracks/add-multiple")
+                << selected;
+            QTest::newRow(("unlike" + suffix).constData())
+                << QStringLiteral("Remove from Liked")
+                << QStringLiteral("/users/42/likes/tracks/remove") << selected;
+            QTest::newRow(("dislike" + suffix).constData())
+                << QStringLiteral("Dislike")
+                << QStringLiteral("/users/42/dislikes/tracks/add-multiple") << selected;
+            QTest::newRow(("browser" + suffix).constData())
+                << QStringLiteral("Open the track in the browser") << QString() << selected;
+        }
+    }
+
+    void playlistTrackActionsUseTheClickedTrack() {
+        QFETCH(QString, actionText);
+        QFETCH(QString, requestPath);
+        QFETCH(bool, alreadySelected);
+        Tests::MockHttpServer server;
+        QVERIFY(connectLibrary(server));
+        const QList<Track> tracks = MakeTracks(5);
+        application->player()->setQueue(tracks, "Test", false);
+        const QString likedId =
+            actionText == QStringLiteral("Remove from Liked") ? tracks[2].id : tracks[0].id;
+        application->library()->setLiked(likedId, true, [](bool, const QString&) {});
+        QTRY_VERIFY(application->library()->isLiked(likedId));
+        Click(playlist, {60, 20 + 3 + 13 + 6});
+        if (alreadySelected) {
+            for (int i = 0; i < 2; ++i) {
+                QKeyEvent down(QEvent::KeyPress, Qt::Key_Down, Qt::ShiftModifier);
+                QCoreApplication::sendEvent(playlist, &down);
+            }
+        }
+        QDesktopServices::setUrlHandler(QStringLiteral("https"), this, "recordTrackUrl");
+        QMenu* menu = OpenContextMenu(playlist, {60, 20 + 3 + 2 * 13 + 6});
+        QVERIFY(menu);
+        QCOMPARE(playlist->selection(), alreadySelected ? (QSet<int>{1, 2, 3}) : (QSet<int>{2}));
+        QAction* action = FindAction(menu, actionText);
+        QVERIFY(action);
+        QVERIFY(action->isEnabled());
+        const qsizetype before = server.requests().size();
+        action->trigger();
+        menu->close();
+        if (requestPath.isEmpty()) {
+            QCOMPARE(openedUrl, tracks[2].webUrl());
+        } else {
+            QTRY_VERIFY(server.requests().size() > before && server.last(requestPath));
+            QCOMPARE(server.last(requestPath)->formValue("track-ids"), tracks[2].id);
+        }
+        QCOMPARE(application->player()->currentIndex(), 0);
+    }
+
+    void playlistMenuKeepsItsTrackWhenTheQueueChanges() {
+        Tests::MockHttpServer server;
+        QVERIFY(connectLibrary(server));
+        const QList<Track> tracks = MakeTracks(3);
+        application->player()->setQueue(tracks, "Test", false);
+        QDesktopServices::setUrlHandler(QStringLiteral("https"), this, "recordTrackUrl");
+        QMenu* menu = OpenContextMenu(playlist, {60, 20 + 3 + 2 * 13 + 6});
+        QVERIFY(menu);
+        QAction* action = FindAction(menu, QStringLiteral("Open the track in the browser"));
+        QVERIFY(action);
+        QList<Track> replacement = MakeTracks(1);
+        replacement[0].id = QStringLiteral("999");
+        application->player()->setQueue(replacement, "Replacement", false);
+        action->trigger();
+        menu->close();
+        QCOMPARE(openedUrl, tracks[2].webUrl());
+        QCOMPARE(application->player()->currentTrack()->id, replacement[0].id);
+    }
+
+    void playlistKeyboardMenuUsesTheFocusedRow() {
+        Tests::MockHttpServer server;
+        QVERIFY(connectLibrary(server));
+        const QList<Track> tracks = MakeTracks(3);
+        application->player()->setQueue(tracks, "Test", false);
+        Click(playlist, {60, 20 + 3 + 2 * 13 + 6});
+        QDesktopServices::setUrlHandler(QStringLiteral("https"), this, "recordTrackUrl");
+        QMenu* menu = OpenContextMenu(playlist, {0, 0}, QContextMenuEvent::Keyboard);
+        QVERIFY(menu);
+        QAction* action = FindAction(menu, QStringLiteral("Open the track in the browser"));
+        QVERIFY(action);
+        action->trigger();
+        menu->close();
+        QCOMPARE(openedUrl, tracks[2].webUrl());
+        QCOMPARE(application->player()->currentIndex(), 0);
+    }
+
+    void playlistMenuTargetsTheRowAfterScrollingAndScaling() {
+        Tests::MockHttpServer server;
+        QVERIFY(connectLibrary(server));
+        const QList<Track> tracks = MakeTracks(30);
+        application->player()->setQueue(tracks, "Test", false);
+        application->setScale(1.5);
+        playlist->setScrollOffset(10);
+        QDesktopServices::setUrlHandler(QStringLiteral("https"), this, "recordTrackUrl");
+        QMenu* menu = OpenContextMenu(playlist, {90, qRound((20 + 3 + 2 * 13 + 6) * 1.5)});
+        QVERIFY(menu);
+        QAction* action = FindAction(menu, QStringLiteral("Open the track in the browser"));
+        QVERIFY(action);
+        action->trigger();
+        menu->close();
+        QCOMPARE(openedUrl, tracks[12].webUrl());
+        QCOMPARE(application->player()->currentIndex(), 0);
+    }
+
+    void emptyPlaylistDisablesTrackActions() {
+        Tests::MockHttpServer server;
+        QVERIFY(connectLibrary(server));
+        application->player()->clearQueue();
+        QMenu* menu = OpenContextMenu(playlist, {60, 29});
+        QVERIFY(menu);
+        for (const QString& text :
+             {QStringLiteral("Like"), QStringLiteral("Dislike"),
+              QStringLiteral("Open the track in the browser")}) {
+            QAction* action = FindAction(menu, text);
+            QVERIFY(action);
+            QVERIFY(!action->isEnabled());
+        }
+        menu->close();
+    }
+
+    void generalMenusUseTheCurrentTrack_data() {
+        QTest::addColumn<QString>("source");
+        QTest::newRow("main") << QStringLiteral("main");
+        QTest::newRow("eject") << QStringLiteral("eject");
+        QTest::newRow("playlist-add") << QStringLiteral("add");
+        QTest::newRow("playlist-background") << QStringLiteral("background");
+    }
+
+    void generalMenusUseTheCurrentTrack() {
+        QFETCH(QString, source);
+        Tests::MockHttpServer server;
+        QVERIFY(connectLibrary(server));
+        const QList<Track> tracks = MakeTracks(3);
+        application->player()->setQueue(tracks, "Test", false);
+        Click(playlist, {60, 20 + 3 + 2 * 13 + 6});
+        QDesktopServices::setUrlHandler(QStringLiteral("https"), this, "recordTrackUrl");
+        QMenu* menu = nullptr;
+        if (source == QStringLiteral("main")) {
+            menu = OpenContextMenu(main, {100, 10});
+        } else if (source == QStringLiteral("eject")) {
+            main->sourcesMenuRequested(QPoint(100, 100));
+            menu = qobject_cast<QMenu*>(QApplication::activePopupWidget());
+        } else if (source == QStringLiteral("add")) {
+            Click(playlist, {20, playlist->skinSize().height() - 25});
+            menu = qobject_cast<QMenu*>(QApplication::activePopupWidget());
+        } else {
+            menu = OpenContextMenu(playlist, {60, 150});
+        }
+        QVERIFY(menu);
+        QAction* action = FindAction(menu, QStringLiteral("Open the track in the browser"));
+        QVERIFY(action);
+        action->trigger();
+        menu->close();
+        QCOMPARE(openedUrl, tracks[0].webUrl());
+    }
+
+    void dislikeOnlySkipsWhileItsTrackIsCurrent_data() {
+        QTest::addColumn<bool>("advanceBeforeAction");
+        QTest::newRow("current") << false;
+        QTest::newRow("previous") << true;
+    }
+
+    void dislikeOnlySkipsWhileItsTrackIsCurrent() {
+        QFETCH(bool, advanceBeforeAction);
+        Tests::MockHttpServer server;
+        QVERIFY(connectLibrary(server));
+        const QList<Track> tracks = MakeTracks(3);
+        application->player()->setQueue(tracks, "Test", false);
+        QMenu* menu = OpenContextMenu(playlist, {60, 20 + 3 + 6});
+        QVERIFY(menu);
+        QAction* action = FindAction(menu, QStringLiteral("Dislike (skip)"));
+        QVERIFY(action);
+        if (advanceBeforeAction) {
+            application->player()->playIndex(1);
+        }
+        action->trigger();
+        menu->close();
+        const QString path = QStringLiteral("/users/42/dislikes/tracks/add-multiple");
+        QTRY_VERIFY(server.last(path));
+        QCOMPARE(server.last(path)->formValue("track-ids"), tracks[0].id);
+        QCOMPARE(application->player()->currentIndex(), 1);
     }
 
     void smoothScrollWheelChangesVolume() {

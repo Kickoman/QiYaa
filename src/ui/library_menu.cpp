@@ -90,6 +90,7 @@ void AddLibraryActions(
     QMenu* menu,
     Core::Player* player,
     Core::Sources* sources,
+    const Yandex::Track* track,
     QWidget* dialogParent,
     std::function<void()> loginRequested
 ) {
@@ -216,25 +217,27 @@ void AddLibraryActions(
     );
 
     menu->addSeparator();
-    const Yandex::Track* currentTrack = player->currentTrack();
-    const QString id = currentTrack ? currentTrack->id : QString();
-    const bool liked = currentTrack && library->isLiked(id);
+    const QString id = track ? track->id : QString();
+    const bool liked = track && library->isLiked(id);
     QAction* like = menu->addAction(
         liked ? QCoreApplication::translate("Ui::LibraryMenu", "Remove from Liked")
               : QCoreApplication::translate("Ui::LibraryMenu", "Like"),
         menu, [sources, id, liked] { sources->setLiked(id, !liked); }
     );
+    const Yandex::Track* currentTrack = player->currentTrack();
+    const bool isCurrent = track && currentTrack && id == currentTrack->id;
     QAction* dislike = menu->addAction(
-        QCoreApplication::translate("Ui::LibraryMenu", "Dislike (skip)"), menu,
-        [sources, id] { sources->dislikeAndSkip(id); }
+        isCurrent ? QCoreApplication::translate("Ui::LibraryMenu", "Dislike (skip)")
+                  : QCoreApplication::translate("Ui::LibraryMenu", "Dislike"),
+        menu, [sources, id] { sources->dislikeAndSkip(id); }
     );
-    const QUrl webUrl = currentTrack ? currentTrack->webUrl() : QUrl();
+    const QUrl webUrl = track ? track->webUrl() : QUrl();
     QAction* open = menu->addAction(
         QCoreApplication::translate("Ui::LibraryMenu", "Open the track in the browser"), menu,
         [webUrl] { QDesktopServices::openUrl(webUrl); }
     );
     for (QAction* action : {like, dislike, open}) {
-        action->setEnabled(currentTrack != nullptr);
+        action->setEnabled(track != nullptr);
     }
 }
 

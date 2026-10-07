@@ -322,9 +322,9 @@ Application::Application(const Options& options, QObject* parent)
     connect(mainWindowInstance.get(), &Ui::MainWindow::playlistToggleRequested, this, [this] {
         setPlaylistVisible(!playlistWindowInstance->isVisible());
     });
-    connect(
-        mainWindowInstance.get(), &Ui::MainWindow::menuRequested, this, &Application::showMainMenu
-    );
+    connect(mainWindowInstance.get(), &Ui::MainWindow::menuRequested, this, [this](QPoint pos) {
+        showMainMenu(pos, corePlayer.currentTrack());
+    });
     connect(
         mainWindowInstance.get(), &Ui::MainWindow::sourcesMenuRequested, this,
         &Application::showSourcesMenu
@@ -410,7 +410,14 @@ Application::Application(const Options& options, QObject* parent)
     });
     connect(
         playlistWindowInstance.get(), &Ui::PlaylistWindow::sourcesMenuRequested, this,
-        &Application::showMainMenu
+        [this](QPoint pos) { showMainMenu(pos, corePlayer.currentTrack()); }
+    );
+    connect(
+        playlistWindowInstance.get(), &Ui::PlaylistWindow::trackMenuRequested, this,
+        [this](QPoint pos, int row) {
+            const auto& tracks = corePlayer.playlist();
+            showMainMenu(pos, row >= 0 && row < tracks.size() ? &tracks[row] : nullptr);
+        }
     );
     connect(
         playlistWindowInstance.get(), &Ui::PlaylistWindow::sizeStepsChanged, this,
@@ -1151,16 +1158,17 @@ void Application::fillWindowActions(QMenu* menu) {
 void Application::showSourcesMenu(QPoint globalPosition) {
     auto* menu = new QMenu(mainWindowInstance.get());
     menu->setAttribute(Qt::WA_DeleteOnClose);
-    Ui::AddLibraryActions(menu, &corePlayer, &sources, mainWindowInstance.get(), [this] {
-        login();
-    });
+    Ui::AddLibraryActions(
+        menu, &corePlayer, &sources, corePlayer.currentTrack(), mainWindowInstance.get(),
+        [this] { login(); }
+    );
     menu->popup(globalPosition);
 }
 
-void Application::showMainMenu(QPoint globalPosition) {
+void Application::showMainMenu(QPoint globalPosition, const Yandex::Track* track) {
     auto* menu = new QMenu(mainWindowInstance.get());
     menu->setAttribute(Qt::WA_DeleteOnClose);
-    Ui::AddLibraryActions(menu, &corePlayer, &sources, mainWindowInstance.get(), [this] {
+    Ui::AddLibraryActions(menu, &corePlayer, &sources, track, mainWindowInstance.get(), [this] {
         login();
     });
     menu->addSeparator();

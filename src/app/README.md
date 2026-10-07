@@ -296,8 +296,9 @@ default offscreen screen, where the scale tests skip themselves).
   window draws an out-of-range value as stored.
 - A `skin` setting that fails to load is not cleared: the warning repeats at every start until
   another skin is loaded.
-- The playlist's ADD button and right-click (`PlaylistWindow::sourcesMenuRequested`) open the full
-  main menu, not the sources menu.
+- The playlist's ADD button and right-click open the full main menu. Track rows emit
+  `PlaylistWindow::trackMenuRequested`; ADD and clicks outside the rows emit
+  `PlaylistWindow::sourcesMenuRequested`.
 - With audio on and not offline, `watchNetwork()` loads a `QNetworkInformation` backend that can
   tell reachability and passes it to `Player::setNetworkOnline`: Online is true, Disconnected
   false, anything else (Local, Site, Unknown) "cannot tell". Online also reconnects the jam at
@@ -340,10 +341,11 @@ bundled skin, or the path picked in the file dialog.
 
 ### Menus
 
-`showMainMenu(globalPosition)` answers the main window's options button and right-click, and the
-playlist's ADD button and right-click. `showSourcesMenu(globalPosition)` answers the main window's
-eject button. Both build a `QMenu` parented to the main window, open it with `popup()` and delete it
-on close.
+`showMainMenu(globalPosition, track)` answers the main window's options button and right-click,
+and the playlist's ADD button and right-click. The track is the playlist row under the cursor
+for `trackMenuRequested`, and the current track for the other entry points.
+`showSourcesMenu(globalPosition)` answers the main window's eject button with the current track.
+Both build a `QMenu` parented to the main window, open it with `popup()` and delete it on close.
 
 The sources menu holds the Yandex items from `Ui::AddLibraryActions` (only "Log in to Yandex
 Music…" while logged out; it calls `login()`). The texts here are the English sources; the user sees

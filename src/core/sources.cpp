@@ -295,7 +295,9 @@ void Sources::dislikeAndSkip(const QString& trackId) {
         }
         ShowStatus(guardedPlayer, error.isEmpty() ? tr("Disliked") : tr("Error: %1").arg(error));
     });
-    corePlayer->next();
+    if (const auto* current = corePlayer->currentTrack(); current && current->id == trackId) {
+        corePlayer->next();
+    }
 }
 
 }  // namespace Core

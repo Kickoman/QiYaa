@@ -51,6 +51,7 @@ Q_SIGNALS:
     void closeRequested();
     void sizeStepsChanged(QSize steps);
     void sourcesMenuRequested(QPoint globalPos);
+    void trackMenuRequested(QPoint globalPos, int row);
 
 protected:
     void retranslate() override;
