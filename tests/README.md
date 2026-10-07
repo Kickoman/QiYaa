@@ -432,7 +432,7 @@ collects a `(value, error)` callback, and `wait()` spins for up to 5 s.
   because the server may have counted the event. `postsSettled` fires only after the fallback
   request has settled too; quitting the app waits for it. The event's `trackId` is
   `<id>:<albumId>`, and `totalPlayedSeconds` is rounded to 0.1 (12.34 → 12.3).
-- The track-event log entries are `"<int(TrackEvent)>:<track id>"`, where 0 is Started,
+- The track-event log entries are `"<static_cast<int>(TrackEvent)>:<track id>"`, where 0 is Started,
   1 Finished and 2 Skipped. Playing another index logs Skipped for the current track.
   Replacing the queue does the same.
 - `PlaybackStack` is a separate `LocalNetworkAccessManager`, `ApiClient`, `Library`, engine and
@@ -597,6 +597,10 @@ D-Bus, and OpenGL on a software renderer. This is how they stay stable:
 - **Wall-clock asserts** are loose. `stop()` and `beginStream()` must return within 1,000 ms;
   a real hang takes far longer. `pauseStopsTheClock` compares the position exactly, because
   while paused the clock must not move at all.
+- **Jam retry timing.** The second retry uses a 100 ms delay in `jam_test`. Measure from
+  `Offline` to `Connecting` in the status signal handler and require at least 60 ms. Checking
+  the connection count after `qWait(60)` is unreliable: on a busy runner it can return after
+  the retry has already fired.
 - **The 1000-switch Milkdrop test** is about probability, not time. The old shuffle retried a
   random pick a few times, then fell back to any preset. With 1 of 4 presets black, that picked
   the black one about once in 240 switches. At 30 switches the test failed only now and then;

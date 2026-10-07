@@ -5,6 +5,7 @@
 #include "support/spec_fixtures.h"
 
 #include <QDir>
+#include <QElapsedTimer>
 #include <QFile>
 #include <QJsonArray>
 #include <QJsonDocument>
@@ -205,7 +206,17 @@ void JamTest::helloCarriesAVersionTheServerTakes() {
 
 void JamTest::reconnectsAfterTheDelaysAndAtOnceWhenTheNetworkIsBack() {
     Tests::JamStubServer server;
+    QElapsedTimer offlineTime;
+    qint64 reconnectDelayMs = -1;
     Jam::Client client(FastOptions());
+    connect(&client, &Jam::Client::statusChanged, &client, [&](Jam::Status status) {
+        if (status == Jam::Status::Offline) {
+            offlineTime.start();
+            reconnectDelayMs = -1;
+        } else if (status == Jam::Status::Connecting && offlineTime.isValid()) {
+            reconnectDelayMs = offlineTime.elapsed();
+        }
+    });
     client.start(server.url());
     QTRY_COMPARE(server.count(), 1);
     server.last().close();
@@ -213,9 +224,11 @@ void JamTest::reconnectsAfterTheDelaysAndAtOnceWhenTheNetworkIsBack() {
     QTRY_COMPARE(server.count(), 2);
     server.last().close();
     QTRY_COMPARE(client.status(), Jam::Status::Offline);
-    QTest::qWait(60);
-    QCOMPARE(server.count(), 2);
     QTRY_COMPARE(server.count(), 3);
+    QVERIFY2(
+        reconnectDelayMs >= 60,
+        qPrintable(QStringLiteral("reconnected after %1 ms").arg(reconnectDelayMs))
+    );
     QTRY_COMPARE(server.received().size(), 1);
     server.welcome();
     QTRY_COMPARE(client.status(), Jam::Status::Online);
@@ -270,7 +283,7 @@ void JamTest::endedStopsTheClientForGood() {
     QTRY_COMPARE(client.status(), Jam::Status::Online);
     server.send(Example(QStringLiteral("ended/expired")));
     QTRY_COMPARE(client.status(), Jam::Status::Stopped);
-    QCOMPARE(received.size(), size_t(1));
+    QCOMPARE(received.size(), static_cast<size_t>(1));
     QVERIFY(std::holds_alternative<Jam::Ended>(received.front()));
     QTest::qWait(300);
     QCOMPARE(server.count(), 1);
@@ -312,13 +325,13 @@ void JamTest::invalidMessagesAreSkippedAndUnknownReasonsArrive() {
     server.send(Example(QStringLiteral("state/invalid-host-secret")));
     server.send(Example(QStringLiteral("rejected/invalid-unknown-reason")));
     server.send(Example(QStringLiteral("state/host")));
-    QTRY_COMPARE(received.size(), size_t(2));
+    QTRY_COMPARE(received.size(), static_cast<size_t>(2));
     const auto* rejected = std::get_if<Jam::Rejected>(&received[0]);
     QVERIFY(rejected);
     QVERIFY(!Jam::IsKnownReason(rejected->reason));
     const auto* state = std::get_if<Jam::State>(&received[1]);
     QVERIFY(state);
-    QCOMPARE(state->room.queue.size(), size_t(3));
+    QCOMPARE(state->room.queue.size(), static_cast<size_t>(3));
     QCOMPARE(state->room.fallback.seedsVersion, 4);
 }
 
