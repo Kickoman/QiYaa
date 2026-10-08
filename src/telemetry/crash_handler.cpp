@@ -256,6 +256,21 @@ const char* SignalName(int signal) {
     }
 }
 
+#if defined(__APPLE__)
+// From a signal handler on the alternate stack, macOS's backtrace() does not reach the interrupted
+// code: walk the frame pointers of the interrupted context, which arm64 macOS always keeps.
+std::uintptr_t FramePointer(void* context) {
+    [[maybe_unused]] auto* user = static_cast<ucontext_t*>(context);
+#if defined(__aarch64__)
+    return static_cast<std::uintptr_t>(user->uc_mcontext->__ss.__fp);
+#elif defined(__x86_64__)
+    return static_cast<std::uintptr_t>(user->uc_mcontext->__ss.__rbp);
+#else
+    return 0;
+#endif
+}
+#endif
+
 std::uintptr_t ProgramCounter(void* context) {
     [[maybe_unused]] auto* user = static_cast<ucontext_t*>(context);
 #if defined(__linux__) && defined(__x86_64__)
@@ -305,10 +320,34 @@ void WriteStack(std::uintptr_t programCounter, int skip) {
     }
 }
 
+#if defined(__APPLE__)
+void WalkFramePointers(std::uintptr_t programCounter, std::uintptr_t framePointer) {
+    WriteAddress(reinterpret_cast<void*>(programCounter));
+    for (int written = 1; written < kMaxFrames && framePointer != 0 && framePointer % 8 == 0;
+         ++written) {
+        const auto* frame = reinterpret_cast<const std::uintptr_t*>(framePointer);
+        const std::uintptr_t next = frame[0];
+        const std::uintptr_t returnAddress = frame[1];
+        if (returnAddress == 0) {
+            break;
+        }
+        WriteAddress(reinterpret_cast<void*>(returnAddress));
+        if (next <= framePointer || next - framePointer > 8 * 1024 * 1024) {
+            break;
+        }
+        framePointer = next;
+    }
+}
+#endif
+
 void OnSignal(int signal, siginfo_t*, void* context) {
     if (!reported.exchange(true)) {
         BeginReport(SignalName(signal), nullptr);
+#if defined(__APPLE__)
+        WalkFramePointers(ProgramCounter(context), FramePointer(context));
+#else
         WriteStack(signal == SIGABRT ? 0 : ProgramCounter(context), 1);
+#endif
     }
     struct sigaction standard { };
     standard.sa_handler = SIG_DFL;
