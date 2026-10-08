@@ -1,7 +1,14 @@
 cmake_minimum_required(VERSION 3.21)
 
+# The version the packages are named after and the app shows. A release build in CI sets it from
+# its tag vX.Y.Z; the default here is for builds from a checkout.
+set(QIYAA_VERSION "0.5.0" CACHE STRING "The app's version, X.Y.Z (CI takes it from the tag)")
+if(NOT QIYAA_VERSION MATCHES "^[0-9]+\\.[0-9]+\\.[0-9]+$")
+    message(FATAL_ERROR "QIYAA_VERSION must be X.Y.Z, got '${QIYAA_VERSION}'")
+endif()
+
 project(QiYaa
-    VERSION 0.4.0
+    VERSION ${QIYAA_VERSION}
     DESCRIPTION "Winamp-style Yandex Music player (C++/Qt)"
     LANGUAGES C CXX)
 

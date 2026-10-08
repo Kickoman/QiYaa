@@ -137,9 +137,12 @@ jobs:
         run: |
           GEN="-G Ninja"
           [ "$RUNNER_OS" = "macOS" ] && GEN=""
+          # A tag vX.Y.Z is the version: the packages are named after it and the app shows it.
+          VERSION_ARG=""
+          case "$GITHUB_REF" in refs/tags/v*) VERSION_ARG="-DQIYAA_VERSION=${GITHUB_REF_NAME#v}" ;; esac
           # Packaged builds must have Milkdrop and the jam; the plain system-Qt build checks building
           # without them.
-          cmake -S . -B build $GEN -DCMAKE_BUILD_TYPE=Release ${{ matrix.cmake_args }} $CMAKE_EXTRA
+          cmake -S . -B build $GEN -DCMAKE_BUILD_TYPE=Release ${{ matrix.cmake_args }} $CMAKE_EXTRA $VERSION_ARG
           echo "VERSION=$(cat build/version.txt)" >> "$GITHUB_ENV"
 
       - name: Build

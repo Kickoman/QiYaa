@@ -35,6 +35,7 @@ PipeWire, ALSA) miniaudio подгружает сам во время работ
 | `QIYAA_WITH_JAM` | `ON` | Джем. Если Qt WebSockets не нашёлся, собирается без него |
 | `QIYAA_REQUIRE_JAM` | `OFF` | Остановиться с ошибкой, если джем собрать нельзя (так собирает CI для установщиков) |
 | `QIYAA_JAM_URL` | `https://qiyaa.kanstancin.net` | Сервер джема, который приложение предлагает по умолчанию |
+| `QIYAA_VERSION` | см. `CMakeLists.txt` | Версия `X.Y.Z`: имена пакетов и то, что показывает программа. CI на теге `vX.Y.Z` ставит её из тега |
 | `QIYAA_WITH_TELEMETRY` | `OFF` | Телеметрия: статистика использования и отчёты о падениях ([telemetry.md](telemetry.md)). Включают её сборки для релизов |
 | `QIYAA_TELEMETRY_URL` | `<QIYAA_JAM_URL>/api/telemetry` | Куда она уходит |
 | `QIYAA_PACKAGE` | `source` | Как распространяется сборка (`deb`, `appimage`, `windows`, `macos`, `source`): поле `package` в телеметрии |
@@ -128,7 +129,8 @@ ctest --test-dir build --output-on-failure
 проверку запуска. Сборки, из которых делаются релизы (.deb, AppImage, Windows, macOS), собираются с
 `QIYAA_WITH_TELEMETRY=ON` и своим `QIYAA_PACKAGE`; «Linux, Qt 6.4 из дистрибутива» — без неё,
 проверяя сборку по умолчанию. Тесты и скриншоты в CI ничего не отправляют.
-Тег вида `v0.3.0` публикует пакеты в GitHub Releases. Перед тегом поднимите `VERSION` в
-`project()` верхнего `CMakeLists.txt` до той же версии: по ней называются пакеты и её показывает
-программа. Иконки всех размеров рисует
+Тег вида `v0.3.0` публикует пакеты в GitHub Releases. Версию CI берёт из тега
+(`-DQIYAA_VERSION=0.3.0`): по ней называются пакеты и её показывает программа, так что править
+`CMakeLists.txt` перед релизом не нужно. Значение `QIYAA_VERSION` по умолчанию в `CMakeLists.txt`
+— для сборок из исходников; его поднимают, когда удобно. Иконки всех размеров рисует
 `tools/make_icons.py`.
