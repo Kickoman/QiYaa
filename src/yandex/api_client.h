@@ -103,6 +103,7 @@ public:
 
 Q_SIGNALS:
     void postsSettled();
+    void requestFailed(Yandex::RequestError::Kind kind, int httpStatus);
 
 private:
     void handleJson(QNetworkReply* reply, TJsonCallback callback);

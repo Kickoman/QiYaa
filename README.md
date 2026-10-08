@@ -46,6 +46,7 @@ cmake -S . -B build -G Ninja -DCMAKE_BUILD_TYPE=RelWithDebInfo && cmake --build 
 | [docs/install.md](docs/install.md) | Установка, вход, где лежат настройки и токен, Wayland |
 | [docs/cli.md](docs/cli.md) | Параметры командной строки, переменные окружения, коды выхода |
 | [docs/building.md](docs/building.md) | Сборка на Linux, Windows и macOS, свой .deb, тесты, установщики в CI |
+| [docs/telemetry.md](docs/telemetry.md) | Какую статистику и отчёты о падениях отправляют релизы и как это выключить |
 | [docs/architecture.md](docs/architecture.md) | Для разработчиков (English): модули, потоки, путь трека от меню до звуковой карты |
 | [docs/code-style.md](docs/code-style.md), [CLAUDE.md](CLAUDE.md) | Правила кода (English) и чем QiYaa от них отличается |
 

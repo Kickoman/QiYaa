@@ -108,6 +108,7 @@ public:
 
 Q_SIGNALS:
     void postsSettled();   // pendingPosts() dropped to 0
+    void requestFailed(Yandex::RequestError::Kind kind, int httpStatus);  // a JSON request or download-info
 };
 ```
 

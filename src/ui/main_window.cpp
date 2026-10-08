@@ -94,6 +94,7 @@ void MainWindow::setPlaylistButton(bool on) {
 }
 
 void MainWindow::setVisMode(VisMode mode) {
+    const bool changed = mode != visualizationMode;
     visualizationMode = mode;
     switch (mode) {
         case VisMode::Spectrum: visualizer = Vis::MakeSpectrum(); break;
@@ -102,6 +103,9 @@ void MainWindow::setVisMode(VisMode mode) {
     }
     refreshTimer();
     update();
+    if (changed) {
+        Q_EMIT visModeChanged(mode);
+    }
 }
 
 void MainWindow::setShowsRemainingTime(bool on) {

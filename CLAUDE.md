@@ -68,6 +68,9 @@ parity table; [spec/README.md](spec/README.md) says what is where. Nothing in it
 - **Features go in the parity table.** A feature that lands here and not on Android, or the
   other way round, gets a row in [spec/parity.md](spec/parity.md) and an issue for the other
   app. Closing that issue sets the row to "yes".
+- **Telemetry is spec too.** A new event, field or error code goes into `spec/telemetry` first
+  (the jam server refuses anything its schema lacks). Never record free text, a path or a name:
+  only codes and counts.
 - **Never edit `spec/` only here.** A change inside the submodule that is not pushed to QiYaa-spec
   breaks every other checkout.
 

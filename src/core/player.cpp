@@ -600,6 +600,7 @@ void Player::downloadFinished(TStreamId stream, const Yandex::RequestError& erro
 }
 
 void Player::handleFailure(FailureKind kind, const QString& text) {
+    Q_EMIT failed(kind);
     const FailureAction action =
         DecideOnFailure(kind, failuresInRow, pickNext() >= 0, static_cast<bool>(loadMore));
     switch (action) {

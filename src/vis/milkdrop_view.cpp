@@ -189,16 +189,20 @@ void MilkdropView::initializeGL() {
     if (!windowContext || !windowContext->isValid()
         || QOpenGLContext::currentContext() != windowContext) {
         failureReason = tr("no OpenGL");
+        failureCategory = MilkdropFailure::NoOpenGl;
     } else if (windowContext->isOpenGLES()) {
         failureReason = tr("only OpenGL ES is here, and OpenGL 3.3 is needed");
+        failureCategory = MilkdropFailure::OpenGlEs;
     } else if (contextFormat.majorVersion() * 10 + contextFormat.minorVersion() < 33) {
         failureReason = tr("OpenGL 3.3 is needed, and %1.%2 is here")
                             .arg(contextFormat.majorVersion())
                             .arg(contextFormat.minorVersion());
+        failureCategory = MilkdropFailure::OldOpenGl;
     } else {
         projectM = projectm_create();
         if (!projectM) {
             failureReason = tr("projectM did not start");
+            failureCategory = MilkdropFailure::ProjectM;
         }
     }
     if (!projectM) {

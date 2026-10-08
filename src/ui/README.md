@@ -302,7 +302,7 @@ public:
     void setPlaylistButton(bool on);
 
     VisMode visMode() const;
-    void setVisMode(VisMode mode);
+    void setVisMode(VisMode mode);   // emits visModeChanged(mode) when it is another mode
     bool showsRemainingTime() const;
     void setShowsRemainingTime(bool on);
 
@@ -723,6 +723,7 @@ public:
     QString userPresetDirectory() const;
 
 Q_SIGNALS:
+    void failed(Vis::MilkdropFailure failure);  // a view could not start (telemetry)
     void presetChanged(const QString& name, Ui::MilkdropWindow::PresetOrigin origin);
     void settingsChanged();                // preset, shuffle, lock, interval or black list changed
     void transportKey(int key);            // Z, X, C, V, B, Left, Right pressed in the view

@@ -231,6 +231,10 @@
         <source>Language</source>
         <translation>Язык</translation>
     </message>
+    <message>
+        <source>Send anonymous usage statistics</source>
+        <translation>Отправлять анонимную статистику использования</translation>
+    </message>
 </context>
 <context>
     <name>Core::Player</name>

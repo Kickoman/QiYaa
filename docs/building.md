@@ -35,13 +35,16 @@ PipeWire, ALSA) miniaudio подгружает сам во время работ
 | `QIYAA_WITH_JAM` | `ON` | Джем. Если Qt WebSockets не нашёлся, собирается без него |
 | `QIYAA_REQUIRE_JAM` | `OFF` | Остановиться с ошибкой, если джем собрать нельзя (так собирает CI для установщиков) |
 | `QIYAA_JAM_URL` | `https://qiyaa.kanstancin.net` | Сервер джема, который приложение предлагает по умолчанию |
+| `QIYAA_WITH_TELEMETRY` | `OFF` | Телеметрия: статистика использования и отчёты о падениях ([telemetry.md](telemetry.md)). Включают её сборки для релизов |
+| `QIYAA_TELEMETRY_URL` | `<QIYAA_JAM_URL>/api/telemetry` | Куда она уходит |
+| `QIYAA_PACKAGE` | `source` | Как распространяется сборка (`deb`, `appimage`, `windows`, `macos`, `source`): поле `package` в телеметрии |
 | `QIYAA_WITH_SMTC` | `ON` | Windows: медиаклавиши через SMTC |
 | `QIYAA_BUILD_TESTS` | `ON` | Тесты (нужен Qt Test) |
 | `QIYAA_BUNDLED_LIBDIR` | `<libdir>/qiyaa` | Linux: куда `cmake --install` кладёт скачанный projectM |
 | `QIYAA_DEB_MAINTAINER` | `Kickoman <…>` | Поле Maintainer в .deb |
 
 Что включилось, CMake пишет при настройке: `MPRIS: enabled`, `Milkdrop: enabled (150 built-in
-presets)`, `Jam: enabled (default server …)` или причину, почему нет.
+presets)`, `Jam: enabled (default server …)`, `Telemetry: enabled (…)` или причину, почему нет.
 
 ## Ubuntu 24.04
 
@@ -122,7 +125,9 @@ ctest --test-dir build --output-on-failure
 | macOS | macOS 14 (arm64), Qt 6.8 | `.dmg`: `macdeployqt -codesign=-` (подпись ad hoc) и `hdiutil`; CI проверяет подпись и в самом образе |
 
 Каждая сборка, кроме Format, прогоняет тесты и делает скриншот `--screenshot --offline` как
-проверку запуска.
+проверку запуска. Сборки, из которых делаются релизы (.deb, AppImage, Windows, macOS), собираются с
+`QIYAA_WITH_TELEMETRY=ON` и своим `QIYAA_PACKAGE`; «Linux, Qt 6.4 из дистрибутива» — без неё,
+проверяя сборку по умолчанию. Тесты и скриншоты в CI ничего не отправляют.
 Тег вида `v0.3.0` публикует пакеты в GitHub Releases. Перед тегом поднимите `VERSION` в
 `project()` верхнего `CMakeLists.txt` до той же версии: по ней называются пакеты и её показывает
 программа. Иконки всех размеров рисует

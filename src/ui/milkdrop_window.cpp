@@ -97,6 +97,7 @@ void MilkdropWindow::wireView(Vis::MilkdropView* view) {
     });
     connect(view, &Vis::MilkdropView::failed, this, [this, view](const QString& reason) {
         qWarning("Milkdrop unavailable: %s", qPrintable(reason));
+        Q_EMIT failed(view->failureKind().value_or(Vis::MilkdropFailure::ProjectM));
         if (view == milkdropView) {
             container->hide();
             milkdropView->setRendering(false);

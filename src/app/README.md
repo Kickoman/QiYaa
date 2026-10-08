@@ -34,6 +34,8 @@ HTTP, OAuth and the token file format in [src/yandex](../yandex/README.md); `.ws
 - PRIVATE `qiyaa_jam` in a jam build (`QIYAA_HAVE_JAM`), with the define
   `QIYAA_JAM_URL="<the CMake option>"`, the default jam server. The header forward-declares
   `Jam::HostSession`; the code that calls it is under `#ifdef QIYAA_HAVE_JAM`.
+- PRIVATE `qiyaa_telemetry` in a telemetry build (`QIYAA_HAVE_TELEMETRY`); the header
+  forward-declares `Telemetry::Reporter`, the calls are under `#ifdef QIYAA_HAVE_TELEMETRY`.
 - Resources `:/icons` (`qiyaa-16.png` … `qiyaa-256.png`, seven sizes), used by `main.cpp` for the
   window icon, and `:/i18n/qiyaa_be.qm`, `qiyaa_en.qm`, `qiyaa_ru.qm`, built from
   [translations](../../translations/README.md) by `qt_add_translations` (Qt LinguistTools is
@@ -73,6 +75,7 @@ public:
         bool mediaIntegration = true;   // MPRIS, SMTC or macOS MediaPlayer
         QNetworkAccessManager* network = nullptr;  // tests: one that reaches a mock server
         std::optional<Language> language;          // this run only; unset: the `language` setting
+        QUrl telemetryUrl;  // empty: no telemetry; main.cpp sets it in a telemetry build
     };
 
     explicit Application(const Options& options, QObject* parent = nullptr);
@@ -275,7 +278,34 @@ default offscreen screen, where the scale tests skip themselves).
 - `Options::offline` only skips the token lookup in `start()`. The menu item "Log in to Yandex
   Music…" still logs in. `readOnlySettings` does not redirect the token file: a login during
   such a run writes the real `<ConfigDirectory>/token`.
-- `Options::settingsFile` is set only by `jam_e2e_test`, to point `jam/server` at its server.
+- `Options::settingsFile` is set by `jam_e2e_test`, to point `jam/server` at its server, and by
+  `telemetry_test`, whose telemetry folder sits next to that file.
+
+## Telemetry
+
+In a telemetry build ([src/telemetry](../telemetry/README.md), spec/telemetry) with
+`Options::telemetryUrl` set and the `telemetry/enabled` setting on (the default), `start()`
+creates the `Telemetry::Reporter` in `telemetry/` next to `settings.ini` and records `start`. Its
+fields are the system's (`Telemetry::SystemFields`), the state the windows start in, and
+`firstRun`: the settings were empty when the app was built. `telemetry/firstStart` is written
+and synced at once, so a first run that gets killed does not make the next one first too. The
+connections are made at the end of the constructor:
+
+| Event | From |
+|---|---|
+| `error playback/<kind>` | `Core::Player::failed` |
+| `error audio/device`, `audio/undecodable`, `audio/init` | `AudioEngine::errorOccurred`, `streamUndecodable`, a failed `init()` |
+| `error api/<kind>` (+ `httpStatus`) | `Yandex::ApiClient::requestFailed` |
+| `error login/failed`, `skin/load` | `applyToken`'s callback, `loadSkin` |
+| `error milkdrop/<category>` | `Ui::MilkdropWindow::failed` |
+| `error jam/<reason>`, `jam/gone`, `jam/expired`, `jam/ended-by-server` | `HostSession::refused`, `ended` |
+| `feature vis`, `equalizer`, `skin`, `language`, `milkdrop`, `jam` | `MainWindow::visModeChanged`, the equalizer's `settingsChanged`, `loadSkin`, `setLanguage`, `setMilkdropVisible`, the host session's phase |
+
+A skin is `base`, a built-in skin's name or `custom`, never a path. `quit()` records `exit`
+and waits for the last batch within its 1.5 s, like the plays reports. The menu's "Send anonymous
+usage statistics" (`setTelemetryEnabled`) is shown only in a telemetry build with a URL. Off:
+`Reporter::forget()` and `ForgetAll` delete what waits. On: `startTelemetry()` again, as a new
+session.
 - After `--scale`, window positions are not saved for the rest of the run, unless the user picks a
   size from the menu (a `setScale` with `ScaleScope::Saved` clears `transientScale`).
 - `saveState()` skips positions while the main window is hidden, which is why `quit()` saves before

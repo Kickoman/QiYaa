@@ -96,6 +96,7 @@ qt_add_resources(qiyaa_skins "skins"
 
 qiyaa_add_module(vis
     src/vis/milkdrop_presets.cpp src/vis/milkdrop_presets.h
+    src/vis/milkdrop_failure.h
     src/vis/visualizer.h        src/vis/visualizer.cpp)
 target_link_libraries(qiyaa_vis PUBLIC Qt6::Gui PRIVATE qiyaa_audio qiyaa_skins)
 
@@ -255,6 +256,32 @@ if(QIYAA_REQUIRE_MILKDROP AND NOT QIYAA_HAVE_MILKDROP)
     message(FATAL_ERROR "Milkdrop was required but can't be built (see above)")
 endif()
 
+# Telemetry: anonymous usage statistics and crash reports (spec/telemetry), only in builds made
+# with it; the releases have it. The app sends them to QIYAA_TELEMETRY_URL.
+option(QIYAA_WITH_TELEMETRY "Usage statistics and crash reports (spec/telemetry)" OFF)
+set(QIYAA_TELEMETRY_URL "${QIYAA_JAM_URL}/api/telemetry" CACHE STRING "Where telemetry goes")
+set(QIYAA_PACKAGE "source" CACHE STRING "How this build is shipped: deb, appimage, windows, macos, source")
+set(QIYAA_HAVE_TELEMETRY OFF)
+if(QIYAA_WITH_TELEMETRY)
+    qiyaa_add_module(telemetry
+        src/telemetry/crash_handler.cpp src/telemetry/crash_handler.h
+        src/telemetry/machine_id.cpp    src/telemetry/machine_id.h
+        src/telemetry/reporter.cpp      src/telemetry/reporter.h
+        src/telemetry/system_info.cpp   src/telemetry/system_info.h)
+    target_link_libraries(qiyaa_telemetry PUBLIC Qt6::Core Qt6::Network PRIVATE Qt6::Gui)
+    target_compile_definitions(qiyaa_telemetry PUBLIC QIYAA_HAVE_TELEMETRY
+        PRIVATE QIYAA_PACKAGE="${QIYAA_PACKAGE}")
+    if(WIN32)
+        target_link_libraries(qiyaa_telemetry PRIVATE dbghelp)
+    else()
+        target_link_libraries(qiyaa_telemetry PRIVATE ${CMAKE_DL_LIBS})
+    endif()
+    set(QIYAA_HAVE_TELEMETRY ON)
+    message(STATUS "Telemetry: enabled (${QIYAA_TELEMETRY_URL}, package ${QIYAA_PACKAGE})")
+else()
+    message(STATUS "Telemetry: disabled (QIYAA_WITH_TELEMETRY=OFF)")
+endif()
+
 qiyaa_add_module(app
     src/app/application.cpp     src/app/application.h
     src/app/offline_sources.cpp src/app/offline_sources.h
@@ -266,6 +293,9 @@ target_link_libraries(qiyaa_app
 if(QIYAA_HAVE_JAM)
     target_link_libraries(qiyaa_app PRIVATE qiyaa_jam)
     target_compile_definitions(qiyaa_app PRIVATE QIYAA_JAM_URL="${QIYAA_JAM_URL}")
+endif()
+if(QIYAA_HAVE_TELEMETRY)
+    target_link_libraries(qiyaa_app PRIVATE qiyaa_telemetry)
 endif()
 # The interface in Belarusian, Russian and English (the source language; its file holds the
 # plural forms). translations/README.md says how to update the .ts files.
@@ -297,6 +327,10 @@ qt_add_executable(qiyaa WIN32 MACOSX_BUNDLE ${QIYAA_APP_SOURCES})
 target_link_libraries(qiyaa PRIVATE qiyaa_app qiyaa_ui)
 qiyaa_target_defaults(qiyaa)
 target_compile_definitions(qiyaa PRIVATE QIYAA_VERSION="${PROJECT_VERSION}")
+if(QIYAA_HAVE_TELEMETRY)
+    target_link_libraries(qiyaa PRIVATE qiyaa_telemetry)
+    target_compile_definitions(qiyaa PRIVATE QIYAA_TELEMETRY_URL="${QIYAA_TELEMETRY_URL}")
+endif()
 set_target_properties(qiyaa PROPERTIES
     OUTPUT_NAME QiYaa
     MACOSX_BUNDLE_GUI_IDENTIFIER io.github.kickoman.qiyaa

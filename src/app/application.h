@@ -15,6 +15,7 @@
 #include <QPointer>
 #include <QSettings>
 #include <QTemporaryDir>
+#include <QUrl>
 
 #include <memory>
 #include <optional>
@@ -33,6 +34,10 @@ class HostSession;
 namespace Integrations {
 class MediaControls;
 }  // namespace Integrations
+
+namespace Telemetry {
+class Reporter;
+}  // namespace Telemetry
 
 namespace Ui {
 class EqualizerWindow;
@@ -60,6 +65,8 @@ public:
         QNetworkAccessManager* network = nullptr;
         // The interface language for this run, not saved. Unset: the `language` setting.
         std::optional<Language> language;
+        // Where telemetry goes; empty: none (tests, screenshots, builds without telemetry).
+        QUrl telemetryUrl;
     };
 
     explicit Application(const Options& options, QObject* parent = nullptr);
@@ -95,6 +102,11 @@ public:
     Language language() const { return translations.language(); }
     void setLanguage(Language language);
 
+    bool telemetryEnabled() const;
+    void setTelemetryEnabled(bool on);
+    // Null without telemetry: not built, no URL, or switched off.
+    Telemetry::Reporter* telemetry() const { return telemetryReporter.get(); }
+
     void login();
     void logout();
     void applyToken(const QString& token, bool save);
@@ -117,6 +129,10 @@ private:
     void offerStoredJam();
     void addJamMenu(QMenu* menu);
     void showJamServerDialog();
+    void startTelemetry();
+    QString telemetryDirectory() const;
+    void telemetryError(const QString& area, const QString& kind, int httpStatus = 0);
+    void telemetryFeature(const QString& name, const QString& value);
 
     Options startOptions;
     std::unique_ptr<QTemporaryDir> temporaryDirectory;
@@ -126,6 +142,8 @@ private:
     std::unique_ptr<Skins::Skin> currentSkin;
     bool transientScale = false;
     bool quitting = false;
+    bool firstRun = false;
+    bool audioFailed = false;
 
     std::unique_ptr<QNetworkAccessManager> ownNetworkManager;
     QNetworkAccessManager* networkManager;
@@ -140,6 +158,7 @@ private:
     std::unique_ptr<Core::CoverCache> coverCache;
     std::unique_ptr<Integrations::MediaControls> mediaControls;
     std::unique_ptr<QObject> systemMediaControls;
+    std::unique_ptr<Telemetry::Reporter> telemetryReporter;
 
     // Declared last: destroyed first.
     std::unique_ptr<Ui::MainWindow> mainWindowInstance;

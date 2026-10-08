@@ -34,6 +34,7 @@ QT_QPA_PLATFORM=offscreen QiYaa --screenshot shot.png --demo --scale 2
 | `QIYAA_AUDIO_BACKEND` | Звуковая подсистема miniaudio по имени: `pulseaudio`, `alsa`, `wasapi`, `directsound`, `coreaudio`… или `null` — звука нет, но время идёт как при воспроизведении. Неизвестное имя пишет предупреждение и оставляет выбор по умолчанию |
 | `QIYAA_NATIVE_WAYLAND=1` | Linux: нативный Wayland вместо XWayland (см. [install.md](install.md#wayland)) |
 | `QT_QPA_PLATFORM` | Платформа Qt; если задана, QiYaa её не меняет. `offscreen` — без экрана |
+| `QIYAA_TELEMETRY_URL` | Сборка с телеметрией: куда её отправлять вместо адреса из сборки, например на свой сервер джема (см. [telemetry.md](telemetry.md)) |
 
 Переменные, которые читают только тесты (`QIYAA_UPDATE_GOLDEN`, `QIYAA_TEST_SHOTS` и другие), —
 в [tests/README.md](../tests/README.md).

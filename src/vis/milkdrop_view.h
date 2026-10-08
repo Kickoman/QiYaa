@@ -1,5 +1,6 @@
 #pragma once
 
+#include "vis/milkdrop_failure.h"
 #include "vis/milkdrop_presets.h"
 
 #include <QByteArray>
@@ -42,6 +43,7 @@ public:
 
     bool isReady() const { return projectM != nullptr; }
     QString failure() const { return failureReason; }
+    std::optional<MilkdropFailure> failureKind() const { return failureCategory; }
     qint64 framesRendered() const { return frameCount; }
     QString glInfo() const { return glInfoText; }
 
@@ -82,6 +84,7 @@ private:
     Audio::AudioEngine* audioEngine;
     ::projectm* projectM = nullptr;
     QString failureReason;
+    std::optional<MilkdropFailure> failureCategory;
     QTimer timer;
     uint32_t visReadCursor = 0;
     std::vector<float> pcm;

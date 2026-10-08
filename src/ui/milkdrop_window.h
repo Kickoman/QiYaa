@@ -1,6 +1,7 @@
 #pragma once
 
 #include "ui/gen_window.h"
+#include "vis/milkdrop_failure.h"
 #include "vis/milkdrop_presets.h"
 
 #include <QList>
@@ -80,6 +81,7 @@ public:
     QString userPresetDirectory() const { return userDirectory; }
 
 Q_SIGNALS:
+    void failed(Vis::MilkdropFailure failure);
     void presetChanged(const QString& name, Ui::MilkdropWindow::PresetOrigin origin);
     void settingsChanged();
     void transportKey(int key);

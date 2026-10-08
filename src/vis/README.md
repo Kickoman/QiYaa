@@ -15,6 +15,7 @@ colours from [src/skins](../skins/README.md).
 | `visualizer.h` | `VisFrame`, the `Visualizer` interface, `MakeSpectrum`, `MakeOscilloscope`, `SpectrumBands`, `SpectrumLevels`, `Analyzer` |
 | `visualizer.cpp` | `Analyzer` (Hann window + radix-2 FFT), the file-local `Spectrum` and `Oscilloscope` |
 | `milkdrop_presets.h/.cpp` | `PresetTransition` (cut or blend); `MilkdropPresets` — built-in and user `.milk` files in a fixed order, read with a 1 MiB bound |
+| `milkdrop_failure.h` | `MilkdropFailure`: why Milkdrop cannot run (no OpenGL, only OpenGL ES, OpenGL older than 3.3, projectM) as a category, without projectM, for telemetry |
 | `milkdrop_view.h/.cpp` | `MilkdropView` — projectM 4 in a `QOpenGLWindow`: OpenGL 3.3 probe, PCM feed, deferred preset loads, black-picture watch, frame capture. Built only with Milkdrop |
 
 ## Dependencies
@@ -240,6 +241,7 @@ public:
 
     bool isReady() const;         // projectM runs; false until the first paint
     QString failure() const;      // why it doesn't; empty otherwise
+    std::optional<MilkdropFailure> failureKind() const;  // the same as a category
     qint64 framesRendered() const;
     QString glInfo() const;       // "<GL_VERSION> | <GL_RENDERER>", for logs and reports
 

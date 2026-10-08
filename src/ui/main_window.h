@@ -49,6 +49,7 @@ public:
     void setShaded(bool shaded) override;
 
 Q_SIGNALS:
+    void visModeChanged(Ui::MainWindow::VisMode mode);
     void eqToggleRequested();
     void playlistToggleRequested();
     void menuRequested(QPoint globalPos);

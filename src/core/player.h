@@ -116,6 +116,7 @@ public:
 
 Q_SIGNALS:
     void statusMessage(const QString& text);
+    void failed(Core::FailureKind kind);
     void playlistChanged();
     void queueReplaced();
     void currentTrackChanged();

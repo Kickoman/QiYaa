@@ -161,7 +161,7 @@ void ApiClient::handleJson(QNetworkReply* reply, TJsonCallback callback) {
 }
 
 void ApiClient::handleClassifiedJson(QNetworkReply* reply, TClassifiedJsonCallback callback) {
-    connect(reply, &QNetworkReply::finished, this, [reply, callback = std::move(callback)] {
+    connect(reply, &QNetworkReply::finished, this, [this, reply, callback = std::move(callback)] {
         reply->deleteLater();
         const QByteArray body = reply->readAll();
         RequestError error = ClassifyReply(*reply);
@@ -182,6 +182,7 @@ void ApiClient::handleClassifiedJson(QNetworkReply* reply, TClassifiedJsonCallba
             error.text = QStringLiteral("HTTP %1 from %2: %3")
                              .arg(error.httpStatus)
                              .arg(reply->url().path(), message);
+            Q_EMIT requestFailed(error.kind, error.httpStatus);
             callback({}, error);
             return;
         }
@@ -190,6 +191,7 @@ void ApiClient::handleClassifiedJson(QNetworkReply* reply, TClassifiedJsonCallba
             error.text = QStringLiteral("%1: the %2-byte reply is not a JSON object")
                              .arg(reply->url().path())
                              .arg(body.size());
+            Q_EMIT requestFailed(error.kind, error.httpStatus);
             callback({}, error);
             return;
         }
@@ -311,11 +313,14 @@ void ApiClient::resolveTrackUrl(const QString& trackId, TUrlCallback callback) {
             QNetworkReply* reply =
                 self->networkManager->get(MakeRequest(infoUrl, self->accessToken));
             const int bitrate = best->bitrateKbps;
-            connect(reply, &QNetworkReply::finished, self, [reply, callback, bitrate] {
+            connect(reply, &QNetworkReply::finished, self, [self, reply, callback, bitrate] {
                 reply->deleteLater();
                 RequestError infoError = ClassifyReply(*reply);
                 if (infoError.isError()) {
                     infoError.text = QStringLiteral("download-info: ") + reply->errorString();
+                    if (self) {
+                        Q_EMIT self->requestFailed(infoError.kind, infoError.httpStatus);
+                    }
                     return callback({}, infoError);
                 }
                 const QByteArray body = reply->readAll();

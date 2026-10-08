@@ -10,6 +10,7 @@
 #include <QLatin1String>
 #include <QString>
 #include <QTimer>
+#include <QUrl>
 
 #include <cstdio>
 #include <exception>
@@ -95,6 +96,12 @@ int Run(int& argc, char* argv[]) {
     options.audio = !screenshot || commandLine.isSet(fileOption);
     options.readOnlySettings = screenshot;
     options.mediaIntegration = !screenshot;
+#ifdef QIYAA_TELEMETRY_URL
+    if (!screenshot) {
+        const QString url = qEnvironmentVariable("QIYAA_TELEMETRY_URL");
+        options.telemetryUrl = QUrl(url.isEmpty() ? QStringLiteral(QIYAA_TELEMETRY_URL) : url);
+    }
+#endif
     App::Application application(options);
 
     application.start();

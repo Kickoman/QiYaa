@@ -231,6 +231,10 @@
         <source>Language</source>
         <translation>Мова</translation>
     </message>
+    <message>
+        <source>Send anonymous usage statistics</source>
+        <translation>Адпраўляць ананімную статыстыку выкарыстання</translation>
+    </message>
 </context>
 <context>
     <name>Core::Player</name>

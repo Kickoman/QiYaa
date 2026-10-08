@@ -80,6 +80,17 @@ if(QIYAA_HAVE_JAM)
     target_compile_definitions(jam_e2e_test PRIVATE QIYAA_TEST_DATA="${CMAKE_CURRENT_SOURCE_DIR}/data")
 endif()
 
+# Telemetry: only where it's built (QIYAA_WITH_TELEMETRY). crash_probe is the child that crashes
+# for the crash-report test.
+if(QIYAA_HAVE_TELEMETRY)
+    qt_add_executable(crash_probe crash_probe.cpp)
+    target_link_libraries(crash_probe PRIVATE qiyaa_telemetry)
+    qiyaa_target_defaults(crash_probe)
+    qiyaa_add_test(telemetry_test app audio core skins telemetry ui yandex)
+    target_compile_definitions(telemetry_test PRIVATE QIYAA_CRASH_PROBE="$<TARGET_FILE:crash_probe>")
+    add_dependencies(telemetry_test crash_probe)
+endif()
+
 # MPRIS: only where it's built (Linux with Qt D-Bus; macOS Qt has D-Bus too,
 # but no MPRIS). It needs a session bus, so CTest starts a private one;
 # without dbus-run-session the test skips itself.
