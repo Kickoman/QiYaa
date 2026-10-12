@@ -21,16 +21,14 @@ std::optional<QString> Ask(QInputDialog& dialog, const QString& title, const QSt
 
 }  // namespace
 
-std::optional<QString>
-AskText(QWidget* parent, const QString& title, const QString& label, const QString& value) {
+std::optional<QString> AskText(QWidget* parent, const QString& title, const QString& label, const QString& value) {
     QInputDialog dialog(parent);
     dialog.setInputMode(QInputDialog::TextInput);
     dialog.setTextValue(value);
     return Ask(dialog, title, label);
 }
 
-std::optional<QString>
-AskItem(QWidget* parent, const QString& title, const QString& label, const QStringList& items) {
+std::optional<QString> AskItem(QWidget* parent, const QString& title, const QString& label, const QStringList& items) {
     QInputDialog dialog(parent);
     dialog.setComboBoxItems(items);
     dialog.setComboBoxEditable(false);

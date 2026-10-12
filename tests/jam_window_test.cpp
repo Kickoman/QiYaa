@@ -54,8 +54,7 @@ QJsonObject YandexTrack(const QString& id, const QString& title) {
     return {
         {QStringLiteral("id"), id},
         {QStringLiteral("title"), title},
-        {QStringLiteral("artists"),
-         QJsonArray{QJsonObject{{QStringLiteral("name"), QStringLiteral("КИНО")}}}},
+        {QStringLiteral("artists"), QJsonArray{QJsonObject{{QStringLiteral("name"), QStringLiteral("КИНО")}}}},
         {QStringLiteral("albums"), QJsonArray{QJsonObject{{QStringLiteral("id"), 7}}}},
         {QStringLiteral("durationMs"), 200'000},
         {QStringLiteral("available"), true}
@@ -117,12 +116,7 @@ private:
         Stack(Yandex::Library* library, const Skins::Skin* skin, const QFont& font)
             : player(library, &engine)
             , jam(&player, library)
-            , host(
-                  &jam,
-                  library,
-                  Jam::SessionStore(directory.filePath(QStringLiteral("jam.json"))),
-                  options()
-              )
+            , host(&jam, library, Jam::SessionStore(directory.filePath(QStringLiteral("jam.json"))), options())
             , window(&host, library, skin)
             , status(&window, &Ui::JamWindow::statusText) {
             window.setTextFont(font);
@@ -196,23 +190,19 @@ private:
         if (const QString shots = qEnvironmentVariable("QIYAA_TEST_SHOTS"); !shots.isEmpty()) {
             actual.save(shots + QLatin1Char('/') + name + QStringLiteral(".png"));
         }
-        if (qEnvironmentVariable("QIYAA_UPDATE_GOLDEN") == QLatin1String("1")
-            && !QFile::exists(path)) {
+        if (qEnvironmentVariable("QIYAA_UPDATE_GOLDEN") == QLatin1String("1") && !QFile::exists(path)) {
             QVERIFY(actual.save(path));
             QSKIP(qPrintable(QStringLiteral("recorded new golden image ") + path));
         }
         const QImage expected(path);
         QVERIFY2(!expected.isNull(), qPrintable(QStringLiteral("no golden image ") + path));
-        const QString difference =
-            DescribeDifference(actual, expected.convertToFormat(QImage::Format_ARGB32));
+        const QString difference = DescribeDifference(actual, expected.convertToFormat(QImage::Format_ARGB32));
         QVERIFY2(difference.isEmpty(), qPrintable(name + QStringLiteral(": ") + difference));
     }
 
 private Q_SLOTS:
     void initTestCase() {
-        const int id =
-            QFontDatabase::addApplicationFont(QStringLiteral(QIYAA_TEST_DATA
-                                                             "/fonts/Tiny5-Regular.ttf"));
+        const int id = QFontDatabase::addApplicationFont(QStringLiteral(QIYAA_TEST_DATA "/fonts/Tiny5-Regular.ttf"));
         QVERIFY(id >= 0);
         pixelFont = QFont(QFontDatabase::applicationFontFamilies(id).value(0));
         pixelFont.setPixelSize(8);
@@ -307,8 +297,11 @@ private Q_SLOTS:
         stack.server.last().close();
         QTRY_VERIFY(!stack.host.isConnected());
         for (const QString& label :
-             {QStringLiteral("New link"), QStringLiteral("Taking turns"), QStringLiteral("No"),
-              QStringLiteral("Let in"), QStringLiteral("Remove")}) {
+             {QStringLiteral("New link"),
+              QStringLiteral("Taking turns"),
+              QStringLiteral("No"),
+              QStringLiteral("Let in"),
+              QStringLiteral("Remove")}) {
             QVERIFY2(!stack.control(label)->enabled, qUtf8Printable(label));
         }
         QVERIFY(stack.control(QStringLiteral("Copy"))->enabled);
@@ -343,12 +336,11 @@ private Q_SLOTS:
     void looksLikeTheSkin_data() {
         QTest::addColumn<QString>("skin");
         const QStringList skins =
-            QDir(QStringLiteral(":/skins"))
-                .entryList({QStringLiteral("*.wsz")}, QDir::Files, QDir::Name);
+            QDir(QStringLiteral(":/skins")).entryList({QStringLiteral("*.wsz")}, QDir::Files, QDir::Name);
         QVERIFY(!skins.isEmpty());
         for (const QString& name : skins) {
-            QTest::newRow(qPrintable(QStringLiteral("jam-") + QString(name).chopped(4)))
-                << QStringLiteral(":/skins/") + name;
+            QTest::newRow(qPrintable(QStringLiteral("jam-") + QString(name).chopped(4))
+            ) << QStringLiteral(":/skins/") + name;
         }
     }
 

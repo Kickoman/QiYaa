@@ -74,10 +74,7 @@ private:
     struct Wave;
 
     void loadWave(std::function<void(const QList<Yandex::Track>&)> done);
-    void appendWave(
-        const QList<Yandex::Track>& tracks,
-        std::function<void(const QList<Yandex::Track>&)> done
-    );
+    void appendWave(const QList<Yandex::Track>& tracks, std::function<void(const QList<Yandex::Track>&)> done);
     void dropDeferredWave();
     void removeSlots(const QList<int>& indices);
     void insertItems(int at, const QList<JamEntry>& entries);

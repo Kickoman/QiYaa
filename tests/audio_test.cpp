@@ -29,9 +29,9 @@ private:
             .arg(advancedCount)
             .arg(finishedCount)
             .arg(engine.positionSeconds(), 0, 'f', 2)
-            .arg(QLatin1String(QMetaEnum::fromType<Audio::AudioEngine::State>().valueToKey(
-                static_cast<int>(engine.state())
-            )))
+            .arg(QLatin1String(
+                QMetaEnum::fromType<Audio::AudioEngine::State>().valueToKey(static_cast<int>(engine.state()))
+            ))
             .arg(engine.currentStream())
             .arg(engine.queuedStream());
     }
@@ -196,9 +196,7 @@ private Q_SLOTS:
         engine.beginStream();
         engine.appendData(mp3);
         engine.finishData();
-        QVERIFY(QTest::qWaitFor(
-            [&] { return engine.state() == Audio::AudioEngine::State::Playing; }, 3000
-        ));
+        QVERIFY(QTest::qWaitFor([&] { return engine.state() == Audio::AudioEngine::State::Playing; }, 3000));
         QVERIFY(engine.seek(2.7));
         QVERIFY(finished.wait(4000));
     }
@@ -222,16 +220,12 @@ private Q_SLOTS:
         QVERIFY(nextStream != 0);
         QCOMPARE(engine.queuedStream(), nextStream);
         pumpUntil([&] { return advanced.count() > 0 || finished.count() > 0; }, 3000);
-        QVERIFY2(
-            advanced.count() == 1, qPrintable(describeEngine(advanced.count(), finished.count()))
-        );
+        QVERIFY2(advanced.count() == 1, qPrintable(describeEngine(advanced.count(), finished.count())));
         QCOMPARE(finished.count(), 0);
         QVERIFY(states.isEmpty());
         QCOMPARE(engine.currentStream(), nextStream);
         QCOMPARE(engine.queuedStream(), static_cast<Audio::AudioEngine::TStreamId>(0));
-        QVERIFY2(
-            engine.positionSeconds() < 0.3, qPrintable(QString::number(engine.positionSeconds()))
-        );
+        QVERIFY2(engine.positionSeconds() < 0.3, qPrintable(QString::number(engine.positionSeconds())));
         QVERIFY(engine.seek(2.7));
         pumpUntil([&] { return finished.count() > 0; }, 3000);
         QCOMPARE(finished.count(), 1);
@@ -309,9 +303,7 @@ private Q_SLOTS:
         engine.appendData(nextStream, mp3.mid(4000));
         engine.finishData(nextStream);
         pumpUntil([&] { return finished.count() > 0 || advanced.count() > 0; }, 3000);
-        QVERIFY2(
-            advanced.count() == 1, qPrintable(describeEngine(advanced.count(), finished.count()))
-        );
+        QVERIFY2(advanced.count() == 1, qPrintable(describeEngine(advanced.count(), finished.count())));
         QCOMPARE(finished.count(), 0);
         engine.stop();
     }

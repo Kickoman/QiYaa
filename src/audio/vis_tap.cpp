@@ -17,8 +17,7 @@ void VisTap::write(std::span<const float> stereoFrames) {
 }
 
 void VisTap::read(std::span<float> left, std::span<float> right) const {
-    const auto count =
-        static_cast<uint32_t>(std::min({left.size(), right.size(), static_cast<size_t>(kSize)}));
+    const auto count = static_cast<uint32_t>(std::min({left.size(), right.size(), static_cast<size_t>(kSize)}));
     const uint32_t end = writePosition.load(std::memory_order_acquire);
     const uint32_t start = end - count;
     for (uint32_t i = 0; i < count; ++i) {

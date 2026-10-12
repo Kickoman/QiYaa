@@ -178,25 +178,24 @@ void MilkdropView::syncWindowSize() {
     }
     pixelSize = devicePixelSize;
     projectm_set_window_size(
-        projectM, static_cast<size_t>(devicePixelSize.width()),
-        static_cast<size_t>(devicePixelSize.height())
+        projectM, static_cast<size_t>(devicePixelSize.width()), static_cast<size_t>(devicePixelSize.height())
     );
 }
 
 void MilkdropView::initializeGL() {
     QOpenGLContext* windowContext = context();
     const QSurfaceFormat contextFormat = windowContext ? windowContext->format() : QSurfaceFormat();
-    if (!windowContext || !windowContext->isValid()
-        || QOpenGLContext::currentContext() != windowContext) {
+    if (!windowContext || !windowContext->isValid() || QOpenGLContext::currentContext() != windowContext) {
         failureReason = tr("no OpenGL");
         failureCategory = MilkdropFailure::NoOpenGl;
     } else if (windowContext->isOpenGLES()) {
         failureReason = tr("only OpenGL ES is here, and OpenGL 3.3 is needed");
         failureCategory = MilkdropFailure::OpenGlEs;
     } else if (contextFormat.majorVersion() * 10 + contextFormat.minorVersion() < 33) {
-        failureReason = tr("OpenGL 3.3 is needed, and %1.%2 is here")
-                            .arg(contextFormat.majorVersion())
-                            .arg(contextFormat.minorVersion());
+        failureReason =
+            tr("OpenGL 3.3 is needed, and %1.%2 is here")
+                .arg(contextFormat.majorVersion())
+                .arg(contextFormat.minorVersion());
         failureCategory = MilkdropFailure::OldOpenGl;
     } else {
         projectM = projectm_create();
@@ -221,11 +220,9 @@ void MilkdropView::initializeGL() {
         projectM,
         [](bool hardCut, void* self) {
             auto* view = static_cast<MilkdropView*>(self);
-            const PresetTransition transition =
-                hardCut ? PresetTransition::Cut : PresetTransition::Blend;
+            const PresetTransition transition = hardCut ? PresetTransition::Cut : PresetTransition::Blend;
             QMetaObject::invokeMethod(
-                view, [view, transition] { Q_EMIT view->switchRequested(transition); },
-                Qt::QueuedConnection
+                view, [view, transition] { Q_EMIT view->switchRequested(transition); }, Qt::QueuedConnection
             );
         },
         this
@@ -236,8 +233,7 @@ void MilkdropView::initializeGL() {
             auto* view = static_cast<MilkdropView*>(self);
             const QString messageText = QString::fromUtf8(message);
             QMetaObject::invokeMethod(
-                view, [view, messageText] { Q_EMIT view->presetFailed(messageText); },
-                Qt::QueuedConnection
+                view, [view, messageText] { Q_EMIT view->presetFailed(messageText); }, Qt::QueuedConnection
             );
         },
         this
@@ -279,9 +275,7 @@ void MilkdropView::paintGL() {
     }
     if (pendingPreset) {
         const auto [milk, transition] = *std::exchange(pendingPreset, std::nullopt);
-        projectm_load_preset_data(
-            projectM, milk.constData(), transition == PresetTransition::Blend
-        );
+        projectm_load_preset_data(projectM, milk.constData(), transition == PresetTransition::Blend);
         sinceLoad.start();
         blackChecks = 0;
         sawPicture = false;
@@ -300,13 +294,9 @@ void MilkdropView::paintGL() {
         QOpenGLFunctions* gl = context()->functions();
         gl->glBindFramebuffer(GL_FRAMEBUFFER, defaultFramebufferObject());
         gl->glPixelStorei(GL_PACK_ALIGNMENT, 4);
-        gl->glReadPixels(
-            0, 0, frame.width(), frame.height(), GL_RGBA, GL_UNSIGNED_BYTE, frame.bits()
-        );
+        gl->glReadPixels(0, 0, frame.width(), frame.height(), GL_RGBA, GL_UNSIGNED_BYTE, frame.bits());
         frame = frame.mirrored();  // OpenGL rows start at the bottom
-        QMetaObject::invokeMethod(
-            this, [this, frame] { Q_EMIT frameCaptured(frame); }, Qt::QueuedConnection
-        );
+        QMetaObject::invokeMethod(this, [this, frame] { Q_EMIT frameCaptured(frame); }, Qt::QueuedConnection);
     }
 }
 
@@ -323,17 +313,14 @@ void MilkdropView::makeOpaque() {
 }
 
 void MilkdropView::watchForBlack() {
-    if (!blackWatch || sinceLoad.elapsed() < blackGraceMs
-        || sinceCheck.elapsed() < blackIntervalMs) {
+    if (!blackWatch || sinceLoad.elapsed() < blackGraceMs || sinceCheck.elapsed() < blackIntervalMs) {
         return;
     }
     sinceCheck.start();
     if (!pictureIsBlack()) {
         blackChecks = 0;
         if (!std::exchange(sawPicture, true)) {
-            QMetaObject::invokeMethod(
-                this, [this] { Q_EMIT drawsPicture(); }, Qt::QueuedConnection
-            );
+            QMetaObject::invokeMethod(this, [this] { Q_EMIT drawsPicture(); }, Qt::QueuedConnection);
         }
         return;
     }
@@ -350,25 +337,19 @@ bool MilkdropView::pictureIsBlack() {
     if (!probeFramebuffer) {
         gl->glGenTextures(1, &probeTexture);
         gl->glBindTexture(GL_TEXTURE_2D, probeTexture);
-        gl->glTexImage2D(
-            GL_TEXTURE_2D, 0, GL_RGBA8, kProbeWidth, kProbeHeight, 0, GL_RGBA, GL_UNSIGNED_BYTE,
-            nullptr
-        );
+        gl->glTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA8, kProbeWidth, kProbeHeight, 0, GL_RGBA, GL_UNSIGNED_BYTE, nullptr);
         gl->glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR);
         gl->glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
         gl->glBindTexture(GL_TEXTURE_2D, 0);
         gl->glGenFramebuffers(1, &probeFramebuffer);
         gl->glBindFramebuffer(GL_FRAMEBUFFER, probeFramebuffer);
-        gl->glFramebufferTexture2D(
-            GL_FRAMEBUFFER, GL_COLOR_ATTACHMENT0, GL_TEXTURE_2D, probeTexture, 0
-        );
+        gl->glFramebufferTexture2D(GL_FRAMEBUFFER, GL_COLOR_ATTACHMENT0, GL_TEXTURE_2D, probeTexture, 0);
     }
     const GLuint windowFramebuffer = defaultFramebufferObject();
     gl->glBindFramebuffer(GL_READ_FRAMEBUFFER, windowFramebuffer);
     gl->glBindFramebuffer(GL_DRAW_FRAMEBUFFER, probeFramebuffer);
     gl->glBlitFramebuffer(
-        0, 0, pixelSize.width(), pixelSize.height(), 0, 0, kProbeWidth, kProbeHeight,
-        GL_COLOR_BUFFER_BIT, GL_LINEAR
+        0, 0, pixelSize.width(), pixelSize.height(), 0, 0, kProbeWidth, kProbeHeight, GL_COLOR_BUFFER_BIT, GL_LINEAR
     );
     gl->glBindFramebuffer(GL_READ_FRAMEBUFFER, probeFramebuffer);
     std::array<quint8, kProbeWidth * kProbeHeight * 4> pixels{};

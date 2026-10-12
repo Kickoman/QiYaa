@@ -37,15 +37,24 @@ constexpr int kMinPendingPerGuest = 1;
 constexpr int kMaxPendingPerGuest = 50;
 
 const QStringList kReasons = {
-    QStringLiteral("bad-secret"),      QStringLiteral("room-not-found"),
-    QStringLiteral("room-full"),       QStringLiteral("join-closed"),
-    QStringLiteral("kicked"),          QStringLiteral("rate-limited"),
-    QStringLiteral("queue-limit"),     QStringLiteral("duplicate"),
-    QStringLiteral("not-allowed"),     QStringLiteral("stale"),
-    QStringLiteral("unknown-track"),   QStringLiteral("track-unavailable"),
-    QStringLiteral("host-offline"),    QStringLiteral("host-timeout"),
-    QStringLiteral("host-error"),      QStringLiteral("invalid-message"),
-    QStringLiteral("update-required"), QStringLiteral("server-full"),
+    QStringLiteral("bad-secret"),
+    QStringLiteral("room-not-found"),
+    QStringLiteral("room-full"),
+    QStringLiteral("join-closed"),
+    QStringLiteral("kicked"),
+    QStringLiteral("rate-limited"),
+    QStringLiteral("queue-limit"),
+    QStringLiteral("duplicate"),
+    QStringLiteral("not-allowed"),
+    QStringLiteral("stale"),
+    QStringLiteral("unknown-track"),
+    QStringLiteral("track-unavailable"),
+    QStringLiteral("host-offline"),
+    QStringLiteral("host-timeout"),
+    QStringLiteral("host-error"),
+    QStringLiteral("invalid-message"),
+    QStringLiteral("update-required"),
+    QStringLiteral("server-full"),
 };
 
 const QStringList kSecretFields = {
@@ -71,15 +80,14 @@ const char* const kItemId = "^i[1-9][0-9]{0,8}$";
 const char* const kCatalogId = "^[0-9A-Za-z_-]{1,64}$";
 const char* const kJoinSecret = "^[A-Za-z0-9_-]{22}$";
 const char* const kHostSecret = "^[A-Za-z0-9_-]{43}$";
-const char* const kParticipantId =
-    "^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$";
+const char* const kParticipantId = "^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$";
 const char* const kAppVersion = "^[0-9A-Za-z.+_-]{1,32}$";
 const char* const kSeed = "^track:[0-9A-Za-z_-]{1,64}$";
 const char* const kCoverUri = "^\\S*%%\\S*$";
-const char* const kJoinUrl =
-    "^https?://[^\\s#/]+(?:/[^\\s#]*)?/j/[0-9a-hjkmnp-tv-z]{8}#[A-Za-z0-9_-]{22}$";
-const char* const kListenUrl = "^https://[A-Za-z0-9-]+\\.storage\\.yandex\\.net/get-mp3/"
-                               "[0-9a-f]{32}/[0-9a-f]{1,32}/[^\\s#?]+$";
+const char* const kJoinUrl = "^https?://[^\\s#/]+(?:/[^\\s#]*)?/j/[0-9a-hjkmnp-tv-z]{8}#[A-Za-z0-9_-]{22}$";
+const char* const kListenUrl =
+    "^https://[A-Za-z0-9-]+\\.storage\\.yandex\\.net/get-mp3/"
+    "[0-9a-f]{32}/[0-9a-f]{1,32}/[^\\s#?]+$";
 const char* const kName = "^[^\\s\\x00-\\x1F\\x7F](?:[^\\x00-\\x1F\\x7F]*[^\\s\\x00-\\x1F\\x7F])?$";
 
 qsizetype CodePoints(const QString& text) {
@@ -109,11 +117,7 @@ public:
     QString string(const QString& key) {
         const QJsonValue value = json.value(key);
         if (!value.isString()) {
-            fail(
-                key,
-                value.isUndefined() ? QStringLiteral("is missing")
-                                    : QStringLiteral("is not a string")
-            );
+            fail(key, value.isUndefined() ? QStringLiteral("is missing") : QStringLiteral("is not a string"));
             return {};
         }
         return value.toString();
@@ -136,23 +140,13 @@ public:
     qint64 integer(const QString& key, qint64 minimum, qint64 maximum) {
         const QJsonValue value = json.value(key);
         if (!value.isDouble()) {
-            fail(
-                key,
-                value.isUndefined() ? QStringLiteral("is missing")
-                                    : QStringLiteral("is not a number")
-            );
+            fail(key, value.isUndefined() ? QStringLiteral("is missing") : QStringLiteral("is not a number"));
             return 0;
         }
         const double number = value.toDouble();
         if (std::floor(number) != number || number < static_cast<double>(minimum)
             || number > static_cast<double>(maximum)) {
-            fail(
-                key,
-                QStringLiteral("is %1, not a whole number from %2 to %3")
-                    .arg(number)
-                    .arg(minimum)
-                    .arg(maximum)
-            );
+            fail(key, QStringLiteral("is %1, not a whole number from %2 to %3").arg(number).arg(minimum).arg(maximum));
             return 0;
         }
         return static_cast<qint64>(number);
@@ -163,11 +157,7 @@ public:
     bool boolean(const QString& key) {
         const QJsonValue value = json.value(key);
         if (!value.isBool()) {
-            fail(
-                key,
-                value.isUndefined() ? QStringLiteral("is missing")
-                                    : QStringLiteral("is not a boolean")
-            );
+            fail(key, value.isUndefined() ? QStringLiteral("is missing") : QStringLiteral("is not a boolean"));
             return false;
         }
         return value.toBool();
@@ -176,11 +166,7 @@ public:
     QJsonObject object(const QString& key) {
         const QJsonValue value = json.value(key);
         if (!value.isObject()) {
-            fail(
-                key,
-                value.isUndefined() ? QStringLiteral("is missing")
-                                    : QStringLiteral("is not an object")
-            );
+            fail(key, value.isUndefined() ? QStringLiteral("is missing") : QStringLiteral("is not an object"));
             return {};
         }
         return value.toObject();
@@ -189,22 +175,12 @@ public:
     QJsonArray array(const QString& key, qsizetype minimum, qsizetype maximum) {
         const QJsonValue value = json.value(key);
         if (!value.isArray()) {
-            fail(
-                key,
-                value.isUndefined() ? QStringLiteral("is missing")
-                                    : QStringLiteral("is not an array")
-            );
+            fail(key, value.isUndefined() ? QStringLiteral("is missing") : QStringLiteral("is not an array"));
             return {};
         }
         const QJsonArray items = value.toArray();
         if (items.size() < minimum || items.size() > maximum) {
-            fail(
-                key,
-                QStringLiteral("has %1 entries, not %2 to %3")
-                    .arg(items.size())
-                    .arg(minimum)
-                    .arg(maximum)
-            );
+            fail(key, QStringLiteral("has %1 entries, not %2 to %3").arg(items.size()).arg(minimum).arg(maximum));
         }
         return items;
     }
@@ -275,8 +251,7 @@ QString SearchTextIn(Reader& reader, const QString& key) {
     if (reader.ok()) {
         const qsizetype length = CodePoints(value);
         reader.require(
-            length >= 1 && length <= kMaxSearchLength && !HasControl(value)
-                && !value.trimmed().isEmpty(),
+            length >= 1 && length <= kMaxSearchLength && !HasControl(value) && !value.trimmed().isEmpty(),
             key + QStringLiteral(" is not a search text of 1 to 100 characters")
         );
     }
@@ -298,9 +273,7 @@ QString ListenUrlIn(Reader& reader, const QString& key) {
     }
     const QString value = reader.string(key);
     if (reader.ok()) {
-        reader.require(
-            IsListenUrl(value), key + QStringLiteral(" is not a file of Yandex Music's storage")
-        );
+        reader.require(IsListenUrl(value), key + QStringLiteral(" is not a file of Yandex Music's storage"));
     }
     return value;
 }
@@ -332,8 +305,7 @@ Track ReadTrack(Reader reader) {
     for (const QJsonValue& artist : artists) {
         const qsizetype length = artist.isString() ? CodePoints(artist.toString()) : 0;
         reader.require(
-            artist.isString() && length >= 1 && length <= kMaxArtistLength
-                && !HasControl(artist.toString()),
+            artist.isString() && length >= 1 && length <= kMaxArtistLength && !HasControl(artist.toString()),
             QStringLiteral("an artist is not 1 to 64 characters")
         );
         track.artists.append(artist.toString());
@@ -342,8 +314,7 @@ Track ReadTrack(Reader reader) {
     track.coverUri = reader.optionalString(QStringLiteral("coverUri"));
     if (reader.ok() && reader.has(QStringLiteral("coverUri"))) {
         reader.require(
-            track.coverUri.size() <= kMaxCoverLength
-                && Pattern(kCoverUri).match(track.coverUri).hasMatch(),
+            track.coverUri.size() <= kMaxCoverLength && Pattern(kCoverUri).match(track.coverUri).hasMatch(),
             QStringLiteral("coverUri is not a %% template of up to 300 characters")
         );
     }
@@ -360,15 +331,13 @@ std::vector<Track> ReadTracks(Reader& reader, const QString& key, qsizetype maxi
 }
 
 int ReadMaxPending(Reader& reader) {
-    return static_cast<int>(reader.integer(
-        QStringLiteral("maxPendingPerGuest"), kMinPendingPerGuest, kMaxPendingPerGuest
-    ));
+    return static_cast<int>(
+        reader.integer(QStringLiteral("maxPendingPerGuest"), kMinPendingPerGuest, kMaxPendingPerGuest)
+    );
 }
 
 Order ReadOrder(Reader& reader) {
-    return reader.choice<Order>(
-        QStringLiteral("order"), {{"round-robin", Order::RoundRobin}, {"fifo", Order::Fifo}}
-    );
+    return reader.choice<Order>(QStringLiteral("order"), {{"round-robin", Order::RoundRobin}, {"fifo", Order::Fifo}});
 }
 
 Settings ReadSettings(Reader reader) {
@@ -399,8 +368,7 @@ SettingsPatch ReadSettingsPatch(Reader reader) {
 
 Source ReadSource(Reader& reader) {
     return reader.choice<Source>(
-        QStringLiteral("source"),
-        {{"item", Source::Item}, {"wave", Source::Wave}, {"idle", Source::Idle}}
+        QStringLiteral("source"), {{"item", Source::Item}, {"wave", Source::Wave}, {"idle", Source::Idle}}
     );
 }
 
@@ -409,9 +377,7 @@ NowPlaying ReadNowPlaying(Reader reader) {
     nowPlaying.source = ReadSource(reader);
     nowPlaying.itemId = reader.optionalMatching(QStringLiteral("itemId"), kItemId);
     if (reader.has(QStringLiteral("track"))) {
-        nowPlaying.track =
-            ReadTrack(reader.child(reader.object(QStringLiteral("track")), QStringLiteral("track"))
-            );
+        nowPlaying.track = ReadTrack(reader.child(reader.object(QStringLiteral("track")), QStringLiteral("track")));
     }
     nowPlaying.addedBy = reader.optionalMatching(QStringLiteral("addedBy"), kPublicId);
     nowPlaying.positionMs = reader.time(QStringLiteral("positionMs"));
@@ -451,12 +417,8 @@ bool NoSecrets(const QJsonValue& value) {
 
 void CheckSnapshot(Reader& reader, const QJsonObject& data) {
     const QJsonValue format = data.value(QStringLiteral("format"));
-    reader.require(
-        format.isDouble() && format.toDouble() == 1, QStringLiteral("snapshot format is not 1")
-    );
-    reader.require(
-        data.value(QStringLiteral("room")).isObject(), QStringLiteral("snapshot has no room")
-    );
+    reader.require(format.isDouble() && format.toDouble() == 1, QStringLiteral("snapshot format is not 1"));
+    reader.require(data.value(QStringLiteral("room")).isObject(), QStringLiteral("snapshot has no room"));
     reader.require(NoSecrets(data), QStringLiteral("snapshot carries a secret"));
 }
 
@@ -465,9 +427,7 @@ Room ReadRoom(Reader reader) {
     room.id = reader.matching(QStringLiteral("id"), kRoomId);
     room.hostName = NameIn(reader, QStringLiteral("hostName"));
     room.hostOnline = reader.boolean(QStringLiteral("hostOnline"));
-    room.settings = ReadSettings(
-        reader.child(reader.object(QStringLiteral("settings")), QStringLiteral("settings"))
-    );
+    room.settings = ReadSettings(reader.child(reader.object(QStringLiteral("settings")), QStringLiteral("settings")));
     Reader you = reader.child(reader.object(QStringLiteral("you")), QStringLiteral("you"));
     room.you.publicId = you.matching(QStringLiteral("publicId"), kPublicId);
     room.you.isHost = you.boolean(QStringLiteral("isHost"));
@@ -481,19 +441,15 @@ Room ReadRoom(Reader reader) {
         participant.name = NameIn(item, QStringLiteral("name"));
         participant.kind = item.choice<ParticipantKind>(
             QStringLiteral("kind"),
-            {{"host", ParticipantKind::Host},
-             {"web", ParticipantKind::Web},
-             {"qiyaa", ParticipantKind::Qiyaa}}
+            {{"host", ParticipantKind::Host}, {"web", ParticipantKind::Web}, {"qiyaa", ParticipantKind::Qiyaa}}
         );
         participant.online = item.boolean(QStringLiteral("online"));
-        participant.pending =
-            static_cast<int>(item.integer(QStringLiteral("pending"), 0, kMaxQueue));
+        participant.pending = static_cast<int>(item.integer(QStringLiteral("pending"), 0, kMaxQueue));
         room.participants.push_back(participant);
     }
 
-    room.nowPlaying = ReadNowPlaying(
-        reader.child(reader.object(QStringLiteral("nowPlaying")), QStringLiteral("nowPlaying"))
-    );
+    room.nowPlaying =
+        ReadNowPlaying(reader.child(reader.object(QStringLiteral("nowPlaying")), QStringLiteral("nowPlaying")));
 
     const QString queue = QStringLiteral("queue");
     const QJsonArray items = reader.array(queue, 0, kMaxQueue);
@@ -501,8 +457,7 @@ Room ReadRoom(Reader reader) {
         Reader item = reader.child(ObjectAt(items, index, reader, queue), queue);
         QueueItem entry;
         entry.itemId = item.matching(QStringLiteral("itemId"), kItemId);
-        entry.track =
-            ReadTrack(item.child(item.object(QStringLiteral("track")), QStringLiteral("track")));
+        entry.track = ReadTrack(item.child(item.object(QStringLiteral("track")), QStringLiteral("track")));
         entry.addedBy = item.matching(QStringLiteral("addedBy"), kPublicId);
         entry.addedAt = item.time(QStringLiteral("addedAt"));
         entry.pinned = item.boolean(QStringLiteral("pinned"));
@@ -515,15 +470,13 @@ Room ReadRoom(Reader reader) {
         Reader item = reader.child(ObjectAt(played, index, reader, recent), recent);
         RecentItem entry;
         entry.itemId = item.matching(QStringLiteral("itemId"), kItemId);
-        entry.track =
-            ReadTrack(item.child(item.object(QStringLiteral("track")), QStringLiteral("track")));
+        entry.track = ReadTrack(item.child(item.object(QStringLiteral("track")), QStringLiteral("track")));
         entry.addedBy = item.matching(QStringLiteral("addedBy"), kPublicId);
         entry.playedAt = item.time(QStringLiteral("playedAt"));
         room.recent.push_back(entry);
     }
 
-    Reader fallback =
-        reader.child(reader.object(QStringLiteral("fallback")), QStringLiteral("fallback"));
+    Reader fallback = reader.child(reader.object(QStringLiteral("fallback")), QStringLiteral("fallback"));
     const QJsonArray seeds = fallback.array(QStringLiteral("seeds"), 0, kMaxSeeds);
     for (const QJsonValue& seed : seeds) {
         fallback.require(
@@ -533,17 +486,14 @@ Room ReadRoom(Reader reader) {
         room.fallback.seeds.append(seed.toString());
     }
     fallback.require(
-        QSet<QString>(room.fallback.seeds.begin(), room.fallback.seeds.end()).size()
-            == room.fallback.seeds.size(),
+        QSet<QString>(room.fallback.seeds.begin(), room.fallback.seeds.end()).size() == room.fallback.seeds.size(),
         QStringLiteral("seeds repeat")
     );
-    room.fallback.seedsVersion =
-        static_cast<int>(fallback.integer(QStringLiteral("seedsVersion"), 0, INT_MAX));
+    room.fallback.seedsVersion = static_cast<int>(fallback.integer(QStringLiteral("seedsVersion"), 0, INT_MAX));
     return room;
 }
 
-std::optional<ServerMessage>
-ReadServer(const QString& type, const QJsonObject& json, QString* problem) {
+std::optional<ServerMessage> ReadServer(const QString& type, const QJsonObject& json, QString* problem) {
     Reader reader(json, type, problem);
     if (type == QLatin1String("welcome")) {
         Welcome message;
@@ -556,13 +506,9 @@ ReadServer(const QString& type, const QJsonObject& json, QString* problem) {
         message.id = reader.optionalMatching(QStringLiteral("id"), kRequestId);
         message.reason = reader.string(QStringLiteral("reason"));
         message.detail = reader.optionalString(QStringLiteral("detail"));
-        reader.require(
-            message.detail.size() <= kMaxDetailLength,
-            QStringLiteral("detail is over 200 characters")
-        );
+        reader.require(message.detail.size() <= kMaxDetailLength, QStringLiteral("detail is over 200 characters"));
         if (reader.has(QStringLiteral("serverProtocol"))) {
-            message.serverProtocol =
-                static_cast<int>(reader.integer(QStringLiteral("serverProtocol"), 1, INT_MAX));
+            message.serverProtocol = static_cast<int>(reader.integer(QStringLiteral("serverProtocol"), 1, INT_MAX));
         }
         if (reader.ok() && !IsKnownReason(message.reason)) {
             *problem = QStringLiteral("rejected: unknown reason ") + message.reason;
@@ -628,8 +574,7 @@ ReadServer(const QString& type, const QJsonObject& json, QString* problem) {
     }
     if (type == QLatin1String("command")) {
         Command message;
-        message.kind =
-            reader.choice<CommandKind>(QStringLiteral("kind"), {{"skip", CommandKind::Skip}});
+        message.kind = reader.choice<CommandKind>(QStringLiteral("kind"), {{"skip", CommandKind::Skip}});
         message.itemId = reader.matching(QStringLiteral("itemId"), kItemId);
         return message;
     }
@@ -654,8 +599,7 @@ ReadServer(const QString& type, const QJsonObject& json, QString* problem) {
     }
     if (type == QLatin1String("ended")) {
         return Ended{reader.choice<EndReason>(
-            QStringLiteral("reason"),
-            {{"host-ended", EndReason::HostEnded}, {"expired", EndReason::Expired}}
+            QStringLiteral("reason"), {{"host-ended", EndReason::HostEnded}, {"expired", EndReason::Expired}}
         )};
     }
     if (type == QLatin1String("kicked")) {
@@ -664,21 +608,18 @@ ReadServer(const QString& type, const QJsonObject& json, QString* problem) {
     return std::nullopt;
 }
 
-std::optional<ClientMessage>
-ReadClient(const QString& type, const QJsonObject& json, QString* problem) {
+std::optional<ClientMessage> ReadClient(const QString& type, const QJsonObject& json, QString* problem) {
     Reader reader(json, type, problem);
     const auto requestAndItem = [&reader]() {
         return std::pair{
-            reader.matching(QStringLiteral("id"), kRequestId),
-            reader.matching(QStringLiteral("itemId"), kItemId)
+            reader.matching(QStringLiteral("id"), kRequestId), reader.matching(QStringLiteral("itemId"), kItemId)
         };
     };
     if (type == QLatin1String("hello")) {
         Hello message;
         message.protocol = static_cast<int>(reader.integer(QStringLiteral("protocol"), 1, INT_MAX));
         message.app = reader.choice<App>(
-            QStringLiteral("app"),
-            {{"desktop", App::Desktop}, {"android", App::Android}, {"web", App::Web}}
+            QStringLiteral("app"), {{"desktop", App::Desktop}, {"android", App::Android}, {"web", App::Web}}
         );
         message.appVersion = reader.matching(QStringLiteral("appVersion"), kAppVersion);
         return message;
@@ -688,9 +629,8 @@ ReadClient(const QString& type, const QJsonObject& json, QString* problem) {
         message.id = reader.matching(QStringLiteral("id"), kRequestId);
         message.hostName = NameIn(reader, QStringLiteral("hostName"));
         if (reader.has(QStringLiteral("settings"))) {
-            message.settings = ReadSettingsPatch(
-                reader.child(reader.object(QStringLiteral("settings")), QStringLiteral("settings"))
-            );
+            message.settings =
+                ReadSettingsPatch(reader.child(reader.object(QStringLiteral("settings")), QStringLiteral("settings")));
         }
         return message;
     }
@@ -700,19 +640,15 @@ ReadClient(const QString& type, const QJsonObject& json, QString* problem) {
         message.roomId = reader.matching(QStringLiteral("roomId"), kRoomId);
         message.hostSecret = reader.matching(QStringLiteral("hostSecret"), kHostSecret);
         const QJsonValue snapshot = json.value(QStringLiteral("snapshot"));
-        reader.require(
-            snapshot.isObject() || snapshot.isNull(),
-            QStringLiteral("snapshot is not an object or null")
-        );
+        reader.require(snapshot.isObject() || snapshot.isNull(), QStringLiteral("snapshot is not an object or null"));
         if (reader.ok() && snapshot.isObject()) {
             message.snapshot = snapshot.toObject();
             CheckSnapshot(reader, *message.snapshot);
         }
         const QJsonArray outbox = reader.array(QStringLiteral("outbox"), 0, kMaxOutbox);
         for (qsizetype index = 0; index < outbox.size() && reader.ok(); ++index) {
-            Reader entry = reader.child(
-                ObjectAt(outbox, index, reader, QStringLiteral("outbox")), QStringLiteral("outbox")
-            );
+            Reader entry =
+                reader.child(ObjectAt(outbox, index, reader, QStringLiteral("outbox")), QStringLiteral("outbox"));
             entry.require(
                 entry.string(QStringLiteral("type")) == QLatin1String("started"),
                 QStringLiteral("the outbox holds only started")
@@ -726,9 +662,7 @@ ReadClient(const QString& type, const QJsonObject& json, QString* problem) {
         message.source = ReadSource(reader);
         message.itemId = reader.optionalMatching(QStringLiteral("itemId"), kItemId);
         if (reader.has(QStringLiteral("track"))) {
-            message.track = ReadTrack(
-                reader.child(reader.object(QStringLiteral("track")), QStringLiteral("track"))
-            );
+            message.track = ReadTrack(reader.child(reader.object(QStringLiteral("track")), QStringLiteral("track")));
         }
         message.positionMs = reader.time(QStringLiteral("positionMs"));
         message.paused = reader.boolean(QStringLiteral("paused"));
@@ -736,12 +670,10 @@ ReadClient(const QString& type, const QJsonObject& json, QString* problem) {
         message.listenNextUrl = ListenUrlIn(reader, QStringLiteral("listenNextUrl"));
         if (reader.ok()) {
             reader.require(
-                message.source != Source::Item || !message.itemId.isEmpty(),
-                QStringLiteral("an item needs itemId")
+                message.source != Source::Item || !message.itemId.isEmpty(), QStringLiteral("an item needs itemId")
             );
             reader.require(
-                message.source != Source::Wave || message.track.has_value(),
-                QStringLiteral("a wave track needs track")
+                message.source != Source::Wave || message.track.has_value(), QStringLiteral("a wave track needs track")
             );
         }
         return message;
@@ -754,9 +686,7 @@ ReadClient(const QString& type, const QJsonObject& json, QString* problem) {
         message.id = reader.matching(QStringLiteral("id"), kRequestId);
         message.trackId = reader.optionalMatching(QStringLiteral("trackId"), kCatalogId);
         if (reader.has(QStringLiteral("track"))) {
-            message.track = ReadTrack(
-                reader.child(reader.object(QStringLiteral("track")), QStringLiteral("track"))
-            );
+            message.track = ReadTrack(reader.child(reader.object(QStringLiteral("track")), QStringLiteral("track")));
         }
         reader.require(
             reader.has(QStringLiteral("trackId")) != reader.has(QStringLiteral("track")),
@@ -785,9 +715,8 @@ ReadClient(const QString& type, const QJsonObject& json, QString* problem) {
     if (type == QLatin1String("settings")) {
         ChangeSettings message;
         message.id = reader.matching(QStringLiteral("id"), kRequestId);
-        message.settings = ReadSettingsPatch(
-            reader.child(reader.object(QStringLiteral("settings")), QStringLiteral("settings"))
-        );
+        message.settings =
+            ReadSettingsPatch(reader.child(reader.object(QStringLiteral("settings")), QStringLiteral("settings")));
         reader.require(!message.settings.isEmpty(), QStringLiteral("settings change nothing"));
         return message;
     }
@@ -805,8 +734,7 @@ ReadClient(const QString& type, const QJsonObject& json, QString* problem) {
         }
         if (reader.has(QStringLiteral("error"))) {
             message.error = reader.choice<SearchError>(
-                QStringLiteral("error"),
-                {{"failed", SearchError::Failed}, {"unauthorized", SearchError::Unauthorized}}
+                QStringLiteral("error"), {{"failed", SearchError::Failed}, {"unauthorized", SearchError::Unauthorized}}
             );
         }
         reader.require(
@@ -825,15 +753,12 @@ ReadClient(const QString& type, const QJsonObject& json, QString* problem) {
             ValidateEntry entry;
             entry.trackId = item.matching(QStringLiteral("trackId"), kCatalogId);
             if (item.has(QStringLiteral("track"))) {
-                entry.track = ReadTrack(
-                    item.child(item.object(QStringLiteral("track")), QStringLiteral("track"))
-                );
+                entry.track = ReadTrack(item.child(item.object(QStringLiteral("track")), QStringLiteral("track")));
             }
             if (item.has(QStringLiteral("reason"))) {
                 entry.reason = item.choice<ValidateReason>(
                     QStringLiteral("reason"),
-                    {{"track-unavailable", ValidateReason::TrackUnavailable},
-                     {"failed", ValidateReason::Failed}}
+                    {{"track-unavailable", ValidateReason::TrackUnavailable}, {"failed", ValidateReason::Failed}}
                 );
             }
             item.require(
@@ -863,10 +788,7 @@ ReadClient(const QString& type, const QJsonObject& json, QString* problem) {
 }
 
 template <typename T>
-Decoded<T> DecodeWith(
-    QByteArrayView text,
-    std::optional<T> (*read)(const QString&, const QJsonObject&, QString*)
-) {
+Decoded<T> DecodeWith(QByteArrayView text, std::optional<T> (*read)(const QString&, const QJsonObject&, QString*)) {
     Decoded<T> decoded;
     QJsonParseError parseError;
     const QJsonDocument document = QJsonDocument::fromJson(text.toByteArray(), &parseError);
@@ -886,8 +808,7 @@ Decoded<T> DecodeWith(
         decoded.problem = QStringLiteral("unknown type \"%1\"").arg(type);
         return decoded;
     }
-    const bool unknownReason =
-        decoded.problem.startsWith(QStringLiteral("rejected: unknown reason"));
+    const bool unknownReason = decoded.problem.startsWith(QStringLiteral("rejected: unknown reason"));
     if (decoded.problem.isEmpty() || unknownReason) {
         decoded.message = std::move(message);
     }
@@ -974,9 +895,7 @@ QJsonObject Body(const Hello& message) {
 }
 
 QJsonObject Body(const Create& message) {
-    QJsonObject json{
-        {QStringLiteral("id"), message.id}, {QStringLiteral("hostName"), message.hostName}
-    };
+    QJsonObject json{{QStringLiteral("id"), message.id}, {QStringLiteral("hostName"), message.hostName}};
     if (message.settings) {
         json.insert(QStringLiteral("settings"), PatchJson(*message.settings));
     }
@@ -986,16 +905,15 @@ QJsonObject Body(const Create& message) {
 QJsonObject Body(const Resume& message) {
     QJsonArray outbox;
     for (const QString& itemId : message.outbox) {
-        outbox.append(QJsonObject{
-            {QStringLiteral("type"), QStringLiteral("started")}, {QStringLiteral("itemId"), itemId}
-        });
+        outbox.append(
+            QJsonObject{{QStringLiteral("type"), QStringLiteral("started")}, {QStringLiteral("itemId"), itemId}}
+        );
     }
     return {
         {QStringLiteral("id"), message.id},
         {QStringLiteral("roomId"), message.roomId},
         {QStringLiteral("hostSecret"), message.hostSecret},
-        {QStringLiteral("snapshot"),
-         message.snapshot ? QJsonValue(*message.snapshot) : QJsonValue(QJsonValue::Null)},
+        {QStringLiteral("snapshot"), message.snapshot ? QJsonValue(*message.snapshot) : QJsonValue(QJsonValue::Null)},
         {QStringLiteral("outbox"), outbox},
     };
 }
@@ -1053,10 +971,7 @@ QJsonObject Body(const Kick& message) {
 }
 
 QJsonObject Body(const ChangeSettings& message) {
-    return {
-        {QStringLiteral("id"), message.id},
-        {QStringLiteral("settings"), PatchJson(message.settings)}
-    };
+    return {{QStringLiteral("id"), message.id}, {QStringLiteral("settings"), PatchJson(message.settings)}};
 }
 
 QJsonObject Body(const RotateLink& message) {
@@ -1075,8 +990,7 @@ QJsonObject Body(const SearchResult& message) {
     if (message.error) {
         json.insert(
             QStringLiteral("error"),
-            *message.error == SearchError::Unauthorized ? QStringLiteral("unauthorized")
-                                                        : QStringLiteral("failed")
+            *message.error == SearchError::Unauthorized ? QStringLiteral("unauthorized") : QStringLiteral("failed")
         );
     }
     return json;

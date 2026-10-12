@@ -17,16 +17,13 @@ JamStubServer::JamStubServer()
     connect(&server, &QWebSocketServer::newConnection, this, [this] {
         while (QWebSocket* socket = server.nextPendingConnection()) {
             connections.push_back(Connection{std::unique_ptr<QWebSocket>(socket), {}});
-            connect(
-                socket, &QWebSocket::textMessageReceived, this,
-                [this, socket](const QString& text) {
-                    for (Connection& each : connections) {
-                        if (each.socket.get() == socket) {
-                            each.received.append(text);
-                        }
+            connect(socket, &QWebSocket::textMessageReceived, this, [this, socket](const QString& text) {
+                for (Connection& each : connections) {
+                    if (each.socket.get() == socket) {
+                        each.received.append(text);
                     }
                 }
-            );
+            });
         }
     });
 }
@@ -61,9 +58,7 @@ void JamStubServer::send(const QByteArray& text) {
 }
 
 void JamStubServer::welcome(qint64 serverTime) {
-    send(QStringLiteral(R"({"type":"welcome","protocol":1,"serverTime":%1})")
-             .arg(serverTime)
-             .toUtf8());
+    send(QStringLiteral(R"({"type":"welcome","protocol":1,"serverTime":%1})").arg(serverTime).toUtf8());
 }
 
 }  // namespace Tests

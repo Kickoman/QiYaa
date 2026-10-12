@@ -62,13 +62,8 @@ void Drag(QWidget* widget, QPoint local, QPoint delta) {
     SendMouseEvent(widget, QEvent::MouseButtonPress, local, global, Qt::LeftButton, Qt::LeftButton);
     // Local coordinates are relative to the window's position at press time,
     // which is what Qt reports while the window follows the cursor.
-    SendMouseEvent(
-        widget, QEvent::MouseMove, local + delta, global + delta, Qt::NoButton, Qt::LeftButton
-    );
-    SendMouseEvent(
-        widget, QEvent::MouseButtonRelease, local + delta, global + delta, Qt::LeftButton,
-        Qt::NoButton
-    );
+    SendMouseEvent(widget, QEvent::MouseMove, local + delta, global + delta, Qt::NoButton, Qt::LeftButton);
+    SendMouseEvent(widget, QEvent::MouseButtonRelease, local + delta, global + delta, Qt::LeftButton, Qt::NoButton);
 }
 
 void Click(QWidget* widget, QPoint local) {
@@ -77,11 +72,7 @@ void Click(QWidget* widget, QPoint local) {
     SendMouseEvent(widget, QEvent::MouseButtonRelease, local, global, Qt::LeftButton, Qt::NoButton);
 }
 
-QMenu* OpenContextMenu(
-    QWidget* widget,
-    QPoint local,
-    QContextMenuEvent::Reason reason = QContextMenuEvent::Mouse
-) {
+QMenu* OpenContextMenu(QWidget* widget, QPoint local, QContextMenuEvent::Reason reason = QContextMenuEvent::Mouse) {
     QContextMenuEvent event(reason, local, widget->mapToGlobal(local));
     QCoreApplication::sendEvent(widget, &event);
     return qobject_cast<QMenu*>(QApplication::activePopupWidget());
@@ -124,18 +115,11 @@ private:
         application->api()->setBaseUrl(server.baseUrl());
         application->api()->setToken(QStringLiteral("test-token"));
         server.fixture("GET", "/account/status", "account-status/ok");
-        server.fixture(
-            "POST", "/users/42/likes/tracks/add-multiple", "users-likes-tracks-add-multiple/ok"
-        );
+        server.fixture("POST", "/users/42/likes/tracks/add-multiple", "users-likes-tracks-add-multiple/ok");
         server.fixture("POST", "/users/42/likes/tracks/remove", "users-likes-tracks-remove/ok");
-        server.fixture(
-            "POST", "/users/42/dislikes/tracks/add-multiple",
-            "users-dislikes-tracks-add-multiple/ok"
-        );
+        server.fixture("POST", "/users/42/dislikes/tracks/add-multiple", "users-dislikes-tracks-add-multiple/ok");
         bool done = false;
-        application->library()->connectAccount([&](const Yandex::Account&, const QString&) {
-            done = true;
-        });
+        application->library()->connectAccount([&](const Yandex::Account&, const QString&) { done = true; });
         return QTest::qWaitFor([&] { return done; }, 5000) && application->library()->isLoggedIn();
     }
 
@@ -179,9 +163,7 @@ private Q_SLOTS:
         options.settingsFile = directory.filePath(QStringLiteral("settings.ini"));
         {
             App::Application configured(options);
-            QCOMPARE(
-                configured.player()->shuffleAlgorithm(), Core::ShuffleAlgorithm::WithoutRepeats
-            );
+            QCOMPARE(configured.player()->shuffleAlgorithm(), Core::ShuffleAlgorithm::WithoutRepeats);
             configured.mainWindow()->menuRequested(QPoint(100, 100));
             auto* menu = configured.mainWindow()->findChild<QMenu*>(QStringLiteral("shuffleMenu"));
             QVERIFY(menu);
@@ -250,9 +232,7 @@ private Q_SLOTS:
             QVERIFY(menu->actions()[1]->isChecked());
         }
         QSettings saved(options.settingsFile, QSettings::IniFormat);
-        QCOMPARE(
-            saved.value(QStringLiteral("playback/quality")).toString(), QStringLiteral("economy")
-        );
+        QCOMPARE(saved.value(QStringLiteral("playback/quality")).toString(), QStringLiteral("economy"));
         saved.setValue(QStringLiteral("playback/quality"), QStringLiteral("lossless"));
         saved.sync();
         App::Application fallback(options);
@@ -306,8 +286,7 @@ private Q_SLOTS:
         application->setScale(4.0);
         const QRect screen = QGuiApplication::primaryScreen()->availableGeometry();
         for (QWidget* widget :
-             {static_cast<QWidget*>(main), static_cast<QWidget*>(eq),
-              static_cast<QWidget*>(playlist)}) {
+             {static_cast<QWidget*>(main), static_cast<QWidget*>(eq), static_cast<QWidget*>(playlist)}) {
             const QRect frame = widget->frameGeometry();
             QVERIFY2(screen.contains(frame.topLeft()), qPrintable(widget->windowTitle()));
             if (frame.width() <= screen.width() && frame.height() <= screen.height()) {
@@ -351,17 +330,17 @@ private Q_SLOTS:
         QTest::addColumn<bool>("alreadySelected");
         for (bool selected : {false, true}) {
             const QByteArray suffix = selected ? "-selected" : "-unselected";
-            QTest::newRow(("like" + suffix).constData())
-                << QStringLiteral("Like") << QStringLiteral("/users/42/likes/tracks/add-multiple")
-                << selected;
-            QTest::newRow(("unlike" + suffix).constData())
-                << QStringLiteral("Remove from Liked")
-                << QStringLiteral("/users/42/likes/tracks/remove") << selected;
-            QTest::newRow(("dislike" + suffix).constData())
-                << QStringLiteral("Dislike")
-                << QStringLiteral("/users/42/dislikes/tracks/add-multiple") << selected;
-            QTest::newRow(("browser" + suffix).constData())
-                << QStringLiteral("Open the track in the browser") << QString() << selected;
+            QTest::newRow(("like" + suffix).constData()
+            ) << QStringLiteral("Like")
+              << QStringLiteral("/users/42/likes/tracks/add-multiple") << selected;
+            QTest::newRow(("unlike" + suffix).constData()
+            ) << QStringLiteral("Remove from Liked")
+              << QStringLiteral("/users/42/likes/tracks/remove") << selected;
+            QTest::newRow(("dislike" + suffix).constData()
+            ) << QStringLiteral("Dislike")
+              << QStringLiteral("/users/42/dislikes/tracks/add-multiple") << selected;
+            QTest::newRow(("browser" + suffix).constData()) << QStringLiteral("Open the track in the browser"
+            ) << QString() << selected;
         }
     }
 
@@ -373,8 +352,7 @@ private Q_SLOTS:
         QVERIFY(connectLibrary(server));
         const QList<Track> tracks = MakeTracks(5);
         application->player()->setQueue(tracks, "Test", false);
-        const QString likedId =
-            actionText == QStringLiteral("Remove from Liked") ? tracks[2].id : tracks[0].id;
+        const QString likedId = actionText == QStringLiteral("Remove from Liked") ? tracks[2].id : tracks[0].id;
         application->library()->setLiked(likedId, true, [](bool, const QString&) {});
         QTRY_VERIFY(application->library()->isLiked(likedId));
         Click(playlist, {60, 20 + 3 + 13 + 6});
@@ -464,8 +442,7 @@ private Q_SLOTS:
         QMenu* menu = OpenContextMenu(playlist, {60, 29});
         QVERIFY(menu);
         for (const QString& text :
-             {QStringLiteral("Like"), QStringLiteral("Dislike"),
-              QStringLiteral("Open the track in the browser")}) {
+             {QStringLiteral("Like"), QStringLiteral("Dislike"), QStringLiteral("Open the track in the browser")}) {
             QAction* action = FindAction(menu, text);
             QVERIFY(action);
             QVERIFY(!action->isEnabled());
@@ -540,8 +517,14 @@ private Q_SLOTS:
         main->setVolume(50);
         for (int i = 0; i < 3; ++i) {  // three 40-unit touchpad deltas = one notch
             QWheelEvent wheel(
-                QPointF(150, 60), main->mapToGlobal(QPointF(150, 60)), QPoint(), QPoint(0, 40),
-                Qt::NoButton, Qt::NoModifier, Qt::NoScrollPhase, false
+                QPointF(150, 60),
+                main->mapToGlobal(QPointF(150, 60)),
+                QPoint(),
+                QPoint(0, 40),
+                Qt::NoButton,
+                Qt::NoModifier,
+                Qt::NoScrollPhase,
+                false
             );
             QCoreApplication::sendEvent(main, &wheel);
         }
@@ -562,8 +545,12 @@ private Q_SLOTS:
         QCOMPARE(playlist->rowAt(thirdRow), 2);
         // Double click plays that row (no audio device here, but the index moves).
         QMouseEvent doubleClick(
-            QEvent::MouseButtonDblClick, QPointF(thirdRow),
-            playlist->mapToGlobal(QPointF(thirdRow)), Qt::LeftButton, Qt::LeftButton, Qt::NoModifier
+            QEvent::MouseButtonDblClick,
+            QPointF(thirdRow),
+            playlist->mapToGlobal(QPointF(thirdRow)),
+            Qt::LeftButton,
+            Qt::LeftButton,
+            Qt::NoModifier
         );
         QCoreApplication::sendEvent(playlist, &doubleClick);
         QCOMPARE(application->player()->currentIndex(), 2);
@@ -572,8 +559,14 @@ private Q_SLOTS:
     void playlistScrollsAndResizes() {
         application->player()->setQueue(MakeTracks(50), "Test", false);
         QWheelEvent wheel(
-            QPointF(60, 60), playlist->mapToGlobal(QPointF(60, 60)), QPoint(), QPoint(0, -120),
-            Qt::NoButton, Qt::NoModifier, Qt::NoScrollPhase, false
+            QPointF(60, 60),
+            playlist->mapToGlobal(QPointF(60, 60)),
+            QPoint(),
+            QPoint(0, -120),
+            Qt::NoButton,
+            Qt::NoModifier,
+            Qt::NoScrollPhase,
+            false
         );
         QCoreApplication::sendEvent(playlist, &wheel);
         QCOMPARE(playlist->scrollOffset(), 3);
@@ -600,12 +593,8 @@ private Q_SLOTS:
         QSignalSpy changed(eq, &Ui::EqualizerWindow::settingsChanged);
         // Band 60 Hz at x=78, slider top y=38, 51 px travel: top = +12 dB.
         const QPoint top(78 + 7, 38 + 5);
-        SendMouseEvent(
-            eq, QEvent::MouseButtonPress, top, eq->mapToGlobal(top), Qt::LeftButton, Qt::LeftButton
-        );
-        SendMouseEvent(
-            eq, QEvent::MouseButtonRelease, top, eq->mapToGlobal(top), Qt::LeftButton, Qt::NoButton
-        );
+        SendMouseEvent(eq, QEvent::MouseButtonPress, top, eq->mapToGlobal(top), Qt::LeftButton, Qt::LeftButton);
+        SendMouseEvent(eq, QEvent::MouseButtonRelease, top, eq->mapToGlobal(top), Qt::LeftButton, Qt::NoButton);
         QVERIFY(changed.count() >= 1);
         QCOMPARE(eq->settings().bandsDb[0], 12.0);
         // ON button turns the EQ off.
@@ -633,13 +622,10 @@ private Q_SLOTS:
                 if (!label->isVisible() || label->text().isEmpty()) {
                     continue;
                 }
-                const int neededHeight = label->wordWrap() ? label->heightForWidth(label->width())
-                                                           : label->sizeHint().height();
+                const int neededHeight =
+                    label->wordWrap() ? label->heightForWidth(label->width()) : label->sizeHint().height();
                 if (label->height() < neededHeight) {
-                    qWarning(
-                        "label %s: %d < %d", qPrintable(label->text().left(30)), label->height(),
-                        neededHeight
-                    );
+                    qWarning("label %s: %d < %d", qPrintable(label->text().left(30)), label->height(), neededHeight);
                     return false;
                 }
             }
@@ -723,9 +709,7 @@ private Q_SLOTS:
         playlist->setShaded(true);
         application->player()->playIndex(39);  // scrolls the one-row shaded view to row 39
         playlist->setShaded(false);
-        QCOMPARE(
-            playlist->scrollOffset(), 40 - 13
-        );  // 13 rows fit the default height; last row at the bottom
+        QCOMPARE(playlist->scrollOffset(), 40 - 13);  // 13 rows fit the default height; last row at the bottom
     }
 
     void unshadingAtTheBottomStaysOnScreen() {
@@ -733,8 +717,7 @@ private Q_SLOTS:
         eq->setShaded(true);
         playlist->setShaded(true);
         const QRect screen = main->screen()->availableGeometry();
-        const int y =
-            screen.y() + screen.height() - 42;  // the shaded stack sits on the bottom edge
+        const int y = screen.y() + screen.height() - 42;  // the shaded stack sits on the bottom edge
         main->move(main->x(), y);
         eq->move(main->x(), y + 14);
         playlist->move(main->x(), y + 28);
@@ -758,14 +741,10 @@ private Q_SLOTS:
         QVERIFY(!milkdrop->isVisible());
         application->setMilkdropVisible(true);
         QVERIFY(milkdrop->isVisible());
-        QCOMPARE(
-            milkdrop->pos(), main->pos() + QPoint(main->width(), main->height())
-        );  // right of the equalizer
+        QCOMPARE(milkdrop->pos(), main->pos() + QPoint(main->width(), main->height()));  // right of the equalizer
         QVERIFY(milkdrop->presets().size() >= 50);
         if (!qEnvironmentVariableIsEmpty("QIYAA_TEST_SHOTS")) {
-            application->snapshot().save(
-                qEnvironmentVariable("QIYAA_TEST_SHOTS") + "/milkdrop-window.png"
-            );
+            application->snapshot().save(qEnvironmentVariable("QIYAA_TEST_SHOTS") + "/milkdrop-window.png");
         }
         application->setMilkdropVisible(false);
         QVERIFY(!milkdrop->isVisible());
@@ -777,8 +756,12 @@ private Q_SLOTS:
 
     void doubleClickTitleShades() {
         QMouseEvent doubleClick(
-            QEvent::MouseButtonDblClick, QPointF(100, 5), main->mapToGlobal(QPointF(100, 5)),
-            Qt::LeftButton, Qt::LeftButton, Qt::NoModifier
+            QEvent::MouseButtonDblClick,
+            QPointF(100, 5),
+            main->mapToGlobal(QPointF(100, 5)),
+            Qt::LeftButton,
+            Qt::LeftButton,
+            Qt::NoModifier
         );
         QCoreApplication::sendEvent(main, &doubleClick);
         QVERIFY(main->isShaded());
@@ -790,22 +773,18 @@ private Q_SLOTS:
         eq->setShaded(true);
         const QPoint volumeRight(61 + 96, 7);  // right end of the mini volume slider
         SendMouseEvent(
-            eq, QEvent::MouseButtonPress, volumeRight, eq->mapToGlobal(volumeRight), Qt::LeftButton,
-            Qt::LeftButton
+            eq, QEvent::MouseButtonPress, volumeRight, eq->mapToGlobal(volumeRight), Qt::LeftButton, Qt::LeftButton
         );
         SendMouseEvent(
-            eq, QEvent::MouseButtonRelease, volumeRight, eq->mapToGlobal(volumeRight),
-            Qt::LeftButton, Qt::NoButton
+            eq, QEvent::MouseButtonRelease, volumeRight, eq->mapToGlobal(volumeRight), Qt::LeftButton, Qt::NoButton
         );
         QCOMPARE(main->volume(), 100);
         const QPoint balanceLeft(164, 7);  // left end of the mini balance slider
         SendMouseEvent(
-            eq, QEvent::MouseButtonPress, balanceLeft, eq->mapToGlobal(balanceLeft), Qt::LeftButton,
-            Qt::LeftButton
+            eq, QEvent::MouseButtonPress, balanceLeft, eq->mapToGlobal(balanceLeft), Qt::LeftButton, Qt::LeftButton
         );
         SendMouseEvent(
-            eq, QEvent::MouseButtonRelease, balanceLeft, eq->mapToGlobal(balanceLeft),
-            Qt::LeftButton, Qt::NoButton
+            eq, QEvent::MouseButtonRelease, balanceLeft, eq->mapToGlobal(balanceLeft), Qt::LeftButton, Qt::NoButton
         );
         QCOMPARE(main->balance(), -100);
     }
@@ -827,9 +806,7 @@ private Q_SLOTS:
         QBuffer buffer(&png);
         buffer.open(QIODevice::WriteOnly);
         redCover.save(&buffer, "PNG");
-        server.on("GET", "/cover/400x400", [png](const Tests::MockRequest&) {
-            return Tests::MockResponse{200, png};
-        });
+        server.on("GET", "/cover/400x400", [png](const Tests::MockRequest&) { return Tests::MockResponse{200, png}; });
 
         QList<Yandex::Track> tracks = MakeTracks(1);
         tracks[0].title = QStringLiteral("Группа крови");
@@ -841,18 +818,15 @@ private Q_SLOTS:
         application->setNowPlayingVisible(true);
         Ui::NowPlayingWindow* nowPlaying = application->nowPlayingWindow();
         QVERIFY(QTest::qWaitForWindowExposed(nowPlaying));
-        QVERIFY(QTest::qWaitFor(
-            [&] { return !application->covers()->localFile(tracks[0].coverUrl(400)).isEmpty(); },
-            5000
-        ));
+        QVERIFY(
+            QTest::qWaitFor([&] { return !application->covers()->localFile(tracks[0].coverUrl(400)).isEmpty(); }, 5000)
+        );
         QApplication::processEvents();
         const QImage shot = nowPlaying->grab().toImage();
         const QRect coverArea = nowPlaying->coverRect();
         QCOMPARE(QColor(shot.pixel(coverArea.center())), QColor(Qt::red));
         if (!qEnvironmentVariableIsEmpty("QIYAA_TEST_SHOTS")) {
-            application->snapshot().save(
-                qEnvironmentVariable("QIYAA_TEST_SHOTS") + "/nowplaying.png"
-            );
+            application->snapshot().save(qEnvironmentVariable("QIYAA_TEST_SHOTS") + "/nowplaying.png");
         }
         QCOMPARE(nowPlaying->pos(), main->pos() + QPoint(main->width(), 0));
     }

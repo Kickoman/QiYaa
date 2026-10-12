@@ -68,20 +68,7 @@ protected:
 
 private:
     enum class Drag { None, Scroll, Resize, Close, Shade, Button };
-    enum class Button {
-        None,
-        Add,
-        Remove,
-        Select,
-        Misc,
-        List,
-        Previous,
-        Play,
-        Pause,
-        Stop,
-        Next,
-        Eject
-    };
+    enum class Button { None, Add, Remove, Select, Misc, List, Previous, Play, Pause, Stop, Next, Eject };
 
     QSize fullSkinSize() const;
     void paintShaded(QPainter& painter);

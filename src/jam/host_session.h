@@ -68,8 +68,7 @@ public:
     QString joinUrl() const;
     bool hasStoredSession() const { return stored.has_value(); }
 
-    bool
-    create(const QString& hostName, const std::optional<SettingsPatch>& settings = std::nullopt);
+    bool create(const QString& hostName, const std::optional<SettingsPatch>& settings = std::nullopt);
     void cancelCreate();
     void continueStored();
     void discardStored();

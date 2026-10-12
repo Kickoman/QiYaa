@@ -27,12 +27,10 @@ QList<int> ParseIntegers(const QString& text) {
 TRegionData ParseRegionTxt(const QByteArray& text) {
     QHash<QString, QHash<QString, QString>> sections;
     QString section;
-    const QStringList lines =
-        QString::fromLatin1(text).split(QRegularExpression(QStringLiteral("[\r\n]+")));
+    const QStringList lines = QString::fromLatin1(text).split(QRegularExpression(QStringLiteral("[\r\n]+")));
     for (QString line : lines) {
         line = line.trimmed();
-        if (line.isEmpty() || line.startsWith(u';') || line.startsWith(u'#')
-            || line.startsWith(QStringLiteral("//"))) {
+        if (line.isEmpty() || line.startsWith(u';') || line.startsWith(u'#') || line.startsWith(QStringLiteral("//"))) {
             continue;
         }
         if (line.startsWith(u'[')) {

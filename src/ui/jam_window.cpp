@@ -37,12 +37,9 @@ QColor Mix(const QColor& a, const QColor& b) {
 
 QString KindText(Jam::ParticipantKind kind) {
     switch (kind) {
-        case Jam::ParticipantKind::Host:
-            return QCoreApplication::translate("Ui::JamWindow", "host");
-        case Jam::ParticipantKind::Web:
-            return QCoreApplication::translate("Ui::JamWindow", "browser");
-        case Jam::ParticipantKind::Qiyaa:
-            return QCoreApplication::translate("Ui::JamWindow", "app");
+        case Jam::ParticipantKind::Host: return QCoreApplication::translate("Ui::JamWindow", "host");
+        case Jam::ParticipantKind::Web: return QCoreApplication::translate("Ui::JamWindow", "browser");
+        case Jam::ParticipantKind::Qiyaa: return QCoreApplication::translate("Ui::JamWindow", "app");
     }
     return {};
 }
@@ -90,9 +87,7 @@ public:
         painter->setFont(bold ? strong : regular);
         painter->setPen(color);
         const QFontMetrics fontMetrics(bold ? strong : regular);
-        painter->drawText(
-            rect, flags, fontMetrics.elidedText(content, Qt::ElideRight, rect.width())
-        );
+        painter->drawText(rect, flags, fontMetrics.elidedText(content, Qt::ElideRight, rect.width()));
     }
 
     // One line across the width; moves down.
@@ -112,9 +107,8 @@ public:
     ) {
         const int x = from < 0 ? left : from;
         const int w = (to < 0 ? right : to) - x;
-        const QRect bounds = metrics.boundingRect(
-            QRect(x, y, w, 10'000), Qt::AlignLeft | Qt::AlignTop | flags, content
-        );
+        const QRect bounds =
+            metrics.boundingRect(QRect(x, y, w, 10'000), Qt::AlignLeft | Qt::AlignTop | flags, content);
         int height = bounds.height();
         if (maxLines > 0) {
             height = std::min(height, maxLines * metrics.lineSpacing());
@@ -124,22 +118,13 @@ public:
             painter->setClipRect(QRect(x, y, w, height), Qt::IntersectClip);
             painter->setFont(regular);
             painter->setPen(color);
-            painter->drawText(
-                QRect(x, y, w, 10'000), Qt::AlignLeft | Qt::AlignTop | flags, content
-            );
+            painter->drawText(QRect(x, y, w, 10'000), Qt::AlignLeft | Qt::AlignTop | flags, content);
             painter->restore();
         }
         y += height;
     }
 
-    QRect button(
-        int x,
-        int top,
-        const QString& label,
-        bool enabled,
-        std::function<void()> action,
-        bool on = false
-    ) {
+    QRect button(int x, int top, const QString& label, bool enabled, std::function<void()> action, bool on = false) {
         const QRect rect(x, top, buttonWidth(label), buttonHeight());
         if (painter) {
             if (on) {
@@ -178,12 +163,7 @@ public:
     QList<Control> controls;
 };
 
-JamWindow::JamWindow(
-    Jam::HostSession* host,
-    Yandex::Library* library,
-    const Skins::Skin* skin,
-    QWidget* parent
-)
+JamWindow::JamWindow(Jam::HostSession* host, Yandex::Library* library, const Skins::Skin* skin, QWidget* parent)
     : GenWindow(skin, QStringLiteral("JAM"), parent)
     , jamHost(host)
     , yandexLibrary(library) {
@@ -293,13 +273,10 @@ void JamWindow::renderStart(Canvas& canvas) {
     }
     canvas.y += kGap * 2;
     canvas.line(
-        serverName.isEmpty() ? tr("The jam server is not set") : tr("Server: %1").arg(serverName),
-        canvas.normal
+        serverName.isEmpty() ? tr("The jam server is not set") : tr("Server: %1").arg(serverName), canvas.normal
     );
     canvas.y += kGap;
-    canvas.button(canvas.left, canvas.y, tr("Server settings…"), true, [this] {
-        Q_EMIT serverSettingsRequested();
-    });
+    canvas.button(canvas.left, canvas.y, tr("Server settings…"), true, [this] { Q_EMIT serverSettingsRequested(); });
 }
 
 void JamWindow::renderCreating(Canvas& canvas) {
@@ -311,32 +288,33 @@ void JamWindow::renderCreating(Canvas& canvas) {
 
 void JamWindow::renderTabs(Canvas& canvas) {
     const QRect jamTab = canvas.button(
-        canvas.left, canvas.y, tr("Jam"), true, [this] { showPage(Page::Jam); },
-        currentPage == Page::Jam
+        canvas.left, canvas.y, tr("Jam"), true, [this] { showPage(Page::Jam); }, currentPage == Page::Jam
     );
     const QRect searchTab = canvas.button(
-        jamTab.right() + 1 + kGap, canvas.y, tr("Add tracks"), true,
-        [this] { showPage(Page::Search); }, currentPage == Page::Search
+        jamTab.right() + 1 + kGap,
+        canvas.y,
+        tr("Add tracks"),
+        true,
+        [this] { showPage(Page::Search); },
+        currentPage == Page::Search
     );
     const bool connected = jamHost->isConnected();
     const Jam::Status status = jamHost->connection();
-    const QString state = connected                                          ? tr("Connected")
-        : status == Jam::Status::Connecting || status == Jam::Status::Online ? tr("Connecting…")
-                                                                             : tr("No connection");
+    const QString state = connected ? tr("Connected")
+        : status == Jam::Status::Connecting || status == Jam::Status::Online
+        ? tr("Connecting…")
+        : tr("No connection");
     const int stateWidth = canvas.textWidth(state) + 2;  // advances are fractional
     const int stateX = canvas.right - stateWidth;
     if (stateX - 8 > searchTab.right() + kGap) {
         canvas.light(stateX - 7, jamTab.center().y(), connected);
         canvas.text(
-            QRect(stateX, jamTab.y(), stateWidth, jamTab.height()), state,
-            connected ? canvas.normal : canvas.current
+            QRect(stateX, jamTab.y(), stateWidth, jamTab.height()), state, connected ? canvas.normal : canvas.current
         );
     }
     canvas.y += canvas.buttonHeight() + kGap;
     if (!connected) {
-        canvas.paragraph(
-            tr("No connection to the jam server · trying again by itself"), canvas.current
-        );
+        canvas.paragraph(tr("No connection to the jam server · trying again by itself"), canvas.current);
         canvas.y += kGap;
     }
 }
@@ -359,7 +337,9 @@ void JamWindow::renderJam(Canvas& canvas) {
     }
     canvas.text(
         QRect(textLeft, canvas.y, canvas.right - textLeft, canvas.lineHeight),
-        tr("Link for the guests"), canvas.current, true
+        tr("Link for the guests"),
+        canvas.current,
+        true
     );
     canvas.y += canvas.lineHeight;
     canvas.paragraph(jamHost->joinUrl(), canvas.normal, 3, Qt::TextWrapAnywhere, textLeft);
@@ -379,29 +359,27 @@ void JamWindow::renderJam(Canvas& canvas) {
     const std::optional<Jam::Room>& room = jamHost->room();
     if (room) {
         const Jam::Settings& settings = room->settings;
-        const auto setting = [&](const QString& label, const QString& value,
-                                 Jam::SettingsPatch patch) {
-            canvas.text(
-                QRect(canvas.left, canvas.y, canvas.width(), canvas.buttonHeight()), label,
-                canvas.normal
-            );
-            canvas.button(
-                canvas.right - canvas.buttonWidth(value), canvas.y, value, connected,
-                [this, patch] { send(jamHost->changeSettings(patch)); }
-            );
+        const auto setting = [&](const QString& label, const QString& value, Jam::SettingsPatch patch) {
+            canvas.text(QRect(canvas.left, canvas.y, canvas.width(), canvas.buttonHeight()), label, canvas.normal);
+            canvas.button(canvas.right - canvas.buttonWidth(value), canvas.y, value, connected, [this, patch] {
+                send(jamHost->changeSettings(patch));
+            });
             canvas.y += canvas.buttonHeight() + 1;
         };
         const bool roundRobin = settings.order == Jam::Order::RoundRobin;
         setting(
-            tr("Order"), roundRobin ? tr("Taking turns") : tr("First come"),
+            tr("Order"),
+            roundRobin ? tr("Taking turns") : tr("First come"),
             Jam::SettingsPatch{roundRobin ? Jam::Order::Fifo : Jam::Order::RoundRobin, {}, {}, {}}
         );
         setting(
-            tr("Guests can skip"), settings.guestsCanSkip ? tr("Yes") : tr("No"),
+            tr("Guests can skip"),
+            settings.guestsCanSkip ? tr("Yes") : tr("No"),
             Jam::SettingsPatch{{}, !settings.guestsCanSkip, {}, {}}
         );
         setting(
-            tr("New guests"), settings.joinOpen ? tr("Let in") : tr("Closed"),
+            tr("New guests"),
+            settings.joinOpen ? tr("Let in") : tr("Closed"),
             Jam::SettingsPatch{{}, {}, !settings.joinOpen, {}}
         );
         canvas.y += kGap;
@@ -434,18 +412,16 @@ void JamWindow::renderJam(Canvas& canvas) {
         }
         canvas.text(
             QRect(canvas.left + 7, canvas.y, kickX - kGap - canvas.left - 7, canvas.buttonHeight()),
-            line, guest.online ? canvas.normal : canvas.dim
+            line,
+            guest.online ? canvas.normal : canvas.dim
         );
         const QString publicId = guest.publicId;
-        canvas.button(kickX, canvas.y, kick, connected, [this, publicId] {
-            send(jamHost->kick(publicId));
-        });
+        canvas.button(kickX, canvas.y, kick, connected, [this, publicId] { send(jamHost->kick(publicId)); });
         canvas.y += rowHeight;
     }
 
     canvas.button(
-        canvas.left, endTop, endArmed ? tr("Press again to end") : tr("End the jam"), true,
-        [this] { end(); }, endArmed
+        canvas.left, endTop, endArmed ? tr("Press again to end") : tr("End the jam"), true, [this] { end(); }, endArmed
     );
 }
 
@@ -454,12 +430,12 @@ void JamWindow::renderSearch(Canvas& canvas) {
     const QString find = tr("Search");
     const int findX = canvas.right - canvas.buttonWidth(find);
     field(
-        canvas, QRect(canvas.left, canvas.y, findX - kGap - canvas.left, canvas.buttonHeight()),
-        Field::Search, tr("Search tracks for the jam")
+        canvas,
+        QRect(canvas.left, canvas.y, findX - kGap - canvas.left, canvas.buttonHeight()),
+        Field::Search,
+        tr("Search tracks for the jam")
     );
-    canvas.button(findX, canvas.y, find, !searchText.trimmed().isEmpty(), [this] {
-        search(searchText);
-    });
+    canvas.button(findX, canvas.y, find, !searchText.trimmed().isEmpty(), [this] { search(searchText); });
     canvas.y += canvas.buttonHeight() + kGap * 2;
 
     switch (results) {
@@ -482,8 +458,7 @@ void JamWindow::renderSearch(Canvas& canvas) {
     }
     const int rowHeight = canvas.buttonHeight() + 1;
     listRows = std::max(0, (canvas.bottom - canvas.y) / rowHeight);
-    listScroll =
-        std::clamp(listScroll, 0, std::max(0, static_cast<int>(foundTracks.size()) - listRows));
+    listScroll = std::clamp(listScroll, 0, std::max(0, static_cast<int>(foundTracks.size()) - listRows));
     const QString add = tr("To the jam");
     const QString next = tr("Next");
     for (int i = listScroll; i < foundTracks.size() && i < listScroll + listRows; ++i) {
@@ -495,8 +470,7 @@ void JamWindow::renderSearch(Canvas& canvas) {
             title += QStringLiteral(" — ") + track.artists.join(QStringLiteral(", "));
         }
         canvas.text(
-            QRect(canvas.left, canvas.y, addX - kGap - canvas.left, canvas.buttonHeight()), title,
-            canvas.normal
+            QRect(canvas.left, canvas.y, addX - kGap - canvas.left, canvas.buttonHeight()), title, canvas.normal
         );
         canvas.button(addX, canvas.y, add, connected, [this, track] {
             send(jamHost->add(track), tr("Sent to the jam"));
@@ -519,8 +493,7 @@ void JamWindow::field(Canvas& canvas, const QRect& rect, Field which, const QStr
             canvas.text(inner, hint, canvas.dim);
         } else {
             // The end of a long text stays in sight, where the caret is.
-            const QString shown =
-                canvas.metrics.elidedText(content, Qt::ElideLeft, inner.width() - 2);
+            const QString shown = canvas.metrics.elidedText(content, Qt::ElideLeft, inner.width() - 2);
             canvas.text(inner, shown, canvas.current);
             if (focused) {
                 const int caretX = inner.x() + canvas.textWidth(shown) + 1;
@@ -529,10 +502,11 @@ void JamWindow::field(Canvas& canvas, const QRect& rect, Field which, const QStr
             }
         }
     }
-    canvas.controls << Control{rect, hint, true, [this, which] {
-                                   focus = which;
-                                   update();
-                               }};
+    canvas.controls
+        << Control{rect, hint, true, [this, which] {
+                       focus = which;
+                       update();
+                   }};
 }
 
 const QImage& JamWindow::qrCode() {
@@ -569,8 +543,8 @@ const QImage& JamWindow::qrCode() {
 void JamWindow::start() {
     startProblem.clear();
     if (!jamHost->create(nameText)) {
-        startProblem = serverName.isEmpty() ? tr("Set the jam server first")
-                                            : tr("Cannot start: check the name and the server");
+        startProblem =
+            serverName.isEmpty() ? tr("Set the jam server first") : tr("Cannot start: check the name and the server");
     }
     focus = Field::None;
     update();
@@ -611,9 +585,8 @@ void JamWindow::search(const QString& text) {
     listScroll = 0;
     const int request = ++searchRequest;
     QPointer<JamWindow> self(this);
-    yandexLibrary->searchTracks(
-        query,
-        [self, request](const QList<Yandex::Track>& tracks, const Yandex::RequestError& error) {
+    yandexLibrary
+        ->searchTracks(query, [self, request](const QList<Yandex::Track>& tracks, const Yandex::RequestError& error) {
             if (!self || request != self->searchRequest) {
                 return;
             }
@@ -630,8 +603,7 @@ void JamWindow::search(const QString& text) {
                 }
             }
             self->update();
-        }
-    );
+        });
     update();
 }
 

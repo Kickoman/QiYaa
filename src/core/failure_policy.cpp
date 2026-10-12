@@ -6,8 +6,7 @@ FailureKind KindOf(const Yandex::RequestError& error) {
     switch (error.kind) {
         case Yandex::RequestError::Kind::Network: return FailureKind::Network;
         case Yandex::RequestError::Kind::Http:
-            return error.httpStatus == 401 || error.httpStatus == 403 ? FailureKind::Auth
-                                                                      : FailureKind::Track;
+            return error.httpStatus == 401 || error.httpStatus == 403 ? FailureKind::Auth : FailureKind::Track;
         case Yandex::RequestError::Kind::None:
         case Yandex::RequestError::Kind::Content: break;
     }

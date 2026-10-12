@@ -9,9 +9,8 @@
 namespace Telemetry {
 
 QString MachineId(const QByteArray& systemId) {
-    const QByteArray mac = QMessageAuthenticationCode::hash(
-        systemId, QByteArrayLiteral("QiYaa telemetry"), QCryptographicHash::Sha256
-    );
+    const QByteArray mac =
+        QMessageAuthenticationCode::hash(systemId, QByteArrayLiteral("QiYaa telemetry"), QCryptographicHash::Sha256);
     return QString::fromLatin1(mac.left(16).toHex());
 }
 

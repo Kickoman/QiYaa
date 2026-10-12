@@ -26,8 +26,7 @@ constexpr unsigned kMaxAccessUnitBytes = 1u << 16;
 constexpr INT kPcmCapacity = 4096 * 8;  // fdk-aac's longest frame times its most channels
 
 uint32_t ReadBigEndian32(const unsigned char* bytes) {
-    return (uint32_t{bytes[0]} << 24) | (uint32_t{bytes[1]} << 16) | (uint32_t{bytes[2]} << 8)
-        | uint32_t{bytes[3]};
+    return (uint32_t{bytes[0]} << 24) | (uint32_t{bytes[1]} << 16) | (uint32_t{bytes[2]} << 8) | uint32_t{bytes[3]};
 }
 
 // Output frame positions are those of the decoded signal: AAC frame `n` covers
@@ -126,8 +125,7 @@ std::optional<int64_t> Mp4AacDecoder::indexEnd() {
             headerBytes = 16;
         }
         // Size 0 runs to the end of the file, so no moov can follow it.
-        if (size < headerBytes
-            || size > static_cast<uint64_t>(std::numeric_limits<int64_t>::max() - offset)) {
+        if (size < headerBytes || size > static_cast<uint64_t>(std::numeric_limits<int64_t>::max() - offset)) {
             return std::nullopt;
         }
         offset += static_cast<int64_t>(size);
@@ -156,8 +154,7 @@ ma_result Mp4AacDecoder::open() {
     const MP4D_track_t* audio = nullptr;
     for (unsigned i = 0; i < demux.track_count && !audio; ++i) {
         const MP4D_track_t& candidate = demux.track[i];
-        if (candidate.handler_type == kSoundHandler
-            && candidate.object_type_indication == kMpeg4Audio && candidate.dsi
+        if (candidate.handler_type == kSoundHandler && candidate.object_type_indication == kMpeg4Audio && candidate.dsi
             && candidate.dsi_bytes > 0 && candidate.sample_count > 0) {
             audio = &candidate;
             track = i;
@@ -192,8 +189,7 @@ ma_result Mp4AacDecoder::open() {
         const uint64_t seconds = duration / audio->timescale;
         const uint64_t rest = duration % audio->timescale;
         if (seconds < std::numeric_limits<uint32_t>::max()) {
-            lengthFrames =
-                std::min<ma_uint64>(lengthFrames, seconds * rate + rest * rate / audio->timescale);
+            lengthFrames = std::min<ma_uint64>(lengthFrames, seconds * rate + rest * rate / audio->timescale);
         }
     }
     return MA_SUCCESS;
@@ -203,8 +199,7 @@ ma_result Mp4AacDecoder::decodeNext() {
     unsigned bytes = 0;
     unsigned timestamp = 0;
     unsigned duration = 0;
-    const MP4D_file_offset_t offset =
-        MP4D_frame_offset(&demux, track, nextSample, &bytes, &timestamp, &duration);
+    const MP4D_file_offset_t offset = MP4D_frame_offset(&demux, track, nextSample, &bytes, &timestamp, &duration);
     if (bytes == 0 || bytes > kMaxAccessUnitBytes) {
         return MA_INVALID_FILE;
     }
@@ -266,11 +261,11 @@ ma_result Mp4AacDecoder::read(void* output, ma_uint64 frameCount, ma_uint64* fra
             }
             continue;
         }
-        const ma_uint64 take =
-            std::min({pcmFrames - pcmOffset, frameCount - done, lengthFrames - cursorFrame});
+        const ma_uint64 take = std::min({pcmFrames - pcmOffset, frameCount - done, lengthFrames - cursorFrame});
         if (samples) {
             std::memcpy(
-                samples + done * kOutputChannels, pcm.get() + pcmOffset * kOutputChannels,
+                samples + done * kOutputChannels,
+                pcm.get() + pcmOffset * kOutputChannels,
                 take * kOutputChannels * sizeof(INT_PCM)
             );
         }
@@ -311,8 +306,7 @@ Mp4AacDecoder& DecoderOf(ma_data_source* source) {
     return *static_cast<DataSource*>(source)->decoder;
 }
 
-ma_result
-OnReadFrames(ma_data_source* source, void* output, ma_uint64 frameCount, ma_uint64* framesRead) {
+ma_result OnReadFrames(ma_data_source* source, void* output, ma_uint64 frameCount, ma_uint64* framesRead) {
     return DecoderOf(source).read(output, frameCount, framesRead);
 }
 
@@ -338,9 +332,7 @@ ma_result OnGetDataFormat(
         *sampleRate = DecoderOf(source).sampleRate();
     }
     if (channelMap) {
-        ma_channel_map_init_standard(
-            ma_standard_channel_map_default, channelMap, channelMapCapacity, kOutputChannels
-        );
+        ma_channel_map_init_standard(ma_standard_channel_map_default, channelMap, channelMapCapacity, kOutputChannels);
     }
     return MA_SUCCESS;
 }
@@ -355,9 +347,8 @@ ma_result OnGetLength(ma_data_source* source, ma_uint64* length) {
     return MA_SUCCESS;
 }
 
-const ma_data_source_vtable kDataSourceVtable = {
-    OnReadFrames, OnSeekToFrame, OnGetDataFormat, OnGetCursor, OnGetLength, nullptr, 0
-};
+const ma_data_source_vtable kDataSourceVtable =
+    {OnReadFrames, OnSeekToFrame, OnGetDataFormat, OnGetCursor, OnGetLength, nullptr, 0};
 
 void Destroy(DataSource* source) {
     ma_data_source_uninit(&source->base);

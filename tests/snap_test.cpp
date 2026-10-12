@@ -75,9 +75,7 @@ private Q_SLOTS:
     }
     void hiddenWindowsNeverBlock() {
         // Wide playlist under main; a hidden window overlaps where it would move to.
-        const QList<QRect> hiddenInTheWay{
-            {0, 0, 275, 116}, {0, 116, 400, 232}, {375, 100, 275, 116}
-        };
+        const QList<QRect> hiddenInTheWay{{0, 0, 275, 116}, {0, 116, 400, 232}, {375, 100, 275, 116}};
         QVERIFY(Ui::StackBelow(0, hiddenInTheWay, -102).isEmpty());
         QCOMPARE(Ui::StackBelow(0, hiddenInTheWay, -102, {true, true, false}), QList<int>{1});
         // ...nor hold a window up.

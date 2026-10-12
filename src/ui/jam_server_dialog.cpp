@@ -31,9 +31,7 @@ JamServerDialog::JamServerDialog(
     serverField = new QLineEdit(server == defaultServer ? QString() : server);
     serverField->setPlaceholderText(defaultServer);
     layout->addWidget(serverField);
-    serverProblem =
-        new QLabel(tr("An address like %1 is needed").arg(QStringLiteral("https://jam.example.org"))
-        );
+    serverProblem = new QLabel(tr("An address like %1 is needed").arg(QStringLiteral("https://jam.example.org")));
     serverProblem->setVisible(false);
     layout->addWidget(serverProblem);
 
@@ -84,8 +82,7 @@ bool JamServerDialog::waveFeedback() const {
 
 bool JamServerDialog::IsServerAddress(const QString& text) {
     const QUrl url(text.trimmed(), QUrl::StrictMode);
-    return url.isValid()
-        && (url.scheme() == QLatin1String("https") || url.scheme() == QLatin1String("http"))
+    return url.isValid() && (url.scheme() == QLatin1String("https") || url.scheme() == QLatin1String("http"))
         && !url.host().isEmpty();
 }
 

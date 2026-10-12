@@ -37,11 +37,13 @@ Smtc::Smtc(MediaControls* controls, QWidget* window, QObject* parent)
     , implementation(std::make_unique<Implementation>())
     , mediaControls(controls) {
     try {
-        auto interop = winrt::get_activation_factory<
-            WinMedia::SystemMediaTransportControls, ISystemMediaTransportControlsInterop>();
+        auto interop =
+            winrt::get_activation_factory<WinMedia::SystemMediaTransportControls, ISystemMediaTransportControlsInterop>(
+            );
         const HWND windowHandle = reinterpret_cast<HWND>(window->winId());
         winrt::check_hresult(interop->GetForWindow(
-            windowHandle, winrt::guid_of<WinMedia::SystemMediaTransportControls>(),
+            windowHandle,
+            winrt::guid_of<WinMedia::SystemMediaTransportControls>(),
             winrt::put_abi(implementation->controls)
         ));
         implementation->controls.IsEnabled(true);
@@ -71,10 +73,7 @@ Smtc::Smtc(MediaControls* controls, QWidget* window, QObject* parent)
             }
         );
     } catch (const winrt::hresult_error& error) {
-        qWarning(
-            "SMTC unavailable: %s",
-            qPrintable(QString::fromStdWString(std::wstring(error.message())))
-        );
+        qWarning("SMTC unavailable: %s", qPrintable(QString::fromStdWString(std::wstring(error.message()))));
         implementation->controls = nullptr;
         return;
     }
@@ -106,9 +105,7 @@ void Smtc::handleButton(int button) {
         case WinMedia::SystemMediaTransportControlsButton::Pause: mediaControls->pause(); break;
         case WinMedia::SystemMediaTransportControlsButton::Stop: mediaControls->stop(); break;
         case WinMedia::SystemMediaTransportControlsButton::Next: mediaControls->next(); break;
-        case WinMedia::SystemMediaTransportControlsButton::Previous:
-            mediaControls->previous();
-            break;
+        case WinMedia::SystemMediaTransportControlsButton::Previous: mediaControls->previous(); break;
         default: break;
     }
 }
@@ -159,9 +156,7 @@ void Smtc::updateMetadata() {
         }
         updater.Update();
     } catch (const winrt::hresult_error& error) {
-        qWarning(
-            "SMTC metadata: %s", qPrintable(QString::fromStdWString(std::wstring(error.message())))
-        );
+        qWarning("SMTC metadata: %s", qPrintable(QString::fromStdWString(std::wstring(error.message()))));
     }
 }
 

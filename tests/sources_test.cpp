@@ -121,9 +121,7 @@ private Q_SLOTS:
         server.fixture("POST", "/rotor/session/new", "rotor-session-new/ok");
         stack.sources.playLikes(false);
         stack.sources.playMyWave();
-        QVERIFY(QTest::qWaitFor(
-            [&] { return stack.player.queueTitle() == QStringLiteral("My Vibe"); }, 3000
-        ));
+        QVERIFY(QTest::qWaitFor([&] { return stack.player.queueTitle() == QStringLiteral("My Vibe"); }, 3000));
         QTest::qWait(600);  // the likes response arrives now
         QCOMPARE(stack.player.queueTitle(), QStringLiteral("My Vibe"));
         QCOMPARE(stack.player.playlist().first().title, ExpectedTitle("rotor-session-new/ok"));
@@ -132,15 +130,11 @@ private Q_SLOTS:
 
     void staleFailureIsSilent() {  // SRC-02
         Stack stack(&library);
-        server.fixture(
-            "GET", "/users/42/likes/tracks", "users-likes-artists/401-session-expired", 300
-        );
+        server.fixture("GET", "/users/42/likes/tracks", "users-likes-artists/401-session-expired", 300);
         server.fixture("POST", "/rotor/session/new", "rotor-session-new/ok");
         stack.sources.playLikes(true);
         stack.sources.playMyWave();
-        QVERIFY(QTest::qWaitFor(
-            [&] { return stack.player.queueTitle() == QStringLiteral("My Vibe"); }, 3000
-        ));
+        QVERIFY(QTest::qWaitFor([&] { return stack.player.queueTitle() == QStringLiteral("My Vibe"); }, 3000));
         QTest::qWait(600);
         QVERIFY(!stack.sawPrefix(QStringLiteral("Error")));
     }
@@ -148,9 +142,7 @@ private Q_SLOTS:
     void searchIsOnePickAcrossItsRequests() {  // SRC-03
         Stack stack(&library);
         server.fixture("GET", "/search", "search/best-artist");
-        server.fixture(
-            "GET", "/artists/9/track-ids-by-rating", "artists-track-ids-by-rating/ok", 400
-        );
+        server.fixture("GET", "/artists/9/track-ids-by-rating", "artists-track-ids-by-rating/ok", 400);
         server.fixture("POST", "/tracks/", "tracks/two-tracks");
         server.fixture("POST", "/rotor/session/new", "rotor-session-new/ok");
         const auto before = server.requests().size();
@@ -167,9 +159,7 @@ private Q_SLOTS:
             3000
         ));
         stack.sources.playMyWave();
-        QVERIFY(QTest::qWaitFor(
-            [&] { return stack.player.queueTitle() == QStringLiteral("My Vibe"); }, 3000
-        ));
+        QVERIFY(QTest::qWaitFor([&] { return stack.player.queueTitle() == QStringLiteral("My Vibe"); }, 3000));
         QTest::qWait(800);  // the artist's tracks arrive now
         QCOMPARE(stack.player.queueTitle(), QStringLiteral("My Vibe"));
     }
@@ -188,9 +178,7 @@ private Q_SLOTS:
         server.fixture("GET", "/users/42/likes/tracks", "users-likes-tracks/string-ids");
         server.fixture("POST", "/tracks/", "tracks/two-tracks");
         stack.sources.playLikes(false);
-        QVERIFY(
-            QTest::qWaitFor([&] { return stack.saw(QStringLiteral("Liked: 2 track(s)")); }, 3000)
-        );
+        QVERIFY(QTest::qWaitFor([&] { return stack.saw(QStringLiteral("Liked: 2 track(s)")); }, 3000));
         QCOMPARE(stack.player.queueTitle(), QStringLiteral("Liked"));
         QCOMPARE(stack.player.playlist().size(), 2);
         QCOMPARE(stack.player.playlist().first().title, ExpectedTitle("tracks/two-tracks"));
@@ -199,10 +187,9 @@ private Q_SLOTS:
     void emptySourceKeepsTheQueue_data() {  // SRC-07, SRC-08
         QTest::addColumn<QString>("likes");
         QTest::addColumn<QString>("tracks");
-        QTest::newRow("no likes") << QStringLiteral("users-likes-tracks/empty")
-                                  << QStringLiteral("tracks/two-tracks");
-        QTest::newRow("all unavailable") << QStringLiteral("users-likes-tracks/string-ids")
-                                         << QStringLiteral("tracks/all-unavailable");
+        QTest::newRow("no likes") << QStringLiteral("users-likes-tracks/empty") << QStringLiteral("tracks/two-tracks");
+        QTest::newRow("all unavailable") << QStringLiteral("users-likes-tracks/string-ids"
+        ) << QStringLiteral("tracks/all-unavailable");
     }
     void emptySourceKeepsTheQueue() {
         QFETCH(QString, likes);
@@ -219,15 +206,13 @@ private Q_SLOTS:
         stack.sources.playArtist(QStringLiteral("9"), QStringLiteral("Кино"));
         QVERIFY(QTest::qWaitFor(
             [&] {
-                return stack.saw(QStringLiteral("Кино: empty"))
-                    || stack.player.queueTitle() == QStringLiteral("Кино");
+                return stack.saw(QStringLiteral("Кино: empty")) || stack.player.queueTitle() == QStringLiteral("Кино");
             },
             3000
         ));
         QCOMPARE(
             stack.player.queueTitle(),
-            tracks == QStringLiteral("tracks/all-unavailable") ? QStringLiteral("Kept")
-                                                               : QStringLiteral("Кино")
+            tracks == QStringLiteral("tracks/all-unavailable") ? QStringLiteral("Kept") : QStringLiteral("Кино")
         );
     }
 
@@ -247,14 +232,10 @@ private Q_SLOTS:
         QTest::addColumn<QString>("name");
         QTest::addColumn<QString>("title");
         QTest::addColumn<int>("count");
-        QTest::newRow("artist") << QStringLiteral("search/best-artist") << QStringLiteral("Кино")
-                                << 2;
-        QTest::newRow("album") << QStringLiteral("search/best-album")
-                               << QStringLiteral("Звезда по имени Солнце") << 3;
-        QTest::newRow("track") << QStringLiteral("search/best-track")
-                               << QStringLiteral("Search: кино") << 1;
-        QTest::newRow("playlist") << QStringLiteral("search/best-playlist")
-                                  << QStringLiteral("Search: кино") << 1;
+        QTest::newRow("artist") << QStringLiteral("search/best-artist") << QStringLiteral("Кино") << 2;
+        QTest::newRow("album") << QStringLiteral("search/best-album") << QStringLiteral("Звезда по имени Солнце") << 3;
+        QTest::newRow("track") << QStringLiteral("search/best-track") << QStringLiteral("Search: кино") << 1;
+        QTest::newRow("playlist") << QStringLiteral("search/best-playlist") << QStringLiteral("Search: кино") << 1;
         QTest::newRow("nothing") << QStringLiteral("search/no-best") << QString() << 0;
     }
     void searchQueuesTheBestResult() {
@@ -269,9 +250,7 @@ private Q_SLOTS:
         server.fixture("GET", "/albums/4053/with-tracks", "albums-with-tracks/two-volumes");
         stack.sources.search(QStringLiteral("кино"));
         if (title.isEmpty()) {
-            QVERIFY(
-                QTest::qWaitFor([&] { return stack.saw(QStringLiteral("Nothing found")); }, 3000)
-            );
+            QVERIFY(QTest::qWaitFor([&] { return stack.saw(QStringLiteral("Nothing found")); }, 3000));
             QCOMPARE(stack.player.queueTitle(), QStringLiteral("Kept"));
             return;
         }
@@ -289,27 +268,18 @@ private Q_SLOTS:
             QSKIP("no audio output");
         }
         stack.engine.setVolume(0);
-        server.audioTracks(
-            {QStringLiteral("38634572"), QStringLiteral("38634573")}, file.readAll()
-        );
+        server.audioTracks({QStringLiteral("38634572"), QStringLiteral("38634573")}, file.readAll());
         server.fixture("POST", "/rotor/session/new", "rotor-session-new/ok");
         const QJsonObject first = Tests::ExpectedObject("rotor-session-new/ok");
         const QJsonObject more = Tests::ExpectedObject("rotor-session-tracks/ok");
         const QString session = first.value("sessionId").toString();
-        server.fixture(
-            "POST", QStringLiteral("/rotor/session/%1/tracks").arg(session),
-            "rotor-session-tracks/ok"
-        );
-        server.fixture(
-            "POST", "/users/42/dislikes/tracks/add-multiple",
-            "users-dislikes-tracks-add-multiple/ok"
-        );
+        server.fixture("POST", QStringLiteral("/rotor/session/%1/tracks").arg(session), "rotor-session-tracks/ok");
+        server.fixture("POST", "/users/42/dislikes/tracks/add-multiple", "users-dislikes-tracks-add-multiple/ok");
         const auto before = server.requests().size();
 
         stack.sources.playMyWave();
         QVERIFY(QTest::qWaitFor([&] { return feedbackEvents(before).size() >= 2; }, 8000));
-        const QJsonObject newBody =
-            QJsonDocument::fromJson(server.last("/rotor/session/new")->body).object();
+        const QJsonObject newBody = QJsonDocument::fromJson(server.last("/rotor/session/new")->body).object();
         QCOMPARE(newBody.value("seeds").toArray(), QJsonArray{"user:onyourwave"});  // WAVE-02
         QCOMPARE(stack.sources.lastWaveSeeds(), QStringList{"user:onyourwave"});
         // The unavailable track of the batch is left out (SRC-05).
@@ -327,14 +297,11 @@ private Q_SLOTS:
         QCOMPARE(events[1].value("batchId").toString(), first.value("batchId").toString());
 
         // One track left: loading more was asked for with the queue's last ids (WAVE-05).
-        QVERIFY(QTest::qWaitFor(
-            [&] { return server.last(QStringLiteral("/rotor/session/%1/tracks").arg(session)); },
-            3000
-        ));
+        QVERIFY(
+            QTest::qWaitFor([&] { return server.last(QStringLiteral("/rotor/session/%1/tracks").arg(session)); }, 3000)
+        );
         const QJsonObject moreBody =
-            QJsonDocument::fromJson(
-                server.last(QStringLiteral("/rotor/session/%1/tracks").arg(session))->body
-            )
+            QJsonDocument::fromJson(server.last(QStringLiteral("/rotor/session/%1/tracks").arg(session))->body)
                 .object();
         QCOMPARE(moreBody.value("queue").toArray(), QJsonArray{firstId});
 
@@ -342,9 +309,7 @@ private Q_SLOTS:
         QVERIFY(QTest::qWaitFor([&] { return stack.player.playlist().size() == 2; }, 3000));
         stack.sources.dislikeAndSkip(firstId);
         QVERIFY(QTest::qWaitFor([&] { return feedbackEvents(before).size() >= 4; }, 5000));
-        QCOMPARE(
-            server.last("/users/42/dislikes/tracks/add-multiple")->formValue("track-ids"), firstId
-        );
+        QCOMPARE(server.last("/users/42/dislikes/tracks/add-multiple")->formValue("track-ids"), firstId);
         events = feedbackEvents(before);
         QCOMPARE(events[2].value("type").toString(), QStringLiteral("skip"));  // TRK-06
         QCOMPARE(events[2].value("trackId").toString(), firstTrack);

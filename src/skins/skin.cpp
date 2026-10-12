@@ -43,8 +43,7 @@ QHash<QString, QByteArray> ReadZip(const QByteArray& zip) {
     if (count > kMaxEntries) {
         mz_zip_reader_end(&archive);
         throw Skins::Error(
-            "the archive lists " + std::to_string(count) + " files; a skin has at most "
-            + std::to_string(kMaxEntries)
+            "the archive lists " + std::to_string(count) + " files; a skin has at most " + std::to_string(kMaxEntries)
         );
     }
     qint64 totalBytes = 0;
@@ -70,9 +69,7 @@ QHash<QString, QByteArray> ReadZip(const QByteArray& zip) {
         if (!data) {
             continue;
         }
-        files.insert(
-            name, QByteArray(static_cast<const char*>(data), static_cast<qsizetype>(size))
-        );
+        files.insert(name, QByteArray(static_cast<const char*>(data), static_cast<qsizetype>(size)));
         mz_free(data);
     }
     mz_zip_reader_end(&archive);
@@ -93,18 +90,14 @@ QImage DecodeImage(const QByteArray& bytes) {
 }
 
 QList<QColor> ParseVisColors(const QByteArray& text) {
-    static const QRegularExpression colorPattern(
-        QStringLiteral("^\\s*(\\d+)\\s*,\\s*(\\d+)\\s*,\\s*(\\d+)")
-    );
+    static const QRegularExpression colorPattern(QStringLiteral("^\\s*(\\d+)\\s*,\\s*(\\d+)\\s*,\\s*(\\d+)"));
     QList<QColor> colors;
     for (const QByteArray& line : text.split('\n')) {
         const auto match = colorPattern.match(QString::fromLatin1(line));
         if (!match.hasMatch()) {
             continue;
         }
-        colors << QColor(
-            match.captured(1).toInt(), match.captured(2).toInt(), match.captured(3).toInt()
-        );
+        colors << QColor(match.captured(1).toInt(), match.captured(2).toInt(), match.captured(3).toInt());
         if (colors.size() == 24) {
             break;
         }
@@ -128,13 +121,12 @@ std::optional<FontCellPosition> FontCell(QChar character) {
             cells.insert(static_cast<char16_t>(u'0' + i), {1, i});
         }
         const std::pair<char16_t, std::pair<int, int>> extra[] = {
-            {u'"', {0, 26}}, {u'@', {0, 27}}, {u' ', {0, 30}}, {u'…', {1, 10}},  {u'.', {1, 11}},
-            {u':', {1, 12}}, {u'(', {1, 13}}, {u')', {1, 14}}, {u'-', {1, 15}},  {u'\'', {1, 16}},
-            {u'!', {1, 17}}, {u'_', {1, 18}}, {u'+', {1, 19}}, {u'\\', {1, 20}}, {u'/', {1, 21}},
-            {u'[', {1, 22}}, {u']', {1, 23}}, {u'^', {1, 24}}, {u'&', {1, 25}},  {u'%', {1, 26}},
-            {u',', {1, 27}}, {u'=', {1, 28}}, {u'$', {1, 29}}, {u'#', {1, 30}},  {u'Å', {2, 0}},
-            {u'Ö', {2, 1}},  {u'Ä', {2, 2}},  {u'?', {2, 3}},  {u'*', {2, 4}},   {u'<', {1, 22}},
-            {u'>', {1, 23}}, {u'{', {1, 22}}, {u'}', {1, 23}},
+            {u'"', {0, 26}}, {u'@', {0, 27}},  {u' ', {0, 30}}, {u'…', {1, 10}},  {u'.', {1, 11}}, {u':', {1, 12}},
+            {u'(', {1, 13}}, {u')', {1, 14}},  {u'-', {1, 15}}, {u'\'', {1, 16}}, {u'!', {1, 17}}, {u'_', {1, 18}},
+            {u'+', {1, 19}}, {u'\\', {1, 20}}, {u'/', {1, 21}}, {u'[', {1, 22}},  {u']', {1, 23}}, {u'^', {1, 24}},
+            {u'&', {1, 25}}, {u'%', {1, 26}},  {u',', {1, 27}}, {u'=', {1, 28}},  {u'$', {1, 29}}, {u'#', {1, 30}},
+            {u'Å', {2, 0}},  {u'Ö', {2, 1}},   {u'Ä', {2, 2}},  {u'?', {2, 3}},   {u'*', {2, 4}},  {u'<', {1, 22}},
+            {u'>', {1, 23}}, {u'{', {1, 22}},  {u'}', {1, 23}},
         };
         for (const auto& [symbol, cell] : extra) {
             cells.insert(symbol, cell);
@@ -314,11 +306,11 @@ Skin Skin::LoadFile(const QString& path, const Skin* fallback) {
         throw Error((path + QStringLiteral(": ") + file.errorString()).toStdString());
     }
     if (file.size() > kMaxArchiveBytes) {
-        throw Error((path
-                     + QStringLiteral(": %1 bytes, more than the %2 a skin may have")
-                           .arg(file.size())
-                           .arg(kMaxArchiveBytes))
-                        .toStdString());
+        throw Error(
+            (path
+             + QStringLiteral(": %1 bytes, more than the %2 a skin may have").arg(file.size()).arg(kMaxArchiveBytes))
+                .toStdString()
+        );
     }
     try {
         return LoadWsz(file.readAll(), fallback);
@@ -431,11 +423,9 @@ int Skin::genTextWidth(const QString& text) const {
     return width;
 }
 
-int Skin::drawGenText(QPainter& painter, const QPoint& at, const QString& text, bool selected)
-    const {
+int Skin::drawGenText(QPainter& painter, const QPoint& at, const QString& text, bool selected) const {
     const auto& letters = selected ? genLettersSelected : genLetters;
-    const int y =
-        selected ? Skins::GenWindowSprites::kLettersYSelected : Skins::GenWindowSprites::kLettersY;
+    const int y = selected ? Skins::GenWindowSprites::kLettersYSelected : Skins::GenWindowSprites::kLettersY;
     int x = at.x();
     for (QChar character : text) {
         const int letterIndex = character.toUpper().unicode() - u'A';
@@ -443,10 +433,10 @@ int Skin::drawGenText(QPainter& painter, const QPoint& at, const QString& text, 
             x += 5;
         } else if (letterIndex >= 0 && letterIndex < letters.size()) {
             draw(
-                painter, Sheet::Gen,
+                painter,
+                Sheet::Gen,
                 QRect(
-                    letters[letterIndex].first, y, letters[letterIndex].second,
-                    Skins::GenWindowSprites::kLetterHeight
+                    letters[letterIndex].first, y, letters[letterIndex].second, Skins::GenWindowSprites::kLetterHeight
                 ),
                 QPoint(x, at.y())
             );
@@ -458,9 +448,7 @@ int Skin::drawGenText(QPainter& painter, const QPoint& at, const QString& text, 
 
 Skin::PlaylistStyle Skin::ParsePlaylistStyle(const QByteArray& text) {
     PlaylistStyle style;
-    static const QRegularExpression keyValuePattern(
-        QStringLiteral("^\\s*([A-Za-z]+)\\s*=\\s*(.*?)\\s*$")
-    );
+    static const QRegularExpression keyValuePattern(QStringLiteral("^\\s*([A-Za-z]+)\\s*=\\s*(.*?)\\s*$"));
     for (const QByteArray& rawLine : text.split('\n')) {
         const auto match = keyValuePattern.match(QString::fromLatin1(rawLine).remove(u'\r'));
         if (!match.hasMatch()) {
@@ -530,29 +518,29 @@ int Skin::drawText(QPainter& painter, const QPoint& at, const QString& text, int
         if (maxWidth >= 0 && x + render.advance > at.x() + maxWidth) {
             break;
         }
-        if ((render.kind == CharRender::Kind::Pixel || render.kind == CharRender::Kind::SystemFont)
-            && !ink.isValid()) {
+        if ((render.kind == CharRender::Kind::Pixel || render.kind == CharRender::Kind::SystemFont) && !ink.isValid()) {
             ink = TextInkColor(textSheet);
         }
 
         switch (render.kind) {
             case CharRender::Kind::Cell:
                 painter.drawImage(
-                    QPoint(x, at.y()), textSheet,
+                    QPoint(x, at.y()),
+                    textSheet,
                     QRect(
                         render.cell.column * Skins::kCharWidth,
-                        render.cell.row * Skins::kCharHeight, Skins::kCharWidth, Skins::kCharHeight
+                        render.cell.row * Skins::kCharHeight,
+                        Skins::kCharWidth,
+                        Skins::kCharHeight
                     )
                 );
                 break;
             case CharRender::Kind::Pixel:
-                for (int tileOffset = 0; tileOffset < render.advance;
-                     tileOffset += Skins::kCharWidth) {
+                for (int tileOffset = 0; tileOffset < render.advance; tileOffset += Skins::kCharWidth) {
                     painter.drawImage(
-                        QPoint(x + tileOffset, at.y()), textSheet,
-                        spaceCell.adjusted(
-                            0, 0, std::min(0, render.advance - tileOffset - Skins::kCharWidth), 0
-                        )
+                        QPoint(x + tileOffset, at.y()),
+                        textSheet,
+                        spaceCell.adjusted(0, 0, std::min(0, render.advance - tileOffset - Skins::kCharWidth), 0)
                     );
                 }
                 for (int row = 0; row < 6; ++row) {
@@ -568,7 +556,8 @@ int Skin::drawText(QPainter& painter, const QPoint& at, const QString& text, int
                 painter.setPen(ink);
                 painter.drawText(
                     QRect(x, at.y() - 1, render.advance, Skins::kCharHeight + 2),
-                    Qt::AlignLeft | Qt::AlignVCenter, QString(character)
+                    Qt::AlignLeft | Qt::AlignVCenter,
+                    QString(character)
                 );
                 break;
         }

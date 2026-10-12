@@ -35,19 +35,13 @@ class TestYandex : public QObject {
     Q_OBJECT
 private Q_SLOTS:
     void signsTrackUrlLikeYaamp() {
-        Yandex::DownloadInfo info{
-            "s123vla.storage.yandex.net", "/rmusic/U2FsdGVk/abc", "000612a3b4c5d", "deadbeef"
-        };
+        Yandex::DownloadInfo info{"s123vla.storage.yandex.net", "/rmusic/U2FsdGVk/abc", "000612a3b4c5d", "deadbeef"};
         const QByteArray expectedSign =
-            QCryptographicHash::hash(
-                "XGRlBW9FXlekgbPrRHuSiArmusic/U2FsdGVk/abcdeadbeef", QCryptographicHash::Md5
-            )
+            QCryptographicHash::hash("XGRlBW9FXlekgbPrRHuSiArmusic/U2FsdGVk/abcdeadbeef", QCryptographicHash::Md5)
                 .toHex();
         QCOMPARE(
             Yandex::BuildTrackUrl(info).toString(),
-            QStringLiteral(
-                "https://s123vla.storage.yandex.net/get-mp3/%1/000612a3b4c5d/rmusic/U2FsdGVk/abc"
-            )
+            QStringLiteral("https://s123vla.storage.yandex.net/get-mp3/%1/000612a3b4c5d/rmusic/U2FsdGVk/abc")
                 .arg(QString::fromLatin1(expectedSign))
         );
     }
@@ -59,12 +53,8 @@ private Q_SLOTS:
     }
     void downloadVariantsAreParsedAndTheBestIsPicked() {
         QFETCH(QString, name);
-        const QList<Yandex::DownloadVariant> variants =
-            Yandex::ParseDownloadVariants(ResultOf(name).toArray());
-        QCOMPARE(
-            Tests::Json(Tests::VariantsJson(variants, Yandex::PickBestVariant(variants))),
-            Tests::Expected(name)
-        );
+        const QList<Yandex::DownloadVariant> variants = Yandex::ParseDownloadVariants(ResultOf(name).toArray());
+        QCOMPARE(Tests::Json(Tests::VariantsJson(variants, Yandex::PickBestVariant(variants))), Tests::Expected(name));
     }
     void storageReplyGivesTheSignedLink_data() {
         QTest::addColumn<QString>("name");
@@ -74,17 +64,14 @@ private Q_SLOTS:
     }
     void storageReplyGivesTheSignedLink() {
         QFETCH(QString, name);
-        const std::optional<Yandex::DownloadInfo> info =
-            Yandex::ParseDownloadInfo(Tests::Fixture(name));
-        const QJsonObject actual =
-            info ? Tests::ToJson(*info) : QJsonObject{{QStringLiteral("invalid"), true}};
+        const std::optional<Yandex::DownloadInfo> info = Yandex::ParseDownloadInfo(Tests::Fixture(name));
+        const QJsonObject actual = info ? Tests::ToJson(*info) : QJsonObject{{QStringLiteral("invalid"), true}};
         QCOMPARE(Tests::Json(actual), Tests::Expected(name));
     }
     void fileInfoRepliesAreParsedOrFallBack_data() {
         QTest::addColumn<QString>("name");
         for (const char* name :
-             {"lq-he-aac-mp4", "nq-mp3", "encraw", "no-url", "403-not-allowed",
-              "429-concurrency-limit"}) {
+             {"lq-he-aac-mp4", "nq-mp3", "encraw", "no-url", "403-not-allowed", "429-concurrency-limit"}) {
             QTest::newRow(name) << QStringLiteral("get-file-info/%1").arg(name);
         }
     }
@@ -94,8 +81,7 @@ private Q_SLOTS:
         if (Tests::FixtureStatus(name) == 200) {
             info = Yandex::ParseFileInfo(ResultOf(name));
         }
-        const QJsonObject actual =
-            info ? Tests::ToJson(*info) : QJsonObject{{QStringLiteral("fallback"), true}};
+        const QJsonObject actual = info ? Tests::ToJson(*info) : QJsonObject{{QStringLiteral("fallback"), true}};
         QCOMPARE(Tests::Json(actual), Tests::Expected(name));
     }
     // The worked example of spec/player/quality.md.
@@ -107,16 +93,17 @@ private Q_SLOTS:
             QStringLiteral("raw")
         };
         QCOMPARE(
-            Yandex::SignFileInfo(request, 1'760'000'000),
-            QStringLiteral("keefcyb+nfzl1cRn8glR+ZyzpQf/h2gSrMF0fHIOHpQ")
+            Yandex::SignFileInfo(request, 1'760'000'000), QStringLiteral("keefcyb+nfzl1cRn8glR+ZyzpQf/h2gSrMF0fHIOHpQ")
         );
         QUrl url(QStringLiteral("https://api.music.yandex.net/get-file-info"));
         url.setQuery(Yandex::FileInfoQuery(request, 1'760'000'000), QUrl::StrictMode);
         QCOMPARE(
             url.toEncoded(),
-            QByteArray("https://api.music.yandex.net/get-file-info?ts=1760000000&trackId=155647609"
-                       "&quality=lq&codecs=he-aac-mp4%2Cmp3&transports=raw"
-                       "&sign=keefcyb%2Bnfzl1cRn8glR%2BZyzpQf%2Fh2gSrMF0fHIOHpQ")
+            QByteArray(
+                "https://api.music.yandex.net/get-file-info?ts=1760000000&trackId=155647609"
+                "&quality=lq&codecs=he-aac-mp4%2Cmp3&transports=raw"
+                "&sign=keefcyb%2Bnfzl1cRn8glR%2BZyzpQf%2Fh2gSrMF0fHIOHpQ"
+            )
         );
     }
     void onlyAPlainFileInAnAskedCodecIsUsable() {
@@ -150,7 +137,8 @@ private Q_SLOTS:
         std::optional<Yandex::ResolvedUrl> link;
         Yandex::RequestError error;
         api.resolveTrackUrl(
-            QStringLiteral("155647609"), Yandex::Quality::Economy,
+            QStringLiteral("155647609"),
+            Yandex::Quality::Economy,
             [&](const Yandex::ResolvedUrl& resolved, const Yandex::RequestError& failed) {
                 link = resolved;
                 error = failed;
@@ -164,30 +152,21 @@ private Q_SLOTS:
         QVERIFY(link->url.host().endsWith(QLatin1String(".strm.yandex.net")));
     }
     void qualityNamesRoundTrip() {
-        for (const Yandex::Quality quality :
-             {Yandex::Quality::Standard, Yandex::Quality::Economy}) {
+        for (const Yandex::Quality quality : {Yandex::Quality::Standard, Yandex::Quality::Economy}) {
             QCOMPARE(Yandex::QualityFromKey(Yandex::QualityKey(quality)), quality);
         }
         QCOMPARE(Yandex::QualityKey(Yandex::Quality::Economy), QStringLiteral("economy"));
         QCOMPARE(Yandex::QualityFromKey(QStringLiteral("lossless")), std::nullopt);
     }
     void normalizesTokens() {
-        QCOMPARE(
-            Yandex::NormalizeToken("  y0_AgAAAAAtest_token-123\n"),
-            QStringLiteral("y0_AgAAAAAtest_token-123")
-        );
-        QCOMPARE(
-            Yandex::NormalizeToken("\"y0_AgAAAAAtest_token\""),
-            QStringLiteral("y0_AgAAAAAtest_token")
-        );
+        QCOMPARE(Yandex::NormalizeToken("  y0_AgAAAAAtest_token-123\n"), QStringLiteral("y0_AgAAAAAtest_token-123"));
+        QCOMPARE(Yandex::NormalizeToken("\"y0_AgAAAAAtest_token\""), QStringLiteral("y0_AgAAAAAtest_token"));
         QCOMPARE(
             Yandex::NormalizeToken("{\"access_token\":\"y0_AgAAAAAtest_token\",\"expires_in\":1}"),
             QStringLiteral("y0_AgAAAAAtest_token")
         );
         QCOMPARE(
-            Yandex::NormalizeToken(
-                "https://music.yandex.ru/#access_token=y0_AgAAAAAtest_token&token_type=bearer"
-            ),
+            Yandex::NormalizeToken("https://music.yandex.ru/#access_token=y0_AgAAAAAtest_token&token_type=bearer"),
             QStringLiteral("y0_AgAAAAAtest_token")
         );
         QCOMPARE(Yandex::NormalizeToken(""), QString());
@@ -196,8 +175,12 @@ private Q_SLOTS:
     void tracksAreParsed_data() {
         QTest::addColumn<QString>("name");
         for (const char* name :
-             {"two-tracks", "with-unavailable", "version-and-artists", "cover-from-album",
-              "cover-order", "all-unavailable"}) {
+             {"two-tracks",
+              "with-unavailable",
+              "version-and-artists",
+              "cover-from-album",
+              "cover-order",
+              "all-unavailable"}) {
             QTest::newRow(name) << QStringLiteral("tracks/%1").arg(name);
         }
     }

@@ -69,8 +69,10 @@ std::optional<Session> SessionStore::load() const {
     }
     if (file.size() > kMaxSessionFileBytes) {
         qWarning(
-            "jam: %s is %lld bytes, over %lld; ignored", qUtf8Printable(filePath),
-            static_cast<long long>(file.size()), static_cast<long long>(kMaxSessionFileBytes)
+            "jam: %s is %lld bytes, over %lld; ignored",
+            qUtf8Printable(filePath),
+            static_cast<long long>(file.size()),
+            static_cast<long long>(kMaxSessionFileBytes)
         );
         return std::nullopt;
     }
@@ -84,16 +86,12 @@ bool SessionStore::save(const Session& session) const {
     QDir().mkpath(QFileInfo(filePath).absolutePath());
     QSaveFile file(filePath);
     if (!file.open(QIODevice::WriteOnly)) {
-        qWarning(
-            "jam: cannot write %s: %s", qUtf8Printable(filePath), qUtf8Printable(file.errorString())
-        );
+        qWarning("jam: cannot write %s: %s", qUtf8Printable(filePath), qUtf8Printable(file.errorString()));
         return false;
     }
     file.write(EncodeSession(session));
     if (!file.commit()) {
-        qWarning(
-            "jam: cannot write %s: %s", qUtf8Printable(filePath), qUtf8Printable(file.errorString())
-        );
+        qWarning("jam: cannot write %s: %s", qUtf8Printable(filePath), qUtf8Printable(file.errorString()));
         return false;
     }
     return true;

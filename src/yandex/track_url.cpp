@@ -56,8 +56,9 @@ std::optional<DownloadInfo> ParseDownloadInfo(const QByteArray& json) {
     auto text = [&](const char* key) {
         const QJsonValue value = object.value(QLatin1String(key));
         return value.isString() ? value.toString()
-            : value.isDouble()  ? QString::number(static_cast<qint64>(value.toDouble()))
-                                : QString();
+            : value.isDouble()
+            ? QString::number(static_cast<qint64>(value.toDouble()))
+            : QString();
     };
     DownloadInfo info;
     info.host = text("host");
@@ -73,8 +74,9 @@ std::optional<DownloadInfo> ParseDownloadInfo(const QByteArray& json) {
 QUrl BuildTrackUrl(const DownloadInfo& info) {
     const QByteArray toSign = QByteArray(kSignSalt) + info.path.mid(1).toUtf8() + info.s.toUtf8();
     const QByteArray signature = QCryptographicHash::hash(toSign, QCryptographicHash::Md5).toHex();
-    return QUrl(QStringLiteral("https://%1/get-mp3/%2/%3%4")
-                    .arg(info.host, QString::fromLatin1(signature), info.ts, info.path));
+    return QUrl(
+        QStringLiteral("https://%1/get-mp3/%2/%3%4").arg(info.host, QString::fromLatin1(signature), info.ts, info.path)
+    );
 }
 
 }  // namespace Yandex

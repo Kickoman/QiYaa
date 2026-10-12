@@ -46,10 +46,12 @@ QStringList Types(const QJsonArray& events) {
 }
 
 QByteArray Marker(int seconds) {
-    return QJsonDocument(QJsonObject{
-                             {QStringLiteral("version"), QStringLiteral("0.4.9")},
-                             {QStringLiteral("seconds"), seconds},
-                         })
+    return QJsonDocument(
+               QJsonObject{
+                   {QStringLiteral("version"), QStringLiteral("0.4.9")},
+                   {QStringLiteral("seconds"), seconds},
+               }
+    )
         .toJson(QJsonDocument::Compact);
 }
 
@@ -87,8 +89,7 @@ private:
 
     std::unique_ptr<Reporter> reporter() {
         return std::make_unique<Reporter>(Reporter::Config{
-            QUrl(server->baseUrl() + kPath), directory->path(), QStringLiteral("0.5.0"), kMachine,
-            network.get()
+            QUrl(server->baseUrl() + kPath), directory->path(), QStringLiteral("0.5.0"), kMachine, network.get()
         });
     }
 
@@ -121,9 +122,7 @@ private Q_SLOTS:
     void init() {
         status = 204;
         server = std::make_unique<Tests::MockHttpServer>();
-        server->on("POST", kPath, [this](const Tests::MockRequest&) {
-            return Tests::MockResponse{status, {}};
-        });
+        server->on("POST", kPath, [this](const Tests::MockRequest&) { return Tests::MockResponse{status, {}}; });
         network = std::make_unique<QNetworkAccessManager>();
         directory = std::make_unique<QTemporaryDir>();
     }
@@ -136,9 +135,7 @@ private Q_SLOTS:
 
     void machineIdIsTheAppsHashOfTheSystemId() {
         QCOMPARE(Telemetry::MachineId("abc"), QStringLiteral("3a8271ff2b263f300989f47f507a3804"));
-        QSettings settings(
-            directory->filePath(QStringLiteral("settings.ini")), QSettings::IniFormat
-        );
+        QSettings settings(directory->filePath(QStringLiteral("settings.ini")), QSettings::IniFormat);
         const QString id = Telemetry::MachineIdFor(settings);
         QVERIFY(QRegularExpression(QStringLiteral("^[0-9a-f]{32}$")).match(id).hasMatch());
         QCOMPARE(Telemetry::MachineIdFor(settings), id);
@@ -225,9 +222,7 @@ private Q_SLOTS:
             {QStringLiteral("name"), QStringLiteral("vis")},
             {QStringLiteral("value"), QStringLiteral("off")},
         };
-        writeDeadRun(
-            dead, Marker(420), QJsonDocument(feature).toJson(QJsonDocument::Compact) + '\n'
-        );
+        writeDeadRun(dead, Marker(420), QJsonDocument(feature).toJson(QJsonDocument::Compact) + '\n');
         auto run = reporter();
         run->begin(StartFields());
         QTRY_COMPARE(posts(), 1);
@@ -315,10 +310,9 @@ private Q_SLOTS:
     void crashIsReportedByTheNextRun_data() {  // TEL-05
         QTest::addColumn<QString>("how");
         QTest::addColumn<QStringList>("expected");
-        QTest::newRow("segv") << QStringLiteral("segv")
-                              << QStringList{"SIGSEGV", "SIGBUS", "EXCEPTION_ACCESS_VIOLATION"};
-        QTest::newRow("terminate")
-            << QStringLiteral("terminate") << QStringList{"TERMINATE", "CPP_EXCEPTION"};
+        QTest::newRow("segv") << QStringLiteral("segv"
+        ) << QStringList{"SIGSEGV", "SIGBUS", "EXCEPTION_ACCESS_VIOLATION"};
+        QTest::newRow("terminate") << QStringLiteral("terminate") << QStringList{"TERMINATE", "CPP_EXCEPTION"};
         QTest::newRow("abort") << QStringLiteral("abort") << QStringList{"SIGABRT"};
     }
 
@@ -330,8 +324,8 @@ private Q_SLOTS:
         QProcess probe;
         probe.start(
             QStringLiteral(QIYAA_CRASH_PROBE),
-            {QDir(directory->path()).filePath(crashed + QStringLiteral(".crash")), crashed,
-             QStringLiteral("0.4.9"), how}
+            {QDir(directory->path()).filePath(crashed + QStringLiteral(".crash")), crashed, QStringLiteral("0.4.9"), how
+            }
         );
         QVERIFY(probe.waitForFinished(30000));
 
@@ -347,8 +341,7 @@ private Q_SLOTS:
         QVERIFY2(expected.contains(signal), qPrintable(signal));
         const QJsonArray frames = crash.value(QStringLiteral("frames")).toArray();
         QVERIFY(!frames.isEmpty());
-        const QRegularExpression frame(QStringLiteral("^[A-Za-z0-9._+-]{1,64}\\+0x[0-9a-f]{1,16}$")
-        );
+        const QRegularExpression frame(QStringLiteral("^[A-Za-z0-9._+-]{1,64}\\+0x[0-9a-f]{1,16}$"));
         bool inProbe = false;
         for (const QJsonValue& value : frames) {
             QVERIFY2(frame.match(value.toString()).hasMatch(), qPrintable(value.toString()));
@@ -377,10 +370,7 @@ private Q_SLOTS:
 
         application.setTelemetryEnabled(false);
         QVERIFY(!application.telemetry());
-        QCOMPARE(
-            QDir(directory->filePath(QStringLiteral("telemetry"))).entryList(QDir::Files),
-            QStringList()
-        );
+        QCOMPARE(QDir(directory->filePath(QStringLiteral("telemetry"))).entryList(QDir::Files), QStringList());
         application.setTelemetryEnabled(true);
         QVERIFY(application.telemetry());
         QTRY_COMPARE(posts(), 2);

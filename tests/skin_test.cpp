@@ -31,15 +31,18 @@ private Q_SLOTS:
         const Skins::Skin base = Skins::Skin::BuiltinBase();
         const Skins::Skin skin = Skins::Skin::LoadFile(path, &base);
         for (auto sheet :
-             {Skins::Skin::Sheet::Main, Skins::Skin::Sheet::CButtons, Skins::Skin::Sheet::TitleBar,
-              Skins::Skin::Sheet::Numbers, Skins::Skin::Sheet::PosBar, Skins::Skin::Sheet::Volume,
-              Skins::Skin::Sheet::Balance, Skins::Skin::Sheet::Text}) {
+             {Skins::Skin::Sheet::Main,
+              Skins::Skin::Sheet::CButtons,
+              Skins::Skin::Sheet::TitleBar,
+              Skins::Skin::Sheet::Numbers,
+              Skins::Skin::Sheet::PosBar,
+              Skins::Skin::Sheet::Volume,
+              Skins::Skin::Sheet::Balance,
+              Skins::Skin::Sheet::Text}) {
             QVERIFY(!skin.sheet(sheet).isNull());
         }
     }
-    void garbageIsRejected() {
-        QVERIFY_THROWS_EXCEPTION(Skins::Error, Skins::Skin::LoadWsz("definitely not a zip"));
-    }
+    void garbageIsRejected() { QVERIFY_THROWS_EXCEPTION(Skins::Error, Skins::Skin::LoadWsz("definitely not a zip")); }
 
     void failuresNameTheFileAndTheProblem() {
         QTemporaryDir directory;
@@ -54,13 +57,9 @@ private Q_SLOTS:
         } catch (const Skins::Error& error) {
             const QString message = QString::fromUtf8(error.what());
             QVERIFY2(message.startsWith(path), error.what());
-            QVERIFY2(
-                message.contains(QStringLiteral("not a zip archive (20 bytes)")), error.what()
-            );
+            QVERIFY2(message.contains(QStringLiteral("not a zip archive (20 bytes)")), error.what());
         }
-        QVERIFY_THROWS_EXCEPTION(
-            Skins::Error, Skins::Skin::LoadFile(path + QStringLiteral(".missing"))
-        );
+        QVERIFY_THROWS_EXCEPTION(Skins::Error, Skins::Skin::LoadFile(path + QStringLiteral(".missing")));
     }
 };
 

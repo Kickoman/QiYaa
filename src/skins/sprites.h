@@ -68,14 +68,10 @@ struct ToggleSprite {
     QRect on;
     QRect onPressed;
 };
-inline constexpr ToggleSprite
-    kShuffle{{28, 0, 47, 15}, {28, 15, 47, 15}, {28, 30, 47, 15}, {28, 45, 47, 15}};
-inline constexpr ToggleSprite
-    kRepeat{{0, 0, 28, 15}, {0, 15, 28, 15}, {0, 30, 28, 15}, {0, 45, 28, 15}};
-inline constexpr ToggleSprite
-    kEqButton{{0, 61, 23, 12}, {46, 61, 23, 12}, {0, 73, 23, 12}, {46, 73, 23, 12}};
-inline constexpr ToggleSprite
-    kPlaylistButton{{23, 61, 23, 12}, {69, 61, 23, 12}, {23, 73, 23, 12}, {69, 73, 23, 12}};
+inline constexpr ToggleSprite kShuffle{{28, 0, 47, 15}, {28, 15, 47, 15}, {28, 30, 47, 15}, {28, 45, 47, 15}};
+inline constexpr ToggleSprite kRepeat{{0, 0, 28, 15}, {0, 15, 28, 15}, {0, 30, 28, 15}, {0, 45, 28, 15}};
+inline constexpr ToggleSprite kEqButton{{0, 61, 23, 12}, {46, 61, 23, 12}, {0, 73, 23, 12}, {46, 73, 23, 12}};
+inline constexpr ToggleSprite kPlaylistButton{{23, 61, 23, 12}, {69, 61, 23, 12}, {23, 73, 23, 12}, {69, 73, 23, 12}};
 
 inline constexpr int kSliderFrameStep = 15;
 inline constexpr int kSliderFrameHeight = 13;
@@ -99,10 +95,8 @@ struct EqualizerSprites {
     static constexpr QRect kThumbSelected{0, 176, 11, 11};
     static constexpr QRect kCloseButton{0, 116, 9, 9};
     static constexpr QRect kCloseButtonDown{0, 125, 9, 9};
-    static constexpr ToggleSprite
-        kOn{{10, 119, 26, 12}, {128, 119, 26, 12}, {69, 119, 26, 12}, {187, 119, 26, 12}};
-    static constexpr ToggleSprite
-        kAuto{{36, 119, 32, 12}, {154, 119, 32, 12}, {95, 119, 32, 12}, {213, 119, 32, 12}};
+    static constexpr ToggleSprite kOn{{10, 119, 26, 12}, {128, 119, 26, 12}, {69, 119, 26, 12}, {187, 119, 26, 12}};
+    static constexpr ToggleSprite kAuto{{36, 119, 32, 12}, {154, 119, 32, 12}, {95, 119, 32, 12}, {213, 119, 32, 12}};
     static constexpr QRect kGraphBackground{0, 294, 113, 19};
     static constexpr QRect kGraphLineColors{115, 294, 1, 19};
     static constexpr QRect kPreampLine{0, 314, 113, 1};

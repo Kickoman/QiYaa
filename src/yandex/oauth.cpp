@@ -35,9 +35,7 @@ QByteArray FormBody(const QList<std::pair<QString, QString>>& form) {
 
 QNetworkRequest FormRequest(const QUrl& url) {
     QNetworkRequest request(url);
-    request.setHeader(
-        QNetworkRequest::ContentTypeHeader, QStringLiteral("application/x-www-form-urlencoded")
-    );
+    request.setHeader(QNetworkRequest::ContentTypeHeader, QStringLiteral("application/x-www-form-urlencoded"));
     request.setTransferTimeout(kTimeoutMs);
     return request;
 }
@@ -76,11 +74,9 @@ void DeviceLogin::start() {
     cancel();
     const QByteArray body = FormBody(
         {{QStringLiteral("client_id"), QString::fromLatin1(kClientId)},
-         {QStringLiteral("device_name"),
-          QStringLiteral("QiYaa (%1)").arg(QSysInfo::machineHostName())}}
+         {QStringLiteral("device_name"), QStringLiteral("QiYaa (%1)").arg(QSysInfo::machineHostName())}}
     );
-    QNetworkReply* reply =
-        networkManager->post(FormRequest(QUrl(baseUrl + QStringLiteral("/device/code"))), body);
+    QNetworkReply* reply = networkManager->post(FormRequest(QUrl(baseUrl + QStringLiteral("/device/code"))), body);
     pendingReply = reply;
     connect(reply, &QNetworkReply::finished, this, [this, reply] {
         reply->deleteLater();
@@ -128,8 +124,7 @@ void DeviceLogin::poll() {
          {QStringLiteral("client_id"), QString::fromLatin1(kClientId)},
          {QStringLiteral("client_secret"), QString::fromLatin1(kClientSecret)}}
     );
-    QNetworkReply* reply =
-        networkManager->post(FormRequest(QUrl(baseUrl + QStringLiteral("/token"))), body);
+    QNetworkReply* reply = networkManager->post(FormRequest(QUrl(baseUrl + QStringLiteral("/token"))), body);
     pendingReply = reply;
     connect(reply, &QNetworkReply::finished, this, [this, reply] {
         reply->deleteLater();
@@ -144,8 +139,7 @@ void DeviceLogin::poll() {
             return;
         }
         const QString error = object.value(QStringLiteral("error")).toString();
-        if (error == QLatin1String("authorization_pending")
-            || error == QLatin1String("slow_down")) {
+        if (error == QLatin1String("authorization_pending") || error == QLatin1String("slow_down")) {
             if (error == QLatin1String("slow_down")) {
                 pollTimer.setInterval(pollTimer.interval() + kSlowDownStepMs);
             }

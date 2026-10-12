@@ -75,9 +75,7 @@ QString MilkdropWindow::failure() const {
 MilkdropWindow::~MilkdropWindow() = default;
 
 QString MilkdropWindow::currentPreset() const {
-    return selectedIndex >= 0 && selectedIndex < presetList.size()
-        ? presetList.at(selectedIndex).name
-        : QString();
+    return selectedIndex >= 0 && selectedIndex < presetList.size() ? presetList.at(selectedIndex).name : QString();
 }
 
 void MilkdropWindow::wireView(Vis::MilkdropView* view) {
@@ -111,18 +109,12 @@ void MilkdropWindow::wireView(Vis::MilkdropView* view) {
     connect(view, &Vis::MilkdropView::staysBlack, this, &MilkdropWindow::onStaysBlack);
     connect(view, &Vis::MilkdropView::drawsPicture, this, [this] { blackInARow = 0; });
     view->setBlackWatch(musicPlaying && blackInARow <= 5);
-    connect(view, &Vis::MilkdropView::doubleClicked, this, [this] {
-        setFullScreenMode(!isFullScreenMode());
-    });
+    connect(view, &Vis::MilkdropView::doubleClicked, this, [this] { setFullScreenMode(!isFullScreenMode()); });
     connect(view, &Vis::MilkdropView::contextMenuRequested, this, &MilkdropWindow::showMenu);
     connect(view, &Vis::MilkdropView::keyPressed, this, &MilkdropWindow::handleKey);
 }
 
-void MilkdropWindow::selectPreset(
-    int index,
-    Vis::PresetTransition transition,
-    PresetOrigin origin
-) {
+void MilkdropWindow::selectPreset(int index, Vis::PresetTransition transition, PresetOrigin origin) {
     if (index < 0 || index >= presetList.size()) {
         return;
     }
@@ -298,9 +290,7 @@ int MilkdropWindow::followingPreset() const {
             }
         }
         if (!candidates.isEmpty()) {
-            return candidates.at(
-                static_cast<int>(QRandomGenerator::global()->bounded(candidates.size()))
-            );
+            return candidates.at(static_cast<int>(QRandomGenerator::global()->bounded(candidates.size())));
         }
     } else {
         int index = selectedIndex;
@@ -319,8 +309,7 @@ int MilkdropWindow::followingPreset() const {
 }
 
 bool MilkdropWindow::isBlack(int index) const {
-    return index >= 0 && index < presetList.size()
-        && blackPresetNames.contains(presetList.at(index).name);
+    return index >= 0 && index < presetList.size() && blackPresetNames.contains(presetList.at(index).name);
 }
 
 QStringList MilkdropWindow::blackPresets() const {
@@ -341,7 +330,8 @@ void MilkdropWindow::onStaysBlack() {
     }
     const Vis::MilkdropView* view = fullView ? fullView.get() : milkdropView;
     qWarning(
-        "Milkdrop: \"%s\" shows only black here (%s), skipping it", qPrintable(name),
+        "Milkdrop: \"%s\" shows only black here (%s), skipping it",
+        qPrintable(name),
         view ? qPrintable(view->glInfo()) : "?"
     );
     if (++blackInARow > 5) {
@@ -423,8 +413,8 @@ void MilkdropWindow::showMenu(const QPoint& globalPos) {
     if (!presetList.isEmpty()) {
         QMenu* presetsMenu = menu->addMenu(tr("Presets"));
         for (int i = 0; i < presetList.size(); ++i) {
-            const QString label = isBlack(i) ? tr("%1  (black here)").arg(presetList.at(i).name)
-                                             : presetList.at(i).name;
+            const QString label =
+                isBlack(i) ? tr("%1  (black here)").arg(presetList.at(i).name) : presetList.at(i).name;
             QAction* action = presetsMenu->addAction(label, this, [this, i] {
                 failuresInARow = 0;
                 selectPreset(i);
@@ -434,28 +424,23 @@ void MilkdropWindow::showMenu(const QPoint& globalPos) {
         }
     }
     menu->addSeparator();
-    QAction* shuffle =
-        menu->addAction(tr("Random order\tR"), this, [this](bool on) { setShuffle(on); });
+    QAction* shuffle = menu->addAction(tr("Random order\tR"), this, [this](bool on) { setShuffle(on); });
     shuffle->setCheckable(true);
     shuffle->setChecked(shuffleEnabled);
-    QAction* lock =
-        menu->addAction(tr("Do not switch by itself\tL"), this, [this](bool on) { setLocked(on); });
+    QAction* lock = menu->addAction(tr("Do not switch by itself\tL"), this, [this](bool on) { setLocked(on); });
     lock->setCheckable(true);
     lock->setChecked(lockEnabled);
     QMenu* intervalMenu = menu->addMenu(tr("Change the preset every"));
     auto* group = new QActionGroup(intervalMenu);
     for (int seconds : {15, 30, 60, 120, 300}) {
-        const QString label =
-            seconds < 60 ? tr("%1 s").arg(seconds) : tr("%1 min").arg(seconds / 60);
-        QAction* action =
-            intervalMenu->addAction(label, this, [this, seconds] { setPresetSeconds(seconds); });
+        const QString label = seconds < 60 ? tr("%1 s").arg(seconds) : tr("%1 min").arg(seconds / 60);
+        QAction* action = intervalMenu->addAction(label, this, [this, seconds] { setPresetSeconds(seconds); });
         action->setCheckable(true);
         action->setChecked(seconds == switchIntervalSeconds);
         group->addAction(action);
     }
     menu->addSeparator();
-    QAction* fullScreen =
-        menu->addAction(tr("Full screen\tF"), this, [this](bool on) { setFullScreenMode(on); });
+    QAction* fullScreen = menu->addAction(tr("Full screen\tF"), this, [this](bool on) { setFullScreenMode(on); });
     fullScreen->setCheckable(true);
     fullScreen->setChecked(isFullScreenMode());
     fullScreen->setEnabled(failure().isEmpty());
@@ -466,23 +451,19 @@ void MilkdropWindow::showMenu(const QPoint& globalPos) {
     });
     menu->addAction(tr("Reload the presets"), this, &MilkdropWindow::reloadPresets);
     menu->addAction(
-            tr("Copy the preset's name"), this,
-            [this] { QGuiApplication::clipboard()->setText(currentPreset()); }
+            tr("Copy the preset's name"), this, [this] { QGuiApplication::clipboard()->setText(currentPreset()); }
     )->setEnabled(selectedIndex >= 0);
     if (!blackPresetNames.isEmpty()) {
-        menu->addAction(
-            tr("Bring back the skipped black presets (%1)").arg(blackPresetNames.size()), this,
-            [this] {
-                setBlackPresets({});
-                if (milkdropView) {
-                    milkdropView->setBlackWatch(musicPlaying);
-                }
-                if (fullView) {
-                    fullView->setBlackWatch(musicPlaying);
-                }
-                Q_EMIT settingsChanged();
+        menu->addAction(tr("Bring back the skipped black presets (%1)").arg(blackPresetNames.size()), this, [this] {
+            setBlackPresets({});
+            if (milkdropView) {
+                milkdropView->setBlackWatch(musicPlaying);
             }
-        );
+            if (fullView) {
+                fullView->setBlackWatch(musicPlaying);
+            }
+            Q_EMIT settingsChanged();
+        });
     }
     menu->popup(globalPos);
 }
@@ -498,7 +479,8 @@ void MilkdropWindow::paintContent(QPainter& painter, const QRect& area) {
     painter.setFont(messageFont);
     painter.setPen(QColor(0, 200, 0));
     painter.drawText(
-        area.adjusted(4, 4, -4, -4), Qt::AlignCenter | Qt::TextWordWrap,
+        area.adjusted(4, 4, -4, -4),
+        Qt::AlignCenter | Qt::TextWordWrap,
         tr("Milkdrop is not available: %1").arg(failureText)
     );
 }
@@ -518,8 +500,7 @@ void MilkdropWindow::placeView() {
     const QRect rect = contentRect();
     const double windowScale = scale();
     const int left = qRound(rect.left() * windowScale), top = qRound(rect.top() * windowScale);
-    const int right = qRound((rect.right() + 1) * windowScale),
-              bottom = qRound((rect.bottom() + 1) * windowScale);
+    const int right = qRound((rect.right() + 1) * windowScale), bottom = qRound((rect.bottom() + 1) * windowScale);
     container->setGeometry(left, top, right - left, bottom - top);
 }
 

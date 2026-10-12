@@ -60,8 +60,7 @@ bool IsRunning(const QString& lockPath) {
 
 void RemoveSession(const QString& directory, const QString& session) {
     for (const QString& suffix :
-         {QStringLiteral("json"), QStringLiteral("crash"), QStringLiteral("queue"),
-          QStringLiteral("lock")}) {
+         {QStringLiteral("json"), QStringLiteral("crash"), QStringLiteral("queue"), QStringLiteral("lock")}) {
         QFile::remove(QDir(directory).filePath(session + u'.' + suffix));
     }
 }
@@ -148,8 +147,7 @@ void Reporter::reportEarlierRuns() {
         for (const QJsonObject& event : ReadQueue(file(session, QStringLiteral("queue")))) {
             queue << event;
         }
-        if (const std::optional<CrashReport> crash =
-                ReadCrashReport(file(session, QStringLiteral("crash")))) {
+        if (const std::optional<CrashReport> crash = ReadCrashReport(file(session, QStringLiteral("crash")))) {
             QJsonObject event{
                 {QStringLiteral("type"), QStringLiteral("crash")},
                 {QStringLiteral("at"), Now()},
@@ -213,10 +211,7 @@ void Reporter::recordError(const QString& area, const QString& kind, int httpSta
 }
 
 void Reporter::recordFeature(const QString& name, const QString& value) {
-    record(
-        QStringLiteral("feature"),
-        {{QStringLiteral("name"), name}, {QStringLiteral("value"), value}}
-    );
+    record(QStringLiteral("feature"), {{QStringLiteral("name"), name}, {QStringLiteral("value"), value}});
 }
 
 void Reporter::countTrack() {
@@ -316,8 +311,7 @@ void Reporter::send() {
     qsizetype bytes = 128;
     for (const QJsonObject& event : queue) {
         const qsizetype size = Compact(event).size() + 1;
-        if (events.size() == kMaxBatchEvents
-            || (!events.isEmpty() && bytes + size > kMaxBatchBytes)) {
+        if (events.size() == kMaxBatchEvents || (!events.isEmpty() && bytes + size > kMaxBatchBytes)) {
             break;
         }
         events.append(event);

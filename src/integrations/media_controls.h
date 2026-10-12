@@ -22,12 +22,7 @@ public:
         std::function<void()> quit;
     };
 
-    MediaControls(
-        Core::Player* player,
-        Core::CoverCache* covers,
-        Hooks hooks,
-        QObject* parent = nullptr
-    );
+    MediaControls(Core::Player* player, Core::CoverCache* covers, Hooks hooks, QObject* parent = nullptr);
 
     Core::Player* player() const { return corePlayer; }
     const Hooks& hooks() const { return hookFunctions; }

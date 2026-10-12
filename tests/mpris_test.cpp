@@ -45,9 +45,7 @@ class ChangeSink : public QObject {
 public:
     QList<QVariantMap> changes;
 public Q_SLOTS:
-    void onChanged(const QString&, const QVariantMap& changed, const QStringList&) {
-        changes << changed;
-    }
+    void onChanged(const QString&, const QVariantMap& changed, const QStringList&) { changes << changed; }
 };
 
 }  // namespace
@@ -72,15 +70,12 @@ private:
     QString gdbusCall(const QStringList& arguments) {
         QProcess process;
         process.start(
-            gdbus,
-            QStringList{"call", "--session", "--dest", kService, "--object-path", kPath, "--method"}
-                + arguments
+            gdbus, QStringList{"call", "--session", "--dest", kService, "--object-path", kPath, "--method"} + arguments
         );
         if (!QTest::qWaitFor([&] { return process.state() == QProcess::NotRunning; }, 5000)) {
             return QStringLiteral("<timeout>");
         }
-        return QString::fromUtf8(process.readAllStandardOutput() + process.readAllStandardError())
-            .trimmed();
+        return QString::fromUtf8(process.readAllStandardOutput() + process.readAllStandardError()).trimmed();
     }
 
 private Q_SLOTS:
@@ -90,8 +85,7 @@ private Q_SLOTS:
         }
         gdbus = QStandardPaths::findExecutable(QStringLiteral("gdbus"));
         api = std::make_unique<Yandex::ApiClient>(&networkManager);
-        api->setBaseUrl(QStringLiteral("http://127.0.0.1:9")
-        );  // nothing listens: link requests fail fast
+        api->setBaseUrl(QStringLiteral("http://127.0.0.1:9"));  // nothing listens: link requests fail fast
         library = std::make_unique<Yandex::Library>(api.get());
         engine = std::make_unique<Audio::AudioEngine>();
         player = std::make_unique<Core::Player>(library.get(), engine.get());
@@ -126,14 +120,10 @@ private Q_SLOTS:
     }
 
     void metadataDescribesTheCurrentTrack() {
-        QDBusInterface playerInterface(
-            kService, kPath, QStringLiteral("org.mpris.MediaPlayer2.Player")
-        );
+        QDBusInterface playerInterface(kService, kPath, QStringLiteral("org.mpris.MediaPlayer2.Player"));
         const QVariantMap metadata = playerInterface.property("Metadata").toMap();
         QCOMPARE(metadata.value("xesam:title").toString(), QStringLiteral("Песня 1"));
-        QCOMPARE(
-            metadata.value("xesam:artist").toStringList(), QStringList{QStringLiteral("Кино")}
-        );
+        QCOMPARE(metadata.value("xesam:artist").toStringList(), QStringList{QStringLiteral("Кино")});
         QCOMPARE(metadata.value("mpris:length").toLongLong(), 200'000'000LL);
         QCOMPARE(playerInterface.property("PlaybackStatus").toString(), QStringLiteral("Stopped"));
     }
@@ -144,8 +134,11 @@ private Q_SLOTS:
         }
         ChangeSink sink;
         QVERIFY(QDBusConnection::sessionBus().connect(
-            kService, kPath, QStringLiteral("org.freedesktop.DBus.Properties"),
-            QStringLiteral("PropertiesChanged"), &sink,
+            kService,
+            kPath,
+            QStringLiteral("org.freedesktop.DBus.Properties"),
+            QStringLiteral("PropertiesChanged"),
+            &sink,
             SLOT(onChanged(QString, QVariantMap, QStringList))
         ));
         const QString reply = gdbusCall({QStringLiteral("org.mpris.MediaPlayer2.Player.Next")});
@@ -174,24 +167,20 @@ private Q_SLOTS:
         }
         ChangeSink sink;
         QVERIFY(QDBusConnection::sessionBus().connect(
-            kService, kPath, QStringLiteral("org.freedesktop.DBus.Properties"),
-            QStringLiteral("PropertiesChanged"), &sink,
+            kService,
+            kPath,
+            QStringLiteral("org.freedesktop.DBus.Properties"),
+            QStringLiteral("PropertiesChanged"),
+            &sink,
             SLOT(onChanged(QString, QVariantMap, QStringList))
         ));
         const QString setMethod = QStringLiteral("org.freedesktop.DBus.Properties.Set");
         const QString playerInterfaceName = QStringLiteral("org.mpris.MediaPlayer2.Player");
-        gdbusCall(
-            {setMethod, playerInterfaceName, QStringLiteral("Volume"), QStringLiteral("<0.3>")}
-        );
+        gdbusCall({setMethod, playerInterfaceName, QStringLiteral("Volume"), QStringLiteral("<0.3>")});
         QCOMPARE(volume, 30);
-        gdbusCall(
-            {setMethod, playerInterfaceName, QStringLiteral("Shuffle"), QStringLiteral("<true>")}
-        );
+        gdbusCall({setMethod, playerInterfaceName, QStringLiteral("Shuffle"), QStringLiteral("<true>")});
         QVERIFY(player->shuffle());
-        gdbusCall(
-            {setMethod, playerInterfaceName, QStringLiteral("LoopStatus"),
-             QStringLiteral("<'Playlist'>")}
-        );
+        gdbusCall({setMethod, playerInterfaceName, QStringLiteral("LoopStatus"), QStringLiteral("<'Playlist'>")});
         QVERIFY(player->repeat());
         QDBusInterface playerInterface(kService, kPath, playerInterfaceName);
         QVERIFY(qFuzzyCompare(playerInterface.property("Volume").toDouble(), 0.3));
@@ -211,8 +200,11 @@ private Q_SLOTS:
     void appSideChangesAreAnnounced() {
         ChangeSink sink;
         QVERIFY(QDBusConnection::sessionBus().connect(
-            kService, kPath, QStringLiteral("org.freedesktop.DBus.Properties"),
-            QStringLiteral("PropertiesChanged"), &sink,
+            kService,
+            kPath,
+            QStringLiteral("org.freedesktop.DBus.Properties"),
+            QStringLiteral("PropertiesChanged"),
+            &sink,
             SLOT(onChanged(QString, QVariantMap, QStringList))
         ));
         player->setShuffle(false);
@@ -222,10 +214,9 @@ private Q_SLOTS:
                 bool volumeChanged = false, shuffleChanged = false;
                 for (const auto& change : sink.changes) {
                     volumeChanged = volumeChanged
-                        || (change.contains("Volume")
-                            && qFuzzyCompare(change.value("Volume").toDouble(), 0.8));
-                    shuffleChanged = shuffleChanged
-                        || (change.contains("Shuffle") && !change.value("Shuffle").toBool());
+                        || (change.contains("Volume") && qFuzzyCompare(change.value("Volume").toDouble(), 0.8));
+                    shuffleChanged =
+                        shuffleChanged || (change.contains("Shuffle") && !change.value("Shuffle").toBool());
                 }
                 return volumeChanged && shuffleChanged;
             },
@@ -237,20 +228,16 @@ private Q_SLOTS:
         if (gdbus.isEmpty()) {
             QSKIP("gdbus not installed");
         }
-        QDBusInterface playerInterface(
-            kService, kPath, QStringLiteral("org.mpris.MediaPlayer2.Player")
-        );
+        QDBusInterface playerInterface(kService, kPath, QStringLiteral("org.mpris.MediaPlayer2.Player"));
         QCOMPARE(playerInterface.property("CanSeek").toBool(), false);  // stopped
         const int before = player->currentIndex();
-        gdbusCall({QStringLiteral("org.mpris.MediaPlayer2.Player.Seek"), QStringLiteral("1000000")}
-        );
+        gdbusCall({QStringLiteral("org.mpris.MediaPlayer2.Player.Seek"), QStringLiteral("1000000")});
         QCOMPARE(player->currentIndex(), before);  // not "past the end = next"
     }
 
     void secondInstanceGetsItsOwnName() {
         // Another copy of the app has its own connection to the bus.
-        QDBusConnection second =
-            QDBusConnection::connectToBus(QDBusConnection::SessionBus, QStringLiteral("second"));
+        QDBusConnection second = QDBusConnection::connectToBus(QDBusConnection::SessionBus, QStringLiteral("second"));
         {
             Integrations::Mpris other(controls.get(), QStringLiteral("qiyaatest"), second);
             QVERIFY(other.isRegistered());

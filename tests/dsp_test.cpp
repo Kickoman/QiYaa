@@ -31,8 +31,7 @@ namespace {
 std::vector<float> StereoSine(double hz, double sampleRate, int frames, float amplitude = 0.5f) {
     std::vector<float> samples(frames * 2);
     for (int i = 0; i < frames; ++i) {
-        const float sample =
-            amplitude * static_cast<float>(std::sin(2 * std::numbers::pi * hz * i / sampleRate));
+        const float sample = amplitude * static_cast<float>(std::sin(2 * std::numbers::pi * hz * i / sampleRate));
         samples[i * 2] = samples[i * 2 + 1] = sample;
     }
     return samples;
@@ -84,9 +83,7 @@ Audio::EqSettings SettingsFrom(const QJsonObject& object) {
     settings.enabled = object.value(QStringLiteral("enabled")).toBool();
     settings.preampDb = object.value(QStringLiteral("preampDb")).toDouble();
     const std::vector<double> bands = Numbers(object.value(QStringLiteral("bandsDb")));
-    std::copy_n(
-        bands.begin(), std::min<size_t>(bands.size(), Audio::kEqBands), settings.bandsDb.begin()
-    );
+    std::copy_n(bands.begin(), std::min<size_t>(bands.size(), Audio::kEqBands), settings.bandsDb.begin());
     return settings;
 }
 
@@ -110,13 +107,13 @@ QJsonObject MakeEqResponse() {
     preampDown.preampDb = -12;
     Audio::EqSettings disabled = uniform(Audio::kEqMaxDb);
     disabled.enabled = false;
-    cases << std::pair{QStringLiteral("all +12"), uniform(Audio::kEqMaxDb)}
-          << std::pair{QStringLiteral("all -12"), uniform(-Audio::kEqMaxDb)}
-          << std::pair{QStringLiteral("alternating +12/-12"), alternating}
-          << std::pair{QStringLiteral("1 kHz +12"), oneKhz}
-          << std::pair{QStringLiteral("preamp +6"), preampUp}
-          << std::pair{QStringLiteral("preamp -12"), preampDown}
-          << std::pair{QStringLiteral("disabled, bands +12"), disabled};
+    cases
+        << std::pair{QStringLiteral("all +12"), uniform(Audio::kEqMaxDb)}
+        << std::pair{QStringLiteral("all -12"), uniform(-Audio::kEqMaxDb)}
+        << std::pair{QStringLiteral("alternating +12/-12"), alternating}
+        << std::pair{QStringLiteral("1 kHz +12"), oneKhz} << std::pair{QStringLiteral("preamp +6"), preampUp}
+        << std::pair{QStringLiteral("preamp -12"), preampDown}
+        << std::pair{QStringLiteral("disabled, bands +12"), disabled};
 
     std::vector<double> frequencies(Audio::kEqBandHz.begin(), Audio::kEqBandHz.end());
     for (int i = 0; i <= 30; ++i) {
@@ -165,8 +162,7 @@ QJsonObject MakeEqPresets() {
         });
     }
     return {
-        {QStringLiteral("tolerance"), QJsonObject{{QStringLiteral("db"), 1e-9}}},
-        {QStringLiteral("presets"), presets}
+        {QStringLiteral("tolerance"), QJsonObject{{QStringLiteral("db"), 1e-9}}}, {QStringLiteral("presets"), presets}
     };
 }
 
@@ -179,19 +175,14 @@ QByteArray EqfWithFirstBandByte(char byte) {
 QJsonObject MakeEqf() {
     QJsonArray levelToDb;
     for (int level = 0; level <= 65; ++level) {
-        levelToDb.append(QJsonObject{
-            {QStringLiteral("level"), level}, {QStringLiteral("db"), Audio::EqfToDb(level)}
-        });
+        levelToDb.append(QJsonObject{{QStringLiteral("level"), level}, {QStringLiteral("db"), Audio::EqfToDb(level)}});
     }
     QJsonArray dbToLevel;
     for (const double db :
-         {-13.0, -12.0, -6.0, -0.19, -0.1, 0.0, 0.1, 0.19, 0.2, 5.904761904761905, 6.0, 11.9, 12.0,
-          13.0}) {
+         {-13.0, -12.0, -6.0, -0.19, -0.1, 0.0, 0.1, 0.19, 0.2, 5.904761904761905, 6.0, 11.9, 12.0, 13.0}) {
         const int level = Audio::DbToEqf(db);
         dbToLevel.append(QJsonObject{
-            {QStringLiteral("db"), db},
-            {QStringLiteral("level"), level},
-            {QStringLiteral("byte"), 64 - level}
+            {QStringLiteral("db"), db}, {QStringLiteral("level"), level}, {QStringLiteral("byte"), 64 - level}
         });
     }
     QJsonArray parsedBytes;
@@ -199,9 +190,7 @@ QJsonObject MakeEqf() {
         parsedBytes.append(QJsonObject{
             {QStringLiteral("byte"), byte},
             {QStringLiteral("db"),
-             Audio::ParseEqf(EqfWithFirstBandByte(static_cast<char>(byte)))
-                 .first()
-                 .settings.bandsDb[0]}
+             Audio::ParseEqf(EqfWithFirstBandByte(static_cast<char>(byte))).first().settings.bandsDb[0]}
         });
     }
     return {
@@ -218,16 +207,14 @@ QJsonObject MakeEqf() {
 std::vector<float> MonoSine(double hz, double amplitude, int sampleRate, int count) {
     std::vector<float> samples(count);
     for (int i = 0; i < count; ++i) {
-        samples[i] =
-            static_cast<float>(amplitude * std::sin(2 * std::numbers::pi * hz * i / sampleRate));
+        samples[i] = static_cast<float>(amplitude * std::sin(2 * std::numbers::pi * hz * i / sampleRate));
     }
     return samples;
 }
 
 std::array<float, Vis::kSpectrumBars> SineLevels(double hz, double amplitude, int sampleRate) {
     Vis::Analyzer analyzer(kVectorFftSize);
-    const std::vector<float>& spectrum =
-        analyzer.analyze(MonoSine(hz, amplitude, sampleRate, kVectorFftSize));
+    const std::vector<float>& spectrum = analyzer.analyze(MonoSine(hz, amplitude, sampleRate, kVectorFftSize));
     return Vis::SpectrumLevels(spectrum, sampleRate, kVectorFftSize);
 }
 
@@ -246,8 +233,7 @@ QJsonObject MakeSpectrum() {
         }
         bandsByRate.insert(QString::number(sampleRate), bands);
         QList<std::pair<double, double>> sines;
-        for (const double hz :
-             {60.0, 100.0, 250.0, 440.0, 1000.0, 2500.0, 5000.0, 10000.0, 15000.0}) {
+        for (const double hz : {60.0, 100.0, 250.0, 440.0, 1000.0, 2500.0, 5000.0, 10000.0, 15000.0}) {
             sines << std::pair{hz, 1.0};
         }
         sines << std::pair{1000.0, 0.1} << std::pair{1000.0, 0.01} << std::pair{0.0, 0.0};
@@ -276,10 +262,7 @@ QString Mismatch(
     double tolerance
 ) {
     if (actual.size() != expected.size()) {
-        return QStringLiteral("%1: %2 values, expected %3")
-            .arg(where)
-            .arg(actual.size())
-            .arg(expected.size());
+        return QStringLiteral("%1: %2 values, expected %3").arg(where).arg(actual.size()).arg(expected.size());
     }
     for (size_t i = 0; i < actual.size(); ++i) {
         if (!(std::abs(actual[i] - expected[i]) <= tolerance)) {
@@ -311,9 +294,7 @@ private Q_SLOTS:
         const QJsonObject spec = Tests::SpecObject(QStringLiteral("dsp/eq-response.json"));
         const double tolerance = spec["tolerance"]["db"].toDouble();
         const std::vector<double> bands = Numbers(spec["bandsHz"]);
-        QVERIFY(
-            std::equal(bands.begin(), bands.end(), Audio::kEqBandHz.begin(), Audio::kEqBandHz.end())
-        );
+        QVERIFY(std::equal(bands.begin(), bands.end(), Audio::kEqBandHz.begin(), Audio::kEqBandHz.end()));
         const std::vector<double> frequencies = Numbers(spec["frequenciesHz"]);
         const QJsonArray cases = spec["cases"].toArray();
         QVERIFY(cases.size() >= 2 * 25);
@@ -326,8 +307,10 @@ private Q_SLOTS:
                 actual.push_back(Audio::EqualizerDsp::ResponseDb(settings, hz, sampleRate));
             }
             const QString problem = Mismatch(
-                QStringLiteral("%1 @ %2").arg(item["name"].toString()).arg(sampleRate), actual,
-                Numbers(item["responseDb"]), tolerance
+                QStringLiteral("%1 @ %2").arg(item["name"].toString()).arg(sampleRate),
+                actual,
+                Numbers(item["responseDb"]),
+                tolerance
             );
             QVERIFY2(problem.isEmpty(), qPrintable(problem));
         }
@@ -342,17 +325,12 @@ private Q_SLOTS:
         for (int i = 0; i < presets.size(); ++i) {
             const QJsonObject item = expected[i].toObject();
             QCOMPARE(presets[i].name, item["name"].toString());
-            const std::vector<double> actual(
-                presets[i].settings.bandsDb.begin(), presets[i].settings.bandsDb.end()
-            );
-            const QString problem =
-                Mismatch(presets[i].name, actual, Numbers(item["bandsDb"]), tolerance);
+            const std::vector<double> actual(presets[i].settings.bandsDb.begin(), presets[i].settings.bandsDb.end());
+            const QString problem = Mismatch(presets[i].name, actual, Numbers(item["bandsDb"]), tolerance);
             QVERIFY2(problem.isEmpty(), qPrintable(problem));
             const std::vector<double> levels = Numbers(item["levels"]);
             for (int band = 0; band < Audio::kEqBands; ++band) {
-                QCOMPARE(
-                    Audio::EqfToDb(static_cast<int>(levels[band])), item["bandsDb"][band].toDouble()
-                );
+                QCOMPARE(Audio::EqfToDb(static_cast<int>(levels[band])), item["bandsDb"][band].toDouble());
             }
             QCOMPARE(Audio::EqfToDb(item["preampLevel"].toInt()), presets[i].settings.preampDb);
         }
@@ -380,9 +358,8 @@ private Q_SLOTS:
         }
         for (const QJsonValue& value : spec["parsedBytes"].toArray()) {
             const int byte = value["byte"].toInt();
-            const double db = Audio::ParseEqf(EqfWithFirstBandByte(static_cast<char>(byte)))
-                                  .first()
-                                  .settings.bandsDb[0];
+            const double db =
+                Audio::ParseEqf(EqfWithFirstBandByte(static_cast<char>(byte))).first().settings.bandsDb[0];
             QVERIFY2(
                 std::abs(db - value["db"].toDouble()) <= tolerance,
                 qPrintable(QStringLiteral("byte %1: %2").arg(byte).arg(db))
@@ -410,14 +387,14 @@ private Q_SLOTS:
         for (const QJsonValue& value : spec["cases"].toArray()) {
             const QJsonObject sine = value["sine"].toObject();
             const int sampleRate = value["sampleRate"].toInt();
-            const auto levels =
-                SineLevels(sine["hz"].toDouble(), sine["amplitude"].toDouble(), sampleRate);
+            const auto levels = SineLevels(sine["hz"].toDouble(), sine["amplitude"].toDouble(), sampleRate);
             const QString problem = Mismatch(
                 QStringLiteral("%1 Hz × %2 @ %3")
                     .arg(sine["hz"].toDouble())
                     .arg(sine["amplitude"].toDouble())
                     .arg(sampleRate),
-                std::vector<double>(levels.begin(), levels.end()), Numbers(value["levels"]),
+                std::vector<double>(levels.begin(), levels.end()),
+                Numbers(value["levels"]),
                 tolerance
             );
             QVERIFY2(problem.isEmpty(), qPrintable(problem));
@@ -485,10 +462,9 @@ private Q_SLOTS:
     void presetsLookRight() {
         const auto presets = Audio::BuiltinEqPresets();
         QCOMPARE(presets.size(), 17);
-        const auto bass =
-            std::find_if(presets.cbegin(), presets.cend(), [](const Audio::EqPreset& preset) {
-                return preset.name == "Full Bass";
-            });
+        const auto bass = std::find_if(presets.cbegin(), presets.cend(), [](const Audio::EqPreset& preset) {
+            return preset.name == "Full Bass";
+        });
         QVERIFY(bass != presets.cend());
         QVERIFY(bass->settings.bandsDb[0] > 5);
         QVERIFY(bass->settings.bandsDb[9] < -5);
@@ -534,9 +510,7 @@ private Q_SLOTS:
     void eqfParserRejectsWhatIsNotAPreset() {
         QVERIFY_THROWS_EXCEPTION(Audio::Error, Audio::ParseEqf("not an eqf"));
         // The header alone: a library without presets.
-        QVERIFY_THROWS_EXCEPTION(
-            Audio::Error, Audio::ParseEqf(QByteArray("Winamp EQ library file v1.1\x1a!--", 31))
-        );
+        QVERIFY_THROWS_EXCEPTION(Audio::Error, Audio::ParseEqf(QByteArray("Winamp EQ library file v1.1\x1a!--", 31)));
         try {
             Audio::ParseEqf("not an eqf");
         } catch (const Audio::Error& error) {
@@ -563,9 +537,7 @@ private Q_SLOTS:
         }
         const auto& spectrumDb = analyzer.analyze(mono);
         QCOMPARE(static_cast<int>(spectrumDb.size()), 513);
-        const int peak = static_cast<int>(
-            std::max_element(spectrumDb.begin(), spectrumDb.end()) - spectrumDb.begin()
-        );
+        const int peak = static_cast<int>(std::max_element(spectrumDb.begin(), spectrumDb.end()) - spectrumDb.begin());
         QCOMPARE(peak, static_cast<int>(std::lround(hz / (sampleRate / 1024))));
         QVERIFY(std::abs(spectrumDb[peak]) < 1.5);  // full-scale sine ~ 0 dBFS
         QVERIFY(spectrumDb[400] < -50);

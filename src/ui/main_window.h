@@ -107,13 +107,8 @@ private:
     QString marqueeText() const;
     QPoint globalAt(QPoint skinPos) const;
 
-    void drawButton(
-        QPainter& painter,
-        Element element,
-        const QPoint& at,
-        const QRect& normal,
-        const QRect& pressed
-    ) const;
+    void
+    drawButton(QPainter& painter, Element element, const QPoint& at, const QRect& normal, const QRect& pressed) const;
     void drawTime(QPainter& painter) const;
     void paintShaded(QPainter& painter);
     Element hitTestShaded(QPoint point) const;

@@ -48,8 +48,7 @@ QString NormalizeToken(const QByteArray& raw) {
 }
 
 TokenSource FindToken(const QString& tokenFile, const QStringList& importFiles) {
-    if (const QString environmentToken = NormalizeToken(qgetenv("QIYAA_TOKEN"));
-        !environmentToken.isEmpty()) {
+    if (const QString environmentToken = NormalizeToken(qgetenv("QIYAA_TOKEN")); !environmentToken.isEmpty()) {
         return {environmentToken, QStringLiteral("environment variable QIYAA_TOKEN")};
     }
 

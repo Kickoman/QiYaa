@@ -50,10 +50,9 @@ Yandex::WaveEvent WaveEventOf(Player::TrackEvent event) {
 
 QList<Track> Playable(const QList<Track>& tracks) {
     QList<Track> playable;
-    std::copy_if(
-        tracks.cbegin(), tracks.cend(), std::back_inserter(playable),
-        [](const Track& track) { return track.available; }
-    );
+    std::copy_if(tracks.cbegin(), tracks.cend(), std::back_inserter(playable), [](const Track& track) {
+        return track.available;
+    });
     return playable;
 }
 
@@ -78,10 +77,7 @@ JamMode::JamMode(Player* player, Yandex::Library* library, QObject* parent)
         QTimer::singleShot(0, this, &JamMode::dropDeferredWave);
     });
     connect(corePlayer, &Player::seeked, this, &JamMode::schedulePlaybackReport);
-    connect(
-        corePlayer->engine(), &Audio::AudioEngine::stateChanged, this,
-        &JamMode::schedulePlaybackReport
-    );
+    connect(corePlayer->engine(), &Audio::AudioEngine::stateChanged, this, &JamMode::schedulePlaybackReport);
     connect(corePlayer, &Player::playlistChanged, this, &JamMode::checkSlots);
 }
 
@@ -123,25 +119,24 @@ void JamMode::start(const QString& title, bool waveFeedback) {
         }
         self->loadWave(std::move(done));
     };
-    Player::TEventCallback events = [self, library, state](
-                                        Player::TrackEvent event, const Track& track, double played
-                                    ) {
-        if (self && self->active) {
-            const JamSlot slot = self->currentSlot();
-            if (event == Player::TrackEvent::Started && slot.kind == JamSlot::Kind::Item) {
-                Q_EMIT self->itemStarted(slot.itemId);  // HOST-05
+    Player::TEventCallback events =
+        [self, library, state](Player::TrackEvent event, const Track& track, double played) {
+            if (self && self->active) {
+                const JamSlot slot = self->currentSlot();
+                if (event == Player::TrackEvent::Started && slot.kind == JamSlot::Kind::Item) {
+                    Q_EMIT self->itemStarted(slot.itemId);  // HOST-05
+                }
+                self->schedulePlaybackReport();
             }
-            self->schedulePlaybackReport();
-        }
-        const auto origin = state->originOfTrack.constFind(track.id);
-        const bool waveTrack = origin != state->originOfTrack.constEnd()
-            && (!self || !self->active || self->currentSlot().kind == JamSlot::Kind::Wave);
-        if (waveTrack && state->feedback) {  // HOST-16: the jam wave's own session only
-            library->waveFeedback(
-                origin->session, origin->station, origin->batch, WaveEventOf(event), &track, played
-            );
-        }
-    };
+            const auto origin = state->originOfTrack.constFind(track.id);
+            const bool waveTrack = origin != state->originOfTrack.constEnd()
+                && (!self || !self->active || self->currentSlot().kind == JamSlot::Kind::Wave);
+            if (waveTrack && state->feedback) {  // HOST-16: the jam wave's own session only
+                library->waveFeedback(
+                    origin->session, origin->station, origin->batch, WaveEventOf(event), &track, played
+                );
+            }
+        };
     // HOST-15: no play reports; HOST-07: Previous restarts the track.
     corePlayer->changeSource(title, std::move(more), std::move(events), QueueRules{false, true});
     reportTimer.start();
@@ -234,14 +229,12 @@ void JamMode::reportPlayback() {
     const bool stopped = state == Audio::AudioEngine::State::Stopped;
     if (track && !(stopped && corePlayer->isWaitingForMore())) {
         const JamSlot slot = currentSlot();
-        report.kind =
-            slot.kind == JamSlot::Kind::Item ? JamPlayback::Kind::Item : JamPlayback::Kind::Wave;
+        report.kind = slot.kind == JamSlot::Kind::Item ? JamPlayback::Kind::Item : JamPlayback::Kind::Wave;
         report.itemId = slot.kind == JamSlot::Kind::Item ? slot.itemId : QString();
         report.track = *track;
         report.link = corePlayer->currentLink();
         report.nextLink = corePlayer->nextLink();
-        report.positionMs =
-            stopped ? 0 : static_cast<qint64>(corePlayer->engine()->positionSeconds() * 1000);
+        report.positionMs = stopped ? 0 : static_cast<qint64>(corePlayer->engine()->positionSeconds() * 1000);
         report.paused = state != Audio::AudioEngine::State::Playing;
     }
     Q_EMIT playback(report);
@@ -258,7 +251,8 @@ void JamMode::loadWave(std::function<void(const QList<Track>&)> done) {
             }
         }
         yandexLibrary->moreWave(
-            state->session, recent,
+            state->session,
+            recent,
             [self, state, done](const Yandex::WaveBatch& batch, const QString& error) {
                 if (!error.isEmpty()) {
                     qWarning("jam wave: %s", qPrintable(error));
@@ -284,8 +278,7 @@ void JamMode::loadWave(std::function<void(const QList<Track>&)> done) {
     Yandex::Library* library = yandexLibrary;
     library->startWave(
         seeds,
-        [self, state, done, seeds, seedsVersion,
-         library](const Yandex::WaveBatch& batch, const QString& error) {
+        [self, state, done, seeds, seedsVersion, library](const Yandex::WaveBatch& batch, const QString& error) {
             if (!error.isEmpty() || Playable(batch.tracks).isEmpty()) {
                 if (!error.isEmpty()) {
                     qWarning("jam wave: %s", qPrintable(error));
@@ -297,9 +290,7 @@ void JamMode::loadWave(std::function<void(const QList<Track>&)> done) {
             state->seedsVersion = seedsVersion;
             state->addBatch(batch);
             if (state->feedback) {
-                library->waveFeedback(
-                    state->session, state->station, batch.batchId, Yandex::WaveEvent::RadioStarted
-                );
+                library->waveFeedback(state->session, state->station, batch.batchId, Yandex::WaveEvent::RadioStarted);
             }
             if (!self || !self->active) {
                 return done({});
@@ -309,10 +300,7 @@ void JamMode::loadWave(std::function<void(const QList<Track>&)> done) {
     );
 }
 
-void JamMode::appendWave(
-    const QList<Track>& tracks,
-    std::function<void(const QList<Track>&)> done
-) {
+void JamMode::appendWave(const QList<Track>& tracks, std::function<void(const QList<Track>&)> done) {
     const QList<Track> playable = Playable(tracks);
     for (qsizetype i = 0; i < playable.size(); ++i) {
         trackSlots << JamSlot{JamSlot::Kind::Wave, {}, {}};
@@ -355,9 +343,7 @@ void JamMode::removeSlots(const QList<int>& indices) {
 void JamMode::insertItems(int at, const QList<JamEntry>& entries) {
     QList<Track> tracks;
     for (qsizetype i = 0; i < entries.size(); ++i) {
-        trackSlots.insert(
-            at + i, JamSlot{JamSlot::Kind::Item, entries[i].itemId, entries[i].addedBy}
-        );
+        trackSlots.insert(at + i, JamSlot{JamSlot::Kind::Item, entries[i].itemId, entries[i].addedBy});
         Track track = entries[i].track;
         track.available = true;
         tracks << track;

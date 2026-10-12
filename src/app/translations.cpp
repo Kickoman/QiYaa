@@ -61,9 +61,7 @@ bool Translations::apply(Language language) {
     }
     // Qt's own texts (standard buttons, file dialogs) where Qt ships them; not for Belarusian.
     auto qt = std::make_unique<QTranslator>();
-    if (qt->load(
-            QStringLiteral("qtbase_") + code, QLibraryInfo::path(QLibraryInfo::TranslationsPath)
-        )) {
+    if (qt->load(QStringLiteral("qtbase_") + code, QLibraryInfo::path(QLibraryInfo::TranslationsPath))) {
         qtTranslator = std::move(qt);
         QCoreApplication::installTranslator(qtTranslator.get());
     }

@@ -406,9 +406,8 @@ void HostSession::applyState(const State& message) {
 void HostSession::search(const SearchRequest& message) {
     QPointer<HostSession> self(this);
     const QString id = message.requestId;
-    yandexLibrary->searchTracks(
-        message.text,
-        [self, id](const QList<Yandex::Track>& tracks, const Yandex::RequestError& error) {
+    yandexLibrary
+        ->searchTracks(message.text, [self, id](const QList<Yandex::Track>& tracks, const Yandex::RequestError& error) {
             if (!self) {
                 return;
             }
@@ -421,8 +420,7 @@ void HostSession::search(const SearchRequest& message) {
             } else {
                 std::vector<Track> found;
                 for (const Yandex::Track& track : tracks) {
-                    const std::optional<Track> jamTrack =
-                        track.available ? JamTrackOf(track) : std::nullopt;
+                    const std::optional<Track> jamTrack = track.available ? JamTrackOf(track) : std::nullopt;
                     if (jamTrack && found.size() < static_cast<size_t>(kMaxSearchResults)) {
                         found.push_back(*jamTrack);
                     }
@@ -432,51 +430,45 @@ void HostSession::search(const SearchRequest& message) {
             if (self->connected) {
                 self->client.send(reply);  // HOST-28, HOST-29
             }
-        }
-    );
+        });
 }
 
 void HostSession::validate(const ValidateRequest& message) {
     QPointer<HostSession> self(this);
     const QString id = message.requestId;
     const QStringList ids = message.trackIds;
-    yandexLibrary->tracksByIds(
-        ids,
-        [self, id, ids](const QList<Yandex::Track>& tracks, const QString& error) {
-            if (!self) {
-                return;
-            }
-            QHash<QString, Yandex::Track> byId;
-            for (const Yandex::Track& track : tracks) {
-                byId.insert(track.id, track);
-            }
-            ValidateResult reply;
-            reply.requestId = id;
-            for (const QString& trackId : ids) {
-                ValidateEntry entry;
-                entry.trackId = trackId;
-                const auto found = byId.constFind(trackId);
-                const std::optional<Track> jamTrack =
-                    error.isEmpty() && found != byId.constEnd() && found->available
-                    ? JamTrackOf(*found)
-                    : std::nullopt;
-                if (!error.isEmpty()) {
-                    entry.reason = ValidateReason::Failed;
-                } else if (jamTrack) {
-                    entry.track = jamTrack;
-                } else {
-                    entry.reason = ValidateReason::TrackUnavailable;
-                }
-                reply.results.push_back(entry);
-            }
-            if (!error.isEmpty()) {
-                qWarning("jam: a guest's track check failed: %s", qPrintable(error));
-            }
-            if (self->connected) {
-                self->client.send(reply);  // HOST-30
-            }
+    yandexLibrary->tracksByIds(ids, [self, id, ids](const QList<Yandex::Track>& tracks, const QString& error) {
+        if (!self) {
+            return;
         }
-    );
+        QHash<QString, Yandex::Track> byId;
+        for (const Yandex::Track& track : tracks) {
+            byId.insert(track.id, track);
+        }
+        ValidateResult reply;
+        reply.requestId = id;
+        for (const QString& trackId : ids) {
+            ValidateEntry entry;
+            entry.trackId = trackId;
+            const auto found = byId.constFind(trackId);
+            const std::optional<Track> jamTrack =
+                error.isEmpty() && found != byId.constEnd() && found->available ? JamTrackOf(*found) : std::nullopt;
+            if (!error.isEmpty()) {
+                entry.reason = ValidateReason::Failed;
+            } else if (jamTrack) {
+                entry.track = jamTrack;
+            } else {
+                entry.reason = ValidateReason::TrackUnavailable;
+            }
+            reply.results.push_back(entry);
+        }
+        if (!error.isEmpty()) {
+            qWarning("jam: a guest's track check failed: %s", qPrintable(error));
+        }
+        if (self->connected) {
+            self->client.send(reply);  // HOST-30
+        }
+    });
 }
 
 void HostSession::serverEnded(EndReason reason) {
@@ -526,7 +518,10 @@ void HostSession::sendPlaying(const Core::JamPlayback& playback) {
 void HostSession::sendResume(const Session& resumed, const QStringList& outbox) {
     requestId = nextId();
     client.send(Resume{
-        requestId, resumed.roomId, resumed.hostSecret, resumed.snapshot,
+        requestId,
+        resumed.roomId,
+        resumed.hostSecret,
+        resumed.snapshot,
         outbox.mid(std::max<qsizetype>(0, outbox.size() - kMaxOutboxEvents))
     });
 }

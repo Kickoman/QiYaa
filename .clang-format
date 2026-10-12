@@ -5,7 +5,7 @@ IndentWidth: 4
 ContinuationIndentWidth: 4
 ConstructorInitializerIndentWidth: 4
 AccessModifierOffset: -4
-ColumnLimit: 100
+ColumnLimit: 120
 UseTab: Never
 
 BreakBeforeBraces: Attach
@@ -21,7 +21,11 @@ AllowShortEnumsOnASingleLine: true
 
 AlignAfterOpenBracket: BlockIndent
 BinPackParameters: false
-BinPackArguments: true
+# Arguments: all on one line (the call's or the next), or each on its own.
+BinPackArguments: false
+AllowAllArgumentsOnNextLine: true
+# A broken expression is indented by blocks, never aligned far to the right under its first operand.
+PenaltyIndentedWhitespace: 100
 AllowAllParametersOfDeclarationOnNextLine: false
 BreakConstructorInitializers: BeforeComma
 PackConstructorInitializers: Never

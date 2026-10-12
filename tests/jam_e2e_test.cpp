@@ -35,8 +35,7 @@ QJsonObject YandexTrack(const QString& id) {
     return {
         {QStringLiteral("id"), id},
         {QStringLiteral("title"), QStringLiteral("Группа крови")},
-        {QStringLiteral("artists"),
-         QJsonArray{QJsonObject{{QStringLiteral("name"), QStringLiteral("КИНО")}}}},
+        {QStringLiteral("artists"), QJsonArray{QJsonObject{{QStringLiteral("name"), QStringLiteral("КИНО")}}}},
         {QStringLiteral("albums"), QJsonArray{QJsonObject{{QStringLiteral("id"), 7}}}},
         {QStringLiteral("durationMs"), 3'000},
         {QStringLiteral("available"), true}
@@ -60,19 +59,13 @@ public:
     }
 
     bool connected() {
-        return QTest::qWaitFor(
-            [&] { return socket.state() == QAbstractSocket::ConnectedState; }, 10'000
-        );
+        return QTest::qWaitFor([&] { return socket.state() == QAbstractSocket::ConnectedState; }, 10'000);
     }
 
-    void send(const Jam::ClientMessage& message) {
-        socket.sendTextMessage(QString::fromUtf8(Jam::Encode(message)));
-    }
+    void send(const Jam::ClientMessage& message) { socket.sendTextMessage(QString::fromUtf8(Jam::Encode(message))); }
 
     template <typename T>
-    std::optional<T> waitFor(std::function<bool(const T&)> matches = [](const T&) {
-        return true;
-    }) {
+    std::optional<T> waitFor(std::function<bool(const T&)> matches = [](const T&) { return true; }) {
         std::optional<T> found;
         const bool arrived = QTest::qWaitFor(
             [&] {
@@ -109,24 +102,20 @@ private Q_SLOTS:
         if (serverUrl.isEmpty()) {
             QSKIP("QIYAA_JAM_TEST_SERVER is not set");
         }
-        QSettings settings(
-            directory.filePath(QStringLiteral("settings.ini")), QSettings::IniFormat
-        );
+        QSettings settings(directory.filePath(QStringLiteral("settings.ini")), QSettings::IniFormat);
         settings.setValue(QStringLiteral("jam/server"), serverUrl);
         settings.sync();
 
         yandex.fixture("GET", "/account/status", "account-status/ok");
         yandex.fixture("POST", "/rotor/session/new", "rotor-session-new/all-unavailable");
         yandex.result(
-            "GET", "/search",
-            Text(
-                {{QStringLiteral("tracks"),
-                  QJsonObject{{QStringLiteral("results"), QJsonArray{YandexTrack(kTrack)}}}}}
+            "GET",
+            "/search",
+            Text({{QStringLiteral("tracks"), QJsonObject{{QStringLiteral("results"), QJsonArray{YandexTrack(kTrack)}}}}}
             )
         );
         yandex.result(
-            "POST", "/tracks/",
-            QJsonDocument(QJsonArray{YandexTrack(kTrack)}).toJson(QJsonDocument::Compact)
+            "POST", "/tracks/", QJsonDocument(QJsonArray{YandexTrack(kTrack)}).toJson(QJsonDocument::Compact)
         );
         QFile file(QStringLiteral(QIYAA_TEST_DATA "/sine440_3s.mp3"));
         QVERIFY(file.open(QIODevice::ReadOnly));
@@ -146,12 +135,9 @@ private Q_SLOTS:
             connected = error.isEmpty();
         });
         QTRY_VERIFY_WITH_TIMEOUT(connected, 5000);
-        connect(
-            application->jamHost(), &Jam::HostSession::refused, this,
-            [](const QString& reason) {
-                qWarning("the jam server refused: %s", qUtf8Printable(reason));
-            }
-        );
+        connect(application->jamHost(), &Jam::HostSession::refused, this, [](const QString& reason) {
+            qWarning("the jam server refused: %s", qUtf8Printable(reason));
+        });
     }
 
     void cleanupTestCase() {
@@ -174,8 +160,11 @@ private Q_SLOTS:
         guest.send(Jam::Hello{Jam::kProtocol, Jam::App::Web, QStringLiteral("e2e")});
         QVERIFY(guest.waitFor<Jam::Welcome>());
         guest.send(Jam::Join{
-            QStringLiteral("g1"), joinUrl.path().section(u'/', -1), joinUrl.fragment(),
-            QStringLiteral("3f6c1a2e-8b4d-4c7a-9e21-5d0b7f3a1c64"), QStringLiteral("Аня")
+            QStringLiteral("g1"),
+            joinUrl.path().section(u'/', -1),
+            joinUrl.fragment(),
+            QStringLiteral("3f6c1a2e-8b4d-4c7a-9e21-5d0b7f3a1c64"),
+            QStringLiteral("Аня")
         });
         QVERIFY(guest.waitFor<Jam::Joined>());
 
@@ -190,17 +179,11 @@ private Q_SLOTS:
         );
 
         guest.send(Jam::Add{QStringLiteral("g3"), kTrack, std::nullopt});
-        QVERIFY(guest.waitFor<Jam::Ack>([](const Jam::Ack& ack) {
-            return ack.id == QStringLiteral("g3");
-        }));
+        QVERIFY(guest.waitFor<Jam::Ack>([](const Jam::Ack& ack) { return ack.id == QStringLiteral("g3"); }));
 
         Core::Player* player = application->player();
-        QTRY_VERIFY_WITH_TIMEOUT(
-            player->currentTrack() && player->currentTrack()->id == kTrack, 15'000
-        );
-        QTRY_COMPARE_WITH_TIMEOUT(
-            application->engine()->state(), Audio::AudioEngine::State::Playing, 15'000
-        );
+        QTRY_VERIFY_WITH_TIMEOUT(player->currentTrack() && player->currentTrack()->id == kTrack, 15'000);
+        QTRY_COMPARE_WITH_TIMEOUT(application->engine()->state(), Audio::AudioEngine::State::Playing, 15'000);
         const auto playing = guest.waitFor<Jam::State>([](const Jam::State& state) {
             const Jam::NowPlaying& now = state.room.nowPlaying;
             return now.source == Jam::Source::Item && now.track && now.track->id == kTrack;

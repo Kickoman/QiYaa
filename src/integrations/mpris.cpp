@@ -26,18 +26,12 @@ QDBusObjectPath TrackPath(const QString& id) {
         safe += (character.isLetterOrNumber() && character.unicode() < 128) ? character : u'_';
     }
     return QDBusObjectPath(
-        QStringLiteral("/io/github/kickoman/qiyaa/track/")
-        + (safe.isEmpty() ? QStringLiteral("none") : safe)
+        QStringLiteral("/io/github/kickoman/qiyaa/track/") + (safe.isEmpty() ? QStringLiteral("none") : safe)
     );
 }
 }  // namespace
 
-Mpris::Mpris(
-    MediaControls* controls,
-    const QString& serviceSuffix,
-    const QDBusConnection& bus,
-    QObject* parent
-)
+Mpris::Mpris(MediaControls* controls, const QString& serviceSuffix, const QDBusConnection& bus, QObject* parent)
     : QObject(parent)
     , mediaControls(controls)
     , connection(bus) {
@@ -57,10 +51,7 @@ Mpris::Mpris(
         return;
     }
     if (!connection.registerService(service)) {
-        qWarning(
-            "MPRIS: cannot register %s: %s", qPrintable(service),
-            qPrintable(connection.lastError().message())
-        );
+        qWarning("MPRIS: cannot register %s: %s", qPrintable(service), qPrintable(connection.lastError().message()));
         connection.unregisterObject(kObjectPath);
         return;
     }
@@ -69,8 +60,7 @@ Mpris::Mpris(
     connect(mediaControls, &MediaControls::trackChanged, this, [this, playerAdaptor] {
         emitPropertiesChanged(
             kPlayerInterface,
-            {{QStringLiteral("Metadata"), metadata()},
-             {QStringLiteral("CanSeek"), playerAdaptor->canSeek()}}
+            {{QStringLiteral("Metadata"), metadata()}, {QStringLiteral("CanSeek"), playerAdaptor->canSeek()}}
         );
     });
     connect(mediaControls, &MediaControls::artChanged, this, [this] {
@@ -79,8 +69,8 @@ Mpris::Mpris(
     connect(mediaControls, &MediaControls::statusChanged, this, [this, playerAdaptor] {
         emitPropertiesChanged(
             kPlayerInterface,
-            {{QStringLiteral("PlaybackStatus"), playbackStatus()},
-             {QStringLiteral("CanSeek"), playerAdaptor->canSeek()}}
+            {{QStringLiteral("PlaybackStatus"), playbackStatus()}, {QStringLiteral("CanSeek"), playerAdaptor->canSeek()}
+            }
         );
     });
     connect(mediaControls, &MediaControls::modesChanged, this, [this, playerAdaptor] {
@@ -91,9 +81,7 @@ Mpris::Mpris(
         );
     });
     connect(mediaControls, &MediaControls::volumeChanged, this, [this, playerAdaptor] {
-        emitPropertiesChanged(
-            kPlayerInterface, {{QStringLiteral("Volume"), playerAdaptor->volume()}}
-        );
+        emitPropertiesChanged(kPlayerInterface, {{QStringLiteral("Volume"), playerAdaptor->volume()}});
     });
     connect(mediaControls, &MediaControls::seeked, playerAdaptor, [playerAdaptor](double seconds) {
         Q_EMIT playerAdaptor->Seeked(static_cast<qlonglong>(seconds * 1e6));
@@ -122,9 +110,7 @@ QVariantMap Mpris::metadata() const {
     if (!track) {
         return {
             {QStringLiteral("mpris:trackid"),
-             QVariant::fromValue(
-                 QDBusObjectPath(QStringLiteral("/org/mpris/MediaPlayer2/TrackList/NoTrack"))
-             )}
+             QVariant::fromValue(QDBusObjectPath(QStringLiteral("/org/mpris/MediaPlayer2/TrackList/NoTrack")))}
         };
     }
     QVariantMap fields{
@@ -148,8 +134,7 @@ void Mpris::emitPropertiesChanged(const QString& interface, const QVariantMap& c
         return;
     }
     QDBusMessage message = QDBusMessage::createSignal(
-        kObjectPath, QStringLiteral("org.freedesktop.DBus.Properties"),
-        QStringLiteral("PropertiesChanged")
+        kObjectPath, QStringLiteral("org.freedesktop.DBus.Properties"), QStringLiteral("PropertiesChanged")
     );
     message << interface << changed << QStringList();
     connection.send(message);
@@ -180,8 +165,7 @@ QString MprisPlayerAdaptor::playbackStatus() const {
 }
 
 QString MprisPlayerAdaptor::loopStatus() const {
-    return mpris->controls()->player()->repeat() ? QStringLiteral("Playlist")
-                                                 : QStringLiteral("None");
+    return mpris->controls()->player()->repeat() ? QStringLiteral("Playlist") : QStringLiteral("None");
 }
 
 void MprisPlayerAdaptor::setLoopStatus(const QString& status) {

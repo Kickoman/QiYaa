@@ -35,18 +35,18 @@ QString SignFileInfo(const FileInfoRequest& request, qint64 timestamp) {
     const QString message = QString::number(timestamp) + request.trackId + request.quality
         + request.codecs.join(QString()) + request.transport;
     const QByteArray signature =
-        QMessageAuthenticationCode::hash(
-            message.toUtf8(), QByteArray(kSignKey), QCryptographicHash::Sha256
-        )
-            .toBase64();
+        QMessageAuthenticationCode::hash(message.toUtf8(), QByteArray(kSignKey), QCryptographicHash::Sha256).toBase64();
     return QString::fromLatin1(signature.chopped(1));
 }
 
 QString FileInfoQuery(const FileInfoRequest& request, qint64 timestamp) {
     const std::pair<const char*, QString> items[] = {
-        {"ts", QString::number(timestamp)}, {"trackId", request.trackId},
-        {"quality", request.quality},       {"codecs", request.codecs.join(u',')},
-        {"transports", request.transport},  {"sign", SignFileInfo(request, timestamp)},
+        {"ts", QString::number(timestamp)},
+        {"trackId", request.trackId},
+        {"quality", request.quality},
+        {"codecs", request.codecs.join(u',')},
+        {"transports", request.transport},
+        {"sign", SignFileInfo(request, timestamp)},
     };
     QByteArray query;
     for (const auto& [name, value] : items) {
@@ -62,8 +62,7 @@ std::optional<FileInfo> ParseFileInfo(const QJsonValue& result) {
     const QJsonObject object = result.toObject().value(QStringLiteral("downloadInfo")).toObject();
     FileInfo info;
     info.url = QUrl(object.value(QStringLiteral("url")).toString());
-    if (!info.url.isValid() || info.url.scheme() != QLatin1String("https")
-        || info.url.host().isEmpty()) {
+    if (!info.url.isValid() || info.url.scheme() != QLatin1String("https") || info.url.host().isEmpty()) {
         return std::nullopt;
     }
     info.quality = object.value(QStringLiteral("quality")).toString();

@@ -29,9 +29,7 @@ class Spectrum : public Visualizer {
 public:
     static constexpr int kBars = kSpectrumBars;
 
-    QString name() const override {
-        return QCoreApplication::translate("Vis::Visualizer", "Spectrum");
-    }
+    QString name() const override { return QCoreApplication::translate("Vis::Visualizer", "Spectrum"); }
 
     void reset() override {
         bars.fill(0);
@@ -40,8 +38,7 @@ public:
     }
 
     void update(const VisFrame& frame) override {
-        const std::array<float, kBars> levels =
-            SpectrumLevels(frame.spectrum, frame.sampleRate, frame.fftSize);
+        const std::array<float, kBars> levels = SpectrumLevels(frame.spectrum, frame.sampleRate, frame.fftSize);
         for (int bar = 0; bar < kBars; ++bar) {
             bars[bar] = std::max(levels[bar], bars[bar] - 0.07f);
             float peak = peaks[bar] - 0.0004f * peakFrames[bar] * peakFrames[bar];
@@ -62,9 +59,7 @@ public:
             const int barHeight = static_cast<int>(std::ceil(bars[bar] * areaHeight));
             for (int i = 0; i < barHeight; ++i) {
                 const int colorIndex = 2 + (areaHeight - 1 - i) * 16 / areaHeight;
-                painter.fillRect(
-                    x, area.y() + areaHeight - 1 - i, 3, 1, VisColor(skin, colorIndex)
-                );
+                painter.fillRect(x, area.y() + areaHeight - 1 - i, 3, 1, VisColor(skin, colorIndex));
             }
             const int peakHeight = static_cast<int>(std::ceil(peaks[bar] * areaHeight));
             if (peakHeight > 0) {
@@ -81,9 +76,7 @@ private:
 
 class Oscilloscope : public Visualizer {
 public:
-    QString name() const override {
-        return QCoreApplication::translate("Vis::Visualizer", "Oscilloscope");
-    }
+    QString name() const override { return QCoreApplication::translate("Vis::Visualizer", "Oscilloscope"); }
     void reset() override { rows.fill(-1); }
 
     void update(const VisFrame& frame) override {
@@ -108,10 +101,7 @@ public:
             const int top = std::min(previousY, y), bottom = std::max(previousY, y);
             for (int row = top; row <= bottom; ++row) {
                 const int distance = static_cast<int>(std::abs(row - 7.5f));
-                painter.fillRect(
-                    area.x() + x, area.y() + row, 1, 1,
-                    VisColor(skin, 18 + std::min(4, distance / 2))
-                );
+                painter.fillRect(area.x() + x, area.y() + row, 1, 1, VisColor(skin, 18 + std::min(4, distance / 2)));
             }
             previousY = y;
         }
@@ -135,8 +125,7 @@ Analyzer::Analyzer(int fftSize)
     , imaginary(fftSize)
     , decibels(fftSize / 2 + 1) {
     for (int i = 0; i < fftSize; ++i) {
-        windowFunction[i] =
-            0.5f - 0.5f * std::cos(2.0f * std::numbers::pi_v<float> * i / (fftSize - 1));
+        windowFunction[i] = 0.5f - 0.5f * std::cos(2.0f * std::numbers::pi_v<float> * i / (fftSize - 1));
     }
 }
 
@@ -179,8 +168,7 @@ const std::vector<float>& Analyzer::analyze(std::span<const float> mono) {
     // A full-scale sine gives magnitude n/4 with a Hann window -> 0 dBFS.
     const float magnitudeScale = 4.0f / n;
     for (int i = 0; i <= n / 2; ++i) {
-        const float magnitude =
-            std::sqrt(real[i] * real[i] + imaginary[i] * imaginary[i]) * magnitudeScale;
+        const float magnitude = std::sqrt(real[i] * real[i] + imaginary[i] * imaginary[i]) * magnitudeScale;
         decibels[i] = 20.0f * std::log10(std::max(magnitude, 1e-9f));
     }
     return decibels;
@@ -193,20 +181,15 @@ std::array<SpectrumBand, kSpectrumBars> SpectrumBands(int sampleRate, int fftSiz
     std::array<SpectrumBand, kSpectrumBars> bands{};
     for (int bar = 0; bar < kSpectrumBars; ++bar) {
         SpectrumBand& band = bands[bar];
-        band.lowHz =
-            lowestHz * std::pow(highestHz / lowestHz, static_cast<double>(bar) / kSpectrumBars);
-        band.highHz =
-            lowestHz * std::pow(highestHz / lowestHz, static_cast<double>(bar + 1) / kSpectrumBars);
+        band.lowHz = lowestHz * std::pow(highestHz / lowestHz, static_cast<double>(bar) / kSpectrumBars);
+        band.highHz = lowestHz * std::pow(highestHz / lowestHz, static_cast<double>(bar + 1) / kSpectrumBars);
         band.firstBin = std::clamp(static_cast<int>(band.lowHz / binHz), 1, binCount - 1);
-        band.endBin = std::clamp(
-            static_cast<int>(std::ceil(band.highHz / binHz)), band.firstBin + 1, binCount
-        );
+        band.endBin = std::clamp(static_cast<int>(std::ceil(band.highHz / binHz)), band.firstBin + 1, binCount);
     }
     return bands;
 }
 
-std::array<float, kSpectrumBars>
-SpectrumLevels(std::span<const float> spectrumDb, int sampleRate, int fftSize) {
+std::array<float, kSpectrumBars> SpectrumLevels(std::span<const float> spectrumDb, int sampleRate, int fftSize) {
     constexpr float kMinDb = -72.0f, kMaxDb = -6.0f;
     std::array<float, kSpectrumBars> levels{};
     const std::array<SpectrumBand, kSpectrumBars> bands = SpectrumBands(sampleRate, fftSize);

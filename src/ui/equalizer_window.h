@@ -14,18 +14,7 @@ class QPainter;
 namespace Ui {
 
 struct EqualizerControl {
-    enum class Kind {
-        None,
-        Close,
-        Shade,
-        ShadeVolume,
-        ShadeBalance,
-        On,
-        Auto,
-        Presets,
-        Preamp,
-        Band
-    };
+    enum class Kind { None, Close, Shade, ShadeVolume, ShadeBalance, On, Auto, Presets, Preamp, Band };
 
     Kind kind = Kind::None;
     int band = 0;

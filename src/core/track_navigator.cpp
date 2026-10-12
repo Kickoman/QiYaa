@@ -46,9 +46,7 @@ public:
             ++nextIndex;
         }
     }
-    int next(bool repeat) const override {
-        return trackCount < 2 ? SequentialNavigator::next(repeat) : nextIndex;
-    }
+    int next(bool repeat) const override { return trackCount < 2 ? SequentialNavigator::next(repeat) : nextIndex; }
 
 private:
     int nextIndex = -1;

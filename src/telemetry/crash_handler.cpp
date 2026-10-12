@@ -159,12 +159,12 @@ void WriteAddress(DWORD64 address) {
     char name[MAX_PATH];
     if (GetModuleHandleExW(
             GET_MODULE_HANDLE_EX_FLAG_FROM_ADDRESS | GET_MODULE_HANDLE_EX_FLAG_UNCHANGED_REFCOUNT,
-            reinterpret_cast<LPCWSTR>(address), &module
+            reinterpret_cast<LPCWSTR>(address),
+            &module
         )
         && GetModuleFileNameW(module, path, MAX_PATH) > 0) {
         WriteFrame(
-            BaseName(path, name, sizeof(name)),
-            static_cast<std::uintptr_t>(address - reinterpret_cast<DWORD64>(module))
+            BaseName(path, name, sizeof(name)), static_cast<std::uintptr_t>(address - reinterpret_cast<DWORD64>(module))
         );
     } else {
         WriteFrame(nullptr, static_cast<std::uintptr_t>(address));
@@ -208,8 +208,15 @@ void WriteStack(CONTEXT context) {
     const HANDLE thread = GetCurrentThread();
     for (int count = 0; count < kMaxFrames && machine != 0; ++count) {
         if (!StackWalk64(
-                machine, process, thread, &frame, &context, nullptr, SymFunctionTableAccess64,
-                SymGetModuleBase64, nullptr
+                machine,
+                process,
+                thread,
+                &frame,
+                &context,
+                nullptr,
+                SymFunctionTableAccess64,
+                SymGetModuleBase64,
+                nullptr
             )
             || frame.AddrPC.Offset == 0) {
             break;
@@ -292,8 +299,7 @@ void WriteAddress(void* address) {
         const char* name = std::strrchr(info.dli_fname, '/');
         WriteFrame(
             name ? name + 1 : info.dli_fname,
-            reinterpret_cast<std::uintptr_t>(address)
-                - reinterpret_cast<std::uintptr_t>(info.dli_fbase)
+            reinterpret_cast<std::uintptr_t>(address) - reinterpret_cast<std::uintptr_t>(info.dli_fbase)
         );
     } else {
         WriteFrame(nullptr, reinterpret_cast<std::uintptr_t>(address));
@@ -314,8 +320,7 @@ void WriteStack(std::uintptr_t programCounter, int skip) {
             }
         }
     }
-    for (int i = first, written = programCounter != 0 ? 1 : 0; i < count && written < kMaxFrames;
-         ++i, ++written) {
+    for (int i = first, written = programCounter != 0 ? 1 : 0; i < count && written < kMaxFrames; ++i, ++written) {
         WriteAddress(frames[i]);
     }
 }
@@ -323,8 +328,7 @@ void WriteStack(std::uintptr_t programCounter, int skip) {
 #if defined(__APPLE__)
 void WalkFramePointers(std::uintptr_t programCounter, std::uintptr_t framePointer) {
     WriteAddress(reinterpret_cast<void*>(programCounter));
-    for (int written = 1; written < kMaxFrames && framePointer != 0 && framePointer % 8 == 0;
-         ++written) {
+    for (int written = 1; written < kMaxFrames && framePointer != 0 && framePointer % 8 == 0; ++written) {
         const auto* frame = reinterpret_cast<const std::uintptr_t*>(framePointer);
         const std::uintptr_t next = frame[0];
         const std::uintptr_t returnAddress = frame[1];
@@ -387,15 +391,19 @@ void InstallCrashHandler(const QString& path, const QString& session, const QStr
         return;
     }
     reported = false;
-    const QByteArray text =
-        QStringLiteral("session=%1\nversion=%2\n").arg(session, version).toLatin1();
+    const QByteArray text = QStringLiteral("session=%1\nversion=%2\n").arg(session, version).toLatin1();
     headerLength = std::min<std::size_t>(static_cast<std::size_t>(text.size()), sizeof(header));
     std::memcpy(header, text.constData(), headerLength);
 #if defined(Q_OS_WIN)
     startedAt = GetTickCount64();
     reportFile = CreateFileW(
-        reinterpret_cast<LPCWSTR>(path.utf16()), GENERIC_WRITE, FILE_SHARE_READ, nullptr,
-        CREATE_ALWAYS, FILE_ATTRIBUTE_NORMAL, nullptr
+        reinterpret_cast<LPCWSTR>(path.utf16()),
+        GENERIC_WRITE,
+        FILE_SHARE_READ,
+        nullptr,
+        CREATE_ALWAYS,
+        FILE_ATTRIBUTE_NORMAL,
+        nullptr
     );
     SymSetOptions(SYMOPT_DEFERRED_LOADS);
     SymInitialize(GetCurrentProcess(), nullptr, TRUE);
@@ -403,8 +411,7 @@ void InstallCrashHandler(const QString& path, const QString& session, const QStr
     std::signal(SIGABRT, OnAbort);
 #else
     clock_gettime(CLOCK_MONOTONIC, &startedAt);
-    reportFd =
-        open(QFile::encodeName(path).constData(), O_WRONLY | O_CREAT | O_TRUNC | O_CLOEXEC, 0600);
+    reportFd = open(QFile::encodeName(path).constData(), O_WRONLY | O_CREAT | O_TRUNC | O_CLOEXEC, 0600);
     void* warmUp[1];
     backtrace(warmUp, 1);  // loads the unwinder now, not inside a signal handler
     stack_t stack{};
@@ -485,8 +492,8 @@ std::optional<CrashReport> ReadCrashReport(const QString& path) {
                 module = module == QLatin1String("?")
                     ? QStringLiteral("unknown")
                     : module.replace(notModule, QStringLiteral("_")).left(64);
-                report.frames << (module.isEmpty() ? QStringLiteral("unknown") : module)
-                        + QStringLiteral("+0x") + parts.captured(2);
+                report.frames << (module.isEmpty() ? QStringLiteral("unknown") : module) + QStringLiteral("+0x")
+                        + parts.captured(2);
             }
         }
     }

@@ -24,10 +24,8 @@ public:
         backends[0] = Audio::Mp4AacBackend();
         config.ppCustomBackendVTables = backends;
         config.customBackendCount = 1;
-        opened = ma_decoder_init_memory(
-                     data.constData(), static_cast<size_t>(data.size()), &config, &decoder
-                 )
-            == MA_SUCCESS;
+        opened =
+            ma_decoder_init_memory(data.constData(), static_cast<size_t>(data.size()), &config, &decoder) == MA_SUCCESS;
     }
     ~MemoryDecoder() {
         if (opened) {
@@ -37,9 +35,7 @@ public:
     MemoryDecoder(const MemoryDecoder&) = delete;
     MemoryDecoder& operator=(const MemoryDecoder&) = delete;
 
-    bool openedByMp4Backend() const {
-        return opened && decoder.pBackendVTable == Audio::Mp4AacBackend();
-    }
+    bool openedByMp4Backend() const { return opened && decoder.pBackendVTable == Audio::Mp4AacBackend(); }
     ma_uint32 sampleRate() const { return decoder.outputSampleRate; }
     ma_uint64 length() {
         ma_uint64 frames = 0;
@@ -53,9 +49,7 @@ public:
         samples.resize(framesRead * 2);
         return samples;
     }
-    bool seek(ma_uint64 frame) {
-        return ma_decoder_seek_to_pcm_frame(&decoder, frame) == MA_SUCCESS;
-    }
+    bool seek(ma_uint64 frame) { return ma_decoder_seek_to_pcm_frame(&decoder, frame) == MA_SUCCESS; }
 
 private:
     QByteArray data;
@@ -126,8 +120,7 @@ private Q_SLOTS:
         MemoryDecoder decoder(m4a);
         QVERIFY(decoder.openedByMp4Backend());
         const std::vector<float> whole = decoder.read(decoder.length());
-        for (const ma_uint64 target :
-             {ma_uint64{66'150}, ma_uint64{2048}, ma_uint64{100}, ma_uint64{0}}) {
+        for (const ma_uint64 target : {ma_uint64{66'150}, ma_uint64{2048}, ma_uint64{100}, ma_uint64{0}}) {
             QVERIFY(decoder.seek(target));
             const std::vector<float> part = decoder.read(4096);
             QCOMPARE(part.size(), size_t{4096 * 2});
@@ -135,9 +128,7 @@ private Q_SLOTS:
             for (size_t i = 0; i < part.size(); ++i) {
                 largest = std::max(largest, std::abs(part[i] - whole[target * 2 + i]));
             }
-            QVERIFY2(
-                largest < 0.005f, qPrintable(QStringLiteral("at %1: %2").arg(target).arg(largest))
-            );
+            QVERIFY2(largest < 0.005f, qPrintable(QStringLiteral("at %1: %2").arg(target).arg(largest)));
         }
     }
 
@@ -178,7 +169,9 @@ private Q_SLOTS:
         const ma_uint64 length = decoder.length();
         const std::vector<float> samples = decoder.read(length);
         qInfo(
-            "%s: %u Hz, %.1f s, %.1f s decoded", qPrintable(path), decoder.sampleRate(),
+            "%s: %u Hz, %.1f s, %.1f s decoded",
+            qPrintable(path),
+            decoder.sampleRate(),
             static_cast<double>(length) / decoder.sampleRate(),
             static_cast<double>(samples.size() / 2) / decoder.sampleRate()
         );

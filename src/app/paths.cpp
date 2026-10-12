@@ -20,9 +20,7 @@ QStringList YaampDataDirectories() {
     bases << QDir::homePath() + QStringLiteral("/Library/Application Support");
 #else
     const QString xdgConfigHome = qEnvironmentVariable("XDG_CONFIG_HOME");
-    bases
-        << (xdgConfigHome.isEmpty() ? QDir::homePath() + QStringLiteral("/.config") : xdgConfigHome
-           );
+    bases << (xdgConfigHome.isEmpty() ? QDir::homePath() + QStringLiteral("/.config") : xdgConfigHome);
 #endif
     QStringList out;
     for (const QString& base : bases) {

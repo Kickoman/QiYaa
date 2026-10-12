@@ -78,8 +78,7 @@ public:
     void albumTracks(const QString& albumId, TCallback<QList<Track>> callback);
     void stations(TCallback<QList<Station>> callback);
     void startWave(const QStringList& seeds, TCallback<WaveBatch> callback);
-    void
-    moreWave(const QString& sessionId, const QStringList& queue, TCallback<WaveBatch> callback);
+    void moreWave(const QString& sessionId, const QStringList& queue, TCallback<WaveBatch> callback);
     void search(const QString& text, TCallback<SearchResult> callback);
     // Tracks only (type=track), as a jam host searches for its guests.
     void searchTracks(
@@ -88,8 +87,7 @@ public:
     );
 
     void personalPlaylists(TCallback<QList<PlaylistReference>> callback);
-    void
-    playlistRecommendations(const PlaylistReference& playlist, TCallback<QList<Track>> callback);
+    void playlistRecommendations(const PlaylistReference& playlist, TCallback<QList<Track>> callback);
     void wheelWaves(const QStringList& seeds, TCallback<QList<Wave>> callback);
 
     void waveFeedback(
@@ -114,11 +112,7 @@ Q_SIGNALS:
     void likesChanged();
 
 private:
-    void tracksChunk(
-        QStringList remaining,
-        QList<Track> fetchedTracks,
-        TCallback<QList<Track>> callback
-    );
+    void tracksChunk(QStringList remaining, QList<Track> fetchedTracks, TCallback<QList<Track>> callback);
     void tracksFromItems(const QJsonArray& items, TCallback<QList<Track>> callback);
     QString userPath(const QString& rest) const;
 

@@ -106,9 +106,7 @@ QJsonObject PlaylistsJson(const QList<Yandex::PlaylistReference>& playlists) {
 QJsonObject NamedJson(const QString& key, const QList<Yandex::NamedReference>& references) {
     QJsonArray array;
     for (const Yandex::NamedReference& reference : references) {
-        array.append(QJsonObject{
-            {QStringLiteral("id"), reference.id}, {QStringLiteral("name"), reference.name}
-        });
+        array.append(QJsonObject{{QStringLiteral("id"), reference.id}, {QStringLiteral("name"), reference.name}});
     }
     return {{key, array}};
 }
@@ -137,10 +135,8 @@ QJsonObject WavesJson(const QList<Yandex::Wave>& waves) {
     return {{QStringLiteral("waves"), array}};
 }
 
-QJsonObject VariantsJson(
-    const QList<Yandex::DownloadVariant>& variants,
-    const std::optional<Yandex::DownloadVariant>& best
-) {
+QJsonObject
+VariantsJson(const QList<Yandex::DownloadVariant>& variants, const std::optional<Yandex::DownloadVariant>& best) {
     QJsonArray array;
     for (const Yandex::DownloadVariant& variant : variants) {
         array.append(QJsonObject{
@@ -152,16 +148,13 @@ QJsonObject VariantsJson(
     }
     return {
         {QStringLiteral("variants"), array},
-        {QStringLiteral("best"),
-         best ? QJsonValue(best->downloadInfoUrl.toString()) : QJsonValue(QJsonValue::Null)}
+        {QStringLiteral("best"), best ? QJsonValue(best->downloadInfoUrl.toString()) : QJsonValue(QJsonValue::Null)}
     };
 }
 
 QString CheckError(const QString& error, const QString& expectedName) {
-    const QJsonObject expected =
-        ExpectedObject(expectedName).value(QStringLiteral("error")).toObject();
-    const QString status =
-        QStringLiteral("HTTP %1").arg(expected.value(QStringLiteral("status")).toInt());
+    const QJsonObject expected = ExpectedObject(expectedName).value(QStringLiteral("error")).toObject();
+    const QString status = QStringLiteral("HTTP %1").arg(expected.value(QStringLiteral("status")).toInt());
     if (!error.contains(status)) {
         return QStringLiteral("\"%1\" does not name %2").arg(error, status);
     }

@@ -69,21 +69,16 @@ private:
     void compareWithGolden(QWidget* window, const QString& name) {
         const QImage actual = window->grab().toImage().convertToFormat(QImage::Format_ARGB32);
         const QString path = kGoldenDir + QLatin1Char('/') + name + QStringLiteral(".png");
-        if (qEnvironmentVariable("QIYAA_UPDATE_GOLDEN") == QLatin1String("1")
-            && !QFile::exists(path)) {
+        if (qEnvironmentVariable("QIYAA_UPDATE_GOLDEN") == QLatin1String("1") && !QFile::exists(path)) {
             QDir().mkpath(kGoldenDir);
             QVERIFY(actual.save(path));
             QSKIP(qPrintable(QStringLiteral("recorded new golden image ") + path));
         }
         const QImage expected(path);
         QVERIFY2(!expected.isNull(), qPrintable(QStringLiteral("no golden image ") + path));
-        const QString difference =
-            DescribeDifference(actual, expected.convertToFormat(QImage::Format_ARGB32));
+        const QString difference = DescribeDifference(actual, expected.convertToFormat(QImage::Format_ARGB32));
         if (!difference.isEmpty() && !qEnvironmentVariableIsEmpty("QIYAA_TEST_SHOTS")) {
-            actual.save(
-                qEnvironmentVariable("QIYAA_TEST_SHOTS") + QLatin1Char('/') + name
-                + QStringLiteral(".png")
-            );
+            actual.save(qEnvironmentVariable("QIYAA_TEST_SHOTS") + QLatin1Char('/') + name + QStringLiteral(".png"));
         }
         QVERIFY2(difference.isEmpty(), qPrintable(name + QStringLiteral(": ") + difference));
     }

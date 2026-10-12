@@ -86,8 +86,7 @@ QByteArray EncodeName(const QString& name) {
 QList<EqPreset> ParseEqf(const QByteArray& data) {
     if (!data.startsWith(kHeader) || data.size() < kHeaderLength + 4) {
         throw Error(
-            "not a Winamp EQ file: " + std::to_string(data.size())
-            + " bytes that do not start with \"" + kHeader + "\""
+            "not a Winamp EQ file: " + std::to_string(data.size()) + " bytes that do not start with \"" + kHeader + "\""
         );
     }
     qsizetype offset = kHeaderLength + 4;  // skip ^Z "!--"
@@ -98,9 +97,7 @@ QList<EqPreset> ParseEqf(const QByteArray& data) {
         EqPreset preset;
         preset.name = DecodeName(nulIndex >= 0 ? rawName.left(nulIndex) : rawName);
         offset += kNameLength;
-        auto valueAt = [&](int index) {
-            return 64 - static_cast<int>(static_cast<quint8>(data[offset + index]));
-        };
+        auto valueAt = [&](int index) { return 64 - static_cast<int>(static_cast<quint8>(data[offset + index])); };
         for (int band = 0; band < kEqBands; ++band) {
             preset.settings.bandsDb[band] = std::round(EqfToDb(valueAt(band)) * 10) / 10;
         }
@@ -110,9 +107,9 @@ QList<EqPreset> ParseEqf(const QByteArray& data) {
     }
     if (presets.isEmpty()) {
         throw Error(
-            "Winamp EQ file of " + std::to_string(data.size())
-            + " bytes holds no preset (one takes " + std::to_string(kNameLength + kValueCount)
-            + " bytes after the " + std::to_string(kHeaderLength + 4) + "-byte header)"
+            "Winamp EQ file of " + std::to_string(data.size()) + " bytes holds no preset (one takes "
+            + std::to_string(kNameLength + kValueCount) + " bytes after the " + std::to_string(kHeaderLength + 4)
+            + "-byte header)"
         );
     }
     return presets;

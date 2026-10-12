@@ -37,8 +37,12 @@ private:
     void send(QEvent::Type type, QPoint local, Qt::MouseButtons buttons) {
         const QPointF global = window->mapToGlobal(QPointF(local));
         QMouseEvent mouseEvent(
-            type, QPointF(local), global, type == QEvent::MouseMove ? Qt::NoButton : Qt::LeftButton,
-            buttons, Qt::NoModifier
+            type,
+            QPointF(local),
+            global,
+            type == QEvent::MouseMove ? Qt::NoButton : Qt::LeftButton,
+            buttons,
+            Qt::NoModifier
         );
         QCoreApplication::sendEvent(window.get(), &mouseEvent);
     }
@@ -70,14 +74,12 @@ private Q_SLOTS:
         send(QEvent::MouseButtonPress, {100, 5}, Qt::LeftButton);
         // Local coords of the move are relative to the old position; global is what matters.
         QMouseEvent move(
-            QEvent::MouseMove, QPointF(150, 45), QPointF(250, 145), Qt::NoButton, Qt::LeftButton,
-            Qt::NoModifier
+            QEvent::MouseMove, QPointF(150, 45), QPointF(250, 145), Qt::NoButton, Qt::LeftButton, Qt::NoModifier
         );
         QCoreApplication::sendEvent(window.get(), &move);
         QCOMPARE(window->pos(), QPoint(150, 140));
         QMouseEvent release(
-            QEvent::MouseButtonRelease, QPointF(100, 5), QPointF(250, 145), Qt::LeftButton,
-            Qt::NoButton, Qt::NoModifier
+            QEvent::MouseButtonRelease, QPointF(100, 5), QPointF(250, 145), Qt::LeftButton, Qt::NoButton, Qt::NoModifier
         );
         QCoreApplication::sendEvent(window.get(), &release);
     }
@@ -86,21 +88,23 @@ private Q_SLOTS:
         window->placeAt(QPoint(100, 100));
         send(QEvent::MouseButtonPress, {100, 5}, Qt::LeftButton);
         QMouseEvent farMove(
-            QEvent::MouseMove, QPointF(0, 0), QPointF(5000, 205), Qt::NoButton, Qt::LeftButton,
-            Qt::NoModifier
+            QEvent::MouseMove, QPointF(0, 0), QPointF(5000, 205), Qt::NoButton, Qt::LeftButton, Qt::NoModifier
         );
         QCoreApplication::sendEvent(window.get(), &farMove);
         QCOMPARE(window->pos().x(), screen.right() + 1 - window->width());
         // Near the left edge (within 15 px): snaps to 0.
         QMouseEvent nearLeft(
-            QEvent::MouseMove, QPointF(0, 0), QPointF(screen.left() + 110, 205), Qt::NoButton,
-            Qt::LeftButton, Qt::NoModifier
+            QEvent::MouseMove,
+            QPointF(0, 0),
+            QPointF(screen.left() + 110, 205),
+            Qt::NoButton,
+            Qt::LeftButton,
+            Qt::NoModifier
         );
         QCoreApplication::sendEvent(window.get(), &nearLeft);
         QCOMPARE(window->pos().x(), screen.left());
         QMouseEvent release(
-            QEvent::MouseButtonRelease, QPointF(100, 5), QPointF(110, 205), Qt::LeftButton,
-            Qt::NoButton, Qt::NoModifier
+            QEvent::MouseButtonRelease, QPointF(100, 5), QPointF(110, 205), Qt::LeftButton, Qt::NoButton, Qt::NoModifier
         );
         QCoreApplication::sendEvent(window.get(), &release);
     }
@@ -122,8 +126,7 @@ private Q_SLOTS:
         const QImage off = shuffleButton();
         QVERIFY(on != off);
         player->setShuffle(true);
-        player->setQueue({}, "Wave", false, [](std::function<void(const QList<Yandex::Track>&)>) {
-        });
+        player->setQueue({}, "Wave", false, [](std::function<void(const QList<Yandex::Track>&)>) {});
         QCOMPARE(shuffleButton(), off);
         player->setQueue({}, "Plain", false);
         QCOMPARE(shuffleButton(), on);

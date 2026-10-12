@@ -20,12 +20,23 @@
 namespace {
 
 const QStringList kClientTypes = {
-    QStringLiteral("hello"),        QStringLiteral("create"),         QStringLiteral("resume"),
-    QStringLiteral("playing"),      QStringLiteral("started"),        QStringLiteral("add"),
-    QStringLiteral("pin"),          QStringLiteral("remove"),         QStringLiteral("kick"),
-    QStringLiteral("settings"),     QStringLiteral("rotateLink"),     QStringLiteral("end"),
-    QStringLiteral("searchResult"), QStringLiteral("validateResult"), QStringLiteral("join"),
-    QStringLiteral("search"),       QStringLiteral("skip"),
+    QStringLiteral("hello"),
+    QStringLiteral("create"),
+    QStringLiteral("resume"),
+    QStringLiteral("playing"),
+    QStringLiteral("started"),
+    QStringLiteral("add"),
+    QStringLiteral("pin"),
+    QStringLiteral("remove"),
+    QStringLiteral("kick"),
+    QStringLiteral("settings"),
+    QStringLiteral("rotateLink"),
+    QStringLiteral("end"),
+    QStringLiteral("searchResult"),
+    QStringLiteral("validateResult"),
+    QStringLiteral("join"),
+    QStringLiteral("search"),
+    QStringLiteral("skip"),
 };
 
 QByteArray ReadFile(const QString& path) {
@@ -55,9 +66,8 @@ Jam::Session ExampleSession() {
     session.roomId = QStringLiteral("7k3m9q2x");
     session.hostSecret = QStringLiteral("R0CuY0ewFywBJU_1W65a_1GZ9ERuf21kPUAYWz9HUUU");
     session.joinUrl = QStringLiteral("https://jam.example.org/j/7k3m9q2x#WDkyFgMr5iV3hKwManPvsg");
-    session.snapshot = QJsonDocument::fromJson(Example(QStringLiteral("snapshot/ok")))
-                           .object()[QStringLiteral("data")]
-                           .toObject();
+    session.snapshot =
+        QJsonDocument::fromJson(Example(QStringLiteral("snapshot/ok"))).object()[QStringLiteral("data")].toObject();
     session.outbox = {QStringLiteral("i4"), QStringLiteral("i5")};
     return session;
 }
@@ -90,14 +100,11 @@ void JamTest::everyProtocolExampleDecodesAsTheSpecSays() {
     int checked = 0;
     for (const QString& type : examples.entryList(QDir::Dirs | QDir::NoDotAndDotDot, QDir::Name)) {
         const QDir folder(examples.filePath(type));
-        for (const QString& name :
-             folder.entryList({QStringLiteral("*.json")}, QDir::Files, QDir::Name)) {
+        for (const QString& name : folder.entryList({QStringLiteral("*.json")}, QDir::Files, QDir::Name)) {
             const QByteArray text = ReadFile(folder.filePath(name));
             const bool client = kClientTypes.contains(type);
-            const QString problem =
-                client ? Jam::DecodeClient(text).problem : Jam::DecodeServer(text).problem;
-            const bool valid =
-                client ? Jam::DecodeClient(text).isValid() : Jam::DecodeServer(text).isValid();
+            const QString problem = client ? Jam::DecodeClient(text).problem : Jam::DecodeServer(text).problem;
+            const bool valid = client ? Jam::DecodeClient(text).isValid() : Jam::DecodeServer(text).isValid();
             const QString label = type + QLatin1Char('/') + name;
             if (name.startsWith(QLatin1String("invalid-"))) {
                 QVERIFY2(!valid, qPrintable(label + QStringLiteral(" was accepted")));
@@ -114,16 +121,13 @@ void JamTest::clientExamplesSurviveEncodingAndDecoding() {
     const QDir examples(Tests::SpecPath(QStringLiteral("jam/protocol/examples")));
     for (const QString& type : kClientTypes) {
         const QDir folder(examples.filePath(type));
-        for (const QString& name :
-             folder.entryList({QStringLiteral("*.json")}, QDir::Files, QDir::Name)) {
+        for (const QString& name : folder.entryList({QStringLiteral("*.json")}, QDir::Files, QDir::Name)) {
             if (name.startsWith(QLatin1String("invalid-"))) {
                 continue;
             }
-            const Jam::Decoded<Jam::ClientMessage> first =
-                Jam::DecodeClient(ReadFile(folder.filePath(name)));
+            const Jam::Decoded<Jam::ClientMessage> first = Jam::DecodeClient(ReadFile(folder.filePath(name)));
             QVERIFY2(first.isValid(), qPrintable(type + QLatin1Char('/') + name));
-            const Jam::Decoded<Jam::ClientMessage> again =
-                Jam::DecodeClient(Jam::Encode(*first.message));
+            const Jam::Decoded<Jam::ClientMessage> again = Jam::DecodeClient(Jam::Encode(*first.message));
             QVERIFY2(again.isValid(), qPrintable(again.problem));
             QVERIFY2(*again.message == *first.message, qPrintable(type + QLatin1Char('/') + name));
         }
@@ -132,11 +136,7 @@ void JamTest::clientExamplesSurviveEncodingAndDecoding() {
 
 void JamTest::resumeWithoutSnapshotSendsAnExplicitNull() {
     const Jam::Resume resume{
-        QStringLiteral("h2"),
-        QStringLiteral("7k3m9q2x"),
-        QString(43, QLatin1Char('H')),
-        std::nullopt,
-        {}
+        QStringLiteral("h2"), QStringLiteral("7k3m9q2x"), QString(43, QLatin1Char('H')), std::nullopt, {}
     };
     const QJsonObject json = QJsonDocument::fromJson(Jam::Encode(resume)).object();
     QVERIFY(json.contains(QStringLiteral("snapshot")));
@@ -145,8 +145,7 @@ void JamTest::resumeWithoutSnapshotSendsAnExplicitNull() {
 }
 
 void JamTest::anUnknownTypeIsNotAnError() {
-    const Jam::Decoded<Jam::ServerMessage> decoded =
-        Jam::DecodeServer(R"({"type":"fromTheFuture"})");
+    const Jam::Decoded<Jam::ServerMessage> decoded = Jam::DecodeServer(R"({"type":"fromTheFuture"})");
     QVERIFY(decoded.unknownType);
     QVERIFY(!decoded.message);
 }
@@ -157,12 +156,10 @@ void JamTest::socketUrlFollowsTheServerAddress() {
         QUrl(QStringLiteral("wss://jam.example.org/ws"))
     );
     QCOMPARE(
-        Jam::Client::SocketUrl(QStringLiteral("http://localhost:8090")),
-        QUrl(QStringLiteral("ws://localhost:8090/ws"))
+        Jam::Client::SocketUrl(QStringLiteral("http://localhost:8090")), QUrl(QStringLiteral("ws://localhost:8090/ws"))
     );
     QCOMPARE(
-        Jam::Client::SocketUrl(QStringLiteral("jam.example.org")),
-        QUrl(QStringLiteral("wss://jam.example.org/ws"))
+        Jam::Client::SocketUrl(QStringLiteral("jam.example.org")), QUrl(QStringLiteral("wss://jam.example.org/ws"))
     );
 }
 
@@ -175,10 +172,7 @@ void JamTest::saysHelloAndGoesOnlineWithTheClockOffset() {
     QTRY_COMPARE(server.count(), 1);
     QTRY_COMPARE(server.received().size(), 1);
     const std::vector<Jam::ClientMessage> hello = server.messages();
-    QVERIFY(
-        hello.front()
-        == Jam::ClientMessage(Jam::Hello{Jam::kProtocol, Jam::App::Desktop, QStringLiteral("test")})
-    );
+    QVERIFY(hello.front() == Jam::ClientMessage(Jam::Hello{Jam::kProtocol, Jam::App::Desktop, QStringLiteral("test")}));
     server.welcome(now + 1'500);
     QTRY_COMPARE(welcomed.count(), 1);
     QCOMPARE(client.status(), Jam::Status::Online);
@@ -225,10 +219,7 @@ void JamTest::reconnectsAfterTheDelaysAndAtOnceWhenTheNetworkIsBack() {
     server.last().close();
     QTRY_COMPARE(client.status(), Jam::Status::Offline);
     QTRY_COMPARE(server.count(), 3);
-    QVERIFY2(
-        reconnectDelayMs >= 60,
-        qPrintable(QStringLiteral("reconnected after %1 ms").arg(reconnectDelayMs))
-    );
+    QVERIFY2(reconnectDelayMs >= 60, qPrintable(QStringLiteral("reconnected after %1 ms").arg(reconnectDelayMs)));
     QTRY_COMPARE(server.received().size(), 1);
     server.welcome();
     QTRY_COMPARE(client.status(), Jam::Status::Online);
@@ -273,10 +264,9 @@ void JamTest::endedStopsTheClientForGood() {
     Tests::JamStubServer server;
     Jam::Client client(FastOptions());
     std::vector<Jam::ServerMessage> received;
-    connect(
-        &client, &Jam::Client::messageReceived, &client,
-        [&received](const Jam::ServerMessage& message) { received.push_back(message); }
-    );
+    connect(&client, &Jam::Client::messageReceived, &client, [&received](const Jam::ServerMessage& message) {
+        received.push_back(message);
+    });
     client.start(server.url());
     QTRY_COMPARE(server.received().size(), 1);
     server.welcome();
@@ -303,9 +293,7 @@ void JamTest::neverSendsWhatTheServerWouldRefuse() {
     QTRY_COMPARE(server.received().size(), 2);
     QVERIFY(
         server.messages().back()
-        == Jam::ClientMessage(
-            Jam::Create{QStringLiteral("c2"), QStringLiteral("Маша"), std::nullopt}
-        )
+        == Jam::ClientMessage(Jam::Create{QStringLiteral("c2"), QStringLiteral("Маша"), std::nullopt})
     );
 }
 
@@ -313,10 +301,9 @@ void JamTest::invalidMessagesAreSkippedAndUnknownReasonsArrive() {
     Tests::JamStubServer server;
     Jam::Client client(FastOptions());
     std::vector<Jam::ServerMessage> received;
-    connect(
-        &client, &Jam::Client::messageReceived, &client,
-        [&received](const Jam::ServerMessage& message) { received.push_back(message); }
-    );
+    connect(&client, &Jam::Client::messageReceived, &client, [&received](const Jam::ServerMessage& message) {
+        received.push_back(message);
+    });
     client.start(server.url());
     QTRY_COMPARE(server.received().size(), 1);
     server.welcome();
@@ -349,9 +336,7 @@ void JamTest::sessionSurvivesARestartOfTheApp() {
 
 void JamTest::aBrokenOrForeignSessionFileIsNoSession() {
     QVERIFY(!Jam::DecodeSession("not json"));
-    QVERIFY(
-        !Jam::DecodeSession(R"({"version":2,"roomId":"7k3m9q2x","hostSecret":"x","joinUrl":"x"})")
-    );
+    QVERIFY(!Jam::DecodeSession(R"({"version":2,"roomId":"7k3m9q2x","hostSecret":"x","joinUrl":"x"})"));
     QVERIFY(!Jam::DecodeSession(R"({"version":1,"roomId":"7k3m9q2x"})"));
     const std::optional<Jam::Session> android = Jam::DecodeSession(
         R"({"version":1,"roomId":"7k3m9q2x","hostSecret":"s","joinUrl":"u","snapshot":{"format":1,"room":{}},"outbox":["i4"]})"

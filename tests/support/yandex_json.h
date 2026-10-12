@@ -29,10 +29,8 @@ QJsonObject PlaylistsJson(const QList<Yandex::PlaylistReference>& playlists);
 QJsonObject NamedJson(const QString& key, const QList<Yandex::NamedReference>& references);
 QJsonObject StationsJson(const QList<Yandex::Station>& stations);
 QJsonObject WavesJson(const QList<Yandex::Wave>& waves);
-QJsonObject VariantsJson(
-    const QList<Yandex::DownloadVariant>& variants,
-    const std::optional<Yandex::DownloadVariant>& best
-);
+QJsonObject
+VariantsJson(const QList<Yandex::DownloadVariant>& variants, const std::optional<Yandex::DownloadVariant>& best);
 
 // Checks an error text against an expected {"error": {"status", "message"}}: the text must name
 // the status ("HTTP 401") and contain the message unless it is null. Returns what is wrong, or

@@ -46,12 +46,10 @@ public:
 
     void on(const QByteArray& method, const QString& path, THandler handler);
     void onPrefix(const QByteArray& method, const QString& prefix, THandler handler);
-    void
-    json(const QByteArray& method, const QString& path, const QByteArray& body, int status = 200);
+    void json(const QByteArray& method, const QString& path, const QByteArray& body, int status = 200);
     void result(const QByteArray& method, const QString& path, const QByteArray& resultJson);
     // Answers with spec/fixtures/yandex/<name>.json and the status its case name gives.
-    void
-    fixture(const QByteArray& method, const QString& path, const QString& name, int delayMs = 0);
+    void fixture(const QByteArray& method, const QString& path, const QString& name, int delayMs = 0);
 
     // Lets the Player stream these track ids from this server: their download-info, the
     // download-info link, the signed /get-mp3/ link (all serving `mp3`) and /play-audio.
@@ -82,8 +80,7 @@ private:
 // MockHttpServer.
 class LocalNetworkAccessManager : public QNetworkAccessManager {
 protected:
-    QNetworkReply*
-    createRequest(Operation op, const QNetworkRequest& request, QIODevice* outgoingData) override;
+    QNetworkReply* createRequest(Operation op, const QNetworkRequest& request, QIODevice* outgoingData) override;
 };
 
 }  // namespace Tests

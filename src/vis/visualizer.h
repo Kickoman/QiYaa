@@ -48,8 +48,7 @@ std::array<SpectrumBand, kSpectrumBars> SpectrumBands(int sampleRate, int fftSiz
 
 // Each band's loudest bin, mapped from -72..-6 dB to 0..1: the bar heights of one frame, before
 // the spectrum's fall-off and peaks are applied.
-std::array<float, kSpectrumBars>
-SpectrumLevels(std::span<const float> spectrumDb, int sampleRate, int fftSize);
+std::array<float, kSpectrumBars> SpectrumLevels(std::span<const float> spectrumDb, int sampleRate, int fftSize);
 
 std::unique_ptr<Visualizer> MakeSpectrum();
 std::unique_ptr<Visualizer> MakeOscilloscope();

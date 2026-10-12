@@ -27,13 +27,10 @@ void EqualizerDsp::setSampleRate(uint32_t rate) {
     }
 }
 
-EqualizerDsp::Coefficients
-EqualizerDsp::ComputeCoefficients(const EqSettings& settings, double sampleRate) {
+EqualizerDsp::Coefficients EqualizerDsp::ComputeCoefficients(const EqSettings& settings, double sampleRate) {
     Coefficients coefficients;
     coefficients.enabled = settings.enabled;
-    coefficients.preamp =
-        static_cast<float>(std::pow(10.0, std::clamp(settings.preampDb, -kEqMaxDb, kEqMaxDb) / 20.0)
-        );
+    coefficients.preamp = static_cast<float>(std::pow(10.0, std::clamp(settings.preampDb, -kEqMaxDb, kEqMaxDb) / 20.0));
     for (int i = 0; i < kEqBands; ++i) {
         Biquad& filter = coefficients.bands[i];
         const double db = std::clamp(settings.bandsDb[i], -kEqMaxDb, kEqMaxDb);
@@ -112,8 +109,7 @@ double EqualizerDsp::ResponseDb(const EqSettings& settings, double hz, double sa
     if (!coefficients.enabled) {
         return 0.0;
     }
-    const std::complex<double> z =
-        std::polar(1.0, -2.0 * std::numbers::pi * hz / sampleRate);  // z^-1
+    const std::complex<double> z = std::polar(1.0, -2.0 * std::numbers::pi * hz / sampleRate);  // z^-1
     std::complex<double> h = coefficients.preamp;
     for (const Biquad& filter : coefficients.bands) {
         if (filter.identity) {

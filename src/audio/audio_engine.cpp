@@ -103,9 +103,7 @@ public:
         if (target < 0) {
             return MA_BAD_SEEK;
         }
-        wakeUp.wait(lock, [&] {
-            return interrupted || isFinished || static_cast<ma_int64>(bytes.size()) >= target;
-        });
+        wakeUp.wait(lock, [&] { return interrupted || isFinished || static_cast<ma_int64>(bytes.size()) >= target; });
         if (interrupted) {
             return MA_CANCELLED;
         }
@@ -170,8 +168,7 @@ struct AudioEngine::Implementation {
     TStreamId chainedId = 0;
     std::vector<std::shared_ptr<StreamBuffer>> decoderHeld;
 
-    static void
-    DataCallback(ma_device* outputDevice, void* output, const void*, ma_uint32 frameCount) {
+    static void DataCallback(ma_device* outputDevice, void* output, const void*, ma_uint32 frameCount) {
         auto* self = static_cast<Implementation*>(outputDevice->pUserData);
         auto* outputSamples = static_cast<float*>(output);
         ma_uint32 written = 0;
@@ -180,13 +177,11 @@ struct AudioEngine::Implementation {
             && self->seekRequest.load(std::memory_order_acquire) < 0) {
             ma_uint32 limit = frameCount;
             if (self->haltAtBoundary.load(std::memory_order_acquire)
-                && self->decoderEpoch.load(std::memory_order_acquire)
-                    > self->uiEpoch.load(std::memory_order_acquire)) {
+                && self->decoderEpoch.load(std::memory_order_acquire) > self->uiEpoch.load(std::memory_order_acquire)) {
                 const ma_uint64 played = self->framesPlayed.load(std::memory_order_relaxed);
                 const ma_uint64 boundary = self->boundaryFrame.load(std::memory_order_acquire);
-                limit = played >= boundary
-                    ? 0
-                    : static_cast<ma_uint32>(std::min<ma_uint64>(frameCount, boundary - played));
+                limit =
+                    played >= boundary ? 0 : static_cast<ma_uint32>(std::min<ma_uint64>(frameCount, boundary - played));
             }
             while (written < limit) {
                 ma_uint32 regionFrames = limit - written;
@@ -195,10 +190,7 @@ struct AudioEngine::Implementation {
                     || regionFrames == 0) {
                     break;
                 }
-                std::memcpy(
-                    outputSamples + written * kChannels, ringRegion,
-                    regionFrames * kChannels * sizeof(float)
-                );
+                std::memcpy(outputSamples + written * kChannels, ringRegion, regionFrames * kChannels * sizeof(float));
                 ma_pcm_rb_commit_read(&self->ring, regionFrames);
                 written += regionFrames;
             }
@@ -208,23 +200,17 @@ struct AudioEngine::Implementation {
             const float rightGain = self->gainRight.load(std::memory_order_relaxed);
             for (ma_uint32 i = 0; i < written; ++i) {
                 outputSamples[i * 2] = std::clamp(outputSamples[i * 2] * leftGain, -1.0f, 1.0f);
-                outputSamples[i * 2 + 1] =
-                    std::clamp(outputSamples[i * 2 + 1] * rightGain, -1.0f, 1.0f);
+                outputSamples[i * 2 + 1] = std::clamp(outputSamples[i * 2 + 1] * rightGain, -1.0f, 1.0f);
             }
             self->framesPlayed.fetch_add(written, std::memory_order_relaxed);
         }
         if (written < frameCount) {
-            std::memset(
-                outputSamples + written * kChannels, 0,
-                (frameCount - written) * kChannels * sizeof(float)
-            );
+            std::memset(outputSamples + written * kChannels, 0, (frameCount - written) * kChannels * sizeof(float));
         }
     }
 
-    static ma_result
-    OnRead(ma_decoder* decoder, void* destination, size_t bytesToRead, size_t* bytesRead) {
-        return static_cast<StreamBuffer*>(decoder->pUserData)
-            ->read(destination, bytesToRead, bytesRead);
+    static ma_result OnRead(ma_decoder* decoder, void* destination, size_t bytesToRead, size_t* bytesRead) {
+        return static_cast<StreamBuffer*>(decoder->pUserData)->read(destination, bytesToRead, bytesRead);
     }
     static ma_result OnSeek(ma_decoder* decoder, ma_int64 offset, ma_seek_origin origin) {
         return static_cast<StreamBuffer*>(decoder->pUserData)->seek(offset, origin);
@@ -265,16 +251,14 @@ struct AudioEngine::Implementation {
     std::unique_ptr<Source> openSource(std::shared_ptr<StreamBuffer> buffer) {
         auto source = std::make_unique<Source>();
         source->buffer = std::move(buffer);
-        ma_decoder_config decoderConfig =
-            ma_decoder_config_init(ma_format_f32, kChannels, sampleRate);
+        ma_decoder_config decoderConfig = ma_decoder_config_init(ma_format_f32, kChannels, sampleRate);
         ma_decoding_backend_vtable* mp4Backends[] = {Mp4AacBackend()};
         ma_result result = MA_NO_BACKEND;
         if (StartsAsMp4(*source->buffer)) {
             decoderConfig.ppCustomBackendVTables = mp4Backends;
             decoderConfig.customBackendCount = 1;
             result = ma_decoder_init(
-                &Implementation::OnRead, &Implementation::OnSeek, source->buffer.get(),
-                &decoderConfig, &source->decoder
+                &Implementation::OnRead, &Implementation::OnSeek, source->buffer.get(), &decoderConfig, &source->decoder
             );
             // The mp3 decoder would find "frames" in an MP4 file it does not understand.
             if (result == MA_SUCCESS && source->decoder.pBackendVTable != Mp4AacBackend()) {
@@ -284,15 +268,17 @@ struct AudioEngine::Implementation {
         } else {
             decoderConfig.encodingFormat = ma_encoding_format_mp3;
             result = ma_decoder_init(
-                &Implementation::OnRead, &Implementation::OnSeek, source->buffer.get(),
-                &decoderConfig, &source->decoder
+                &Implementation::OnRead, &Implementation::OnSeek, source->buffer.get(), &decoderConfig, &source->decoder
             );
             if (result != MA_SUCCESS && !stopDecoder) {
                 source->buffer->seek(0, ma_seek_origin_start);
                 decoderConfig.encodingFormat = ma_encoding_format_unknown;
                 result = ma_decoder_init(
-                    &Implementation::OnRead, &Implementation::OnSeek, source->buffer.get(),
-                    &decoderConfig, &source->decoder
+                    &Implementation::OnRead,
+                    &Implementation::OnSeek,
+                    source->buffer.get(),
+                    &decoderConfig,
+                    &source->decoder
                 );
             }
         }
@@ -302,9 +288,7 @@ struct AudioEngine::Implementation {
         source->initialised = true;
         ma_format format;
         ma_uint32 channels = 0, rate = 0;
-        if (ma_data_source_get_data_format(
-                source->decoder.pBackend, &format, &channels, &rate, nullptr, 0
-            )
+        if (ma_data_source_get_data_format(source->decoder.pBackend, &format, &channels, &rate, nullptr, 0)
             == MA_SUCCESS) {
             source->rate = static_cast<int>(rate);
             source->channels = static_cast<int>(channels);
@@ -444,15 +428,13 @@ struct AudioEngine::Implementation {
                 continue;
             }
             ma_uint64 framesRead = 0;
-            const ma_result result =
-                ma_decoder_read_pcm_frames(&current->decoder, chunk.data(), 1024, &framesRead);
+            const ma_result result = ma_decoder_read_pcm_frames(&current->decoder, chunk.data(), 1024, &framesRead);
             ma_uint32 remaining = static_cast<ma_uint32>(framesRead);
             const float* remainingSamples = chunk.data();
             while (remaining > 0) {
                 ma_uint32 regionFrames = remaining;
                 void* ringRegion = nullptr;
-                if (ma_pcm_rb_acquire_write(&ring, &regionFrames, &ringRegion) != MA_SUCCESS
-                    || regionFrames == 0) {
+                if (ma_pcm_rb_acquire_write(&ring, &regionFrames, &ringRegion) != MA_SUCCESS || regionFrames == 0) {
                     break;
                 }
                 std::memcpy(ringRegion, remainingSamples, regionFrames * kChannels * sizeof(float));
@@ -536,14 +518,11 @@ AudioEngine::InitResult AudioEngine::init() {
     // No JACK: it spams stderr when no JACK server runs.
     std::vector<ma_backend> candidates = {ma_backend_pulseaudio, ma_backend_alsa, ma_backend_null};
 #elif defined(_WIN32)
-    std::vector<ma_backend> candidates = {
-        ma_backend_wasapi, ma_backend_dsound, ma_backend_winmm, ma_backend_null
-    };
+    std::vector<ma_backend> candidates = {ma_backend_wasapi, ma_backend_dsound, ma_backend_winmm, ma_backend_null};
 #else
     std::vector<ma_backend> candidates = {ma_backend_coreaudio, ma_backend_null};
 #endif
-    if (QString requestedBackend =
-            qEnvironmentVariable("QIYAA_AUDIO_BACKEND").remove(QLatin1Char(' '));
+    if (QString requestedBackend = qEnvironmentVariable("QIYAA_AUDIO_BACKEND").remove(QLatin1Char(' '));
         !requestedBackend.isEmpty()) {
         bool known = false;
         for (int i = 0; i < MA_BACKEND_COUNT && !known; ++i) {
@@ -558,8 +537,7 @@ AudioEngine::InitResult AudioEngine::init() {
         }
         if (!known) {
             qWarning(
-                "QIYAA_AUDIO_BACKEND=%s: no such audio backend, using the default ones",
-                qPrintable(requestedBackend)
+                "QIYAA_AUDIO_BACKEND=%s: no such audio backend, using the default ones", qPrintable(requestedBackend)
             );
         }
     }
@@ -569,8 +547,7 @@ AudioEngine::InitResult AudioEngine::init() {
         if (ma_context_init(&backend, 1, nullptr, &implementation->context) != MA_SUCCESS) {
             continue;
         }
-        if (ma_device_init(&implementation->context, &deviceConfig, &implementation->device)
-            == MA_SUCCESS) {
+        if (ma_device_init(&implementation->context, &deviceConfig, &implementation->device) == MA_SUCCESS) {
             implementation->contextReady = true;
             opened = true;
             break;
@@ -582,16 +559,13 @@ AudioEngine::InitResult AudioEngine::init() {
         for (ma_backend backend : candidates) {
             tried << QString::fromLatin1(ma_get_backend_name(backend));
         }
-        return {
-            false, QStringLiteral("no audio output device opens (tried %1)").arg(tried.join(u", "))
-        };
+        return {false, QStringLiteral("no audio output device opens (tried %1)").arg(tried.join(u", "))};
     }
     implementation->deviceReady = true;
     implementation->sampleRate = implementation->device.sampleRate;
     implementation->eq.setSampleRate(implementation->sampleRate);
     if (ma_pcm_rb_init(
-            ma_format_f32, kChannels, implementation->sampleRate * kRingSeconds, nullptr, nullptr,
-            &implementation->ring
+            ma_format_f32, kChannels, implementation->sampleRate * kRingSeconds, nullptr, nullptr, &implementation->ring
         )
         != MA_SUCCESS) {
         return {
@@ -646,8 +620,7 @@ void AudioEngine::startDecoder(double startSeconds) {
     sourceChannelCount = 0;
 
     implementation->decoderThread = std::thread(
-        &Implementation::decoderMain, implementation.get(), streams.value(currentId), &sourceRate,
-        &sourceChannelCount
+        &Implementation::decoderMain, implementation.get(), streams.value(currentId), &sourceRate, &sourceChannelCount
     );
     implementation->outputEnabled.store(true, std::memory_order_release);
     setState(State::Buffering);
@@ -773,14 +746,12 @@ void AudioEngine::stop() {
 }
 
 bool AudioEngine::seek(double seconds) {
-    if (!implementation->decoderThread.joinable() || !implementation->decoderStarted
-        || seconds < 0) {
+    if (!implementation->decoderThread.joinable() || !implementation->decoderStarted || seconds < 0) {
         return false;
     }
     // ma_device_stop() waits for a running callback; after the restart the callback sees
     // seekRequest >= 0 and leaves the ring alone until the decoder thread clears it.
-    const bool wasRunning =
-        implementation->deviceReady && ma_device_is_started(&implementation->device);
+    const bool wasRunning = implementation->deviceReady && ma_device_is_started(&implementation->device);
     if (wasRunning) {
         ma_device_stop(&implementation->device);
     }
@@ -803,8 +774,8 @@ double AudioEngine::positionSeconds() const {
     if (implementation->sampleRate == 0) {
         return 0;
     }
-    const ma_int64 frames = implementation->frameOffset.load()
-        + static_cast<ma_int64>(implementation->framesPlayed.load());
+    const ma_int64 frames =
+        implementation->frameOffset.load() + static_cast<ma_int64>(implementation->framesPlayed.load());
     return static_cast<double>(std::max<ma_int64>(0, frames)) / implementation->sampleRate;
 }
 
@@ -852,22 +823,22 @@ void AudioEngine::poll() {
         const std::shared_ptr<StreamBuffer> buffer = streams.value(failedId);
         const qulonglong received = buffer ? buffer->size() : 0;
         stop();
-        Q_EMIT errorOccurred(QStringLiteral("cannot decode the audio stream: %1 bytes received, "
-                                            "not mp3, AAC in MP4, flac or wav")
-                                 .arg(received));
+        Q_EMIT errorOccurred(
+            QStringLiteral("cannot decode the audio stream: %1 bytes received, "
+                           "not mp3, AAC in MP4, flac or wav")
+                .arg(received)
+        );
         Q_EMIT streamUndecodable(failedId);
         return;
     }
-    if (const TStreamId failedId = implementation->failedQueuedId.exchange(0);
-        failedId && failedId == queuedId) {
+    if (const TStreamId failedId = implementation->failedQueuedId.exchange(0); failedId && failedId == queuedId) {
         streams.remove(failedId);
         queuedId = 0;
     }
     const int chainedEpoch = implementation->decoderEpoch.load(std::memory_order_acquire);
     if (chainedEpoch > implementation->uiEpoch.load() && implementation->seekRequest.load() < 0
         && !implementation->finishedReported
-        && implementation->framesPlayed.load()
-            >= implementation->boundaryFrame.load(std::memory_order_acquire)) {
+        && implementation->framesPlayed.load() >= implementation->boundaryFrame.load(std::memory_order_acquire)) {
         if (implementation->haltAtBoundary) {
             {
                 std::lock_guard lock(implementation->queueMutex);
@@ -894,8 +865,8 @@ void AudioEngine::poll() {
         setState(State::Playing);
     }
     if (currentState == State::Playing && implementation->decoderDone
-        && ma_pcm_rb_available_read(&implementation->ring) == 0
-        && implementation->seekRequest.load() < 0 && !implementation->finishedReported) {
+        && ma_pcm_rb_available_read(&implementation->ring) == 0 && implementation->seekRequest.load() < 0
+        && !implementation->finishedReported) {
         {
             // Under the lock: a chain in progress re-checks finishedReported before committing.
             std::lock_guard lock(implementation->queueMutex);

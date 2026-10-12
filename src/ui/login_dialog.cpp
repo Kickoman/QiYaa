@@ -25,11 +25,7 @@ namespace {
 constexpr int kDialogWidth = 460;
 }  // namespace
 
-LoginDialog::LoginDialog(
-    QNetworkAccessManager* networkManager,
-    QWidget* parent,
-    const QString& oauthBase
-)
+LoginDialog::LoginDialog(QNetworkAccessManager* networkManager, QWidget* parent, const QString& oauthBase)
     : QDialog(parent)
     , deviceLogin(new Yandex::DeviceLogin(networkManager, this)) {
     setWindowTitle(tr("Log in to Yandex Music"));
@@ -40,10 +36,10 @@ LoginDialog::LoginDialog(
 
     auto* layout = new QVBoxLayout(this);
 
-    auto* deviceHeading = new QLabel(
-        tr("<b>Way 1.</b> Open the confirmation page in any browser (a phone will do) and enter "
-           "the code:")
-    );
+    auto* deviceHeading = new QLabel(tr(
+        "<b>Way 1.</b> Open the confirmation page in any browser (a phone will do) and enter "
+        "the code:"
+    ));
     deviceHeading->setWordWrap(true);
     layout->addWidget(deviceHeading);
 
@@ -69,11 +65,11 @@ LoginDialog::LoginDialog(
     line->setFrameShape(QFrame::HLine);
     layout->addWidget(line);
 
-    auto* browserHeading = new QLabel(
-        tr("<b>Way 2.</b> Log in through the browser. After the login Yandex opens the page "
-           "<i>music.yandex.ru/#access_token=…</i>: copy its whole address and paste it here (or "
-           "paste the token itself).")
-    );
+    auto* browserHeading = new QLabel(tr(
+        "<b>Way 2.</b> Log in through the browser. After the login Yandex opens the page "
+        "<i>music.yandex.ru/#access_token=…</i>: copy its whole address and paste it here (or "
+        "paste the token itself)."
+    ));
     browserHeading->setWordWrap(true);
     layout->addWidget(browserHeading);
     auto* openBrowser = new QPushButton(tr("Open the login page"));
@@ -92,9 +88,7 @@ LoginDialog::LoginDialog(
     layout->addSpacing(8);
     layout->addWidget(cancel, 0, Qt::AlignRight);
 
-    connect(openDevice, &QPushButton::clicked, this, [this] {
-        QDesktopServices::openUrl(verifyUrl);
-    });
+    connect(openDevice, &QPushButton::clicked, this, [this] { QDesktopServices::openUrl(verifyUrl); });
     connect(openBrowser, &QPushButton::clicked, this, [] {
         QDesktopServices::openUrl(Yandex::DeviceLogin::BrowserLoginUrl());
     });
@@ -102,20 +96,15 @@ LoginDialog::LoginDialog(
     connect(pasteField, &QLineEdit::returnPressed, this, &LoginDialog::tryPasted);
     connect(cancel, &QPushButton::clicked, this, &QDialog::reject);
 
-    connect(
-        deviceLogin, &Yandex::DeviceLogin::codeReady, this,
-        [this](const QString& code, const QUrl& url) {
-            codeLabel->setText(code);
-            verifyUrl = url;
-            openDevice->setText(tr("Open %1").arg(url.host() + url.path()));
-            openDevice->setEnabled(true);
-            deviceStatus->setText(
-                tr("Waiting for the confirmation… (the code is copied to the clipboard)")
-            );
-            QGuiApplication::clipboard()->setText(code);
-            fitToContents();
-        }
-    );
+    connect(deviceLogin, &Yandex::DeviceLogin::codeReady, this, [this](const QString& code, const QUrl& url) {
+        codeLabel->setText(code);
+        verifyUrl = url;
+        openDevice->setText(tr("Open %1").arg(url.host() + url.path()));
+        openDevice->setEnabled(true);
+        deviceStatus->setText(tr("Waiting for the confirmation… (the code is copied to the clipboard)"));
+        QGuiApplication::clipboard()->setText(code);
+        fitToContents();
+    });
     connect(deviceLogin, &Yandex::DeviceLogin::succeeded, this, &LoginDialog::finishWith);
     connect(deviceLogin, &Yandex::DeviceLogin::failed, this, [this](const QString& error) {
         codeLabel->setText(QStringLiteral("—"));
@@ -143,8 +132,10 @@ void LoginDialog::fitToContents() {
 void LoginDialog::tryPasted() {
     const QString token = Yandex::NormalizeToken(pasteField->text().toUtf8());
     if (token.isEmpty()) {
-        pasteError->setText(tr("There is no token here. An address with “#access_token=…” or the "
-                               "token itself is needed."));
+        pasteError->setText(tr(
+            "There is no token here. An address with “#access_token=…” or the "
+            "token itself is needed."
+        ));
         pasteError->show();
         fitToContents();
         return;

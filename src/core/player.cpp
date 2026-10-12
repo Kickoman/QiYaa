@@ -42,8 +42,7 @@ Player::Player(Yandex::Library* library, Audio::AudioEngine* engine, QObject* pa
         }
         if (openTrack && openTrackEvents) {
             openTrackEvents(
-                streamFailure ? TrackEvent::Skipped : TrackEvent::Finished, *openTrack,
-                accumulatePlayedSeconds()
+                streamFailure ? TrackEvent::Skipped : TrackEvent::Finished, *openTrack, accumulatePlayedSeconds()
             );
         }
         openTrack.reset();
@@ -55,13 +54,11 @@ Player::Player(Yandex::Library* library, Audio::AudioEngine* engine, QObject* pa
     connect(audioEngine, &Audio::AudioEngine::trackAdvanced, this, [this] {
         if (openTrack && openTrackEvents) {
             openTrackEvents(
-                streamFailure ? TrackEvent::Skipped : TrackEvent::Finished, *openTrack,
-                accumulatePlayedSeconds()
+                streamFailure ? TrackEvent::Skipped : TrackEvent::Finished, *openTrack, accumulatePlayedSeconds()
             );
         }
         openTrack.reset();
-        if (!preload || preload->stream != audioEngine->currentStream()
-            || preload->index >= queuedTracks.size()) {
+        if (!preload || preload->stream != audioEngine->currentStream() || preload->index >= queuedTracks.size()) {
             const int nextIndex = pickNext();
             nextIndex >= 0 ? playIndex(nextIndex) : stop();
             return;
@@ -103,19 +100,16 @@ Player::Player(Yandex::Library* library, Audio::AudioEngine* engine, QObject* pa
         accumulatePlayedSeconds();
         Q_EMIT positionTick();
     });
-    connect(
-        audioEngine, &Audio::AudioEngine::stateChanged, this,
-        [this](Audio::AudioEngine::State state) {
-            if (state == Audio::AudioEngine::State::Playing) {
-                failuresInRow = 0;  // ERR-06: a track really plays
-            }
-            if (state == Audio::AudioEngine::State::Stopped) {
-                pollTimer.stop();
-            } else if (!pollTimer.isActive()) {
-                pollTimer.start();
-            }
+    connect(audioEngine, &Audio::AudioEngine::stateChanged, this, [this](Audio::AudioEngine::State state) {
+        if (state == Audio::AudioEngine::State::Playing) {
+            failuresInRow = 0;  // ERR-06: a track really plays
         }
-    );
+        if (state == Audio::AudioEngine::State::Stopped) {
+            pollTimer.stop();
+        } else if (!pollTimer.isActive()) {
+            pollTimer.start();
+        }
+    });
 }
 
 void Player::setQueue(
@@ -196,12 +190,7 @@ void Player::insertTracks(int index, const QList<Yandex::Track>& tracks) {
     refreshPreload();
 }
 
-void Player::changeSource(
-    const QString& title,
-    TLoadMoreCallback more,
-    TEventCallback events,
-    QueueRules rules
-) {
+void Player::changeSource(const QString& title, TLoadMoreCallback more, TEventCallback events, QueueRules rules) {
     titleText = title;
     loadMore = std::move(more);
     reportEvent = std::move(events);
@@ -249,8 +238,7 @@ void Player::clearQueue() {
 }
 
 const Yandex::Track* Player::currentTrack() const {
-    return (playingIndex >= 0 && playingIndex < queuedTracks.size()) ? &queuedTracks[playingIndex]
-                                                                     : nullptr;
+    return (playingIndex >= 0 && playingIndex < queuedTracks.size()) ? &queuedTracks[playingIndex] : nullptr;
 }
 
 double Player::durationSeconds() const {
@@ -265,13 +253,9 @@ void Player::play() {
     }
     switch (audioEngine->state()) {
         case Audio::AudioEngine::State::Paused: audioEngine->resume(); return;
-        case Audio::AudioEngine::State::Playing:
-            playIndex(playingIndex);
-            return;  // Winamp: Play restarts the track
+        case Audio::AudioEngine::State::Playing: playIndex(playingIndex); return;  // Winamp: Play restarts the track
         case Audio::AudioEngine::State::Buffering: return;
-        case Audio::AudioEngine::State::Stopped:
-            playIndex(playingIndex < 0 ? 0 : playingIndex);
-            return;
+        case Audio::AudioEngine::State::Stopped: playIndex(playingIndex < 0 ? 0 : playingIndex); return;
     }
 }
 
@@ -361,9 +345,7 @@ void Player::stop() {
 }
 
 void Player::resetNavigator() {
-    navigator = MakeTrackNavigator(
-        shuffleActive() ? std::optional(preferredShuffleAlgorithm) : std::nullopt
-    );
+    navigator = MakeTrackNavigator(shuffleActive() ? std::optional(preferredShuffleAlgorithm) : std::nullopt);
     navigator->reset(static_cast<int>(queuedTracks.size()), playingIndex);
 }
 
@@ -427,8 +409,7 @@ bool Player::seekFraction(double fraction) {
 
 bool Player::seekTo(double seconds) {
     const double duration = durationSeconds();
-    const double target =
-        duration > 0 ? std::clamp(seconds, 0.0, duration) : std::max(0.0, seconds);
+    const double target = duration > 0 ? std::clamp(seconds, 0.0, duration) : std::max(0.0, seconds);
     if (!audioEngine->seek(target)) {
         return false;
     }
@@ -487,8 +468,7 @@ void Player::playIndex(int index) {
     currentBytes = 0;
     const Yandex::Track track = queuedTracks[index];
 
-    if (preload && preload->stream && preload->trackId == track.id
-        && preload->stream == audioEngine->queuedStream()) {
+    if (preload && preload->stream && preload->trackId == track.id && preload->stream == audioEngine->queuedStream()) {
         const Preload upcoming = *std::exchange(preload, std::nullopt);
         streamId = audioEngine->playQueuedNow();
         download = upcoming.reply;
@@ -507,9 +487,11 @@ void Player::playIndex(int index) {
     maybeLoadMore();
 
     yandexLibrary->api()->resolveTrackUrl(
-        track.id, audioQuality,
-        [this, self = QPointer<Player>(this), requestGeneration,
-         track](const Yandex::ResolvedUrl& link, const Yandex::RequestError& error) {
+        track.id,
+        audioQuality,
+        [this, self = QPointer<Player>(this), requestGeneration, track](
+            const Yandex::ResolvedUrl& link, const Yandex::RequestError& error
+        ) {
             if (!self || requestGeneration != generation) {
                 return;
             }
@@ -549,9 +531,7 @@ void Player::trackStarted(const Yandex::Track& track, int bitrate) {
 
 QNetworkReply* Player::startDownload(const QUrl& url, TStreamId stream) {
     QNetworkRequest request(url);
-    request.setAttribute(
-        QNetworkRequest::RedirectPolicyAttribute, QNetworkRequest::NoLessSafeRedirectPolicy
-    );
+    request.setAttribute(QNetworkRequest::RedirectPolicyAttribute, QNetworkRequest::NoLessSafeRedirectPolicy);
     request.setTransferTimeout(kDownloadTimeoutMs);
     QNetworkReply* reply = yandexLibrary->api()->network()->get(request);
     // The engine ignores data for streams it has dropped meanwhile. An error page is not audio.
@@ -610,8 +590,7 @@ void Player::downloadFinished(TStreamId stream, const Yandex::RequestError& erro
 
 void Player::handleFailure(FailureKind kind, const QString& text) {
     Q_EMIT failed(kind);
-    const FailureAction action =
-        DecideOnFailure(kind, failuresInRow, pickNext() >= 0, static_cast<bool>(loadMore));
+    const FailureAction action = DecideOnFailure(kind, failuresInRow, pickNext() >= 0, static_cast<bool>(loadMore));
     switch (action) {
         case FailureAction::WaitForNetwork: return waitForNetwork();
         case FailureAction::Next:  // ERR-04; in a wave at its end next() waits for more (ERR-07)
@@ -628,9 +607,7 @@ void Player::handleFailure(FailureKind kind, const QString& text) {
             return stop();
         case FailureAction::StopAfterLimit:  // ERR-05
             failuresInRow = 0;
-            Q_EMIT statusMessage(
-                tr("Stopped: %n track(s) in a row did not play", nullptr, kMaxTrackFailuresInRow)
-            );
+            Q_EMIT statusMessage(tr("Stopped: %n track(s) in a row did not play", nullptr, kMaxTrackFailuresInRow));
             return stop();
     }
 }
@@ -643,8 +620,7 @@ void Player::waitForNetwork() {
     } else {
         const AudioEngine::State state = audioEngine->state();
         wait.resume = state != AudioEngine::State::Paused;
-        wait.position =
-            state == AudioEngine::State::Stopped ? lastPosition : audioEngine->positionSeconds();
+        wait.position = state == AudioEngine::State::Stopped ? lastPosition : audioEngine->positionSeconds();
         Q_EMIT statusMessage(tr("No network — waiting for it…"));
     }
     ++generation;
@@ -675,9 +651,11 @@ void Player::retryAfterNetwork() {
     const quint64 requestGeneration = ++generation;
     const Track track = *currentTrack();
     yandexLibrary->api()->resolveTrackUrl(
-        track.id, audioQuality,
-        [this, self = QPointer<Player>(this), requestGeneration,
-         track](const Yandex::ResolvedUrl& link, const Yandex::RequestError& error) {
+        track.id,
+        audioQuality,
+        [this, self = QPointer<Player>(this), requestGeneration, track](
+            const Yandex::ResolvedUrl& link, const Yandex::RequestError& error
+        ) {
             if (!self || requestGeneration != generation || !networkWait) {
                 return;
             }
@@ -752,10 +730,10 @@ void Player::maybePreload() {
     preload = upcoming;
     QPointer<Player> self(this);
     yandexLibrary->api()->resolveTrackUrl(
-        upcoming.trackId, audioQuality,
-        [self, requestGeneration = upcoming.generation](
-            const Yandex::ResolvedUrl& link, const Yandex::RequestError& error
-        ) {
+        upcoming.trackId,
+        audioQuality,
+        [self,
+         requestGeneration = upcoming.generation](const Yandex::ResolvedUrl& link, const Yandex::RequestError& error) {
             if (!self || !self->preload || self->preload->generation != requestGeneration) {
                 return;
             }
@@ -790,8 +768,7 @@ void Player::cancelPreload() {
 void Player::refreshPreload() {
     if (preload) {
         int index = -1;
-        if (const int nextIndex = pickNext();
-            nextIndex >= 0 && queuedTracks[nextIndex].id == preload->trackId) {
+        if (const int nextIndex = pickNext(); nextIndex >= 0 && queuedTracks[nextIndex].id == preload->trackId) {
             index = nextIndex;
         }
         if (index >= 0) {

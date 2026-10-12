@@ -17,24 +17,19 @@ constexpr int kMemoryItems = 30;
 constexpr int kTimeoutMs = 20'000;
 }  // namespace
 
-CoverCache::CoverCache(
-    QNetworkAccessManager* networkAccessManager,
-    const QString& cacheDirectory,
-    QObject* parent
-)
+CoverCache::CoverCache(QNetworkAccessManager* networkAccessManager, const QString& cacheDirectory, QObject* parent)
     : QObject(parent)
     , networkManager(networkAccessManager)
     , directory(
-          cacheDirectory.isEmpty() ? QStandardPaths::writableLocation(QStandardPaths::CacheLocation)
-                  + QStringLiteral("/covers")
-                                   : cacheDirectory
+          cacheDirectory.isEmpty()
+              ? QStandardPaths::writableLocation(QStandardPaths::CacheLocation) + QStringLiteral("/covers")
+              : cacheDirectory
       ) {
     QDir().mkpath(directory);
 }
 
 QString CoverCache::pathFor(const QUrl& url) const {
-    const QByteArray hash =
-        QCryptographicHash::hash(url.toEncoded(), QCryptographicHash::Sha1).toHex();
+    const QByteArray hash = QCryptographicHash::hash(url.toEncoded(), QCryptographicHash::Sha1).toHex();
     return directory + u'/' + QString::fromLatin1(hash) + QStringLiteral(".jpg");
 }
 
@@ -77,9 +72,7 @@ QImage CoverCache::get(const QUrl& url) {
     pending.insert(url);
     QNetworkRequest request(url);
     request.setTransferTimeout(kTimeoutMs);
-    request.setAttribute(
-        QNetworkRequest::RedirectPolicyAttribute, QNetworkRequest::NoLessSafeRedirectPolicy
-    );
+    request.setAttribute(QNetworkRequest::RedirectPolicyAttribute, QNetworkRequest::NoLessSafeRedirectPolicy);
     QNetworkReply* reply = networkManager->get(request);
     QPointer<CoverCache> self(this);
     connect(reply, &QNetworkReply::finished, reply, [self, reply, url] {

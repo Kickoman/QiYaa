@@ -93,9 +93,7 @@ void SkinnedWindow::setSkin(const Skins::Skin* skin) {
 }
 
 void SkinnedWindow::applySize() {
-    setFixedSize(QSize(
-        qRound(skinPixelSize.width() * scaleFactor), qRound(skinPixelSize.height() * scaleFactor)
-    ));
+    setFixedSize(QSize(qRound(skinPixelSize.width() * scaleFactor), qRound(skinPixelSize.height() * scaleFactor)));
     buffer = QImage();
 }
 
@@ -178,8 +176,7 @@ void SkinnedWindow::resizeKeepingStack(QSize newSkinSize) {
             bounds |= window->frameGeometry();
         }
     }
-    const QPoint shift =
-        Ui::ClampInside(bounds, Ui::PickScreen(bounds, ScreenRects())) - bounds.topLeft();
+    const QPoint shift = Ui::ClampInside(bounds, Ui::PickScreen(bounds, ScreenRects())) - bounds.topLeft();
     if (!shift.isNull()) {
         for (SkinnedWindow* window : group) {
             window->move(window->pos() + shift);
@@ -224,7 +221,9 @@ int SkinnedWindow::wheelSteps(QWheelEvent* event) {
 
 void SkinnedWindow::updateSkinRect(const QRect& skinRect) {
     const QRectF scaled(
-        skinRect.x() * scaleFactor, skinRect.y() * scaleFactor, skinRect.width() * scaleFactor,
+        skinRect.x() * scaleFactor,
+        skinRect.y() * scaleFactor,
+        skinRect.width() * scaleFactor,
         skinRect.height() * scaleFactor
     );
     update(scaled.toAlignedRect().adjusted(-1, -1, 1, 1));
@@ -232,8 +231,7 @@ void SkinnedWindow::updateSkinRect(const QRect& skinRect) {
 
 void SkinnedWindow::applyMask() {
     const QString section = regionSection();
-    const auto it =
-        section.isEmpty() ? currentSkin->region().cend() : currentSkin->region().constFind(section);
+    const auto it = section.isEmpty() ? currentSkin->region().cend() : currentSkin->region().constFind(section);
     if (it == currentSkin->region().cend()) {
         clearMask();
         return;
@@ -310,16 +308,14 @@ void SkinnedWindow::mouseMoveEvent(QMouseEvent* event) {
         if (!window->isVisible()) {
             continue;
         }
-        const bool inGroup =
-            std::any_of(dragGroup.cbegin(), dragGroup.cend(), [window](const auto& member) {
-                return member.first == window;
-            });
+        const bool inGroup = std::any_of(dragGroup.cbegin(), dragGroup.cend(), [window](const auto& member) {
+            return member.first == window;
+        });
         if (!inGroup) {
             others << window->frameGeometry();
         }
     }
-    const QPoint target =
-        Ui::ResolveDragPosition(groupStartBounds.translated(delta), others, ScreenRects());
+    const QPoint target = Ui::ResolveDragPosition(groupStartBounds.translated(delta), others, ScreenRects());
     const QPoint applied = target - groupStartBounds.topLeft();
     for (const auto& [window, start] : dragGroup) {
         if (window && window->pos() != start + applied) {

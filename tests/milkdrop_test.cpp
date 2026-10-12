@@ -184,10 +184,7 @@ private Q_SLOTS:
     void manyBlackInARowStopsBlamingPresets() {
         QTemporaryDir manyPresets;
         for (int i = 0; i < 12; ++i) {
-            WriteFile(
-                manyPresets.filePath(QStringLiteral("p%1.milk").arg(i, 2, 10, QChar('0'))),
-                SimplePreset(1.0)
-            );
+            WriteFile(manyPresets.filePath(QStringLiteral("p%1.milk").arg(i, 2, 10, QChar('0'))), SimplePreset(1.0));
         }
         Ui::MilkdropWindow window(&engine, manyPresets.path(), {}, &skin);
         window.setShuffle(false);
@@ -213,8 +210,7 @@ private Q_SLOTS:
         if (!view) {
             QSKIP(qPrintable("no OpenGL 3.3 here: " + window.failure()));
         }
-        QVERIFY(QTest::qWaitFor([&] { return view->isReady() || !view->failure().isEmpty(); }, 5000)
-        );
+        QVERIFY(QTest::qWaitFor([&] { return view->isReady() || !view->failure().isEmpty(); }, 5000));
         if (!view->isReady() && qEnvironmentVariableIsSet("QIYAA_EXPECT_GL")) {
             QFAIL(qPrintable(view->failure()));
         }
@@ -252,19 +248,13 @@ private Q_SLOTS:
             }
             QTest::qWait(500);
         } while (timer.elapsed() < 20'000);
-        qInfo(
-            "after %lld ms: %d colours, %d of %d lit", timer.elapsed(), colourCount, litSamples,
-            samples
-        );
+        qInfo("after %lld ms: %d colours, %d of %d lit", timer.elapsed(), colourCount, litSamples, samples);
         QCOMPARE(image.size(), view->size() * view->devicePixelRatio());
         if (!qEnvironmentVariableIsEmpty("QIYAA_TEST_SHOTS")) {
             image.save(qEnvironmentVariable("QIYAA_TEST_SHOTS") + "/milkdrop.png");
         }
         QVERIFY2(colourCount > 50, qPrintable(QString::number(colourCount)));
-        QVERIFY2(
-            litSamples > samples / 2,
-            qPrintable(QStringLiteral("%1 of %2 lit").arg(litSamples).arg(samples))
-        );
+        QVERIFY2(litSamples > samples / 2, qPrintable(QStringLiteral("%1 of %2 lit").arg(litSamples).arg(samples)));
         QVERIFY(qAlpha(image.pixel(image.width() / 2, image.height() / 2)) == 255);
 
         window.hide();
@@ -279,8 +269,7 @@ private Q_SLOTS:
             "0\nib_size=0\nib_a=0\nmv_a=0\nzoom=1\n"
         );
         WriteFile(
-            directory.filePath("white.milk"),
-            "[preset00]\nfDecay=0.9\nob_size=0.5\nob_r=1\nob_g=1\nob_b=1\nob_a=1\n"
+            directory.filePath("white.milk"), "[preset00]\nfDecay=0.9\nob_size=0.5\nob_r=1\nob_g=1\nob_b=1\nob_a=1\n"
         );
         Ui::MilkdropWindow window(&engine, directory.path(), {}, &skin);
         window.show();
@@ -292,8 +281,7 @@ private Q_SLOTS:
         if (!view) {
             QSKIP("no OpenGL 3.3 here");
         }
-        QVERIFY(QTest::qWaitFor([&] { return view->isReady() || !view->failure().isEmpty(); }, 5000)
-        );
+        QVERIFY(QTest::qWaitFor([&] { return view->isReady() || !view->failure().isEmpty(); }, 5000));
         if (!view->isReady()) {
             QSKIP("no OpenGL 3.3 here");
         }
@@ -316,9 +304,7 @@ private Q_SLOTS:
         if (!window.view()) {
             QSKIP("no OpenGL 3.3 here");
         }
-        QVERIFY(QTest::qWaitFor(
-            [&] { return window.view()->isReady() || !window.view()->failure().isEmpty(); }, 5000
-        ));
+        QVERIFY(QTest::qWaitFor([&] { return window.view()->isReady() || !window.view()->failure().isEmpty(); }, 5000));
         if (!window.view()->isReady()) {
             QSKIP("no OpenGL 3.3 here");
         }

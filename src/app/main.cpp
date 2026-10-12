@@ -56,43 +56,35 @@ int Run(int& argc, char* argv[]) {
     commandLine.addHelpOption();
     commandLine.addVersionOption();
     QCommandLineOption screenshotOption(
-        QStringLiteral("screenshot"), QStringLiteral("Render the windows to <png> and exit."),
-        QStringLiteral("png")
+        QStringLiteral("screenshot"), QStringLiteral("Render the windows to <png> and exit."), QStringLiteral("png")
     );
     QCommandLineOption skinOption(
-        QStringLiteral("skin"), QStringLiteral("Use skin <wsz> for this run."),
-        QStringLiteral("wsz")
+        QStringLiteral("skin"), QStringLiteral("Use skin <wsz> for this run."), QStringLiteral("wsz")
     );
     QCommandLineOption fileOption(
         QStringLiteral("play-file"),
-        QStringLiteral("Play a local audio file instead of Yandex Music."), QStringLiteral("path")
+        QStringLiteral("Play a local audio file instead of Yandex Music."),
+        QStringLiteral("path")
     );
-    QCommandLineOption offlineOption(
-        QStringLiteral("offline"), QStringLiteral("Don't connect to Yandex Music.")
-    );
+    QCommandLineOption offlineOption(QStringLiteral("offline"), QStringLiteral("Don't connect to Yandex Music."));
     QCommandLineOption textOption(
-        QStringLiteral("text"), QStringLiteral("Show <text> in the marquee."),
-        QStringLiteral("text")
+        QStringLiteral("text"), QStringLiteral("Show <text> in the marquee."), QStringLiteral("text")
     );
     QCommandLineOption demoOption(
-        QStringLiteral("demo"),
-        QStringLiteral("Fill the playlist with sample entries (UI testing).")
+        QStringLiteral("demo"), QStringLiteral("Fill the playlist with sample entries (UI testing).")
     );
     QCommandLineOption scaleOption(
-        QStringLiteral("scale"), QStringLiteral("Window size for this run, e.g. 1.5."),
-        QStringLiteral("factor")
+        QStringLiteral("scale"), QStringLiteral("Window size for this run, e.g. 1.5."), QStringLiteral("factor")
     );
     commandLine.addOptions(
-        {screenshotOption, skinOption, fileOption, offlineOption, textOption, demoOption,
-         scaleOption}
+        {screenshotOption, skinOption, fileOption, offlineOption, textOption, demoOption, scaleOption}
     );
     commandLine.process(qtApplication);
 
     const bool screenshot = commandLine.isSet(screenshotOption);
     App::Application::Options options;
     options.skinOverride = commandLine.value(skinOption);
-    options.offline =
-        screenshot || commandLine.isSet(offlineOption) || commandLine.isSet(fileOption);
+    options.offline = screenshot || commandLine.isSet(offlineOption) || commandLine.isSet(fileOption);
     options.audio = !screenshot || commandLine.isSet(fileOption);
     options.readOnlySettings = screenshot;
     options.mediaIntegration = !screenshot;
@@ -106,9 +98,7 @@ int Run(int& argc, char* argv[]) {
 
     application.start();
     if (commandLine.isSet(scaleOption)) {
-        application.setScale(
-            commandLine.value(scaleOption).toDouble(), App::Application::ScaleScope::ThisRun
-        );
+        application.setScale(commandLine.value(scaleOption).toDouble(), App::Application::ScaleScope::ThisRun);
     }
     if (commandLine.isSet(demoOption)) {
         application.player()->setQueue(App::DemoTracks(), QStringLiteral("Demo"), false);
@@ -119,8 +109,7 @@ int Run(int& argc, char* argv[]) {
 
     if (screenshot && !commandLine.isSet(fileOption)) {
         QApplication::processEvents();
-        return application.snapshot().save(commandLine.value(screenshotOption)) ? kSuccess
-                                                                                : kFailure;
+        return application.snapshot().save(commandLine.value(screenshotOption)) ? kSuccess : kFailure;
     }
 
     if (commandLine.isSet(fileOption)) {

@@ -19,8 +19,7 @@ QList<MilkdropPresets::Preset> ScanPresetDirectory(const QString& directory, boo
     if (directory.isEmpty()) {
         return presets;
     }
-    const QFileInfoList files =
-        QDir(directory).entryInfoList({QStringLiteral("*.milk")}, QDir::Files | QDir::Readable);
+    const QFileInfoList files = QDir(directory).entryInfoList({QStringLiteral("*.milk")}, QDir::Files | QDir::Readable);
     for (const QFileInfo& file : files) {
         presets.append({file.completeBaseName(), file.filePath(), builtIn});
     }
@@ -35,8 +34,7 @@ QList<MilkdropPresets::Preset> ScanPresetDirectory(const QString& directory, boo
 }  // namespace
 
 void MilkdropPresets::load(const QString& builtInDirectory, const QString& userDirectory) {
-    presetList =
-        ScanPresetDirectory(builtInDirectory, true) + ScanPresetDirectory(userDirectory, false);
+    presetList = ScanPresetDirectory(builtInDirectory, true) + ScanPresetDirectory(userDirectory, false);
 }
 
 int MilkdropPresets::indexOf(const QString& name) const {

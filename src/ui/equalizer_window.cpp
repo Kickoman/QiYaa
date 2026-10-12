@@ -55,7 +55,9 @@ QRect SliderRect(const EqualizerControl& control) {
         ? Skins::EqualizerSprites::kPreampPosition.x()
         : Skins::EqualizerSprites::kBandsX + control.band * Skins::EqualizerSprites::kBandStep;
     return {
-        x, Skins::EqualizerSprites::kSlidersY, Skins::EqualizerSprites::kSliderSize.width(),
+        x,
+        Skins::EqualizerSprites::kSlidersY,
+        Skins::EqualizerSprites::kSliderSize.width(),
         Skins::EqualizerSprites::kSliderSize.height()
     };
 }
@@ -146,20 +148,20 @@ QList<double> EqualizerWindow::GraphCurve(const Audio::EqSettings& settings) {
 }
 
 void EqualizerWindow::drawSlider(QPainter& painter, QPoint at, double db, bool active) const {
-    const int frame =
-        static_cast<int>(std::lround((db + Audio::kEqMaxDb) / (2 * Audio::kEqMaxDb) * 27));
+    const int frame = static_cast<int>(std::lround((db + Audio::kEqMaxDb) / (2 * Audio::kEqMaxDb) * 27));
     const QRect source(
         Skins::EqualizerSprites::kSliderFrames.x() + (frame % 14) * 15,
         Skins::EqualizerSprites::kSliderFrames.y() + (frame / 14) * 65,
-        Skins::EqualizerSprites::kSliderSize.width(), Skins::EqualizerSprites::kSliderSize.height()
+        Skins::EqualizerSprites::kSliderSize.width(),
+        Skins::EqualizerSprites::kSliderSize.height()
     );
     skin().draw(painter, TSheet::EqMain, source, at);
-    const int thumbY = static_cast<int>(std::lround(
-        (1.0 - (db + Audio::kEqMaxDb) / (2 * Audio::kEqMaxDb))
-        * Skins::EqualizerSprites::kSliderTravel
-    ));
+    const int thumbY = static_cast<int>(
+        std::lround((1.0 - (db + Audio::kEqMaxDb) / (2 * Audio::kEqMaxDb)) * Skins::EqualizerSprites::kSliderTravel)
+    );
     skin().draw(
-        painter, TSheet::EqMain,
+        painter,
+        TSheet::EqMain,
         active ? Skins::EqualizerSprites::kThumbSelected : Skins::EqualizerSprites::kThumb,
         at + QPoint(1, thumbY)
     );
@@ -169,7 +171,9 @@ void EqualizerWindow::drawGraph(QPainter& painter) const {
     const QPoint origin = Skins::EqualizerSprites::kGraphPosition;
     skin().draw(painter, TSheet::EqMain, Skins::EqualizerSprites::kGraphBackground, origin);
     skin().draw(
-        painter, TSheet::EqMain, Skins::EqualizerSprites::kPreampLine,
+        painter,
+        TSheet::EqMain,
+        Skins::EqualizerSprites::kPreampLine,
         origin + QPoint(0, static_cast<int>(std::lround(DbToGraphY(equalizerSettings.preampDb))))
     );
 
@@ -183,8 +187,7 @@ void EqualizerWindow::drawGraph(QPainter& painter) const {
             const QColor color = sheet.isNull()
                 ? QColor(Qt::green)
                 : QColor::fromRgb(sheet.pixel(
-                      Skins::EqualizerSprites::kGraphLineColors.x(),
-                      Skins::EqualizerSprites::kGraphLineColors.y() + row
+                      Skins::EqualizerSprites::kGraphLineColors.x(), Skins::EqualizerSprites::kGraphLineColors.y() + row
                   ));
             painter.fillRect(origin.x() + 2 + x, origin.y() + row, 1, 1, color);
         }
@@ -211,19 +214,20 @@ void EqualizerWindow::setMixer(int volume, int balance) {
 void EqualizerWindow::paintShaded(QPainter& painter) {
     const Skins::Skin& activeSkin = skin();
     activeSkin.draw(
-        painter, TSheet::EqEx,
-        isActiveWindow() ? Skins::EqualizerShadeSprites::kShadeBackgroundSelected
-                         : Skins::EqualizerShadeSprites::kShadeBackground,
+        painter,
+        TSheet::EqEx,
+        isActiveWindow()
+            ? Skins::EqualizerShadeSprites::kShadeBackgroundSelected
+            : Skins::EqualizerShadeSprites::kShadeBackground,
         {0, 0}
     );
     const int volumeThumb = std::clamp(volumePercent * 3 / 101, 0, 2);
-    const int volumeX =
-        Skins::EqualizerShadeSprites::kVolume.x()
-        + static_cast<int>(
-            std::lround(volumePercent / 100.0 * (Skins::EqualizerShadeSprites::kVolume.width() - 3))
-        );
+    const int volumeX = Skins::EqualizerShadeSprites::kVolume.x()
+        + static_cast<int>(std::lround(volumePercent / 100.0 * (Skins::EqualizerShadeSprites::kVolume.width() - 3)));
     activeSkin.draw(
-        painter, TSheet::EqEx, Skins::EqualizerShadeSprites::kVolumeThumb[volumeThumb],
+        painter,
+        TSheet::EqEx,
+        Skins::EqualizerShadeSprites::kVolumeThumb[volumeThumb],
         {volumeX, Skins::EqualizerShadeSprites::kVolume.y()}
     );
     const int balanceThumb = std::clamp((balancePercent + 100) * 3 / 201, 0, 2);
@@ -232,19 +236,17 @@ void EqualizerWindow::paintShaded(QPainter& painter) {
             (balancePercent + 100) / 200.0 * (Skins::EqualizerShadeSprites::kBalance.width() - 3)
         ));
     activeSkin.draw(
-        painter, TSheet::EqEx, Skins::EqualizerShadeSprites::kBalanceThumb[balanceThumb],
+        painter,
+        TSheet::EqEx,
+        Skins::EqualizerShadeSprites::kBalanceThumb[balanceThumb],
         {balanceX, Skins::EqualizerShadeSprites::kBalance.y()}
     );
     if (pressedControl.kind == TControl::Shade && pressedInside) {
-        activeSkin.draw(
-            painter, TSheet::EqEx, Skins::EqualizerShadeSprites::kShadeButtonShadedDown,
-            kShadeButton
-        );
+        activeSkin.draw(painter, TSheet::EqEx, Skins::EqualizerShadeSprites::kShadeButtonShadedDown, kShadeButton);
     }
     if (pressedControl.kind == TControl::Close && pressedInside) {
         activeSkin.draw(
-            painter, TSheet::EqEx, Skins::EqualizerShadeSprites::kCloseButtonDown,
-            Skins::EqualizerSprites::kClose
+            painter, TSheet::EqEx, Skins::EqualizerShadeSprites::kCloseButtonDown, Skins::EqualizerSprites::kClose
         );
     }
 }
@@ -256,40 +258,34 @@ void EqualizerWindow::paintSkin(QPainter& painter) {
     const Skins::Skin& activeSkin = skin();
     activeSkin.draw(painter, TSheet::EqMain, Skins::EqualizerSprites::kBackground, {0, 0});
     activeSkin.draw(
-        painter, TSheet::EqMain,
-        isActiveWindow() ? Skins::EqualizerSprites::kTitleBarSelected
-                         : Skins::EqualizerSprites::kTitleBar,
+        painter,
+        TSheet::EqMain,
+        isActiveWindow() ? Skins::EqualizerSprites::kTitleBarSelected : Skins::EqualizerSprites::kTitleBar,
         {0, 0}
     );
     if (pressedControl.kind == TControl::Close && pressedInside) {
         activeSkin.draw(
-            painter, TSheet::EqMain, Skins::EqualizerSprites::kCloseButtonDown,
-            Skins::EqualizerSprites::kClose
+            painter, TSheet::EqMain, Skins::EqualizerSprites::kCloseButtonDown, Skins::EqualizerSprites::kClose
         );
     }
     if (pressedControl.kind == TControl::Shade && pressedInside) {
-        activeSkin.draw(
-            painter, TSheet::EqEx, Skins::EqualizerShadeSprites::kShadeButtonDown, kShadeButton
-        );
+        activeSkin.draw(painter, TSheet::EqEx, Skins::EqualizerShadeSprites::kShadeButtonDown, kShadeButton);
     }
 
     auto toggle = [&](TControl kind, const Skins::ToggleSprite& sprite, bool on, QPoint at) {
         const bool down = pressedControl.kind == kind && pressedInside;
         activeSkin.draw(
-            painter, TSheet::EqMain,
-            on ? (down ? sprite.onPressed : sprite.on) : (down ? sprite.offPressed : sprite.off), at
+            painter,
+            TSheet::EqMain,
+            on ? (down ? sprite.onPressed : sprite.on) : (down ? sprite.offPressed : sprite.off),
+            at
         );
     };
-    toggle(
-        TControl::On, Skins::EqualizerSprites::kOn, equalizerSettings.enabled,
-        Skins::EqualizerSprites::kOnPosition
-    );
-    toggle(
-        TControl::Auto, Skins::EqualizerSprites::kAuto, autoEnabled,
-        Skins::EqualizerSprites::kAutoPosition
-    );
+    toggle(TControl::On, Skins::EqualizerSprites::kOn, equalizerSettings.enabled, Skins::EqualizerSprites::kOnPosition);
+    toggle(TControl::Auto, Skins::EqualizerSprites::kAuto, autoEnabled, Skins::EqualizerSprites::kAutoPosition);
     activeSkin.draw(
-        painter, TSheet::EqMain,
+        painter,
+        TSheet::EqMain,
         pressedControl.kind == TControl::Presets && pressedInside
             ? Skins::EqualizerSprites::kPresetsButtonSelected
             : Skins::EqualizerSprites::kPresetsButton,
@@ -298,15 +294,14 @@ void EqualizerWindow::paintSkin(QPainter& painter) {
 
     drawGraph(painter);
     drawSlider(
-        painter, SliderRect({TControl::Preamp}).topLeft(), equalizerSettings.preampDb,
+        painter,
+        SliderRect({TControl::Preamp}).topLeft(),
+        equalizerSettings.preampDb,
         pressedControl.kind == TControl::Preamp
     );
     for (int band = 0; band < Audio::kEqBands; ++band) {
         const EqualizerControl slider{TControl::Band, band};
-        drawSlider(
-            painter, SliderRect(slider).topLeft(), equalizerSettings.bandsDb[band],
-            pressedControl == slider
-        );
+        drawSlider(painter, SliderRect(slider).topLeft(), equalizerSettings.bandsDb[band], pressedControl == slider);
     }
 }
 
@@ -368,11 +363,12 @@ double* EqualizerWindow::valueFor(const EqualizerControl& control) {
 void EqualizerWindow::changed(const EqualizerControl& control) {
     Q_EMIT settingsChanged(equalizerSettings);
     if (const double* value = valueFor(control)) {
-        const QString name =
-            control.kind == TControl::Preamp ? QStringLiteral("PREAMP") : BandName(control.band);
-        Q_EMIT statusText(QStringLiteral("EQ: %1 %2%3 DB")
-                              .arg(name, *value >= 0 ? QStringLiteral("+") : QString())
-                              .arg(*value, 0, 'f', 1));
+        const QString name = control.kind == TControl::Preamp ? QStringLiteral("PREAMP") : BandName(control.band);
+        Q_EMIT statusText(
+            QStringLiteral("EQ: %1 %2%3 DB")
+                .arg(name, *value >= 0 ? QStringLiteral("+") : QString())
+                .arg(*value, 0, 'f', 1)
+        );
     }
     update();
 }
@@ -382,8 +378,7 @@ void EqualizerWindow::setFromMouse(const EqualizerControl& control, QPoint point
         const QRect rect = control.kind == TControl::ShadeVolume
             ? Skins::EqualizerShadeSprites::kVolume
             : Skins::EqualizerShadeSprites::kBalance;
-        const double fraction =
-            std::clamp((point.x() - rect.x() - 1.5) / (rect.width() - 3), 0.0, 1.0);
+        const double fraction = std::clamp((point.x() - rect.x() - 1.5) / (rect.width() - 3), 0.0, 1.0);
         if (control.kind == TControl::ShadeVolume) {
             Q_EMIT volumeRequested(static_cast<int>(std::lround(fraction * 100)));
         } else {
@@ -397,11 +392,11 @@ void EqualizerWindow::setFromMouse(const EqualizerControl& control, QPoint point
     }
     const QRect rect = SliderRect(control);
     const double top = std::clamp(
-        static_cast<double>(point.y() - rect.y()) - 5.5, 0.0,
+        static_cast<double>(point.y() - rect.y()) - 5.5,
+        0.0,
         static_cast<double>(Skins::EqualizerSprites::kSliderTravel)
     );
-    double db =
-        Audio::kEqMaxDb - top / Skins::EqualizerSprites::kSliderTravel * 2 * Audio::kEqMaxDb;
+    double db = Audio::kEqMaxDb - top / Skins::EqualizerSprites::kSliderTravel * 2 * Audio::kEqMaxDb;
     db = std::round(db * 10) / 10;
     if (std::abs(db) < 0.6) {
         db = 0;
@@ -458,9 +453,7 @@ void EqualizerWindow::skinMouseRelease(QPoint pos, Qt::MouseButton button) {
         case TControl::On:
             equalizerSettings.enabled = !equalizerSettings.enabled;
             Q_EMIT settingsChanged(equalizerSettings);
-            Q_EMIT statusText(
-                equalizerSettings.enabled ? QStringLiteral("EQ: ON") : QStringLiteral("EQ: OFF")
-            );
+            Q_EMIT statusText(equalizerSettings.enabled ? QStringLiteral("EQ: ON") : QStringLiteral("EQ: OFF"));
             break;
         case TControl::Auto: autoEnabled = !autoEnabled; break;
         case TControl::Presets: showPresets(); break;
@@ -490,8 +483,7 @@ void EqualizerWindow::wheelEvent(QWheelEvent* event) {
     if (!value || steps == 0) {
         return;
     }
-    *value =
-        std::clamp(std::round((*value + steps * 0.5) * 10) / 10, -Audio::kEqMaxDb, Audio::kEqMaxDb);
+    *value = std::clamp(std::round((*value + steps * 0.5) * 10) / 10, -Audio::kEqMaxDb, Audio::kEqMaxDb);
     changed(control);
 }
 
@@ -518,19 +510,19 @@ void EqualizerWindow::loadEqf() {
         return;
     }
     if (file.size() > kMaxEqfBytes) {
-        Q_EMIT statusText(tr("EQ: %1 is %2 KB, and presets are %3 KB at most")
-                              .arg(fileName)
-                              .arg(file.size() / 1024)
-                              .arg(kMaxEqfBytes / 1024));
+        Q_EMIT statusText(
+            tr("EQ: %1 is %2 KB, and presets are %3 KB at most")
+                .arg(fileName)
+                .arg(file.size() / 1024)
+                .arg(kMaxEqfBytes / 1024)
+        );
         return;
     }
     QList<Audio::EqPreset> presets;
     try {
         presets = Audio::ParseEqf(file.readAll());
     } catch (const Audio::Error& error) {
-        Q_EMIT statusText(
-            QStringLiteral("EQ: %1: %2").arg(fileName, QString::fromUtf8(error.what()))
-        );
+        Q_EMIT statusText(QStringLiteral("EQ: %1: %2").arg(fileName, QString::fromUtf8(error.what())));
         return;
     }
     if (presets.size() == 1) {
@@ -540,20 +532,20 @@ void EqualizerWindow::loadEqf() {
     for (const auto& preset : presets) {
         names << preset.name;
     }
-    if (const std::optional<QString> name =
-            AskItem(this, tr("Preset"), tr("Pick a preset:"), names)) {
+    if (const std::optional<QString> name = AskItem(this, tr("Preset"), tr("Pick a preset:"), names)) {
         applyPreset(presets.value(names.indexOf(*name)));
     }
 }
 
 void EqualizerWindow::saveEqf() {
-    const QString name = AskText(this, tr("Save the preset"), tr("Name:"), QStringLiteral("QiYaa"))
-                             .value_or(QString());
+    const QString name = AskText(this, tr("Save the preset"), tr("Name:"), QStringLiteral("QiYaa")).value_or(QString());
     if (name.isEmpty()) {
         return;
     }
     const QString path = QFileDialog::getSaveFileName(
-        this, tr("Save the preset"), QDir::homePath() + u'/' + name + QStringLiteral(".eqf"),
+        this,
+        tr("Save the preset"),
+        QDir::homePath() + u'/' + name + QStringLiteral(".eqf"),
         tr("Winamp preset (*.eqf)")
     );
     if (path.isEmpty()) {
@@ -561,8 +553,7 @@ void EqualizerWindow::saveEqf() {
     }
     const QString fileName = QFileInfo(path).fileName();
     QFile file(path);
-    if (file.open(QIODevice::WriteOnly)
-        && file.write(Audio::WriteEqf({{name, equalizerSettings}})) > 0) {
+    if (file.open(QIODevice::WriteOnly) && file.write(Audio::WriteEqf({{name, equalizerSettings}})) > 0) {
         Q_EMIT statusText(tr("EQ: saved to %1").arg(fileName));
     } else {
         Q_EMIT statusText(tr("EQ: %1 is not saved: %2").arg(fileName, file.errorString()));
@@ -585,10 +576,7 @@ void EqualizerWindow::showPresets() {
     for (const Audio::EqPreset& preset : Audio::BuiltinEqPresets()) {
         menu->addAction(preset.name, this, [this, preset] { applyPreset(preset); });
     }
-    const QPoint at(
-        Skins::EqualizerSprites::kPresetsPosition.x(),
-        Skins::EqualizerSprites::kPresetsPosition.y() + 12
-    );
+    const QPoint at(Skins::EqualizerSprites::kPresetsPosition.x(), Skins::EqualizerSprites::kPresetsPosition.y() + 12);
     menu->popup(mapToGlobal(QPoint(qRound(at.x() * scale()), qRound(at.y() * scale()))));
 }
 

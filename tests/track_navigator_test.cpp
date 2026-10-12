@@ -73,8 +73,7 @@ private Q_SLOTS:
     void emptyAndSingleTrackQueues() {
         QFETCH(int, algorithm);
         auto navigator = Core::MakeTrackNavigator(
-            algorithm < 0 ? std::nullopt
-                          : std::optional(static_cast<Core::ShuffleAlgorithm>(algorithm))
+            algorithm < 0 ? std::nullopt : std::optional(static_cast<Core::ShuffleAlgorithm>(algorithm))
         );
         navigator->reset(0, -1);
         QCOMPARE(navigator->next(false), -1);

@@ -22,9 +22,7 @@ QByteArray ReadSpecFile(const QString& relativePath) {
     const QString path = QStringLiteral(QIYAA_SPEC_DIR "/") + relativePath;
     QFile file(path);
     if (!file.open(QIODevice::ReadOnly)) {
-        qFatal(
-            "cannot read %s (is spec/ checked out? git submodule update --init)", qPrintable(path)
-        );
+        qFatal("cannot read %s (is spec/ checked out? git submodule update --init)", qPrintable(path));
     }
     return file.readAll();
 }

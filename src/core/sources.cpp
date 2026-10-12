@@ -24,9 +24,7 @@ constexpr qsizetype kWaveHistory = 5;
 
 // The tracks the Player would queue: the empty check of a source runs on these (SRC-08).
 bool HasAvailable(const QList<Track>& tracks) {
-    return std::any_of(tracks.cbegin(), tracks.cend(), [](const Track& track) {
-        return track.available;
-    });
+    return std::any_of(tracks.cbegin(), tracks.cend(), [](const Track& track) { return track.available; });
 }
 
 void ShowStatus(Player* player, const QString& text) {
@@ -42,14 +40,10 @@ auto QueueLoader(Player* player, const QString& title, quint64 ticket) {
             return;
         }
         if (!error.isEmpty()) {
-            return ShowStatus(
-                guardedPlayer, QCoreApplication::translate("Core::Sources", "Error: %1").arg(error)
-            );
+            return ShowStatus(guardedPlayer, QCoreApplication::translate("Core::Sources", "Error: %1").arg(error));
         }
         if (!HasAvailable(tracks)) {  // SRC-07, SRC-08: the queue stays
-            return ShowStatus(
-                guardedPlayer, QCoreApplication::translate("Core::Sources", "%1: empty").arg(title)
-            );
+            return ShowStatus(guardedPlayer, QCoreApplication::translate("Core::Sources", "%1: empty").arg(title));
         }
         guardedPlayer->setQueue(tracks, title, true);
     };
@@ -73,12 +67,12 @@ WaveMore(QPointer<Player> player, Yandex::Library* library, std::shared_ptr<Wave
         }
         QStringList queue;
         const QList<Track>& playlist = player->playlist();
-        for (qsizetype i = std::max<qsizetype>(0, playlist.size() - kWaveHistory);
-             i < playlist.size(); ++i) {
+        for (qsizetype i = std::max<qsizetype>(0, playlist.size() - kWaveHistory); i < playlist.size(); ++i) {
             queue << playlist[i].id;
         }
         library->moreWave(
-            state->session, queue,
+            state->session,
+            queue,
             [done, state](const Yandex::WaveBatch& nextBatch, const QString& waveError) {
                 if (!waveError.isEmpty()) {
                     qWarning("wave: %s", qPrintable(waveError));
@@ -94,13 +88,12 @@ WaveMore(QPointer<Player> player, Yandex::Library* library, std::shared_ptr<Wave
 
 Player::TEventCallback WaveEvents(Yandex::Library* library, std::shared_ptr<WaveState> state) {
     return [library, state](Player::TrackEvent event, const Track& track, double played) {
-        const Yandex::WaveEvent waveEvent = event == Player::TrackEvent::Started
-            ? Yandex::WaveEvent::TrackStarted
-            : event == Player::TrackEvent::Finished ? Yandex::WaveEvent::TrackFinished
-                                                    : Yandex::WaveEvent::Skip;
+        const Yandex::WaveEvent waveEvent = event == Player::TrackEvent::Started ? Yandex::WaveEvent::TrackStarted
+            : event == Player::TrackEvent::Finished
+            ? Yandex::WaveEvent::TrackFinished
+            : Yandex::WaveEvent::Skip;
         library->waveFeedback(
-            state->session, state->station, state->batchOfTrack.value(track.id), waveEvent, &track,
-            played
+            state->session, state->station, state->batchOfTrack.value(track.id), waveEvent, &track, played
         );
     };
 }
@@ -131,8 +124,7 @@ void Sources::playLikes(bool autoplay) {
     showStatus(tr("Liked: loading…"));
     QPointer<Player> guardedPlayer(corePlayer);
     const quint64 ticket = corePlayer->newSourceRequest();
-    yandexLibrary->likedTracks([guardedPlayer, autoplay,
-                                ticket](const QList<Track>& tracks, const QString& error) {
+    yandexLibrary->likedTracks([guardedPlayer, autoplay, ticket](const QList<Track>& tracks, const QString& error) {
         if (!guardedPlayer || !guardedPlayer->isLatestSourceRequest(ticket)) {
             return;
         }
@@ -144,8 +136,7 @@ void Sources::playLikes(bool autoplay) {
         }
         guardedPlayer->setQueue(tracks, tr("Liked"), autoplay);
         ShowStatus(
-            guardedPlayer,
-            tr("Liked: %n track(s)", nullptr, static_cast<int>(guardedPlayer->playlist().size()))
+            guardedPlayer, tr("Liked: %n track(s)", nullptr, static_cast<int>(guardedPlayer->playlist().size()))
         );
     });
 }
@@ -154,9 +145,7 @@ void Sources::playPlaylist(const Yandex::PlaylistReference& playlist) {
     if (refusedForJam()) {
         return;
     }
-    yandexLibrary->playlistTracks(
-        playlist, QueueLoader(corePlayer, playlist.title, corePlayer->newSourceRequest())
-    );
+    yandexLibrary->playlistTracks(playlist, QueueLoader(corePlayer, playlist.title, corePlayer->newSourceRequest()));
 }
 
 void Sources::playRecommendations(const Yandex::PlaylistReference& playlist) {
@@ -164,10 +153,7 @@ void Sources::playRecommendations(const Yandex::PlaylistReference& playlist) {
         return;
     }
     yandexLibrary->playlistRecommendations(
-        playlist,
-        QueueLoader(
-            corePlayer, tr("%1: similar").arg(playlist.title), corePlayer->newSourceRequest()
-        )
+        playlist, QueueLoader(corePlayer, tr("%1: similar").arg(playlist.title), corePlayer->newSourceRequest())
     );
 }
 
@@ -175,18 +161,14 @@ void Sources::playArtist(const QString& artistId, const QString& name) {
     if (refusedForJam()) {
         return;
     }
-    yandexLibrary->artistTopTracks(
-        artistId, QueueLoader(corePlayer, name, corePlayer->newSourceRequest())
-    );
+    yandexLibrary->artistTopTracks(artistId, QueueLoader(corePlayer, name, corePlayer->newSourceRequest()));
 }
 
 void Sources::playAlbum(const QString& albumId, const QString& title) {
     if (refusedForJam()) {
         return;
     }
-    yandexLibrary->albumTracks(
-        albumId, QueueLoader(corePlayer, title, corePlayer->newSourceRequest())
-    );
+    yandexLibrary->albumTracks(albumId, QueueLoader(corePlayer, title, corePlayer->newSourceRequest()));
 }
 
 void Sources::playWave(const QStringList& seeds, const QString& title) {
@@ -200,8 +182,7 @@ void Sources::playWave(const QStringList& seeds, const QString& title) {
     const quint64 ticket = corePlayer->newSourceRequest();
     library->startWave(
         seeds,
-        [self, guardedPlayer, library, title, ticket,
-         seeds](const Yandex::WaveBatch& batch, const QString& error) {
+        [self, guardedPlayer, library, title, ticket, seeds](const Yandex::WaveBatch& batch, const QString& error) {
             if (!guardedPlayer || !guardedPlayer->isLatestSourceRequest(ticket)) {
                 return;
             }
@@ -220,12 +201,9 @@ void Sources::playWave(const QStringList& seeds, const QString& title) {
             if (self) {
                 self->waveSeeds = seeds;
             }
-            library->waveFeedback(
-                state->session, state->station, batch.batchId, Yandex::WaveEvent::RadioStarted
-            );
+            library->waveFeedback(state->session, state->station, batch.batchId, Yandex::WaveEvent::RadioStarted);
             guardedPlayer->setQueue(
-                batch.tracks, title, true, WaveMore(guardedPlayer, library, state),
-                WaveEvents(library, state)
+                batch.tracks, title, true, WaveMore(guardedPlayer, library, state), WaveEvents(library, state)
             );
         }
     );
@@ -246,8 +224,7 @@ void Sources::search(const QString& text) {
     const quint64 ticket = corePlayer->newSourceRequest();
     library->search(
         text,
-        [guardedPlayer, library, title,
-         ticket](const Yandex::SearchResult& result, const QString& error) {
+        [guardedPlayer, library, title, ticket](const Yandex::SearchResult& result, const QString& error) {
             if (!guardedPlayer || !guardedPlayer->isLatestSourceRequest(ticket)) {
                 return;
             }
@@ -256,14 +233,10 @@ void Sources::search(const QString& text) {
             }
             // The second request belongs to the same pick: a newer one drops it too (SRC-03).
             if (result.bestKind == Yandex::SearchResult::Kind::Artist && !result.bestId.isEmpty()) {
-                return library->artistTopTracks(
-                    result.bestId, QueueLoader(guardedPlayer, result.bestName, ticket)
-                );
+                return library->artistTopTracks(result.bestId, QueueLoader(guardedPlayer, result.bestName, ticket));
             }
             if (result.bestKind == Yandex::SearchResult::Kind::Album && !result.bestId.isEmpty()) {
-                return library->albumTracks(
-                    result.bestId, QueueLoader(guardedPlayer, result.bestName, ticket)
-                );
+                return library->albumTracks(result.bestId, QueueLoader(guardedPlayer, result.bestName, ticket));
             }
             if (!HasAvailable(result.tracks)) {  // SRC-12
                 return ShowStatus(guardedPlayer, tr("Nothing found"));

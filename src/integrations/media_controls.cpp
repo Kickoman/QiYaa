@@ -14,12 +14,7 @@ namespace {
 constexpr int kCoverPixels = 400;
 }  // namespace
 
-MediaControls::MediaControls(
-    Core::Player* player,
-    Core::CoverCache* covers,
-    Hooks hooks,
-    QObject* parent
-)
+MediaControls::MediaControls(Core::Player* player, Core::CoverCache* covers, Hooks hooks, QObject* parent)
     : QObject(parent)
     , corePlayer(player)
     , coverCache(covers)
@@ -30,15 +25,12 @@ MediaControls::MediaControls(
         }
         Q_EMIT trackChanged();
     });
-    connect(
-        corePlayer->engine(), &Audio::AudioEngine::stateChanged, this, &MediaControls::statusChanged
-    );
+    connect(corePlayer->engine(), &Audio::AudioEngine::stateChanged, this, &MediaControls::statusChanged);
     connect(corePlayer, &Core::Player::modesChanged, this, &MediaControls::modesChanged);
     connect(corePlayer, &Core::Player::seeked, this, &MediaControls::seeked);
     if (coverCache) {
         connect(coverCache, &Core::CoverCache::ready, this, [this](const QUrl& url) {
-            if (const auto* track = corePlayer->currentTrack();
-                track && track->coverUrl(kCoverPixels) == url) {
+            if (const auto* track = corePlayer->currentTrack(); track && track->coverUrl(kCoverPixels) == url) {
                 Q_EMIT artChanged();
             }
         });

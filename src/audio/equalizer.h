@@ -8,8 +8,7 @@
 namespace Audio {
 
 inline constexpr int kEqBands = 10;
-inline constexpr std::array<double, kEqBands> kEqBandHz = {60,   170,  310,    600,    1000,
-                                                           3000, 6000, 12'000, 14'000, 16'000};
+inline constexpr std::array<double, kEqBands> kEqBandHz = {60, 170, 310, 600, 1000, 3000, 6000, 12'000, 14'000, 16'000};
 inline constexpr double kEqMaxDb = 12.0;
 
 struct EqSettings {

@@ -59,11 +59,8 @@ private:
 
     // A stack that plays these ids from the server. Ids in `broken` answer their download-info
     // with `brokenFixture` instead. Null when there is no audio output.
-    std::unique_ptr<Stack> makeStack(
-        const QList<int>& ids,
-        const QList<int>& broken = {},
-        const QString& brokenFixture = {}
-    ) {
+    std::unique_ptr<Stack>
+    makeStack(const QList<int>& ids, const QList<int>& broken = {}, const QString& brokenFixture = {}) {
         auto stack = std::make_unique<Stack>();
         if (!stack->engine.init().ok) {
             return nullptr;
@@ -80,9 +77,7 @@ private:
             track.durationMs = 3000;
             tracks << track;
             if (broken.contains(id)) {
-                server.fixture(
-                    "GET", QStringLiteral("/tracks/%1/download-info").arg(id), brokenFixture
-                );
+                server.fixture("GET", QStringLiteral("/tracks/%1/download-info").arg(id), brokenFixture);
             } else {
                 good << track.id;
             }
@@ -90,7 +85,10 @@ private:
         server.audioTracks(good, mp3);
         Stack* raw = stack.get();
         stack->player.setQueue(
-            tracks, "Q", false, {},
+            tracks,
+            "Q",
+            false,
+            {},
             [raw](Core::Player::TrackEvent event, const Yandex::Track& track, double) {
                 raw->events << QStringLiteral("%1:%2").arg(static_cast<int>(event)).arg(track.id);
             }
@@ -125,18 +123,14 @@ private Q_SLOTS:
         QTest::addColumn<bool>("hasNext");
         QTest::addColumn<bool>("endless");
         QTest::addColumn<int>("action");
-        auto row = [](const char* name, FailureKind kind, int inRow, bool hasNext, bool endless,
-                      FailureAction action) {
-            QTest::newRow(name) << static_cast<int>(kind) << inRow << hasNext << endless
-                                << static_cast<int>(action);
+        auto row = [](const char* name, FailureKind kind, int inRow, bool hasNext, bool endless, FailureAction action) {
+            QTest::newRow(name) << static_cast<int>(kind) << inRow << hasNext << endless << static_cast<int>(action);
         };
         row("ERR-01 network", FailureKind::Network, 2, true, false, FailureAction::WaitForNetwork);
         row("ERR-04 first broken", FailureKind::Track, 0, true, false, FailureAction::Next);
         row("ERR-04 second broken", FailureKind::Track, 1, true, false, FailureAction::Next);
-        row("ERR-05 third broken", FailureKind::Track, 2, true, false,
-            FailureAction::StopAfterLimit);
-        row("ERR-07 last of a finite queue", FailureKind::Track, 0, false, false,
-            FailureAction::Stop);
+        row("ERR-05 third broken", FailureKind::Track, 2, true, false, FailureAction::StopAfterLimit);
+        row("ERR-07 last of a finite queue", FailureKind::Track, 0, false, false, FailureAction::Stop);
         row("ERR-07 end of a wave", FailureKind::Track, 0, false, true, FailureAction::Next);
         row("ERR-08 account", FailureKind::Auth, 0, true, false, FailureAction::Stop);
     }
@@ -147,9 +141,7 @@ private Q_SLOTS:
         QFETCH(bool, endless);
         QFETCH(int, action);
         QCOMPARE(
-            static_cast<int>(Core::DecideOnFailure(
-                static_cast<FailureKind>(kind), failuresInRow, hasNext, endless
-            )),
+            static_cast<int>(Core::DecideOnFailure(static_cast<FailureKind>(kind), failuresInRow, hasNext, endless)),
             action
         );
     }
@@ -207,36 +199,27 @@ private Q_SLOTS:
     }
 
     void threeBrokenTracksInARowStop() {  // ERR-05
-        auto stack = makeStack(
-            {121, 122, 123, 124}, {121, 122, 123}, "rotor-session-feedback/404-not-found"
-        );
+        auto stack = makeStack({121, 122, 123, 124}, {121, 122, 123}, "rotor-session-feedback/404-not-found");
         if (!stack) {
             QSKIP("no audio output");
         }
         stack->player.playIndex(0);
-        QVERIFY(QTest::qWaitFor(
-            [&] { return stack->sawPrefix(QStringLiteral("Stopped: 3 track(s) in a row")); }, 5000
-        ));
+        QVERIFY(QTest::qWaitFor([&] { return stack->sawPrefix(QStringLiteral("Stopped: 3 track(s) in a row")); }, 5000)
+        );
         QCOMPARE(stack->player.currentIndex(), 2);
         QCOMPARE(stack->engine.state(), Audio::AudioEngine::State::Stopped);
         QCOMPARE(requestsTo("/tracks/124/download-info"), 0);
     }
 
     void aPlayingTrackResetsTheCount() {  // ERR-06
-        auto stack = makeStack(
-            {131, 132, 133, 134, 135}, {131, 133, 134}, "rotor-session-feedback/404-not-found"
-        );
+        auto stack = makeStack({131, 132, 133, 134, 135}, {131, 133, 134}, "rotor-session-feedback/404-not-found");
         if (!stack) {
             QSKIP("no audio output");
         }
         stack->player.playIndex(0);  // broken (1), then 132 plays: the count is back to 0
-        QVERIFY(QTest::qWaitFor(
-            [&] { return stack->player.currentIndex() == 1 && stack->playing(); }, 5000
-        ));
+        QVERIFY(QTest::qWaitFor([&] { return stack->player.currentIndex() == 1 && stack->playing(); }, 5000));
         stack->player.next();  // 133 and 134 broken (1, 2): 135 plays
-        QVERIFY(QTest::qWaitFor(
-            [&] { return stack->player.currentIndex() == 4 && stack->playing(); }, 5000
-        ));
+        QVERIFY(QTest::qWaitFor([&] { return stack->player.currentIndex() == 4 && stack->playing(); }, 5000));
         QVERIFY(!stack->sawPrefix(QStringLiteral("Stopped")));
         stack->player.stop();
     }
@@ -247,10 +230,9 @@ private Q_SLOTS:
             QSKIP("no audio output");
         }
         stack->player.playIndex(0);
-        QVERIFY(QTest::qWaitFor(
-            [&] { return stack->sawPrefix(QStringLiteral("The track does not play: HTTP 503")); },
-            5000
-        ));
+        QVERIFY(
+            QTest::qWaitFor([&] { return stack->sawPrefix(QStringLiteral("The track does not play: HTTP 503")); }, 5000)
+        );
         QCOMPARE(stack->player.currentIndex(), 0);
         QCOMPARE(stack->engine.state(), Audio::AudioEngine::State::Stopped);
     }
@@ -261,9 +243,7 @@ private Q_SLOTS:
             QSKIP("no audio output");
         }
         stack->player.playIndex(0);
-        QVERIFY(QTest::qWaitFor(
-            [&] { return stack->sawPrefix(QStringLiteral("Access error: HTTP 401")); }, 5000
-        ));
+        QVERIFY(QTest::qWaitFor([&] { return stack->sawPrefix(QStringLiteral("Access error: HTTP 401")); }, 5000));
         QCOMPARE(stack->player.currentIndex(), 0);
         QCOMPARE(stack->engine.state(), Audio::AudioEngine::State::Stopped);
         QCOMPARE(requestsTo("/tracks/152/download-info"), 0);

@@ -49,29 +49,15 @@ void MockHttpServer::onPrefix(const QByteArray& method, const QString& prefix, T
     prefixRoutes.append({method, prefix, std::move(handler)});
 }
 
-void MockHttpServer::json(
-    const QByteArray& method,
-    const QString& path,
-    const QByteArray& body,
-    int status
-) {
+void MockHttpServer::json(const QByteArray& method, const QString& path, const QByteArray& body, int status) {
     on(method, path, [body, status](const MockRequest&) { return MockResponse{status, body}; });
 }
 
-void MockHttpServer::result(
-    const QByteArray& method,
-    const QString& path,
-    const QByteArray& resultJson
-) {
+void MockHttpServer::result(const QByteArray& method, const QString& path, const QByteArray& resultJson) {
     json(method, path, "{\"invocationInfo\":{},\"result\":" + resultJson + "}");
 }
 
-void MockHttpServer::fixture(
-    const QByteArray& method,
-    const QString& path,
-    const QString& name,
-    int delayMs
-) {
+void MockHttpServer::fixture(const QByteArray& method, const QString& path, const QString& name, int delayMs) {
     const MockResponse response{FixtureStatus(name), Fixture(name), delayMs};
     on(method, path, [response](const MockRequest&) { return response; });
 }
@@ -79,12 +65,14 @@ void MockHttpServer::fixture(
 void MockHttpServer::audioTracks(const QStringList& trackIds, const QByteArray& mp3) {
     for (const QString& id : trackIds) {
         result(
-            "GET", QStringLiteral("/tracks/%1/download-info").arg(id),
-            "[{\"codec\":\"mp3\",\"bitrateInKbps\":320,\"downloadInfoUrl\":\"" + baseUrl().toUtf8()
-                + "/dlinfo" + id.toUtf8() + "\"}]"
+            "GET",
+            QStringLiteral("/tracks/%1/download-info").arg(id),
+            "[{\"codec\":\"mp3\",\"bitrateInKbps\":320,\"downloadInfoUrl\":\"" + baseUrl().toUtf8() + "/dlinfo"
+                + id.toUtf8() + "\"}]"
         );
         json(
-            "GET", QStringLiteral("/dlinfo%1").arg(id),
+            "GET",
+            QStringLiteral("/dlinfo%1").arg(id),
             "{\"host\":\"" + QUrl(baseUrl()).authority().toUtf8() + "\",\"path\":\"/t" + id.toUtf8()
                 + "\",\"ts\":\"1\",\"s\":\"s\"}"
         );
@@ -112,11 +100,8 @@ void MockHttpServer::economyTracks(const QStringList& trackIds, const QByteArray
     onPrefix("GET", "/music-v2/raw/", [m4a](const MockRequest&) { return MockResponse{200, m4a}; });
 }
 
-QNetworkReply* LocalNetworkAccessManager::createRequest(
-    Operation op,
-    const QNetworkRequest& request,
-    QIODevice* outgoingData
-) {
+QNetworkReply*
+LocalNetworkAccessManager::createRequest(Operation op, const QNetworkRequest& request, QIODevice* outgoingData) {
     QNetworkRequest localRequest(request);
     QUrl url = localRequest.url();
     if (url.scheme() == QLatin1String("https") && url.host() == QLatin1String("127.0.0.1")) {
@@ -182,8 +167,7 @@ void MockHttpServer::handle(QTcpSocket* socket, QByteArray& buffer) {
     QByteArray reply = "HTTP/1.1 " + QByteArray::number(response.status) + " X\r\n";
     reply += "Content-Type: application/json\r\nConnection: close\r\n";
     reply += "Content-Length: " + QByteArray::number(response.body.size()) + "\r\n\r\n"
-        + (response.truncateAfter >= 0 ? response.body.left(response.truncateAfter) : response.body
-        );
+        + (response.truncateAfter >= 0 ? response.body.left(response.truncateAfter) : response.body);
     QPointer<QTcpSocket> guard(socket);
     QTimer::singleShot(response.delayMs, socket, [guard, reply] {
         if (!guard) {

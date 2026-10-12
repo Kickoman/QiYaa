@@ -36,10 +36,14 @@ void StreamLocalFile(Audio::AudioEngine* engine, const QString& path) {
 
 QList<Yandex::Track> DemoTracks() {
     const std::pair<const char*, int> samples[] = {
-        {"Кино - Группа крови", 285},       {"Земфира - Искала", 237},
-        {"Сплин - Выхода нет", 227},        {"Björk - Jóga", 305},
-        {"Daft Punk - Digital Love", 301},  {"Мумий Тролль - Владивосток 2000", 164},
-        {"Radiohead - Karma Police", 264},  {"Кино - Кукушка", 395},
+        {"Кино - Группа крови", 285},
+        {"Земфира - Искала", 237},
+        {"Сплин - Выхода нет", 227},
+        {"Björk - Jóga", 305},
+        {"Daft Punk - Digital Love", 301},
+        {"Мумий Тролль - Владивосток 2000", 164},
+        {"Radiohead - Karma Police", 264},
+        {"Кино - Кукушка", 395},
         {"Nirvana - Come As You Are", 219},
     };
     QList<Yandex::Track> out;

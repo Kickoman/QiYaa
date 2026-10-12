@@ -51,13 +51,8 @@ QList<Message> ReadTs(const QString& path) {
         if (name == QLatin1String("name")) {
             context = xml.readElementText();
         } else if (name == QLatin1String("message")) {
-            message = Message{
-                context,
-                {},
-                {},
-                {},
-                xml.attributes().value(QLatin1String("numerus")) == QLatin1String("yes")
-            };
+            message =
+                Message{context, {}, {}, {}, xml.attributes().value(QLatin1String("numerus")) == QLatin1String("yes")};
         } else if (name == QLatin1String("source")) {
             message.source = xml.readElementText();
         } else if (name == QLatin1String("translation")) {
@@ -107,9 +102,7 @@ private Q_SLOTS:
         QVERIFY(messages.size() > 200);
         for (const Message& message : messages) {
             const QString where = message.context + QStringLiteral(": ") + message.source;
-            QVERIFY2(
-                message.type.isEmpty(), qUtf8Printable(message.type + QStringLiteral(" ") + where)
-            );
+            QVERIFY2(message.type.isEmpty(), qUtf8Printable(message.type + QStringLiteral(" ") + where));
             QCOMPARE(message.translations.size(), message.numerus ? forms : 1);
             for (const QString& translation : message.translations) {
                 QVERIFY2(!translation.isEmpty(), qUtf8Printable(where));
@@ -143,9 +136,7 @@ private Q_SLOTS:
         }
         QVERIFY(english.size() > 200);
         for (const QString& text : english) {
-            QVERIFY2(
-                !text.contains(QStringLiteral("wave"), Qt::CaseInsensitive), qUtf8Printable(text)
-            );
+            QVERIFY2(!text.contains(QStringLiteral("wave"), Qt::CaseInsensitive), qUtf8Printable(text));
         }
     }
 
@@ -159,18 +150,12 @@ private Q_SLOTS:
         {
             App::Application application(options);
             QCOMPARE(application.language(), App::Language::Belarusian);
-            QCOMPARE(
-                QCoreApplication::translate("App::Application", "Quit QiYaa"),
-                QStringLiteral("Закрыць QiYaa")
-            );
+            QCOMPARE(QCoreApplication::translate("App::Application", "Quit QiYaa"), QStringLiteral("Закрыць QiYaa"));
             application.setLanguage(App::Language::Russian);
         }
         App::Application application(options);
         QCOMPARE(application.language(), App::Language::Russian);
-        QCOMPARE(
-            QCoreApplication::translate("App::Application", "Quit QiYaa"),
-            QStringLiteral("Закрыть QiYaa")
-        );
+        QCOMPARE(QCoreApplication::translate("App::Application", "Quit QiYaa"), QStringLiteral("Закрыть QiYaa"));
     }
 
     void anotherLanguageAppliesWhileTheAppRuns() {
@@ -185,14 +170,10 @@ private Q_SLOTS:
         QCOMPARE(playlist->windowTitle(), QStringLiteral("QiYaa: playlist"));
         application.setLanguage(App::Language::Belarusian);
         QTRY_COMPARE(playlist->windowTitle(), QStringLiteral("QiYaa: плэйліст"));
-        QCOMPARE(
-            QCoreApplication::translate("Ui::LibraryMenu", "My Vibe"), QStringLiteral("Мая хваля")
-        );
+        QCOMPARE(QCoreApplication::translate("Ui::LibraryMenu", "My Vibe"), QStringLiteral("Мая хваля"));
         application.setLanguage(App::Language::English);
         QTRY_COMPARE(playlist->windowTitle(), QStringLiteral("QiYaa: playlist"));
-        QCOMPARE(
-            QCoreApplication::translate("Ui::LibraryMenu", "My Vibe"), QStringLiteral("My Vibe")
-        );
+        QCOMPARE(QCoreApplication::translate("Ui::LibraryMenu", "My Vibe"), QStringLiteral("My Vibe"));
     }
 
     void pluralsFollowTheLanguage_data() {
@@ -218,9 +199,7 @@ private Q_SLOTS:
         QFETCH(QString, text);
         App::Translations translations;
         QVERIFY(translations.apply(static_cast<App::Language>(language)));
-        QCOMPARE(
-            QCoreApplication::translate("Core::Sources", "Liked: %n track(s)", nullptr, count), text
-        );
+        QCOMPARE(QCoreApplication::translate("Core::Sources", "Liked: %n track(s)", nullptr, count), text);
     }
 };
 

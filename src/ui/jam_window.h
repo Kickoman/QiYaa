@@ -35,12 +35,7 @@ class JamWindow : public GenWindow {
 public:
     enum class Page { Jam, Search };
 
-    JamWindow(
-        Jam::HostSession* host,
-        Yandex::Library* library,
-        const Skins::Skin* skin,
-        QWidget* parent = nullptr
-    );
+    JamWindow(Jam::HostSession* host, Yandex::Library* library, const Skins::Skin* skin, QWidget* parent = nullptr);
 
     // The name the start page offers, until the user types another.
     void setHostName(const QString& name);

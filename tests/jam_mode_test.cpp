@@ -75,9 +75,7 @@ private:
             , status(&player, &Core::Player::statusMessage) {
             sources.setJamMode(&jam);
         }
-        Core::JamPlayback lastPlayback() const {
-            return playbacks.last().at(0).value<Core::JamPlayback>();
-        }
+        Core::JamPlayback lastPlayback() const { return playbacks.last().at(0).value<Core::JamPlayback>(); }
     };
 
     QList<const Tests::MockRequest*> requestsTo(const QString& path, qsizetype from = 0) const {
@@ -91,10 +89,7 @@ private:
     }
 
     QJsonArray seedsOf(const Tests::MockRequest* request) const {
-        return QJsonDocument::fromJson(request->body)
-            .object()
-            .value(QStringLiteral("seeds"))
-            .toArray();
+        return QJsonDocument::fromJson(request->body).object().value(QStringLiteral("seeds")).toArray();
     }
 
     QList<QJsonObject> feedback(qsizetype from) const {
@@ -103,10 +98,7 @@ private:
             const Tests::MockRequest& request = server.requests()[i];
             if (request.path.startsWith(QStringLiteral("/rotor/session/"))
                 && request.path.endsWith(QStringLiteral("/feedback"))) {
-                events << QJsonDocument::fromJson(request.body)
-                              .object()
-                              .value(QStringLiteral("event"))
-                              .toObject();
+                events << QJsonDocument::fromJson(request.body).object().value(QStringLiteral("event")).toObject();
             }
         }
         return events;
@@ -115,14 +107,13 @@ private:
     void waveAnswers() {
         server.fixture("POST", "/rotor/session/new", "rotor-session-new/ok");
         server.fixture(
-            "POST", QStringLiteral("/rotor/session/%1/tracks").arg(QStringLiteral("S1-onyourwave")),
+            "POST",
+            QStringLiteral("/rotor/session/%1/tracks").arg(QStringLiteral("S1-onyourwave")),
             "rotor-session-tracks/ok"
         );
     }
 
-    void noWave() {
-        server.fixture("POST", "/rotor/session/new", "rotor-session-new/all-unavailable");
-    }
+    void noWave() { server.fixture("POST", "/rotor/session/new", "rotor-session-new/all-unavailable"); }
 
 private Q_SLOTS:
     void initTestCase() {
@@ -130,15 +121,18 @@ private Q_SLOTS:
         api.setBaseUrl(server.baseUrl());
         api.setToken(QStringLiteral("test-token"));
         server.fixture("GET", "/account/status", "account-status/ok");
-        server.fixture(
-            "POST", QStringLiteral("/rotor/session/S1-onyourwave/feedback"),
-            "rotor-session-feedback/ok"
-        );
+        server.fixture("POST", QStringLiteral("/rotor/session/S1-onyourwave/feedback"), "rotor-session-feedback/ok");
         QFile file(QStringLiteral(QIYAA_TEST_DATA "/sine440_3s.mp3"));
         QVERIFY(file.open(QIODevice::ReadOnly));
         server.audioTracks(
-            {QStringLiteral("11"), QStringLiteral("22"), QStringLiteral("33"), QStringLiteral("44"),
-             QStringLiteral("55"), QStringLiteral("66"), kFirstWaveTrack, kMoreWaveTrack},
+            {QStringLiteral("11"),
+             QStringLiteral("22"),
+             QStringLiteral("33"),
+             QStringLiteral("44"),
+             QStringLiteral("55"),
+             QStringLiteral("66"),
+             kFirstWaveTrack,
+             kMoreWaveTrack},
             file.readAll()
         );
         bool done = false;
@@ -150,8 +144,7 @@ private Q_SLOTS:
         Stack stack(&library);
         noWave();
         stack.player.setQueue(
-            {TrackOf("11"), TrackOf("22"), TrackOf("33"), TrackOf("44")}, QStringLiteral("Likes"),
-            false
+            {TrackOf("11"), TrackOf("22"), TrackOf("33"), TrackOf("44")}, QStringLiteral("Likes"), false
         );
         stack.player.playIndex(1);
         stack.jam.start(QStringLiteral("Джем"), false);
@@ -172,14 +165,10 @@ private Q_SLOTS:
         QCOMPARE(Ids(stack.player), (QStringList{"11", "22", "33"}));
         QTRY_COMPARE(stack.started.size(), 1);
         QSignalSpy changes(&stack.player, &Core::Player::playlistChanged);
-        stack.jam.setQueue(
-            {Item("i1", "11"), Item("i2", "22"), Item("i3", "33")}, {}, 0
-        );  // HOST-04
+        stack.jam.setQueue({Item("i1", "11"), Item("i2", "22"), Item("i3", "33")}, {}, 0);  // HOST-04
         QCOMPARE(Ids(stack.player), (QStringList{"11", "22", "33"}));
         QCOMPARE(changes.size(), 0);
-        stack.jam.setQueue(
-            {Item("i2", "22"), Item("i4", "44"), Item("i5", "55")}, {}, 0
-        );  // HOST-01
+        stack.jam.setQueue({Item("i2", "22"), Item("i4", "44"), Item("i5", "55")}, {}, 0);  // HOST-01
         QCOMPARE(Ids(stack.player), (QStringList{"11", "22", "44", "55"}));
         QCOMPARE(stack.jam.queueSlots()[1].itemId, QStringLiteral("i2"));
         stack.jam.setQueue({Item("i4", "44"), Item("i2", "22")}, {}, 0);  // HOST-03
@@ -324,10 +313,7 @@ private Q_SLOTS:
         stack.sources.playMyWave();
         stack.sources.search(QStringLiteral("кино"));
         QCOMPARE(Ids(stack.player), QStringList{QStringLiteral("11")});
-        QCOMPARE(
-            stack.status.last().at(0).toString(),
-            QStringLiteral("A jam is on: add tracks to the jam")
-        );
+        QCOMPARE(stack.status.last().at(0).toString(), QStringLiteral("A jam is on: add tracks to the jam"));
     }
 
     void theEndKeepsTheItemsDropsTheWaveAndReportsPlaysAgain() {  // HOST-32, HOST-33

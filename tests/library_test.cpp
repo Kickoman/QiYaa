@@ -106,10 +106,7 @@ private Q_SLOTS:
         QVERIFY2(account.error.isEmpty(), qPrintable(account.error));
         QCOMPARE(Tests::Json(Tests::ToJson(account.value)), Tests::Expected("account-status/ok"));
         QVERIFY(library.isLoggedIn());
-        QCOMPARE(
-            server.last("/account/status")->headers.value("authorization"),
-            QByteArray("OAuth test-token")
-        );
+        QCOMPARE(server.last("/account/status")->headers.value("authorization"), QByteArray("OAuth test-token"));
     }
 
     void likedTracksFetchesMetadataAndRemembersLikes_data() {
@@ -139,10 +136,7 @@ private Q_SLOTS:
         Result<QList<Yandex::PlaylistReference>> lists;
         library.userPlaylists(lists.callback());
         QVERIFY(lists.wait());
-        QCOMPARE(
-            Tests::Json(Tests::PlaylistsJson(lists.value)),
-            Tests::Expected("users-playlists-list/ok")
-        );
+        QCOMPARE(Tests::Json(Tests::PlaylistsJson(lists.value)), Tests::Expected("users-playlists-list/ok"));
 
         // Embedded track objects are used directly.
         server.fixture("GET", "/users/42/playlists/1003", "users-playlists/embedded-tracks");
@@ -150,10 +144,7 @@ private Q_SLOTS:
         Result<QList<Yandex::Track>> tracks;
         library.playlistTracks(lists.value[0], tracks.callback());
         QVERIFY(tracks.wait());
-        QCOMPARE(
-            Tests::Json(Tests::TracksJson(tracks.value)),
-            Tests::Expected("users-playlists/embedded-tracks")
-        );
+        QCOMPARE(Tests::Json(Tests::TracksJson(tracks.value)), Tests::Expected("users-playlists/embedded-tracks"));
         QCOMPARE(server.requests().size(), before + 1);  // no /tracks/ request
     }
 
@@ -167,9 +158,7 @@ private Q_SLOTS:
             server.last("/tracks/")->formValue("track-ids"),
             ExpectedIds("users-playlists/ids-only", "trackIds").join(u',')
         );
-        QCOMPARE(
-            Tests::Json(Tests::TracksJson(tracks.value)), Tests::Expected("tracks/two-tracks")
-        );
+        QCOMPARE(Tests::Json(Tests::TracksJson(tracks.value)), Tests::Expected("tracks/two-tracks"));
     }
 
     void likedArtistsAndTheirTopTracksAreParsed() {
@@ -177,23 +166,16 @@ private Q_SLOTS:
         Result<QList<Yandex::NamedReference>> artists;
         library.likedArtists(artists.callback());
         QVERIFY(artists.wait());
-        QCOMPARE(
-            Tests::Json(Tests::NamedJson("artists", artists.value)),
-            Tests::Expected("users-likes-artists/ok")
-        );
+        QCOMPARE(Tests::Json(Tests::NamedJson("artists", artists.value)), Tests::Expected("users-likes-artists/ok"));
 
         server.fixture("POST", "/tracks/", "tracks/two-tracks");
-        for (const char* name :
-             {"artists-track-ids-by-rating/ok", "artists-track-ids-by-rating/more-than-100"}) {
+        for (const char* name : {"artists-track-ids-by-rating/ok", "artists-track-ids-by-rating/more-than-100"}) {
             server.fixture("GET", "/artists/9/track-ids-by-rating", name);
             Result<QList<Yandex::Track>> top;
             library.artistTopTracks("9", top.callback());
             QVERIFY(top.wait());
             QVERIFY2(top.error.isEmpty(), qPrintable(top.error));
-            QCOMPARE(
-                server.last("/tracks/")->formValue("track-ids"),
-                ExpectedIds(name, "trackIds").join(u',')
-            );
+            QCOMPARE(server.last("/tracks/")->formValue("track-ids"), ExpectedIds(name, "trackIds").join(u','));
         }
     }
 
@@ -204,22 +186,15 @@ private Q_SLOTS:
         library.likedAlbums(albums.callback());
         QVERIFY(albums.wait());
         QCOMPARE(
-            server.last("/albums")->formValue("album-ids"),
-            ExpectedIds("users-likes-albums/ok", "albumIds").join(u',')
+            server.last("/albums")->formValue("album-ids"), ExpectedIds("users-likes-albums/ok", "albumIds").join(u',')
         );
-        QCOMPARE(
-            Tests::Json(Tests::NamedJson("albums", albums.value)),
-            Tests::Expected("albums/with-podcast")
-        );
+        QCOMPARE(Tests::Json(Tests::NamedJson("albums", albums.value)), Tests::Expected("albums/with-podcast"));
 
         server.fixture("GET", "/albums/4053/with-tracks", "albums-with-tracks/two-volumes");
         Result<QList<Yandex::Track>> tracks;
         library.albumTracks("4053", tracks.callback());
         QVERIFY(tracks.wait());
-        QCOMPARE(
-            Tests::Json(Tests::TracksJson(tracks.value)),
-            Tests::Expected("albums-with-tracks/two-volumes")
-        );
+        QCOMPARE(Tests::Json(Tests::TracksJson(tracks.value)), Tests::Expected("albums-with-tracks/two-volumes"));
     }
 
     void stationsAreListedWithTypeTagIds() {
@@ -227,14 +202,8 @@ private Q_SLOTS:
         Result<QList<Yandex::Station>> stationList;
         library.stations(stationList.callback());
         QVERIFY(stationList.wait());
-        QCOMPARE(
-            Tests::Json(Tests::StationsJson(stationList.value)),
-            Tests::Expected("rotor-stations-list/ok")
-        );
-        QCOMPARE(
-            server.last("/rotor/stations/list")->query.queryItemValue("language"),
-            QStringLiteral("ru")
-        );
+        QCOMPARE(Tests::Json(Tests::StationsJson(stationList.value)), Tests::Expected("rotor-stations-list/ok"));
+        QCOMPARE(server.last("/rotor/stations/list")->query.queryItemValue("language"), QStringLiteral("ru"));
     }
 
     void waveSessionStartsFromSeedsAndContinuesWithTheQueue() {
@@ -243,28 +212,18 @@ private Q_SLOTS:
         library.startWave({"user:onyourwave"}, first.callback());
         QVERIFY(first.wait());
         QCOMPARE(Tests::Json(Tests::ToJson(first.value)), Tests::Expected("rotor-session-new/ok"));
-        const QJsonObject body =
-            QJsonDocument::fromJson(server.last("/rotor/session/new")->body).object();
-        QCOMPARE(
-            body.value("seeds").toArray().first().toString(), QStringLiteral("user:onyourwave")
-        );
+        const QJsonObject body = QJsonDocument::fromJson(server.last("/rotor/session/new")->body).object();
+        QCOMPARE(body.value("seeds").toArray().first().toString(), QStringLiteral("user:onyourwave"));
         QVERIFY(body.value("includeTracksInResponse").toBool());
 
         const QString sessionId = first.value.sessionId;
-        server.fixture(
-            "POST", QStringLiteral("/rotor/session/%1/tracks").arg(sessionId),
-            "rotor-session-tracks/ok"
-        );
+        server.fixture("POST", QStringLiteral("/rotor/session/%1/tracks").arg(sessionId), "rotor-session-tracks/ok");
         Result<Yandex::WaveBatch> more;
         library.moreWave(sessionId, {"38634572"}, more.callback());
         QVERIFY(more.wait());
-        QCOMPARE(
-            Tests::Json(Tests::ToJson(more.value)), Tests::Expected("rotor-session-tracks/ok")
-        );
+        QCOMPARE(Tests::Json(Tests::ToJson(more.value)), Tests::Expected("rotor-session-tracks/ok"));
         const QJsonObject moreBody =
-            QJsonDocument::fromJson(
-                server.last(QStringLiteral("/rotor/session/%1/tracks").arg(sessionId))->body
-            )
+            QJsonDocument::fromJson(server.last(QStringLiteral("/rotor/session/%1/tracks").arg(sessionId))->body)
                 .object();
         QCOMPARE(moreBody.value("queue").toArray().first().toString(), QStringLiteral("38634572"));
     }
@@ -272,8 +231,7 @@ private Q_SLOTS:
     void searchReportsTheBestResult_data() {
         QTest::addColumn<QString>("name");
         for (const char* name :
-             {"best-artist", "best-album", "best-track", "best-playlist", "best-podcast", "no-best"
-             }) {
+             {"best-artist", "best-album", "best-track", "best-playlist", "best-podcast", "no-best"}) {
             QTest::newRow(name) << QStringLiteral("search/%1").arg(name);
         }
     }
@@ -295,14 +253,11 @@ private Q_SLOTS:
         QList<Yandex::Track> tracks;
         Yandex::RequestError failure;
         bool done = false;
-        library.searchTracks(
-            "кино",
-            [&](const QList<Yandex::Track>& found, const Yandex::RequestError& error) {
-                tracks = found;
-                failure = error;
-                done = true;
-            }
-        );
+        library.searchTracks("кино", [&](const QList<Yandex::Track>& found, const Yandex::RequestError& error) {
+            tracks = found;
+            failure = error;
+            done = true;
+        });
         QVERIFY(QTest::qWaitFor([&] { return done; }, 5000));
         QVERIFY(!failure.isError());
         QCOMPARE(server.last("/search")->query.queryItemValue("type"), QStringLiteral("track"));
@@ -311,34 +266,23 @@ private Q_SLOTS:
 
         server.fixture("GET", "/search", "users-likes-artists/401-session-expired");
         done = false;
-        library.searchTracks(
-            "кино",
-            [&](const QList<Yandex::Track>&, const Yandex::RequestError& error) {
-                failure = error;
-                done = true;
-            }
-        );
+        library.searchTracks("кино", [&](const QList<Yandex::Track>&, const Yandex::RequestError& error) {
+            failure = error;
+            done = true;
+        });
         QVERIFY(QTest::qWaitFor([&] { return done; }, 5000));
         QCOMPARE(failure.httpStatus, 401);
     }
 
     void likeUnlikeAndDislikeUpdateTheLikes() {
-        server.fixture(
-            "POST", "/users/42/likes/tracks/add-multiple", "users-likes-tracks-add-multiple/ok"
-        );
+        server.fixture("POST", "/users/42/likes/tracks/add-multiple", "users-likes-tracks-add-multiple/ok");
         server.fixture("POST", "/users/42/likes/tracks/remove", "users-likes-tracks-remove/ok");
-        server.fixture(
-            "POST", "/users/42/dislikes/tracks/add-multiple",
-            "users-dislikes-tracks-add-multiple/ok"
-        );
+        server.fixture("POST", "/users/42/dislikes/tracks/add-multiple", "users-dislikes-tracks-add-multiple/ok");
         Result<bool> like;
         library.setLiked("77", true, like.callback());
         QVERIFY(like.wait());
         QVERIFY(library.isLiked("77"));
-        QCOMPARE(
-            server.last("/users/42/likes/tracks/add-multiple")->formValue("track-ids"),
-            QStringLiteral("77")
-        );
+        QCOMPARE(server.last("/users/42/likes/tracks/add-multiple")->formValue("track-ids"), QStringLiteral("77"));
         Result<bool> unlike;
         library.setLiked("77", false, unlike.callback());
         QVERIFY(unlike.wait());
@@ -352,11 +296,9 @@ private Q_SLOTS:
 
     void errorsAreReported_data() {
         QTest::addColumn<QString>("name");
-        QTest::newRow("401 error object")
-            << QStringLiteral("users-likes-artists/401-session-expired");
+        QTest::newRow("401 error object") << QStringLiteral("users-likes-artists/401-session-expired");
         QTest::newRow("404 error object") << QStringLiteral("rotor-session-feedback/404-not-found");
-        QTest::newRow("503 error string")
-            << QStringLiteral("rotor-session-feedback/503-string-error");
+        QTest::newRow("503 error string") << QStringLiteral("rotor-session-feedback/503-string-error");
         QTest::newRow("500 empty body") << QStringLiteral("account-status/500-empty");
     }
     void errorsAreReported() {
@@ -395,8 +337,7 @@ private Q_SLOTS:
         QCOMPARE(codeReady.first().at(1).toUrl(), QUrl(code.value("verificationUrl").toString()));
         QVERIFY(succeeded.wait(5000));
         QCOMPARE(
-            succeeded.first().at(0).toString(),
-            Tests::ExpectedObject("oauth-token/ok").value("accessToken").toString()
+            succeeded.first().at(0).toString(), Tests::ExpectedObject("oauth-token/ok").value("accessToken").toString()
         );
         QCOMPARE(polls, 2);
         QCOMPARE(server.last("/token")->formValue("grant_type"), QStringLiteral("device_code"));
@@ -422,25 +363,15 @@ private Q_SLOTS:
         library.personalPlaylists(playlists.callback());
         QVERIFY(playlists.wait());
         QVERIFY2(playlists.error.isEmpty(), qPrintable(playlists.error));
-        QCOMPARE(
-            Tests::Json(Tests::PlaylistsJson(playlists.value)),
-            Tests::Expected("landing3/personal-playlists")
-        );
-        QCOMPARE(
-            server.last("/landing3")->query.queryItemValue("blocks"),
-            QStringLiteral("personalplaylists")
-        );
+        QCOMPARE(Tests::Json(Tests::PlaylistsJson(playlists.value)), Tests::Expected("landing3/personal-playlists"));
+        QCOMPARE(server.last("/landing3")->query.queryItemValue("blocks"), QStringLiteral("personalplaylists"));
 
-        server.fixture(
-            "GET", "/users/503646255/playlists/123/recommendations",
-            "users-playlists-recommendations/ok"
-        );
+        server.fixture("GET", "/users/503646255/playlists/123/recommendations", "users-playlists-recommendations/ok");
         Result<QList<Yandex::Track>> recommendations;
         library.playlistRecommendations(playlists.value[0], recommendations.callback());
         QVERIFY(recommendations.wait());
         QCOMPARE(
-            Tests::Json(Tests::TracksJson(recommendations.value)),
-            Tests::Expected("users-playlists-recommendations/ok")
+            Tests::Json(Tests::TracksJson(recommendations.value)), Tests::Expected("users-playlists-recommendations/ok")
         );
     }
 
@@ -459,31 +390,17 @@ private Q_SLOTS:
         const Yandex::Track track = FixtureTracks("tracks/two-tracks").first();
         // Session endpoint works: only it is used.
         server.fixture("POST", "/rotor/session/OK1/feedback", "rotor-session-feedback/ok");
-        library.waveFeedback(
-            "OK1", "user:onyourwave", "B1", Yandex::WaveEvent::TrackStarted, &track
-        );
-        QVERIFY(QTest::qWaitFor(
-            [&] { return server.last("/rotor/session/OK1/feedback") != nullptr; }, 3000
-        ));
+        library.waveFeedback("OK1", "user:onyourwave", "B1", Yandex::WaveEvent::TrackStarted, &track);
+        QVERIFY(QTest::qWaitFor([&] { return server.last("/rotor/session/OK1/feedback") != nullptr; }, 3000));
         const QJsonObject sessionBody =
             QJsonDocument::fromJson(server.last("/rotor/session/OK1/feedback")->body).object();
         QCOMPARE(sessionBody.value("batchId").toString(), QStringLiteral("B1"));
-        QCOMPARE(
-            sessionBody.value("event").toObject().value("type").toString(),
-            QStringLiteral("trackStarted")
-        );
-        QCOMPARE(
-            sessionBody.value("event").toObject().value("trackId").toString(),
-            track.id + u':' + track.albumId
-        );
+        QCOMPARE(sessionBody.value("event").toObject().value("type").toString(), QStringLiteral("trackStarted"));
+        QCOMPARE(sessionBody.value("event").toObject().value("trackId").toString(), track.id + u':' + track.albumId);
 
         // Session endpoint rejected: falls back to the station endpoint, and stays there.
-        server.fixture(
-            "POST", "/rotor/session/BAD/feedback", "rotor-session-feedback/404-not-found"
-        );
-        server.fixture(
-            "POST", "/rotor/station/user:onyourwave/feedback", "rotor-station-feedback/ok"
-        );
+        server.fixture("POST", "/rotor/session/BAD/feedback", "rotor-session-feedback/404-not-found");
+        server.fixture("POST", "/rotor/station/user:onyourwave/feedback", "rotor-station-feedback/ok");
         const auto before = server.requests().size();
         auto stationCalls = [&] {
             int calls = 0;
@@ -492,19 +409,14 @@ private Q_SLOTS:
             }
             return calls;
         };
-        library.waveFeedback(
-            "BAD", "user:onyourwave", "B2", Yandex::WaveEvent::Skip, &track, 12.34
-        );
+        library.waveFeedback("BAD", "user:onyourwave", "B2", Yandex::WaveEvent::Skip, &track, 12.34);
         QVERIFY(QTest::qWaitFor([&] { return stationCalls() == 1; }, 3000));
-        const Tests::MockRequest* stationRequest =
-            server.last("/rotor/station/user:onyourwave/feedback");
+        const Tests::MockRequest* stationRequest = server.last("/rotor/station/user:onyourwave/feedback");
         QCOMPARE(stationRequest->query.queryItemValue("batch-id"), QStringLiteral("B2"));
         const QJsonObject stationBody = QJsonDocument::fromJson(stationRequest->body).object();
         QCOMPARE(stationBody.value("type").toString(), QStringLiteral("skip"));
         QCOMPARE(stationBody.value("totalPlayedSeconds").toDouble(), 12.3);
-        library.waveFeedback(
-            "BAD", "user:onyourwave", "B2", Yandex::WaveEvent::TrackStarted, &track
-        );
+        library.waveFeedback("BAD", "user:onyourwave", "B2", Yandex::WaveEvent::TrackStarted, &track);
         QVERIFY(QTest::qWaitFor([&] { return stationCalls() == 2; }, 3000));
         int sessionCalls = 0;
         for (qsizetype i = before; i < server.requests().size(); ++i) {
@@ -515,14 +427,11 @@ private Q_SLOTS:
 
     void waveFeedbackDoesNotResendAfterServerError() {
         const Yandex::Track track = FixtureTracks("tracks/two-tracks").first();
-        server.fixture(
-            "POST", "/rotor/session/S500/feedback", "rotor-session-feedback/503-string-error"
-        );
+        server.fixture("POST", "/rotor/session/S500/feedback", "rotor-session-feedback/503-string-error");
         const auto before = server.requests().size();
         bool settled = false;
         const int pending = api.pendingPosts();
-        auto connection =
-            connect(&api, &Yandex::ApiClient::postsSettled, this, [&] { settled = true; });
+        auto connection = connect(&api, &Yandex::ApiClient::postsSettled, this, [&] { settled = true; });
         library.waveFeedback("S500", "user:onyourwave", "B1", Yandex::WaveEvent::Skip, &track, 3);
         QCOMPARE(api.pendingPosts(), pending + 1);
         QVERIFY(QTest::qWaitFor([&] { return settled; }, 3000));
@@ -534,9 +443,7 @@ private Q_SLOTS:
 
     void postsSettleOnlyAfterTheFallback() {
         const Yandex::Track track = FixtureTracks("tracks/two-tracks").first();
-        server.fixture(
-            "POST", "/rotor/session/S404/feedback", "rotor-session-feedback/404-not-found"
-        );
+        server.fixture("POST", "/rotor/session/S404/feedback", "rotor-session-feedback/404-not-found");
         server.fixture("POST", "/rotor/station/user:x/feedback", "rotor-station-feedback/ok");
         const auto before = server.requests().size();
         int stationCallsAtSettle = -1;
@@ -561,30 +468,28 @@ private Q_SLOTS:
         Audio::AudioEngine engine;
         Core::Player player(&library, &engine);
         server.result(
-            "GET", "/tracks/1/download-info",
-            "[{\"codec\":\"mp3\",\"bitrateInKbps\":320,\"downloadInfoUrl\":\""
-                + server.baseUrl().toUtf8() + "/dl?x=1\"}]"
+            "GET",
+            "/tracks/1/download-info",
+            "[{\"codec\":\"mp3\",\"bitrateInKbps\":320,\"downloadInfoUrl\":\"" + server.baseUrl().toUtf8()
+                + "/dl?x=1\"}]"
         );
         server.result(
-            "GET", "/tracks/2/download-info",
-            "[{\"codec\":\"mp3\",\"bitrateInKbps\":320,\"downloadInfoUrl\":\""
-                + server.baseUrl().toUtf8() + "/dl?x=2\"}]"
+            "GET",
+            "/tracks/2/download-info",
+            "[{\"codec\":\"mp3\",\"bitrateInKbps\":320,\"downloadInfoUrl\":\"" + server.baseUrl().toUtf8()
+                + "/dl?x=2\"}]"
         );
         server.json("GET", "/dl", J("{'host':'127.0.0.1:1','path':'/p','ts':'1','s':'s'}"));
         server.fixture("POST", "/play-audio", "play-audio/ok");
         QList<Yandex::Track> tracks;
         for (int i = 1; i <= 2; ++i) {
-            tracks << Yandex::ApiClient::ParseTrack(
-                QJsonDocument::fromJson(TrackJson(i, "t")).object()
-            );
+            tracks << Yandex::ApiClient::ParseTrack(QJsonDocument::fromJson(TrackJson(i, "t")).object());
         }
         QStringList log;
-        player.setQueue(
-            tracks, "W", false, {},
-            [&](Core::Player::TrackEvent event, const Yandex::Track& track, double) {
+        player
+            .setQueue(tracks, "W", false, {}, [&](Core::Player::TrackEvent event, const Yandex::Track& track, double) {
                 log << QStringLiteral("%1:%2").arg(static_cast<int>(event)).arg(track.id);
-            }
-        );
+            });
         player.playIndex(0);
         QVERIFY(QTest::qWaitFor([&] { return log.contains("0:1"); }, 3000));
         player.playIndex(1);
@@ -630,9 +535,7 @@ private:
     static QList<Yandex::Track> NumberedTracks(const QList<int>& ids) {
         QList<Yandex::Track> tracks;
         for (int id : ids) {
-            tracks << Yandex::ApiClient::ParseTrack(
-                QJsonDocument::fromJson(TrackJson(id, "t")).object()
-            );
+            tracks << Yandex::ApiClient::ParseTrack(QJsonDocument::fromJson(TrackJson(id, "t")).object());
         }
         return tracks;
     }
@@ -645,7 +548,10 @@ private Q_SLOTS:
         }
         QStringList log;
         playback.player.setQueue(
-            NumberedTracks({11, 12, 13}), "A", false, {},
+            NumberedTracks({11, 12, 13}),
+            "A",
+            false,
+            {},
             [&](Core::Player::TrackEvent event, const Yandex::Track& track, double) {
                 log << QStringLiteral("%1:%2").arg(static_cast<int>(event)).arg(track.id);
             }
@@ -654,9 +560,7 @@ private Q_SLOTS:
         QSignalSpy finished(&playback.engine, &Audio::AudioEngine::trackFinished);
         playback.player.playIndex(0);
         QVERIFY(QTest::qWaitFor([&] { return playback.player.preloadedIndex() == 1; }, 5000));
-        QVERIFY(QTest::qWaitFor(
-            [&] { return playback.engine.state() == Audio::AudioEngine::State::Playing; }, 3000
-        ));
+        QVERIFY(QTest::qWaitFor([&] { return playback.engine.state() == Audio::AudioEngine::State::Playing; }, 3000));
         QVERIFY(playback.player.currentLink().path().endsWith(QStringLiteral("/t11")));
         QVERIFY(playback.player.nextLink().path().endsWith(QStringLiteral("/t12")));  // LISTEN-03
         QTest::qWait(300);  // let the preload download complete
@@ -690,11 +594,7 @@ private Q_SLOTS:
         QVERIFY(QTest::qWaitFor([&] { return playback.player.preloadedIndex() == 1; }, 5000));
         playback.player.removeTracks({1});  // the preloaded track is gone: 23 follows now
         QVERIFY(QTest::qWaitFor(
-            [&] {
-                return playback.player.preloadedIndex() == 1
-                    && requestsTo("/tracks/23/download-info") == 1;
-            },
-            5000
+            [&] { return playback.player.preloadedIndex() == 1 && requestsTo("/tracks/23/download-info") == 1; }, 5000
         ));
         QTest::qWait(300);
         QSignalSpy advanced(&playback.engine, &Audio::AudioEngine::trackAdvanced);
@@ -713,13 +613,9 @@ private Q_SLOTS:
         playback.player.setQuality(Yandex::Quality::Economy);
         playback.player.setQueue(NumberedTracks({31, 32}), "A", false);
         playback.player.playIndex(0);
-        QVERIFY(QTest::qWaitFor(
-            [&] { return playback.engine.state() == Audio::AudioEngine::State::Playing; }, 3000
-        ));
+        QVERIFY(QTest::qWaitFor([&] { return playback.engine.state() == Audio::AudioEngine::State::Playing; }, 3000));
         QCOMPARE(playback.player.currentBitrate(), 64);
-        QCOMPARE(
-            playback.player.currentLink().path(), QStringLiteral("/music-v2/raw/31/aac64he-mp4")
-        );
+        QCOMPARE(playback.player.currentLink().path(), QStringLiteral("/music-v2/raw/31/aac64he-mp4"));
         QCOMPARE(requestsTo("/tracks/31/download-info"), 0);
         const Tests::MockRequest* request = nullptr;
         for (const Tests::MockRequest& recorded : server.requests()) {
@@ -728,9 +624,7 @@ private Q_SLOTS:
             }
         }
         QVERIFY(request);
-        QCOMPARE(
-            request->headers.value("x-yandex-music-client"), QByteArray(Yandex::kFileInfoClient)
-        );
+        QCOMPARE(request->headers.value("x-yandex-music-client"), QByteArray(Yandex::kFileInfoClient));
         const auto item = [&](const char* name) {
             return request->query.queryItemValue(QLatin1String(name), QUrl::FullyDecoded);
         };
@@ -769,9 +663,7 @@ private Q_SLOTS:
         playback.player.setQuality(Yandex::Quality::Economy);
         playback.player.setQueue(NumberedTracks({41}), "A", false);
         playback.player.playIndex(0);
-        QVERIFY(QTest::qWaitFor(
-            [&] { return playback.engine.state() == Audio::AudioEngine::State::Playing; }, 3000
-        ));
+        QVERIFY(QTest::qWaitFor([&] { return playback.engine.state() == Audio::AudioEngine::State::Playing; }, 3000));
         QVERIFY(playback.player.currentLink().path().endsWith(QStringLiteral("/t41")));
         QCOMPARE(playback.player.currentBitrate(), 320);
         QCOMPARE(failures.count(), 0);
@@ -796,12 +688,8 @@ private Q_SLOTS:
 
         server.economyTracks({"45"}, EconomyFile());
         playback.player.setNetworkOnline(true);
-        QVERIFY(QTest::qWaitFor(
-            [&] { return playback.engine.state() == Audio::AudioEngine::State::Playing; }, 3000
-        ));
-        QCOMPARE(
-            playback.player.currentLink().path(), QStringLiteral("/music-v2/raw/45/aac64he-mp4")
-        );
+        QVERIFY(QTest::qWaitFor([&] { return playback.engine.state() == Audio::AudioEngine::State::Playing; }, 3000));
+        QCOMPARE(playback.player.currentLink().path(), QStringLiteral("/music-v2/raw/45/aac64he-mp4"));
         playback.player.stop();
     }
 
@@ -818,11 +706,7 @@ private Q_SLOTS:
 
         playback.player.setQuality(Yandex::Quality::Economy);
         QVERIFY(QTest::qWaitFor(
-            [&] {
-                return playback.player.nextLink().path()
-                    == QStringLiteral("/music-v2/raw/52/aac64he-mp4");
-            },
-            5000
+            [&] { return playback.player.nextLink().path() == QStringLiteral("/music-v2/raw/52/aac64he-mp4"); }, 5000
         ));
         QVERIFY(playback.player.currentLink().path().endsWith(QStringLiteral("/t51")));
         QCOMPARE(playback.player.currentBitrate(), 320);
@@ -840,20 +724,13 @@ private Q_SLOTS:
         Core::Player player(&library, &engine);
         QList<Yandex::Track> batch;
         for (int i = 0; i < 3; ++i) {
-            batch << Yandex::ApiClient::ParseTrack(
-                QJsonDocument::fromJson(TrackJson(i + 1, "t")).object()
-            );
+            batch << Yandex::ApiClient::ParseTrack(QJsonDocument::fromJson(TrackJson(i + 1, "t")).object());
         }
         int asked = 0;
-        player.setQueue(
-            batch, "Wave", false,
-            [&](std::function<void(const QList<Yandex::Track>&)> done) {
-                ++asked;
-                done({Yandex::ApiClient::ParseTrack(
-                    QJsonDocument::fromJson(TrackJson(99, "more")).object()
-                )});
-            }
-        );
+        player.setQueue(batch, "Wave", false, [&](std::function<void(const QList<Yandex::Track>&)> done) {
+            ++asked;
+            done({Yandex::ApiClient::ParseTrack(QJsonDocument::fromJson(TrackJson(99, "more")).object())});
+        });
         QCOMPARE(player.playlist().size(), 3);
         player.playIndex(1);  // 2 tracks left -> ask for more
         QCOMPARE(asked, 1);
@@ -888,14 +765,11 @@ private Q_SLOTS:
         }
         playback.player.setRepeat(true);
         playback.player.setQueue(
-            NumberedTracks({21}), "Wave", false,
-            [](std::function<void(const QList<Yandex::Track>&)>) {}
+            NumberedTracks({21}), "Wave", false, [](std::function<void(const QList<Yandex::Track>&)>) {}
         );
         QSignalSpy finished(&playback.engine, &Audio::AudioEngine::trackFinished);
         playback.player.playIndex(0);
-        QVERIFY(QTest::qWaitFor(
-            [&] { return playback.engine.state() == Audio::AudioEngine::State::Playing; }, 8000
-        ));
+        QVERIFY(QTest::qWaitFor([&] { return playback.engine.state() == Audio::AudioEngine::State::Playing; }, 8000));
         QTest::qWait(300);  // the whole file has arrived
         QVERIFY(playback.player.seekTo(2.5));
         QVERIFY(finished.wait(4000));
@@ -930,8 +804,7 @@ private Q_SLOTS:
         }
     }
 
-    void shufflePreviousAndRepeatFollowTheStoredOrder(
-    ) {  // proposed spec SHUF-01, SHUF-02 (docs/shuffle-spec.patch)
+    void shufflePreviousAndRepeatFollowTheStoredOrder() {  // proposed spec SHUF-01, SHUF-02 (docs/shuffle-spec.patch)
         Audio::AudioEngine engine;
         Core::Player player(&library, &engine);
         player.setQueue(NumberedTracks({1, 2, 3, 4, 5}), "Plain", false);
@@ -1009,8 +882,7 @@ private Q_SLOTS:
 
     void shuffleToggleKeepsPlaybackAndGaplessAdvanceFollowsTheOrder_data() {
         QTest::addColumn<int>("algorithm");
-        QTest::newRow("without repeats")
-            << static_cast<int>(Core::ShuffleAlgorithm::WithoutRepeats);
+        QTest::newRow("without repeats") << static_cast<int>(Core::ShuffleAlgorithm::WithoutRepeats);
         QTest::newRow("random") << static_cast<int>(Core::ShuffleAlgorithm::Random);
     }
 
@@ -1074,8 +946,7 @@ private Q_SLOTS:
         player.stop();
     }
 
-    void shuffleHandlesEmptyAndSingleTrackQueues(
-    ) {  // proposed spec SHUF-01, SHUF-04 (docs/shuffle-spec.patch)
+    void shuffleHandlesEmptyAndSingleTrackQueues() {  // proposed spec SHUF-01, SHUF-04 (docs/shuffle-spec.patch)
         Audio::AudioEngine engine;
         Core::Player player(&library, &engine);
         player.setShuffle(true);
@@ -1110,10 +981,9 @@ private Q_SLOTS:
             ids << i;
         }
         int asked = 0;
-        player.setQueue(
-            NumberedTracks(ids), "Wave", false,
-            [&](std::function<void(const QList<Yandex::Track>&)>) { ++asked; }
-        );
+        player.setQueue(NumberedTracks(ids), "Wave", false, [&](std::function<void(const QList<Yandex::Track>&)>) {
+            ++asked;
+        });
         QCOMPARE(shuffleMessages(), 1);
         QVERIFY(player.shuffle());
         QVERIFY(!player.shuffleActive());

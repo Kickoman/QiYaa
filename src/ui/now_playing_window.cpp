@@ -25,12 +25,8 @@ constexpr int kPadding = 4;
 constexpr int kCoverPixels = 400;
 }  // namespace
 
-NowPlayingWindow::NowPlayingWindow(
-    Core::Player* player,
-    Core::CoverCache* covers,
-    const Skins::Skin* skin,
-    QWidget* parent
-)
+NowPlayingWindow::
+    NowPlayingWindow(Core::Player* player, Core::CoverCache* covers, const Skins::Skin* skin, QWidget* parent)
     : GenWindow(skin, QStringLiteral("NOW PLAYING"), parent)
     , corePlayer(player)
     , coverCache(covers) {
@@ -38,8 +34,7 @@ NowPlayingWindow::NowPlayingWindow(
     connect(corePlayer, &Core::Player::currentTrackChanged, this, [this] { update(); });
     connect(corePlayer->library(), &Yandex::Library::likesChanged, this, [this] { update(); });
     connect(coverCache, &Core::CoverCache::ready, this, [this](const QUrl& url) {
-        if (const auto* track = corePlayer->currentTrack();
-            track && track->coverUrl(kCoverPixels) == url) {
+        if (const auto* track = corePlayer->currentTrack(); track && track->coverUrl(kCoverPixels) == url) {
             update();
         }
     });
@@ -69,8 +64,7 @@ void NowPlayingWindow::paintContent(QPainter& painter, const QRect& area) {
     }
 
     const QRect textRect(
-        cover.right() + 1 + kPadding * 2, cover.y(), area.right() - cover.right() - kPadding * 3,
-        cover.height()
+        cover.right() + 1 + kPadding * 2, cover.y(), area.right() - cover.right() - kPadding * 3, cover.height()
     );
     QFont font(style.font);
     font.setPixelSize(9);
@@ -104,15 +98,11 @@ void NowPlayingWindow::paintContent(QPainter& painter, const QRect& area) {
     y += 3;
     QString album = track->albumTitle;
     if (track->year > 0) {
-        album += album.isEmpty() ? QString::number(track->year)
-                                 : QStringLiteral(" (%1)").arg(track->year);
+        album += album.isEmpty() ? QString::number(track->year) : QStringLiteral(" (%1)").arg(track->year);
     }
     line(font, style.normal, album);
     const int seconds = static_cast<int>(track->durationMs / 1000);
-    line(
-        font, style.normal,
-        QStringLiteral("%1:%2").arg(seconds / 60).arg(seconds % 60, 2, 10, QLatin1Char('0'))
-    );
+    line(font, style.normal, QStringLiteral("%1:%2").arg(seconds / 60).arg(seconds % 60, 2, 10, QLatin1Char('0')));
     if (corePlayer->library()->isLiked(track->id)) {
         line(font, style.current, tr("♥ In Liked"));
     }

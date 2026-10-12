@@ -28,8 +28,8 @@ bool EndsTheJam(const ServerMessage& message) {
 QString HelloVersion(const QString& version) {
     QString kept;
     for (const QChar character : version) {
-        const bool allowed = (character.isLetterOrNumber() && character.unicode() < 0x80)
-            || QStringLiteral(".+_-").contains(character);
+        const bool allowed =
+            (character.isLetterOrNumber() && character.unicode() < 0x80) || QStringLiteral(".+_-").contains(character);
         if (allowed && kept.size() < 32) {
             kept += character;
         }
@@ -85,7 +85,8 @@ bool Client::send(const ClientMessage& message) {
     if (!check.isValid()) {
         qWarning(
             "jam: not sending a %s that the server would refuse: %s",
-            qUtf8Printable(TypeOf(message)), qUtf8Printable(check.problem)
+            qUtf8Printable(TypeOf(message)),
+            qUtf8Printable(check.problem)
         );
         return false;
     }
@@ -125,8 +126,7 @@ QUrl Client::SocketUrl(const QString& serverUrl) {
         base = QStringLiteral("wss://") + base.mid(8);
     } else if (base.startsWith(QLatin1String("http://"))) {
         base = QStringLiteral("ws://") + base.mid(7);
-    } else if (!base.startsWith(QLatin1String("ws://"))
-               && !base.startsWith(QLatin1String("wss://"))) {
+    } else if (!base.startsWith(QLatin1String("ws://")) && !base.startsWith(QLatin1String("wss://"))) {
         base = QStringLiteral("wss://") + base;
     }
     return QUrl(base + QStringLiteral("/ws"));
@@ -139,9 +139,7 @@ void Client::connectSocket() {
     socket = created;
     connect(created, &QWebSocket::connected, this, [this, created] {
         if (created == socket) {
-            created->sendTextMessage(
-                QString::fromUtf8(Encode(Hello{kProtocol, App::Desktop, options.appVersion}))
-            );
+            created->sendTextMessage(QString::fromUtf8(Encode(Hello{kProtocol, App::Desktop, options.appVersion})));
         }
     });
     connect(created, &QWebSocket::textMessageReceived, this, [this, created](const QString& text) {
@@ -154,14 +152,11 @@ void Client::connectSocket() {
             awaitingPong = false;
         }
     });
-    connect(
-        created, &QWebSocket::stateChanged, this,
-        [this, created](QAbstractSocket::SocketState state) {
-            if (state == QAbstractSocket::UnconnectedState) {
-                socketClosed(created);
-            }
+    connect(created, &QWebSocket::stateChanged, this, [this, created](QAbstractSocket::SocketState state) {
+        if (state == QAbstractSocket::UnconnectedState) {
+            socketClosed(created);
         }
-    );
+    });
     awaitingPong = false;
     pingTimer.start();
     created->open(serverUrl);

@@ -29,8 +29,7 @@ namespace {
 
 const QString kRoom = QStringLiteral("7k3m9q2x");
 const QString kHostSecret = QStringLiteral("R0CuY0ewFywBJU_1W65a_1GZ9ERuf21kPUAYWz9HUUU");
-const QString kJoinUrl =
-    QStringLiteral("https://jam.example.org/j/7k3m9q2x#WDkyFgMr5iV3hKwManPvsg");
+const QString kJoinUrl = QStringLiteral("https://jam.example.org/j/7k3m9q2x#WDkyFgMr5iV3hKwManPvsg");
 const QString kHostId = QStringLiteral("h7k2m9");
 const QString kGuestId = QStringLiteral("a4n8q1");
 
@@ -69,9 +68,7 @@ QByteArray Ack(const QString& id) {
 }
 
 QByteArray Ended(const QString& reason) {
-    return Text(
-        {{QStringLiteral("type"), QStringLiteral("ended")}, {QStringLiteral("reason"), reason}}
-    );
+    return Text({{QStringLiteral("type"), QStringLiteral("ended")}, {QStringLiteral("reason"), reason}});
 }
 
 QJsonObject TrackJson(const QString& id) {
@@ -84,12 +81,8 @@ QJsonObject TrackJson(const QString& id) {
     };
 }
 
-QJsonObject Item(
-    const QString& itemId,
-    const QString& trackId,
-    const QString& addedBy = kGuestId,
-    bool pinned = false
-) {
+QJsonObject
+Item(const QString& itemId, const QString& trackId, const QString& addedBy = kGuestId, bool pinned = false) {
     return {
         {QStringLiteral("itemId"), itemId},
         {QStringLiteral("track"), TrackJson(trackId)},
@@ -104,8 +97,8 @@ QByteArray StateOf(qint64 version, const QJsonArray& queue) {
     message[QStringLiteral("version")] = version;
     QJsonObject room = message[QStringLiteral("room")].toObject();
     room[QStringLiteral("queue")] = queue;
-    room[QStringLiteral("fallback")] =
-        QJsonObject{{QStringLiteral("seeds"), QJsonArray{}}, {QStringLiteral("seedsVersion"), 0}};
+    room[QStringLiteral("fallback"
+    )] = QJsonObject{{QStringLiteral("seeds"), QJsonArray{}}, {QStringLiteral("seedsVersion"), 0}};
     message[QStringLiteral("room")] = room;
     return Text(message);
 }
@@ -114,12 +107,10 @@ QJsonObject YandexTrack(const QString& id, bool available = true) {
     return {
         {QStringLiteral("id"), id},
         {QStringLiteral("title"), QStringLiteral("T") + id},
-        {QStringLiteral("artists"),
-         QJsonArray{QJsonObject{{QStringLiteral("name"), QStringLiteral("Кино")}}}},
+        {QStringLiteral("artists"), QJsonArray{QJsonObject{{QStringLiteral("name"), QStringLiteral("Кино")}}}},
         {QStringLiteral("albums"),
          QJsonArray{QJsonObject{
-             {QStringLiteral("id"), 7},
-             {QStringLiteral("coverUri"), QStringLiteral("avatars.yandex.net/a/%%")}
+             {QStringLiteral("id"), 7}, {QStringLiteral("coverUri"), QStringLiteral("avatars.yandex.net/a/%%")}
          }}},
         {QStringLiteral("durationMs"), 200'000},
         {QStringLiteral("available"), available}
@@ -181,8 +172,7 @@ private:
             , refused(&host, &Jam::HostSession::refused)
             , ended(&host, &Jam::HostSession::ended) { }
 
-        static Jam::SessionStore
-        Stored(const Jam::SessionStore& store, const std::optional<Jam::Session>& stored) {
+        static Jam::SessionStore Stored(const Jam::SessionStore& store, const std::optional<Jam::Session>& stored) {
             if (stored) {
                 store.save(*stored);
             }
@@ -220,9 +210,7 @@ private:
         }
 
         bool waitSent(qsizetype count) {
-            return QTest::qWaitFor(
-                [&] { return static_cast<qsizetype>(sent().size()) >= count; }, 5000
-            );
+            return QTest::qWaitFor([&] { return static_cast<qsizetype>(sent().size()) >= count; }, 5000);
         }
 
         void receive(const QByteArray& message) {
@@ -258,7 +246,10 @@ private Q_SLOTS:
         QFile file(QStringLiteral(QIYAA_TEST_DATA "/sine440_3s.mp3"));
         QVERIFY(file.open(QIODevice::ReadOnly));
         catalog.audioTracks(
-            {QStringLiteral("11"), QStringLiteral("22"), QStringLiteral("33"), QStringLiteral("44"),
+            {QStringLiteral("11"),
+             QStringLiteral("22"),
+             QStringLiteral("33"),
+             QStringLiteral("44"),
              QStringLiteral("55")},
             file.readAll()
         );
@@ -283,10 +274,7 @@ private Q_SLOTS:
         QVERIFY(stack.jam.isActive());
         QCOMPARE(stack.player.queueTitle(), QStringLiteral("Джем"));
         QVERIFY(stack.waitSent(2));
-        QCOMPARE(
-            stack.sent().back(),
-            Jam::ClientMessage(Jam::Playing{Jam::Source::Idle, {}, {}, 0, true})
-        );
+        QCOMPARE(stack.sent().back(), Jam::ClientMessage(Jam::Playing{Jam::Source::Idle, {}, {}, 0, true}));
     }
 
     void createRefusesAMissingServerAndABlankName() {
@@ -350,10 +338,7 @@ private Q_SLOTS:
 
         QVERIFY(stack.open());
         QVERIFY(stack.waitSent(1));
-        QCOMPARE(
-            stack.sent().front(),
-            Jam::ClientMessage(Jam::Resume{"r2", kRoom, kHostSecret, std::nullopt, {"i2"}})
-        );
+        QCOMPARE(stack.sent().front(), Jam::ClientMessage(Jam::Resume{"r2", kRoom, kHostSecret, std::nullopt, {"i2"}}));
         stack.receive(Resumed(QStringLiteral("r2"), false));
         QTRY_VERIFY(stack.host.isConnected());
         QCOMPARE(stack.store.load()->outbox, QStringList());
@@ -361,8 +346,7 @@ private Q_SLOTS:
         const Jam::ClientMessage last = stack.sent().back();
         const auto* playing = std::get_if<Jam::Playing>(&last);
         QVERIFY2(
-            playing && playing->source == Jam::Source::Item && playing->itemId == "i2",
-            Jam::Encode(last).constData()
+            playing && playing->source == Jam::Source::Item && playing->itemId == "i2", Jam::Encode(last).constData()
         );
         QVERIFY(stack.host.pin(QStringLiteral("i2")));
     }
@@ -372,11 +356,8 @@ private Q_SLOTS:
         QVERIFY(stack.created());
         const QJsonObject snapshot = Example(QStringLiteral("snapshot/ok"));
         stack.receive(Text(snapshot));
-        QTRY_COMPARE(
-            stack.store.load()->snapshot, std::optional(snapshot[QStringLiteral("data")].toObject())
-        );
-        const QString url =
-            QStringLiteral("https://jam.example.org/j/7k3m9q2x#AAAAAAAAAAAAAAAAAAAAAA");
+        QTRY_COMPARE(stack.store.load()->snapshot, std::optional(snapshot[QStringLiteral("data")].toObject()));
+        const QString url = QStringLiteral("https://jam.example.org/j/7k3m9q2x#AAAAAAAAAAAAAAAAAAAAAA");
         stack.receive(Text(
             {{QStringLiteral("type"), QStringLiteral("linkRotated")},
              {QStringLiteral("id"), QStringLiteral("r9")},
@@ -400,8 +381,7 @@ private Q_SLOTS:
         QVERIFY(stack.open());
         QVERIFY(stack.waitSent(1));
         QCOMPARE(
-            stack.sent().front(),
-            Jam::ClientMessage(Jam::Resume{"r1", kRoom, kHostSecret, stored.snapshot, {"i7"}})
+            stack.sent().front(), Jam::ClientMessage(Jam::Resume{"r1", kRoom, kHostSecret, stored.snapshot, {"i7"}})
         );
         stack.receive(Resumed(QStringLiteral("r1"), true));
         QTRY_VERIFY(stack.host.isConnected());
@@ -415,10 +395,7 @@ private Q_SLOTS:
         QVERIFY(!stack.jam.isActive());
         QVERIFY(stack.open());
         QVERIFY(stack.waitSent(1));
-        QCOMPARE(
-            stack.sent().front(),
-            Jam::ClientMessage(Jam::Resume{"r1", kRoom, kHostSecret, std::nullopt, {}})
-        );
+        QCOMPARE(stack.sent().front(), Jam::ClientMessage(Jam::Resume{"r1", kRoom, kHostSecret, std::nullopt, {}}));
         stack.receive(Resumed(QStringLiteral("r1"), false));
         QVERIFY(stack.waitSent(2));
         QCOMPARE(stack.sent().back(), Jam::ClientMessage(Jam::End{"r2"}));
@@ -465,9 +442,7 @@ private Q_SLOTS:
         for (int i = 1; i <= 30; ++i) {
             results << YandexTrack(QString::number(i), i != 2);
         }
-        const QJsonObject found{
-            {QStringLiteral("tracks"), QJsonObject{{QStringLiteral("results"), results}}}
-        };
+        const QJsonObject found{{QStringLiteral("tracks"), QJsonObject{{QStringLiteral("results"), results}}}};
         catalog.result("GET", "/search", Text(found));
         stack.receive(Text(
             {{QStringLiteral("type"), QStringLiteral("searchRequest")},
@@ -528,18 +503,15 @@ private Q_SLOTS:
         Stack stack(&library);
         QVERIFY(stack.created());
         catalog.result(
-            "POST", "/tracks/",
-            QJsonDocument(QJsonArray{
-                              YandexTrack(QStringLiteral("22"), false),
-                              YandexTrack(QStringLiteral("11"))
-                          })
+            "POST",
+            "/tracks/",
+            QJsonDocument(QJsonArray{YandexTrack(QStringLiteral("22"), false), YandexTrack(QStringLiteral("11"))})
                 .toJson(QJsonDocument::Compact)
         );
         stack.receive(Text(
             {{QStringLiteral("type"), QStringLiteral("validateRequest")},
              {QStringLiteral("requestId"), QStringLiteral("v1")},
-             {QStringLiteral("trackIds"),
-              QJsonArray{QStringLiteral("11"), QStringLiteral("22"), QStringLiteral("33")}}}
+             {QStringLiteral("trackIds"), QJsonArray{QStringLiteral("11"), QStringLiteral("22"), QStringLiteral("33")}}}
         ));
         QTRY_VERIFY(!OfType<Jam::ValidateResult>(stack.sent()).empty());
         Jam::Track first{"11", "7", "T11", {"Кино"}, 200'000, "avatars.yandex.net/a/%%"};
@@ -625,9 +597,7 @@ private Q_SLOTS:
         track.artists = {QStringLiteral("Сплин")};
         QVERIFY(stack.host.add(track));
         QTRY_VERIFY(!OfType<Jam::Add>(stack.sent()).empty());
-        QCOMPARE(
-            OfType<Jam::Add>(stack.sent()).back(), (Jam::Add{"r2", {}, Jam::JamTrackOf(track)})
-        );
+        QCOMPARE(OfType<Jam::Add>(stack.sent()).back(), (Jam::Add{"r2", {}, Jam::JamTrackOf(track)}));
         Yandex::Track next;
         next.id = QStringLiteral("55");
         next.title = QStringLiteral("E");
@@ -652,16 +622,16 @@ private Q_SLOTS:
     void listeningAlongSendsTheFilesOnlyWhenTheHostSharesThem() {  // LISTEN-01 to 05, 13
         Stack stack(&library);
         QVERIFY(stack.created());
-        const QUrl file(QStringLiteral("https://s1.storage.yandex.net/get-mp3/"
-                                       "0123456789abcdef0123456789abcdef/65cd937b03427/t.mp3"));
+        const QUrl file(QStringLiteral(
+            "https://s1.storage.yandex.net/get-mp3/"
+            "0123456789abcdef0123456789abcdef/65cd937b03427/t.mp3"
+        ));
         Core::JamPlayback playback;
         playback.kind = Core::JamPlayback::Kind::Item;
         playback.itemId = QStringLiteral("i1");
         playback.paused = false;
         playback.link = file;
-        const QUrl next(
-            QString(file.toString()).replace(QStringLiteral("t.mp3"), QStringLiteral("n.mp3"))
-        );
+        const QUrl next(QString(file.toString()).replace(QStringLiteral("t.mp3"), QStringLiteral("n.mp3")));
         playback.nextLink = next;
         const auto lastPlaying = [&] { return OfType<Jam::Playing>(stack.sent()).back(); };
         Q_EMIT stack.jam.playback(playback);

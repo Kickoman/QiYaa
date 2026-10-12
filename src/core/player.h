@@ -37,11 +37,9 @@ struct QueueRules {
 class Player : public QObject {
     Q_OBJECT
 public:
-    using TLoadMoreCallback =
-        std::function<void(std::function<void(const QList<Yandex::Track>&)> done)>;
+    using TLoadMoreCallback = std::function<void(std::function<void(const QList<Yandex::Track>&)> done)>;
     enum class TrackEvent { Started, Finished, Skipped };
-    using TEventCallback =
-        std::function<void(TrackEvent event, const Yandex::Track& track, double playedSeconds)>;
+    using TEventCallback = std::function<void(TrackEvent event, const Yandex::Track& track, double playedSeconds)>;
 
     Player(Yandex::Library* library, Audio::AudioEngine* engine, QObject* parent = nullptr);
 
@@ -60,12 +58,7 @@ public:
     void removeTracks(QList<int> indices);
     void clearQueue();
     // Keeps the queue and the current track playing; replaces the source behind them.
-    void changeSource(
-        const QString& title,
-        TLoadMoreCallback more,
-        TEventCallback events,
-        QueueRules rules
-    );
+    void changeSource(const QString& title, TLoadMoreCallback more, TEventCallback events, QueueRules rules);
     // The load-more check now, not only when a track becomes current.
     void requestMore() { maybeLoadMore(); }
 
