@@ -3,7 +3,8 @@
 Talks to the unofficial Yandex Music API (`https://api.music.yandex.net`) and to Yandex OAuth
 (`https://oauth.yandex.ru`): sends authorised JSON and form requests, parses the account, tracks,
 playlists, albums, artists, stations, waves and search results, reports plays and wave feedback,
-turns a track id into a signed mp3 link, runs the OAuth device-code login, and finds, normalises
+turns a track id into the link of its file (a signed mp3 link, or an AAC in MP4 file at the
+economy quality), runs the OAuth device-code login, and finds, normalises
 and stores the token. The endpoints are the ones Yaamp used. Every network call is asynchronous
 and answers through a callback or a signal. The module does not download or play audio, fetch
 cover images or decide what plays next: that is [src/core](../core/README.md) (`Player`,
@@ -14,6 +15,7 @@ cover images or decide what plays next: that is [src/core](../core/README.md) (`
 | File | Contains |
 |---|---|
 | `api_client.h/.cpp` | `ApiClient` — authorised GET/POST, the `{"result": …}` envelope, the pending-POST count; `Account`, `Track`, `ResolvedUrl`, `RequestError`, `ClassifyReply`, `TForm`; `accountStatus`, `tracks`, `resolveTrackUrl`, `reportPlayStarted` |
+| `file_info.h/.cpp` | `Quality`, `QualityKey`, `QualityFromKey`; `FileInfoRequest`, `FileInfo`, `SignFileInfo`, `FileInfoQuery`, `ParseFileInfo`, `IsUsable`, `kFileInfoClient` — `GET /get-file-info`, the economy file |
 | `library.h/.cpp` | `Library` — the logged-in account, likes and dislikes, playlists, "For you" playlists, artists, albums, stations, waves (rotor sessions, feedback, the wheel), search; `NamedReference`, `PlaylistReference`, `Station`, `WaveBatch`, `Wave`, `WaveEvent`, `SearchResult` |
 | `oauth.h/.cpp` | `DeviceLogin` — the OAuth device-code flow; `BrowserLoginUrl` for the implicit-grant fallback |
 | `token.h/.cpp` | `NormalizeToken`, `FindToken`, `SaveToken`, `ForgetToken`; `TokenSource` |
@@ -25,8 +27,8 @@ cover images or decide what plays next: that is [src/core](../core/README.md) (`
 - It deliberately links no other project module and neither `Qt6::Gui` nor `Qt6::Widgets`. It sits
   at the bottom of the module order; which modules link it is in
   [docs/architecture.md](../../docs/architecture.md#modules).
-- Inside the module: `library.h` includes `api_client.h`, and `api_client.cpp` includes
-  `track_url.h`. `oauth` and `token` include only their own headers.
+- Inside the module: `library.h` includes `api_client.h`, `api_client.h` includes `file_info.h`,
+  and `api_client.cpp` includes `track_url.h`. `oauth` and `token` include only their own headers.
 
 ```bash
 grep -rn --include='*.cpp' --include='*.h' '#include "' src/yandex/ | grep -v '"yandex/'   # must print nothing
@@ -62,6 +64,7 @@ struct Track {
 struct ResolvedUrl {
     QUrl url;
     int bitrateKbps = 0;
+    QString codec;         // "mp3", "he-aac-mp4"…
 };
 
 struct RequestError {
@@ -98,7 +101,7 @@ public:
     void accountStatus(TCallback<Account> callback);
     void tracks(const QStringList& ids, TCallback<QList<Track>> callback);
     using TUrlCallback = std::function<void(const ResolvedUrl& link, const RequestError& error)>;
-    void resolveTrackUrl(const QString& trackId, TUrlCallback callback);
+    void resolveTrackUrl(const QString& trackId, Quality quality, TUrlCallback callback);
     void reportPlayStarted(const Account& account, const Track& track, const QString& playId);
 
     int pendingPosts() const;   // POSTs whose reply has not finished
@@ -108,7 +111,7 @@ public:
 
 Q_SIGNALS:
     void postsSettled();   // pendingPosts() dropped to 0
-    void requestFailed(Yandex::RequestError::Kind kind, int httpStatus);  // a JSON request or download-info
+    void requestFailed(Yandex::RequestError::Kind kind, int httpStatus);  // a JSON request, download-info or get-file-info
 };
 ```
 
@@ -129,9 +132,14 @@ Q_SIGNALS:
   `https://music.yandex.ru/track/<id>` without an album. `displayTitle()` is the bare title when
   there are no artists.
 - `tracks(ids)` sends every id in one request; `Library::tracksByIds` does the chunking.
-- `resolveTrackUrl(trackId)` uses the part of `trackId` before the first `:` (so `id:albumId` is
-  accepted) and makes two GETs, described in [Download info](#download-info-and-the-signed-link).
-  The result is the signed link and the chosen variant's bitrate.
+- `resolveTrackUrl(trackId, quality)` uses the part of `trackId` before the first `:` (so
+  `id:albumId` is accepted). At `Quality::Standard` it makes two GETs, described in
+  [Download info](#download-info-and-the-signed-link); the result is the signed link and the
+  chosen variant's bitrate and codec. At `Quality::Economy` it first asks `GET /get-file-info`
+  ([below](#get-file-info-the-economy-file)): a usable reply gives the file's link, `bitrate` and
+  `codec`; a network failure is the callback's error, as for any link (spec QUAL-04); any other
+  failure takes the standard path for the same track, with no error (QUAL-03), after
+  `requestFailed` (so telemetry counts it: a revoked key shows up there) and a `qInfo` line.
 - `reportPlayStarted` posts `/play-audio` and reports a start only: the played and end positions
   are always 0. It has no callback; a failure is logged with `qWarning` (`play-audio failed: …`).
 - `pendingPosts()` counts `postForm` and `postJson` requests; GETs, including both requests of
@@ -154,6 +162,8 @@ Q_SIGNALS:
 - `accountStatus` treats a reply without `account.uid` as an error even when the status is 200.
 - `resolveTrackUrl` sends the `Authorization` header to whatever host `downloadInfoUrl` names.
 - `resolveTrackUrl` can end up with a preview or a non-mp3 variant (see `PickBestVariant`).
+- At `Quality::Economy`, a 401 or 403 of `get-file-info` is not an account failure: it falls back,
+  and only the standard path's own answers can reach ERR-08.
 
 ## `library.h` — `Library`
 
@@ -455,6 +465,48 @@ QUrl BuildTrackUrl(const DownloadInfo& info);
   The last two read `spec/fixtures/yandex/tracks-download-info` and `storage-download-info`,
   whose expected links the Android tests check too.
 
+## `file_info.h` — `get-file-info`, the economy file
+
+```cpp
+enum class Quality { Standard, Economy };
+QString QualityKey(Quality quality);                         // "standard", "economy"
+std::optional<Quality> QualityFromKey(const QString& key);   // nullopt for anything else
+
+inline constexpr char kFileInfoClient[] = "YandexMusicDesktopAppWindows/5.95.0";
+
+struct FileInfoRequest { QString trackId; QString quality; QStringList codecs; QString transport; };
+struct FileInfo {
+    QString quality;      // the level the server chose
+    QString codec;
+    int bitrateKbps = 0;
+    QString transport;    // "raw" or "encraw"
+    QUrl url;
+    QStringList urls;     // mirrors of url
+    QString key;          // hex AES key, encraw only
+};
+
+QString SignFileInfo(const FileInfoRequest& request, qint64 timestamp);   // Unix seconds
+QString FileInfoQuery(const FileInfoRequest& request, qint64 timestamp);  // percent-encoded
+std::optional<FileInfo> ParseFileInfo(const QJsonValue& result);          // nullopt without an https url
+bool IsUsable(const FileInfo& info, const FileInfoRequest& request);
+```
+
+- Pure functions, like `track_url`.
+- The economy request is `quality=lq`, `codecs=he-aac-mp4,mp3`, `transports=raw`, signed with
+  the current time ([Get file info](#get-file-info-the-economy-file)).
+- `ParseFileInfo` reads `result.downloadInfo`; `url` must be an `https` URL with a host.
+- `IsUsable`: `transport` is `raw` and `codec` is one of the codecs asked for. An `encraw` reply
+  (encrypted) or a codec not asked for falls back.
+
+**Traps:**
+- `FileInfoQuery` percent-encodes every value itself, and `ApiClient` sets it with
+  `QUrl::StrictMode`. Building the query with `QUrlQuery` would leave the signature's `+` bare,
+  the server would read a space and answer 403 `not-allowed` (test
+  `signsFileInfoLikeTheSpecExample` pins the encoded URL).
+- The key is the one of Yandex Music's Windows app and is checked together with
+  `kFileInfoClient`. Yandex has revoked keys before (its Android app's); then every economy link
+  falls back to the standard one, which is why the fallback exists.
+
 ## Formats read
 
 ### Token file
@@ -494,6 +546,7 @@ Replies are listed after unwrapping. `<uid>` is the logged-in account's uid.
 | `accountStatus` | `GET /account/status` | `account.uid` (required), `account.login`, `account.displayName` |
 | `tracks`, `tracksByIds` | `POST /tracks/` form `track-ids=<id,id,…>`, `with-positions=false` | array of [track objects](#track-objects) |
 | `resolveTrackUrl` | `GET /tracks/<id>/download-info`, then see [below](#download-info-and-the-signed-link) | array of `{codec, bitrateInKbps, preview, downloadInfoUrl}` |
+| `resolveTrackUrl` at `Quality::Economy` | `GET /get-file-info` ([below](#get-file-info-the-economy-file)) | `{downloadInfo: {quality, codec, bitrate, transport, url, urls}}` |
 | `reportPlayStarted` | `POST /play-audio` form `track-id`, `album-id`, `from=web-own_tracks-track-track-main`, `play-id`, `uid`, `timestamp` and `client-now` (both the current UTC time, ISO 8601 with ms), `track-length-seconds` (`durationMs / 1000.0`, may have a fraction), `total-played-seconds=0`, `end-position-seconds=0` | none |
 | `likedTracks` | `GET /users/<uid>/likes/tracks` | `library.tracks[].id`, then `tracksByIds` |
 | `userPlaylists` | `GET /users/<uid>/playlists/list` | array of playlists: `uid` (or `owner.uid`), `kind`, `title`, `trackCount`; entries without `kind` dropped |
@@ -561,6 +614,23 @@ otherwise from the element itself.
    `s123vla.storage.yandex.net`, path `/rmusic/U2FsdGVk/abc`, ts `000612a3b4c5d`, s `deadbeef` give
    `https://s123vla.storage.yandex.net/get-mp3/5c38e49c01f9a959428986790af6f9ca/000612a3b4c5d/rmusic/U2FsdGVk/abc`.
 
+### Get file info: the economy file
+
+```
+GET /get-file-info?ts=<unix seconds>&trackId=<id>&quality=lq&codecs=he-aac-mp4%2Cmp3&transports=raw&sign=<sign>
+X-Yandex-Music-Client: YandexMusicDesktopAppWindows/5.95.0
+```
+
+with the usual `Authorization` and `Accept-Language` headers. `sign` is base64 of
+HMAC-SHA256(`kSignKey` of `file_info.cpp`, `ts + trackId + quality + codecs joined without commas
++ transport`) without its last character. Example from the spec: `ts` 1760000000, track
+155647609 give `keefcyb+nfzl1cRn8glR+ZyzpQf/h2gSrMF0fHIOHpQ`. The reply is enveloped:
+`result.downloadInfo` with `trackId, realId, quality, codec, bitrate, transport, gain, url,
+urls[]` and `key` for `encraw`. For Yandex's economy level the file is HE-AAC 64 kbps in MP4
+(`ftyp, uuid, moov, mdat`) on `strm*.strm.yandex.net`, which serves byte ranges; its link carries
+its own expiry (`ts=<hex>` in the path, about 10 days). All of it, and what is known about
+lossless, is in [spec/player/quality.md](../../spec/player/quality.md).
+
 ## Errors
 
 The module throws nothing and catches nothing, and it has no `Error` class (the project's error
@@ -573,7 +643,7 @@ policy is in [docs/architecture.md](../../docs/architecture.md#errors)). Every f
 | `DeviceLogin` | the `failed(error)` signal |
 | `NormalizeToken`, `FindToken` | an empty `QString`, an empty `TokenSource` |
 | `SaveToken`, `ForgetToken` | `false`; nothing |
-| `track_url` functions | `std::nullopt` |
+| `track_url`, `file_info` functions | `std::nullopt`; `false` from `IsUsable` |
 
 `resolveTrackUrl` reports a `RequestError`, so the `Player` can tell what to do without reading the
 text (spec/player/errors.md). `ClassifyReply` decides the kind:
@@ -596,6 +666,7 @@ The error strings, all in English except the device-code expiry:
 | `track <id>: none of <n> download variants has a usable link` | `resolveTrackUrl`: no variant with a valid `downloadInfoUrl` |
 | `download-info: <Qt error>` | `resolveTrackUrl`: the second request failed |
 | `download-info: no host, path and s in a <n>-byte reply` | `resolveTrackUrl`: `ParseDownloadInfo` refused the reply |
+| `get-file-info: <Qt error>` | `resolveTrackUrl` at `Quality::Economy`: a network failure (other failures fall back and log `get-file-info for track <id>: HTTP <status>, <codec/transport or "no file">; taking the standard link`) |
 | `/rotor/session/new: the reply has no radioSessionId` | `startWave` |
 | `the code has expired, start again` | `DeviceLogin`: the device code expired |
 | the server's `error_description` or `error`, else Qt's error text | other `DeviceLogin` failures |

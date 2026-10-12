@@ -82,6 +82,9 @@ public:
     void setShuffleAlgorithm(ShuffleAlgorithm algorithm);
     ShuffleAlgorithm shuffleAlgorithm() const { return preferredShuffleAlgorithm; }
     void setRepeat(bool on);
+    // Applies from the next link on: the playing track goes on (spec QUAL-05).
+    void setQuality(Yandex::Quality quality);
+    Yandex::Quality quality() const { return audioQuality; }
     bool shuffle() const { return shuffleEnabled; }  // the user's choice
     // Shuffle as it applies now: never in an endless queue (a wave plays in queue order).
     bool shuffleActive() const { return shuffleEnabled && !loadMore; }
@@ -194,6 +197,7 @@ private:
     QUrl currentLinkUrl;
     bool shuffleEnabled = false;
     bool repeatEnabled = false;
+    Yandex::Quality audioQuality = Yandex::Quality::Standard;
     quint64 generation = 0;
     QPointer<QNetworkReply> download;
     TStreamId streamId = 0;

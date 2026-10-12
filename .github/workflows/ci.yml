@@ -226,6 +226,7 @@ jobs:
           # App-local MSVC runtime: runs without installing the VC++ redistributable.
           cp "$(cygpath -u "$VCToolsRedistDir")"/x64/Microsoft.VC14*.CRT/*.dll dist/QiYaa/
           cp LICENSE THIRD_PARTY.md dist/QiYaa/
+          cp contrib/fdk-aac/LICENSE dist/QiYaa/fdk-aac-LICENSE.txt
           (cd dist && 7z a -bd "QiYaa-$VERSION-windows-x64.zip" QiYaa > /dev/null)
 
       - name: Package (Windows installer)
@@ -246,6 +247,9 @@ jobs:
           # the signatures the linker made; on Apple Silicon a downloaded app with
           # a broken signature is "damaged and can't be opened". -codesign=- signs
           # every binary and then the bundle again, ad hoc (no Apple ID needed).
+          # The license texts, fdk-aac's among them (its license asks for it with every binary).
+          cp LICENSE THIRD_PARTY.md build/QiYaa.app/Contents/Resources/
+          cp contrib/fdk-aac/LICENSE build/QiYaa.app/Contents/Resources/fdk-aac-LICENSE.txt
           macdeployqt build/QiYaa.app -codesign=-
           codesign --verify --deep --strict --verbose=2 build/QiYaa.app
           codesign --display --verbose=2 build/QiYaa.app

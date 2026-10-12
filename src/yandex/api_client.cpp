@@ -277,8 +277,60 @@ void ApiClient::tracks(const QStringList& ids, TCallback<QList<Track>> callback)
     );
 }
 
-void ApiClient::resolveTrackUrl(const QString& trackId, TUrlCallback callback) {
+void ApiClient::resolveTrackUrl(const QString& trackId, Quality quality, TUrlCallback callback) {
     const QString id = trackId.section(u':', 0, 0);
+    if (quality == Quality::Economy) {
+        return resolveEconomyUrl(id, std::move(callback));
+    }
+    resolveStandardUrl(id, std::move(callback));
+}
+
+void ApiClient::resolveEconomyUrl(const QString& trackId, TUrlCallback callback) {
+    const FileInfoRequest request{
+        trackId,
+        QStringLiteral("lq"),
+        {QStringLiteral("he-aac-mp4"), QStringLiteral("mp3")},
+        QStringLiteral("raw")
+    };
+    QUrl url(baseUrl + QStringLiteral("/get-file-info"));
+    url.setQuery(FileInfoQuery(request, QDateTime::currentSecsSinceEpoch()), QUrl::StrictMode);
+    QNetworkRequest networkRequest = MakeRequest(url, accessToken);
+    networkRequest.setRawHeader("X-Yandex-Music-Client", kFileInfoClient);
+    QNetworkReply* reply = networkManager->get(networkRequest);
+    QPointer<ApiClient> self(this);
+    connect(reply, &QNetworkReply::finished, this, [self, reply, request, callback] {
+        reply->deleteLater();
+        if (!self) {
+            return;
+        }
+        RequestError error = ClassifyReply(*reply);
+        if (error.kind == RequestError::Kind::Network) {
+            error.text = QStringLiteral("get-file-info: ") + reply->errorString();
+            Q_EMIT self->requestFailed(error.kind, error.httpStatus);
+            return callback({}, error);
+        }
+        std::optional<FileInfo> info;
+        if (!error.isError()) {
+            info = ParseFileInfo(
+                QJsonDocument::fromJson(reply->readAll()).object().value(QStringLiteral("result"))
+            );
+        }
+        if (!info || !IsUsable(*info, request)) {  // spec QUAL-03
+            const RequestError::Kind kind =
+                error.isError() ? error.kind : RequestError::Kind::Content;
+            Q_EMIT self->requestFailed(kind, error.httpStatus);
+            qInfo(
+                "get-file-info for track %s: HTTP %d, %s; taking the standard link",
+                qPrintable(request.trackId), error.httpStatus,
+                info ? qPrintable(info->codec + u'/' + info->transport) : "no file"
+            );
+            return self->resolveStandardUrl(request.trackId, callback);
+        }
+        callback(ResolvedUrl{info->url, info->bitrateKbps, info->codec}, {});
+    });
+}
+
+void ApiClient::resolveStandardUrl(const QString& id, TUrlCallback callback) {
     QPointer<ApiClient> self(this);
     QUrl url(baseUrl + QStringLiteral("/tracks/%1/download-info").arg(id));
     handleClassifiedJson(
@@ -313,7 +365,8 @@ void ApiClient::resolveTrackUrl(const QString& trackId, TUrlCallback callback) {
             QNetworkReply* reply =
                 self->networkManager->get(MakeRequest(infoUrl, self->accessToken));
             const int bitrate = best->bitrateKbps;
-            connect(reply, &QNetworkReply::finished, self, [self, reply, callback, bitrate] {
+            const QString codec = best->codec;
+            connect(reply, &QNetworkReply::finished, self, [self, reply, callback, bitrate, codec] {
                 reply->deleteLater();
                 RequestError infoError = ClassifyReply(*reply);
                 if (infoError.isError()) {
@@ -332,7 +385,7 @@ void ApiClient::resolveTrackUrl(const QString& trackId, TUrlCallback callback) {
                             .arg(body.size());
                     return callback({}, infoError);
                 }
-                callback(ResolvedUrl{BuildTrackUrl(*info), bitrate}, {});
+                callback(ResolvedUrl{BuildTrackUrl(*info), bitrate, codec}, {});
             });
         }
     );

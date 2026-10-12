@@ -669,7 +669,8 @@ public:
 "Jam server": the address (empty shows and means the default, `QIYAA_JAM_URL`), with "An
 address like https://jam.example.org is needed" and Save disabled until it is an http(s) URL with a host;
 "Teach the jam vibe" (HOST-16) with what it means; "Guests may listen" with what it
-does and that the files are the host's subscription's. The owner writes the settings.
+does, that the files are the host's subscription's and that it works only at the Standard
+quality (LISTEN-13). The owner writes the settings.
 
 ## MilkdropWindow — `milkdrop_window.h/.cpp`
 

@@ -49,6 +49,17 @@ elseif(UNIX)
     target_link_libraries(qiyaa_miniaudio PUBLIC m)
 endif()
 
+# The MP4 demuxer and the AAC decoder behind the economy quality (spec/player/quality.md).
+add_library(qiyaa_minimp4 STATIC src/audio/minimp4_impl.c)
+target_include_directories(qiyaa_minimp4 PUBLIC contrib/minimp4)
+set_target_properties(qiyaa_minimp4 PROPERTIES POSITION_INDEPENDENT_CODE ON)
+if(MSVC)
+    target_compile_options(qiyaa_minimp4 PRIVATE /w)
+else()
+    target_compile_options(qiyaa_minimp4 PRIVATE -w)
+endif()
+add_subdirectory(contrib/fdk-aac)
+
 # One static library per folder of src/. Dependencies point one way:
 #   audio, yandex, skins  ->  vis, core  ->  jam  ->  ui, integrations  ->  app  ->  qiyaa (main)
 function(qiyaa_target_defaults target)
@@ -71,11 +82,14 @@ qiyaa_add_module(audio
     src/audio/error.h
     src/audio/eq_presets.cpp    src/audio/eq_presets.h
     src/audio/equalizer.cpp     src/audio/equalizer.h
+    src/audio/mp4_aac_backend.cpp src/audio/mp4_aac_backend.h
     src/audio/vis_tap.cpp       src/audio/vis_tap.h)
-target_link_libraries(qiyaa_audio PUBLIC Qt6::Core PRIVATE qiyaa_miniaudio)
+target_link_libraries(qiyaa_audio PUBLIC Qt6::Core
+    PRIVATE qiyaa_miniaudio qiyaa_minimp4 qiyaa_fdk_aac)
 
 qiyaa_add_module(yandex
     src/yandex/api_client.cpp   src/yandex/api_client.h
+    src/yandex/file_info.cpp    src/yandex/file_info.h
     src/yandex/library.cpp      src/yandex/library.h
     src/yandex/oauth.cpp        src/yandex/oauth.h
     src/yandex/token.cpp        src/yandex/token.h
@@ -398,6 +412,9 @@ and Milkdrop visualizations, media keys (MPRIS).")
     # License texts where Debian looks for them (/usr/share/doc/<package>/copyright).
     install(FILES LICENSE DESTINATION ${CMAKE_INSTALL_DATADIR}/doc/qiyaa RENAME copyright)
     install(FILES THIRD_PARTY.md DESTINATION ${CMAKE_INSTALL_DATADIR}/doc/qiyaa)
+    # Its license must come with every binary (THIRD_PARTY.md).
+    install(FILES contrib/fdk-aac/LICENSE DESTINATION ${CMAKE_INSTALL_DATADIR}/doc/qiyaa
+            RENAME fdk-aac-LICENSE.txt)
 else()
     install(TARGETS qiyaa BUNDLE DESTINATION . RUNTIME DESTINATION bin)
 endif()

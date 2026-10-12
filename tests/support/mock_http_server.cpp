@@ -93,6 +93,25 @@ void MockHttpServer::audioTracks(const QStringList& trackIds, const QByteArray& 
     fixture("POST", "/play-audio", "play-audio/ok");
 }
 
+void MockHttpServer::economyTracks(const QStringList& trackIds, const QByteArray& m4a) {
+    const QByteArray base = "https://" + QUrl(baseUrl()).authority().toUtf8();
+    on("GET", QStringLiteral("/get-file-info"), [trackIds, base](const MockRequest& request) {
+        const QString id = request.query.queryItemValue(QStringLiteral("trackId"));
+        if (!trackIds.contains(id)) {
+            return MockResponse{404, Fixture(QStringLiteral("get-file-info/403-not-allowed"))};
+        }
+        const QByteArray url = base + "/music-v2/raw/" + id.toUtf8() + "/aac64he-mp4";
+        return MockResponse{
+            200,
+            "{\"invocationInfo\":{},\"result\":{\"downloadInfo\":{\"trackId\":\"" + id.toUtf8()
+                + "\",\"quality\":\"lq\",\"codec\":\"he-aac-mp4\",\"bitrate\":64,"
+                  "\"transport\":\"raw\",\"gain\":false,\"urls\":[\""
+                + url + "\"],\"url\":\"" + url + "\"}}}"
+        };
+    });
+    onPrefix("GET", "/music-v2/raw/", [m4a](const MockRequest&) { return MockResponse{200, m4a}; });
+}
+
 QNetworkReply* LocalNetworkAccessManager::createRequest(
     Operation op,
     const QNetworkRequest& request,

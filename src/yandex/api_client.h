@@ -1,5 +1,7 @@
 #pragma once
 
+#include "yandex/file_info.h"
+
 #include <QJsonObject>
 #include <QJsonValue>
 #include <QList>
@@ -43,6 +45,7 @@ struct Track {
 struct ResolvedUrl {
     QUrl url;
     int bitrateKbps = 0;
+    QString codec;
 };
 
 // What went wrong with a request, by kind rather than by its text. A broken or failed connection
@@ -93,7 +96,7 @@ public:
 
     void accountStatus(TCallback<Account> callback);
     void tracks(const QStringList& ids, TCallback<QList<Track>> callback);
-    void resolveTrackUrl(const QString& trackId, TUrlCallback callback);
+    void resolveTrackUrl(const QString& trackId, Quality quality, TUrlCallback callback);
     void reportPlayStarted(const Account& account, const Track& track, const QString& playId);
 
     int pendingPosts() const { return pendingPostCount; }
@@ -108,6 +111,8 @@ Q_SIGNALS:
 private:
     void handleJson(QNetworkReply* reply, TJsonCallback callback);
     void handleClassifiedJson(QNetworkReply* reply, TClassifiedJsonCallback callback);
+    void resolveStandardUrl(const QString& trackId, TUrlCallback callback);
+    void resolveEconomyUrl(const QString& trackId, TUrlCallback callback);
     void trackPost(QNetworkReply* reply);
 
     QNetworkAccessManager* networkManager;

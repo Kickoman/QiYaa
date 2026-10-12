@@ -22,16 +22,17 @@ is formatting (the clang-format check in `.github/workflows/ci.yml`).
 | `support/yandex_json.h/.cpp` | `Tests::ToJson` and friends: the `Yandex::` models in the neutral JSON of `spec/expected/yandex`; `CheckError` |
 | `snap_test.cpp` | `Ui::SnapToOthers`, `SnapWithin`, `ClampInside`, `PickScreen`, `ResolveDragPosition`, and `StackBelow` (which windows follow a shade change of window 0). Pure `QRect` arithmetic, no windows |
 | `region_test.cpp` | `Skins::ParseRegionTxt` and `RegionFromPolygons`: sections, several polygons, degenerate and missing points, empty input |
-| `yandex_test.cpp` | Track-link signing (`BuildTrackUrl`), download variants and the best full mp3, `ParseDownloadInfo` and the signed link, `ApiClient::ParseTrack` and the cover URL, all on spec fixtures; `NormalizeToken` on five input shapes |
+| `yandex_test.cpp` | Track-link signing (`BuildTrackUrl`), download variants and the best full mp3, `ParseDownloadInfo` and the signed link, `ApiClient::ParseTrack` and the cover URL, all on spec fixtures; `get-file-info` replies parsed or falling back, the signature and the encoded query of the spec's example, `IsUsable`, the quality names; `NormalizeToken` on five input shapes; with `QIYAA_YANDEX_TOKEN=<token>` it also gets an economy link from the real API, which fails once Yandex stops accepting the signing key |
 | `skin_test.cpp` | The built-in base skin, loading every bundled `:/skins/*.wsz`, and the `Skins::Error` messages |
-| `audio_test.cpp` | `Audio::AudioEngine` on the test mp3: streaming in chunks, pause, the decode-error message, seeks during download, the `Core::Player` polling timer, and gapless chaining of a queued stream |
+| `audio_test.cpp` | `Audio::AudioEngine` on the test mp3: streaming in chunks, pause, the decode-error message, seeks during download, the `Core::Player` polling timer, and gapless chaining of a queued stream; the test m4a playing with half of it downloaded |
+| `mp4_aac_test.cpp` | `Audio::Mp4AacBackend` through an `ma_decoder` over memory: `IsMp4`, the rate, length, level and 440 Hz of the test m4a, seeking to the same samples as playing through, the end, a file cut short, an MP4 without its index; with `QIYAA_MP4_SAMPLE=<path>` it also decodes that file (a Yandex economy file kept outside the repository) |
 | `dsp_test.cpp` | EQ response and processing, the 17 built-in EQ presets, `.eqf` read/write, `EqualizerWindow::GraphCurve`, the FFT analyzer, spectrum and oscilloscope rendering; the reference vectors of `spec/dsp` (checks them, and writes them with `QIYAA_WRITE_DSP_VECTORS=1`) |
-| `library_test.cpp` | `Yandex::Library`/`ApiClient` against the mock server serving spec fixtures: request shapes and parsing for every source the menu offers, likes, waves, search with each kind of best result, errors, device login and wave feedback. Also `Core::Player` track events, preloading, endless sources, shuffle not applying in a wave, and repeat not replaying the only track of a wave (WAVE-12) |
+| `library_test.cpp` | `Yandex::Library`/`ApiClient` against the mock server serving spec fixtures: request shapes and parsing for every source the menu offers, likes, waves, search with each kind of best result, errors, device login and wave feedback. Also `Core::Player` track events, preloading, endless sources, shuffle not applying in a wave, and repeat not replaying the only track of a wave (WAVE-12); the economy quality (QUAL-02 to QUAL-05): the request and its signature, the fallbacks, the network wait, the preload fetched again |
 | `sources_test.cpp` | `Core::Sources` against the `spec/player` scenarios on spec fixtures, one function per scenario group: the last pick wins, stale failures, search as one pick, a failed source keeps the queue, likes with their count, an empty source keeping the queue, search's best result, and a wave played on the Null output (radio start, load more with the last ids, batch ids on the events, dislike and skip) |
 | `jam_mode_test.cpp` | `Core::JamMode` against `spec/jam/host.md` by ID, on a player without a sound card and spec fixtures: the start keeping the playing track, the jam part following the state with the smallest change, started and playing reports, Previous restarting, an item into a waiting player, the jam wave from the seeds behind the items and a new session for new seeds, no play reports and wave feedback only to the jam wave, skip by item, picks refused during the jam, and the end |
 | `failures_test.cpp` | What the `Player` does when a track cannot play (`spec/player/errors.md`): the failure policy as a table, `ClassifyReply` on real replies, and on the Null output a broken and an undecodable track skipped, three in a row stopping, the count reset by a track that plays, a broken last track, a rejected account, no network (pause, then continue the same track), and a download cut short that waits instead of moving on |
 | `main_window_test.cpp` | One `Ui::MainWindow` on the default offscreen screen: position clamping, dragging and edge snapping, shuffle click, the shuffle light off during a wave, volume slider, ×2 and fractional scale |
-| `windows_test.cpp` | The whole `App::Application` window set: docking, detaching, scaling, playlist selection/scroll/resize, track menu targets (including multiple selection, keyboard invocation and queue changes), dislike skipping only the current track, EQ sliders, shade modes, login dialog layout, Milkdrop and Now Playing windows, `snapshot()` |
+| `windows_test.cpp` | The whole `App::Application` window set: docking, detaching, scaling, playlist selection/scroll/resize, track menu targets (including multiple selection, keyboard invocation and queue changes), dislike skipping only the current track, EQ sliders, shade modes, login dialog layout, Milkdrop and Now Playing windows, `snapshot()`; the Quality menu and its setting (QUAL-06) |
 | `screenshots_test.cpp` | Golden screenshots of the main window and the equalizer (see **Golden screenshots**) |
 | `jam_test.cpp` | `Jam::` (only with Qt WebSockets): every example of `spec/jam/protocol/examples` through the codec (valid ones pass, `invalid-*` fail) and client examples through encode and decode; the client against a `QWebSocketServer` on localhost — hello with a version the server takes and the clock offset, reconnects after the delays and at once on `networkBack`, the outbox, `ended` stopping it for good, refusing to send what the server would refuse, invalid and unknown-reason messages; the stored session across a restart and broken, foreign or oversized files |
 | `jam_host_test.cpp` | `Jam::HostSession` against `spec/jam/host.md` by ID, with `JamStubServer`, a real `Core::JamMode` on a player without a sound card and the MockHttpServer as Yandex: create and its refusal, states and their versions, started in the stored outbox offline and resume, the stored snapshot and link, "Continue the jam?" yes and no, a resume refused for a gone room or another reason, the guests' search and checks, the skip command, the end by the host and by the server, the host's add and play next, and `JamTrackOf` |
@@ -43,6 +44,7 @@ is formatting (the clang-format check in `.github/workflows/ci.yml`).
 | `mpris_test.cpp` | `Integrations::Mpris` over a session bus, driven by `gdbus` as an external client |
 | `milkdrop_test.cpp` | `Vis::MilkdropPresets`, preset switching and black-preset handling in `Ui::MilkdropWindow`; with OpenGL 3.3, projectM rendering, the black-picture detector and fullscreen |
 | `data/sine440_3s.mp3` | 3 s of a 440 Hz sine: MPEG-1 Layer III, 64 kbps, 44.1 kHz, stereo, ID3v2.4 tag, 24,494 bytes |
+| `data/sine440_3s_heaac.m4a` | The same sine as HE-AAC (SBR) 64 kbps, 44.1 kHz, stereo, in MP4 with `moov` before `mdat`, 25,818 bytes. Encoded by fdk-aac 2.0.3's `aac-enc -t 5 -r 64000` from a generated WAV (amplitude 0.5), muxed by `ffmpeg 4.4 -c copy -movflags +faststart -map_metadata -1 -fflags +bitexact`. Its AudioSpecificConfig signals SBR implicitly (AAC-LC at 22,050 Hz), unlike Yandex's files, which signal it explicitly |
 | `data/screen-2560x1440.json` | Offscreen-platform config: one screen `"qhd"`, 2560×1440 at (0, 0), logical DPI 96, device pixel ratio 1 |
 | `data/golden/*.png` | The expected screenshots: seven of `screenshots_test`, eleven `jam-*` of `jam_window_test` |
 | `data/fonts/Tiny5-Regular.ttf` | The pixel font `jam_window_test` draws with, the same on every system (SIL OFL 1.1, `OFL-Tiny5.txt`) |
@@ -81,8 +83,9 @@ QT_QPA_PLATFORM=offscreen QIYAA_AUDIO_BACKEND=null build/tests/audio_test queued
 |---|---|---|
 | `snap_test` | ui | plain |
 | `region_test` | skins | plain |
-| `yandex_test` | yandex (+ `qiyaa_test_yandex`) | plain |
+| `yandex_test` | yandex (+ `qiyaa_test_yandex`) | plain; `QIYAA_YANDEX_TOKEN` adds a check against the real API |
 | `skin_test` | skins | plain |
+| `mp4_aac_test` | audio (+ `qiyaa_miniaudio`) | plain; `QIYAA_TEST_DATA`; `QIYAA_MP4_SAMPLE` adds a file of your own |
 | `audio_test` | audio core | plain; `QIYAA_TEST_DATA` |
 | `main_window_test` | audio core skins ui yandex | plain |
 | `library_test` | audio core yandex (+ `qiyaa_test_yandex`) | plain; `QIYAA_TEST_DATA` |
@@ -154,6 +157,9 @@ pictures into an existing directory; nothing creates it:
 **tests/data**
 
 - `sine440_3s.mp3` feeds `audio_test` and every track of `library_test`'s preload tests.
+- `sine440_3s_heaac.m4a` feeds `mp4_aac_test`, `audio_test`'s MP4 case and the economy files of
+  `library_test`. `mp4_aac_test` checks 44,100 Hz, a length of 3 to 3.2 s, an RMS of 0.25 to 0.45
+  and 440 ± 3 Hz on it.
   `audio_test` checks 44,100 Hz and 2 channels on it. `rapidSeeksWhileDownloadingLandOnTheLastTarget` joins 13
   copies into a stream of about 39 s, which works because MP3 frames concatenate.
 - `screen-2560x1440.json` is used only by `windows_test`.

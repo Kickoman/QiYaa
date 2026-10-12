@@ -18,7 +18,7 @@
 - Windows: SMTC (медиаклавиши) собирается из C++/WinRT, который входит в Windows SDK. projectM
   нужен из vcpkg (ему требуется GLEW).
 
-miniaudio и miniz лежат в `contrib/`, ставить их не нужно. Звуковую подсистему (PulseAudio,
+miniaudio, miniz, minimp4 и декодер fdk-aac лежат в `contrib/`, ставить их не нужно. Звуковую подсистему (PulseAudio,
 PipeWire, ALSA) miniaudio подгружает сам во время работы — dev-пакеты для неё не нужны.
 
 Спецификация поведения, общая с Android-версией, подключена подмодулем в `spec/`. Её читают

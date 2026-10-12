@@ -4,7 +4,8 @@ Plays one audio file while it is still downloading: the bytes the caller appends
 in-memory `StreamBuffer`, a decoder thread turns them into float stereo PCM at the output device's
 rate, a 2-second ring buffer carries that PCM to the miniaudio device callback, and the callback
 applies the equalizer, feeds the visualization tap and applies volume and balance. A second stream
-can be queued; it follows the current one in the same ring without a gap. The module also holds the
+can be queued; it follows the current one in the same ring without a gap. It reads mp3, FLAC,
+WAV and AAC in MP4 (the economy quality of [spec/player/quality.md](../../spec/player/quality.md)). The module also holds the
 10-band equalizer DSP, Winamp's built-in presets and the `.eqf` reader and writer. It does not
 download anything, decide what plays next or when to queue it, or poll itself: that is `Player` in
 [src/core](../core/README.md). It draws no visualization ([src/vis](../vis/README.md)) and shows no
@@ -15,14 +16,21 @@ equalizer window ([src/ui](../ui/README.md)). Namespace `Audio`, library `qiyaa_
 | `audio_engine.h/.cpp` | `AudioEngine` — streams, state, seeking, gapless chaining, volume, balance, `poll()`. Only in the `.cpp`: `StreamBuffer` (one downloading file) and `AudioEngine::Implementation` (miniaudio context and device, ring buffer, decoder thread, device callback) |
 | `equalizer.h/.cpp` | `EqSettings`, `EqualizerDsp` — preamp and 10 peaking biquads per channel, coefficients handed to the audio thread through a triple buffer; `kEqBands`, `kEqBandHz`, `kEqMaxDb` |
 | `eq_presets.h/.cpp` | `EqPreset`; `ParseEqf`, `WriteEqf` (`.eqf` and `.q1`); `EqfToDb`, `DbToEqf`; `BuiltinEqPresets` — Winamp's 17 presets |
+| `mp4_aac_backend.h/.cpp` | `IsMp4`, `Mp4AacBackend` — a miniaudio decoding backend for AAC in MP4 over minimp4 and fdk-aac. Only in the `.cpp`: `Mp4AacDecoder` and the `DataSource` miniaudio holds |
 | `vis_tap.h/.cpp` | `VisTap` — the last 4096 output frames, for visualizations |
 | `error.h` | `Audio::Error` |
 | `miniaudio_impl.c` | `#define MINIAUDIO_IMPLEMENTATION` + `#include "miniaudio.h"`: the one translation unit that compiles miniaudio. It is the source of `qiyaa_miniaudio`, not of `qiyaa_audio` |
+| `minimp4_impl.c` | `#define MINIMP4_IMPLEMENTATION` + `#include "minimp4.h"`: the source of `qiyaa_minimp4` |
 
 ## Dependencies
 
 - `qiyaa_audio` links PUBLIC `Qt6::Core` (`QObject`, `QString`, `QStringList`, `QByteArray`,
-  `QHash`, `QList`, `QStringConverter`, `QStringDecoder`) and PRIVATE `qiyaa_miniaudio`.
+  `QHash`, `QList`, `QStringConverter`, `QStringDecoder`) and PRIVATE `qiyaa_miniaudio`,
+  `qiyaa_minimp4` and `qiyaa_fdk_aac`.
+- `qiyaa_minimp4` is built from `src/audio/minimp4_impl.c` against `contrib/minimp4/minimp4.h`
+  (lieff/minimp4 `2a3014a`, CC0). `qiyaa_fdk_aac` is fdk-aac 2.0.3's decoder libraries only,
+  built by `contrib/fdk-aac/CMakeLists.txt` (QiYaa's own; upstream's source lists) with
+  `-fno-exceptions -fno-rtti`, as upstream does. Neither gets the project's warning flags.
 - `qiyaa_miniaudio` is a separate static library built from `src/audio/miniaudio_impl.c` against
   `contrib/miniaudio/miniaudio.h` (miniaudio 0.11.25) with `MA_NO_ENCODING MA_NO_GENERATION
   MA_NO_VORBIS`, so the decoders compiled in are WAV, FLAC and MP3. It links `Threads::Threads` and
@@ -32,23 +40,33 @@ equalizer window ([src/ui](../ui/README.md)). Namespace `Audio`, library `qiyaa_
 - It deliberately links no other project module and neither `Qt6::Gui`, `Qt6::Widgets` nor
   `Qt6::Network`. It sits at the bottom of the module order; which modules link it is in
   [docs/architecture.md](../../docs/architecture.md#modules).
-- miniaudio stays private: no header includes `miniaudio.h`. `AudioEngine` holds everything
-  miniaudio-typed through `std::unique_ptr<Implementation>` and a forward-declared `StreamBuffer`.
+- miniaudio stays private to the module: `audio_engine.h` and every header another module may
+  include leave out `miniaudio.h`. `AudioEngine` holds everything miniaudio-typed through
+  `std::unique_ptr<Implementation>` and a forward-declared `StreamBuffer`. Only the module's own
+  `mp4_aac_backend.h` includes it (miniaudio's vtable types are anonymous structs that cannot be
+  forward-declared); `audio_engine.cpp` and `tests/mp4_aac_test.cpp` include that header. minimp4
+  and fdk-aac appear only in `mp4_aac_backend.cpp`.
 - Inside the module: `audio_engine.h` and `eq_presets.h` include `equalizer.h`,
-  `audio_engine.cpp` includes `equalizer.h` and `vis_tap.h`, `eq_presets.cpp` includes `error.h`.
+  `audio_engine.cpp` includes `equalizer.h`, `mp4_aac_backend.h` and `vis_tap.h`,
+  `eq_presets.cpp` includes `error.h`.
   `equalizer.h`, `vis_tap.h` and `error.h` include no file of the module.
 
 ```bash
 grep -rnE '#include "(app|core|integrations|skins|ui|vis|yandex)/' src/audio/ --include='*.h' --include='*.cpp'   # must print nothing
 grep -rlE '#include [<"]miniaudio' src/ --include='*.h' --include='*.cpp' --include='*.c' \
-    | grep -vxE 'src/audio/(audio_engine\.cpp|miniaudio_impl\.c)'                                  # must print nothing
+    | grep -vxE 'src/audio/(audio_engine\.cpp|miniaudio_impl\.c|mp4_aac_backend\.(h|cpp))'          # must print nothing
+grep -rlE '#include [<"](minimp4|aacdecoder_lib)' src/ --include='*.h' --include='*.cpp' --include='*.c' \
+    | grep -vxE 'src/audio/(mp4_aac_backend\.cpp|minimp4_impl\.c)'                                  # must print nothing
+grep -rl '"audio/mp4_aac_backend.h"' src/ --include='*.h' --include='*.cpp' \
+    | grep -vxE 'src/audio/(audio_engine|mp4_aac_backend)\.cpp'                                      # must print nothing
 grep -rnE '#include <Q' src/audio/ --include='*.h' --include='*.cpp' \
     | grep -vE '<Q(ByteArray|Hash|List|Object|String|StringConverter|StringDecoder|StringList)>'                              # must print nothing
 grep -rnw 'throw' src/audio/ --include='*.h' --include='*.cpp' | grep -v '^src/audio/eq_presets.cpp:'   # must print nothing
 ```
 
-The tests are `tests/audio_test.cpp` (the real engine on `tests/data/sine440_3s.mp3`) and
-`tests/dsp_test.cpp` (equalizer response, presets, `.eqf`). CTest runs every test with
+The tests are `tests/audio_test.cpp` (the real engine on `tests/data/sine440_3s.mp3` and
+`sine440_3s_heaac.m4a`), `tests/mp4_aac_test.cpp` (the MP4 backend through an `ma_decoder` over
+memory) and `tests/dsp_test.cpp` (equalizer response, presets, `.eqf`). CTest runs every test with
 `QIYAA_AUDIO_BACKEND=null`.
 
 ## `audio_engine.h` — `AudioEngine`
@@ -282,8 +300,12 @@ after `outputEnabled = false`:
 ### Decoder thread
 
 `openSource()` creates an `ma_decoder` (f32, 2 channels, device rate) over a `StreamBuffer`. It
-first forces the MP3 decoder; if that fails and the thread is not stopping, it seeks the buffer
-back to byte 0 and tries again with miniaudio's format detection (WAV, FLAC, MP3). The decoder
+first reads the stream's first 8 bytes (waiting for them) and seeks back to byte 0. An MP4 file
+(`IsMp4`: `ftyp` at offset 4) gets `Mp4AacBackend()` as miniaudio's only custom backend, and the
+decoder is kept only if that backend opened it: miniaudio would otherwise go on to its MP3
+decoder, which finds "frames" in an MP4 it does not understand. Anything else first forces the
+MP3 decoder; if that fails and the thread is not stopping, it seeks the buffer back to byte 0 and
+tries again with miniaudio's format detection (WAV, FLAC, MP3). The decoder
 lives in a heap-allocated `Source` because an `ma_decoder` must not move. If the first stream
 cannot be opened, the thread sets `decoderFailed` (unless it is stopping) and returns; `poll()`
 then stops the engine and reports the error.
@@ -301,6 +323,48 @@ Each pass of the loop, in this order:
 
 The thread decodes ahead of playback by at most the ring, 2 s. After the end it keeps looping
 (20 ms sleeps) until the UI stops it.
+
+### AAC in MP4 (`mp4_aac_backend`)
+
+`Mp4AacBackend()` is a `ma_decoding_backend_vtable` with only `onInit` and `onUninit`: it reads
+through the read and seek callbacks miniaudio passes, which in the engine are `StreamBuffer`'s.
+`onInit` builds a `DataSource` (miniaudio's `ma_data_source_base` first, then a pointer to the
+C++ `Mp4AacDecoder`) and opens it:
+
+1. **Where the index ends.** It walks the top-level boxes from byte 0 (8-byte headers, a 64-bit
+   size when the size is 1, at most 64 boxes) until the end of `moov`. A box of size 0 (to the
+   end of the file) or a size that overflows ends the walk without a file. Yandex's files are
+   `ftyp, uuid, moov, mdat`, so this reads about 23 KB.
+2. **minimp4** parses up to that end and no further (`MP4D_open(…, file_size = end of moov)`): it
+   needs only the index, and reading on would wait for the whole `mdat` to download. A `moov`
+   after `mdat` still works, after the download reaches it.
+3. **The track**: the first one with handler `soun`, object type `0x40` (MPEG-4 audio), a
+   decoder-specific info and samples. Anything else (FLAC in MP4, video) is refused, and
+   miniaudio's other decoders do not get the file.
+4. **fdk-aac**: `aacDecoder_Open(TT_MP4_RAW)`, `aacDecoder_ConfigRaw` with the track's
+   AudioSpecificConfig, at least and at most 2 output channels (mono is doubled, so the format
+   never changes mid-stream) and no limiter (its look-ahead adds delay). The first access unit is
+   decoded at once: its stream info gives the rate (44,100 for Yandex's HE-AAC, after SBR), the
+   frame size (2048) and `outputDelay`.
+
+Output is 16-bit stereo at that rate; `ma_decoder` converts it like any other source. Access unit
+`n` covers frames `[n × frameSize − outputDelay, (n + 1) × frameSize − outputDelay)` and frames
+before 0 are dropped. The length is the smaller of `sampleCount × frameSize − outputDelay` and the
+track's duration (`mdhd`) at that rate.
+
+**Seeking** to frame `F` restarts at access unit `(F + outputDelay) / frameSize − 2`, clears the
+transport buffer and decodes the first unit with `AACDEC_CLRHIST`; the frames before `F` are
+dropped. Two units of run-up rebuild the overlap and the SBR state: with one, the first ~1,300
+frames after the target differed from playing through; with two they match to 2·10⁻⁴
+(`seekingLandsOnTheSameSamplesAsPlayingThrough`).
+
+**Ends and failures.** A read that fails (a download cut short, an interrupted `StreamBuffer`)
+ends the source where its data ends, like an mp3. A unit fdk-aac cannot decode is concealed by
+fdk-aac; a change of rate or frame size mid-stream ends the source. Access units are bounded at
+64 KiB before they are read.
+
+Not supported: encrypted files (`encraw`), FLAC in MP4, more than 2 output channels, and the edit
+list (`elst`): Yandex's files have `media_time` 0, so the encoder's priming is not trimmed.
 
 ### Gapless chaining
 
@@ -647,7 +711,7 @@ Everything else is data:
 - `beginStream()` without a device returns 0, sets `Stopped` and emits
   `errorOccurred("no audio output device")`.
 - A first stream that cannot be decoded: `poll()` calls `stop()` and emits
-  `errorOccurred("cannot decode the audio stream: <n> bytes received, not mp3, flac or wav")`.
+  `errorOccurred("cannot decode the audio stream: <n> bytes received, not mp3, AAC in MP4, flac or wav")`.
 - A queued stream that cannot be decoded is dropped silently: `queuedStream()` returns 0 and the
   current track ends with `trackFinished`.
 - A failed download (`failData()`) is not an error for the engine: the stream ends where its data

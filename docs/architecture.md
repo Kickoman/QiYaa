@@ -16,7 +16,7 @@ audio, yandex, skins  →  vis, core  →  jam  →  ui, integrations  →  app 
 
 | Module | Namespace | What it does | Links PUBLIC | Links PRIVATE |
 |---|---|---|---|---|
-| [src/audio](../src/audio/README.md) | `Audio` | Plays a file while it downloads: decoder thread, ring buffer, equalizer, gapless chaining, `.eqf` presets | Qt Core | miniaudio |
+| [src/audio](../src/audio/README.md) | `Audio` | Plays a file while it downloads: decoder thread, ring buffer, equalizer, gapless chaining, `.eqf` presets; AAC in MP4 for the economy quality | Qt Core | miniaudio, minimp4, fdk-aac |
 | [src/yandex](../src/yandex/README.md) | `Yandex` | Yandex Music HTTP API, OAuth device login, signed track links, the token file | Qt Core, Network | |
 | [src/skins](../src/skins/README.md) | `Skins` | Loads `.wsz` skins: sheets, `region.txt`, `pledit.txt`, `viscolor.txt`, bitmap text; sprite tables | Qt Gui | miniz |
 | [src/vis](../src/vis/README.md) | `Vis` | Spectrum, oscilloscope, FFT; Milkdrop through projectM in a `QOpenGLWindow` | Qt Gui (+ OpenGL) | audio, skins (+ projectM) |
@@ -26,9 +26,9 @@ audio, yandex, skins  →  vis, core  →  jam  →  ui, integrations  →  app 
 | [src/integrations](../src/integrations/README.md) | `Integrations` | Media keys and system media panels: MPRIS (Linux) or SMTC (Windows) | Qt Gui (+ DBus) | audio, core, yandex |
 | [src/app](../src/app/README.md) | `App` | `Application`: owns and wires everything, menus, shortcuts, settings, login, "Continue the jam?"; `main()` | audio, core, skins, yandex | integrations, jam, ui, vis |
 
-Vendored code lives in `contrib/` (miniaudio, miniz, qrcodegen) and is not changed. The interface
-texts are English sources in the code, translated into Belarusian (the default) and Russian in
-[translations/](../translations/README.md). `spec/` is a submodule
+Vendored code lives in `contrib/` (miniaudio, miniz, qrcodegen, minimp4, fdk-aac's decoder) and is
+not changed. The interface texts are English sources in the code, translated into Belarusian (the
+default) and Russian in [translations/](../translations/README.md). `spec/` is a submodule
 with the behaviour and test data shared with the Android app ([spec/README.md](../spec/README.md)).
 Milkdrop (`QIYAA_HAVE_MILKDROP`), the jam (`QIYAA_HAVE_JAM`), MPRIS (`QIYAA_HAVE_MPRIS`) and SMTC
 (`QIYAA_HAVE_SMTC`) are optional; the build options are in [building.md](building.md#параметры-cmake).
@@ -57,7 +57,8 @@ Ui (menu)  ──source──▶  Core::Player  ──resolveTrackUrl──▶  
    for a source (a playlist, the likes, a wave) and hands the tracks to `Player::setQueue`. An
    endless source also gives a callback that fetches more tracks; for a wave, `Sources` also
    sends wave feedback from `Player`'s track events.
-2. `Player::playIndex` asks `ApiClient::resolveTrackUrl` for a signed mp3 link, starts a stream in
+2. `Player::playIndex` asks `ApiClient::resolveTrackUrl` for the link of the track's file in the
+   chosen quality (a signed mp3 link, or AAC in MP4 at the economy quality), starts a stream in
    the engine and appends the download to it chunk by chunk. When the download completes, it
    resolves and downloads the next track into a queued stream, so the engine continues without a
    gap.

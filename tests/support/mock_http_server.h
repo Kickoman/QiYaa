@@ -56,6 +56,9 @@ public:
     // Lets the Player stream these track ids from this server: their download-info, the
     // download-info link, the signed /get-mp3/ link (all serving `mp3`) and /play-audio.
     void audioTracks(const QStringList& trackIds, const QByteArray& mp3);
+    // Lets them play at the economy quality too: GET /get-file-info answers with a plain
+    // he-aac-mp4 file of this server, /music-v2/raw/<id>/aac64he-mp4, serving `m4a`.
+    void economyTracks(const QStringList& trackIds, const QByteArray& m4a);
 
     const QList<MockRequest>& requests() const { return recordedRequests; }
     const MockRequest* last(const QString& path) const;

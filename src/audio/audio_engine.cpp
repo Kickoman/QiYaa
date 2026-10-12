@@ -1,6 +1,7 @@
 #include "audio/audio_engine.h"
 
 #include "audio/equalizer.h"
+#include "audio/mp4_aac_backend.h"
 #include "audio/vis_tap.h"
 
 #include <QStringList>
@@ -247,23 +248,53 @@ struct AudioEngine::Implementation {
         }
     };
 
+    static bool StartsAsMp4(StreamBuffer& buffer) {
+        char head[8];
+        size_t filled = 0;
+        while (filled < sizeof(head)) {
+            size_t bytesRead = 0;
+            if (buffer.read(head + filled, sizeof(head) - filled, &bytesRead) != MA_SUCCESS) {
+                break;
+            }
+            filled += bytesRead;
+        }
+        buffer.seek(0, ma_seek_origin_start);
+        return IsMp4(head, filled);
+    }
+
     std::unique_ptr<Source> openSource(std::shared_ptr<StreamBuffer> buffer) {
         auto source = std::make_unique<Source>();
         source->buffer = std::move(buffer);
         ma_decoder_config decoderConfig =
             ma_decoder_config_init(ma_format_f32, kChannels, sampleRate);
-        decoderConfig.encodingFormat = ma_encoding_format_mp3;
-        ma_result result = ma_decoder_init(
-            &Implementation::OnRead, &Implementation::OnSeek, source->buffer.get(), &decoderConfig,
-            &source->decoder
-        );
-        if (result != MA_SUCCESS && !stopDecoder) {
-            source->buffer->seek(0, ma_seek_origin_start);
-            decoderConfig.encodingFormat = ma_encoding_format_unknown;
+        ma_decoding_backend_vtable* mp4Backends[] = {Mp4AacBackend()};
+        ma_result result = MA_NO_BACKEND;
+        if (StartsAsMp4(*source->buffer)) {
+            decoderConfig.ppCustomBackendVTables = mp4Backends;
+            decoderConfig.customBackendCount = 1;
             result = ma_decoder_init(
                 &Implementation::OnRead, &Implementation::OnSeek, source->buffer.get(),
                 &decoderConfig, &source->decoder
             );
+            // The mp3 decoder would find "frames" in an MP4 file it does not understand.
+            if (result == MA_SUCCESS && source->decoder.pBackendVTable != Mp4AacBackend()) {
+                ma_decoder_uninit(&source->decoder);
+                result = MA_NO_BACKEND;
+            }
+        } else {
+            decoderConfig.encodingFormat = ma_encoding_format_mp3;
+            result = ma_decoder_init(
+                &Implementation::OnRead, &Implementation::OnSeek, source->buffer.get(),
+                &decoderConfig, &source->decoder
+            );
+            if (result != MA_SUCCESS && !stopDecoder) {
+                source->buffer->seek(0, ma_seek_origin_start);
+                decoderConfig.encodingFormat = ma_encoding_format_unknown;
+                result = ma_decoder_init(
+                    &Implementation::OnRead, &Implementation::OnSeek, source->buffer.get(),
+                    &decoderConfig, &source->decoder
+                );
+            }
         }
         if (result != MA_SUCCESS) {
             return nullptr;
@@ -821,11 +852,9 @@ void AudioEngine::poll() {
         const std::shared_ptr<StreamBuffer> buffer = streams.value(failedId);
         const qulonglong received = buffer ? buffer->size() : 0;
         stop();
-        Q_EMIT errorOccurred(
-            QStringLiteral("cannot decode the audio stream: %1 bytes received, not mp3, flac or wav"
-            )
-                .arg(received)
-        );
+        Q_EMIT errorOccurred(QStringLiteral("cannot decode the audio stream: %1 bytes received, "
+                                            "not mp3, AAC in MP4, flac or wav")
+                                 .arg(received));
         Q_EMIT streamUndecodable(failedId);
         return;
     }

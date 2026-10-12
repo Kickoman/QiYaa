@@ -1,6 +1,7 @@
 #pragma once
 
 #include "yandex/api_client.h"
+#include "yandex/file_info.h"
 #include "yandex/library.h"
 #include "yandex/track_url.h"
 
@@ -20,6 +21,7 @@ QJsonObject ToJson(const Yandex::Track& track);
 QJsonObject ToJson(const Yandex::WaveBatch& batch);
 QJsonObject ToJson(const Yandex::SearchResult& result);
 QJsonObject ToJson(const Yandex::DownloadInfo& info);
+QJsonObject ToJson(const Yandex::FileInfo& info);
 
 QJsonObject TracksJson(const QList<Yandex::Track>& tracks);  // {"tracks": [...]}
 QJsonObject IdsJson(const QString& key, const QStringList& ids);

@@ -339,6 +339,15 @@ void Player::setRepeat(bool on) {
     refreshPreload();
 }
 
+void Player::setQuality(Yandex::Quality quality) {
+    if (quality == audioQuality) {
+        return;
+    }
+    audioQuality = quality;
+    cancelPreload();
+    maybePreload();
+}
+
 void Player::stop() {
     cancelNetworkWait();
     closeOpenTrack();
@@ -498,7 +507,7 @@ void Player::playIndex(int index) {
     maybeLoadMore();
 
     yandexLibrary->api()->resolveTrackUrl(
-        track.id,
+        track.id, audioQuality,
         [this, self = QPointer<Player>(this), requestGeneration,
          track](const Yandex::ResolvedUrl& link, const Yandex::RequestError& error) {
             if (!self || requestGeneration != generation) {
@@ -666,7 +675,7 @@ void Player::retryAfterNetwork() {
     const quint64 requestGeneration = ++generation;
     const Track track = *currentTrack();
     yandexLibrary->api()->resolveTrackUrl(
-        track.id,
+        track.id, audioQuality,
         [this, self = QPointer<Player>(this), requestGeneration,
          track](const Yandex::ResolvedUrl& link, const Yandex::RequestError& error) {
             if (!self || requestGeneration != generation || !networkWait) {
@@ -743,7 +752,7 @@ void Player::maybePreload() {
     preload = upcoming;
     QPointer<Player> self(this);
     yandexLibrary->api()->resolveTrackUrl(
-        upcoming.trackId,
+        upcoming.trackId, audioQuality,
         [self, requestGeneration = upcoming.generation](
             const Yandex::ResolvedUrl& link, const Yandex::RequestError& error
         ) {

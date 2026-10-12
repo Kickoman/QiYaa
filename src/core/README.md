@@ -88,6 +88,8 @@ public:
     void setShuffleAlgorithm(ShuffleAlgorithm algorithm);
     ShuffleAlgorithm shuffleAlgorithm() const;
     void setRepeat(bool on);
+    void setQuality(Yandex::Quality quality);         // from the next link on (spec QUAL-05)
+    Yandex::Quality quality() const;                  // Standard until set
     bool shuffle() const;                             // the user's choice
     bool shuffleActive() const;                       // shuffle && the queue is not endless
     bool repeat() const;
@@ -211,7 +213,8 @@ above.
      `trackStarted`.
   3. **Otherwise:** `cancelPreload()`, then `AudioEngine::beginStream()`, then
      `currentTrackChanged` (with `currentBitrate()` still 0), then the load-more check, then
-     `ApiClient::resolveTrackUrl`. The reply is ignored if `generation` has moved on. On an error:
+     `ApiClient::resolveTrackUrl` in the current `quality()` (so do the network retry and the
+     preload). The reply is ignored if `generation` has moved on. On an error:
      the [failure policy](#failures-during-playback); without an output device (stream 0) only
      `statusMessage("Cannot get link: <error>")` and a stop. On success: the download starts into
      the stream begun above, then `trackStarted`.
@@ -263,6 +266,10 @@ above.
 - **`removeTracks`**: see [the queue](#the-queue-and-the-cursor). If the current track was
   removed: `stop()`, then `currentTrackChanged`. Then, always, `playlistChanged` and
   `refreshPreload()`.
+- **`setQuality`**: nothing happens without a change. With one: `cancelPreload()`, then
+  `maybePreload()`, so a next track fetched in the old quality is fetched again (spec QUAL-05).
+  The current track goes on with its file; no signal is emitted, and saving the choice is
+  `Application`'s.
 - **`setShuffle`, `setRepeat`**: nothing happens without a change. With a change:
   `modesChanged`, then `refreshPreload()`. Switching shuffle on while the queue is endless also
   emits `statusMessage("Shuffle does not apply to a vibe")`; `setQueue` emits the same when an

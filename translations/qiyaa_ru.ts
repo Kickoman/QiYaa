@@ -235,6 +235,18 @@
         <source>Send statistics</source>
         <translation>Отправлять статистику</translation>
     </message>
+    <message>
+        <source>Quality</source>
+        <translation>Качество</translation>
+    </message>
+    <message>
+        <source>Standard</source>
+        <translation>Стандартное</translation>
+    </message>
+    <message>
+        <source>Economy: a third of the data</source>
+        <translation>Экономия: втрое меньше трафика</translation>
+    </message>
 </context>
 <context>
     <name>Core::Player</name>
@@ -459,12 +471,12 @@
         <translation>Сохранить</translation>
     </message>
     <message>
-        <source>The jam page gets a Listen button: the guests&apos; browsers play the files you play, roughly in time with you. They are your subscription&apos;s files: Yandex Music licenses them for your own listening.</source>
-        <translation>На странице джема появится кнопка «Слушать»: браузеры гостей играют те же файлы, что и вы, примерно одновременно с вами. Это файлы вашей подписки: Яндекс Музыка даёт их для вашего личного прослушивания.</translation>
-    </message>
-    <message>
         <source>Guests may listen</source>
         <translation>Гости могут слушать</translation>
+    </message>
+    <message>
+        <source>The jam page gets a Listen button: the guests&apos; browsers play the files you play, roughly in time with you. They are your subscription&apos;s files: Yandex Music licenses them for your own listening. Only at the Standard quality: economy files are not shared.</source>
+        <translation>На странице джема появится кнопка «Слушать»: браузеры гостей играют те же файлы, что и вы, примерно одновременно с вами. Это файлы вашей подписки: Яндекс Музыка даёт их для вашего личного прослушивания. Только при стандартном качестве: файлы экономии не передаются.</translation>
     </message>
 </context>
 <context>

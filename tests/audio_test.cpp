@@ -13,6 +13,7 @@
 #include <QString>
 #include <QTest>
 
+#include <algorithm>
 #include <functional>
 
 using Audio::AudioEngine;
@@ -94,6 +95,30 @@ private Q_SLOTS:
         QTest::qWait(500);
         QVERIFY2(engine.positionSeconds() > startPosition + 0.2, "position does not advance");
 
+        QVERIFY(engine.seek(2.5));
+        pumpUntil([&] { return finished.count() > 0; }, 4000);
+        QCOMPARE(finished.count(), 1);
+        QVERIFY(engine.positionSeconds() >= 2.5);
+    }
+
+    void anMp4PlaysBeforeItHasFullyArrived() {
+        QFile file(QStringLiteral(QIYAA_TEST_DATA "/sine440_3s_heaac.m4a"));
+        QVERIFY(file.open(QIODevice::ReadOnly));
+        const QByteArray m4a = file.readAll();
+        QSignalSpy finished(&engine, &Audio::AudioEngine::trackFinished);
+        engine.beginStream();
+        const qsizetype half = m4a.size() / 2;
+        for (qsizetype offset = 0; offset < half; offset += 2048) {
+            engine.appendData(m4a.mid(offset, std::min<qsizetype>(2048, half - offset)));
+            engine.poll();
+            QTest::qWait(10);
+        }
+        pumpUntil([&] { return engine.state() == Audio::AudioEngine::State::Playing; }, 3000);
+        QCOMPARE(engine.state(), Audio::AudioEngine::State::Playing);
+        QCOMPARE(engine.sourceSampleRate(), 44'100);
+        QCOMPARE(engine.sourceChannels(), 2);
+        engine.appendData(m4a.mid(half));
+        engine.finishData();
         QVERIFY(engine.seek(2.5));
         pumpUntil([&] { return finished.count() > 0; }, 4000);
         QCOMPARE(finished.count(), 1);

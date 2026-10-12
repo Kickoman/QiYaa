@@ -649,7 +649,7 @@ private Q_SLOTS:
         QTRY_VERIFY(!OfType<Jam::ChangeSettings>(stack.sent()).empty());
     }
 
-    void listeningAlongSendsTheFilesOnlyWhenTheHostSharesThem() {  // LISTEN-01 to LISTEN-05
+    void listeningAlongSendsTheFilesOnlyWhenTheHostSharesThem() {  // LISTEN-01 to 05, 13
         Stack stack(&library);
         QVERIFY(stack.created());
         const QUrl file(QStringLiteral("https://s1.storage.yandex.net/get-mp3/"
@@ -680,10 +680,19 @@ private Q_SLOTS:
         QCOMPARE(lastPlaying().listenUrl, QString());
         QCOMPARE(lastPlaying().listenNextUrl, QString());
         QCOMPARE(lastPlaying().itemId, QStringLiteral("i1"));
+        playback.link = QUrl(QStringLiteral(  // LISTEN-13: an economy file is not shared
+            "https://strm-fra-01.strm.yandex.net/music-v2/raw/ysign1=0f1e,lid=299,ts=66f80000/0/"
+            "7767133/21d40f5d.226909333.2.155647609/aac64he-mp4"
+        ));
+        playback.nextLink = file;
+        Q_EMIT stack.jam.playback(playback);
+        QTRY_COMPARE(OfType<Jam::Playing>(stack.sent()).size(), static_cast<size_t>(5));
+        QCOMPARE(lastPlaying().listenUrl, QString());
+        QCOMPARE(lastPlaying().listenNextUrl, file.toString());
         playback = Core::JamPlayback{};  // idle: never a link
         playback.link = file;
         Q_EMIT stack.jam.playback(playback);
-        QTRY_COMPARE(OfType<Jam::Playing>(stack.sent()).size(), static_cast<size_t>(5));
+        QTRY_COMPARE(OfType<Jam::Playing>(stack.sent()).size(), static_cast<size_t>(6));
         QCOMPARE(lastPlaying().source, Jam::Source::Idle);
         QCOMPARE(lastPlaying().listenUrl, QString());
     }

@@ -4,10 +4,13 @@
 #include "support/spec_fixtures.h"
 #include "support/yandex_json.h"
 #include "yandex/api_client.h"
+#include "yandex/file_info.h"
 #include "yandex/library.h"
 #include "yandex/oauth.h"
 
+#include <QByteArray>
 #include <QFile>
+#include <QIODevice>
 #include <QJsonArray>
 #include <QJsonDocument>
 #include <QJsonObject>
@@ -620,6 +623,10 @@ private:
         }
         return count;
     }
+    static QByteArray EconomyFile() {
+        QFile file(QStringLiteral(QIYAA_TEST_DATA "/sine440_3s_heaac.m4a"));
+        return file.open(QIODevice::ReadOnly) ? file.readAll() : QByteArray();
+    }
     static QList<Yandex::Track> NumberedTracks(const QList<int>& ids) {
         QList<Yandex::Track> tracks;
         for (int id : ids) {
@@ -694,6 +701,137 @@ private Q_SLOTS:
         QVERIFY(playback.player.seekTo(2.4));
         QVERIFY(advanced.wait(4000));
         QCOMPARE(playback.player.currentTrack()->id, QStringLiteral("23"));
+        playback.player.stop();
+    }
+
+    void economyPlaysTheFileOfGetFileInfo() {  // spec QUAL-02
+        PlaybackStack playback;
+        if (!setUpAudio(playback, {31, 32})) {
+            QSKIP("no audio output");
+        }
+        server.economyTracks({"31", "32"}, EconomyFile());
+        playback.player.setQuality(Yandex::Quality::Economy);
+        playback.player.setQueue(NumberedTracks({31, 32}), "A", false);
+        playback.player.playIndex(0);
+        QVERIFY(QTest::qWaitFor(
+            [&] { return playback.engine.state() == Audio::AudioEngine::State::Playing; }, 3000
+        ));
+        QCOMPARE(playback.player.currentBitrate(), 64);
+        QCOMPARE(
+            playback.player.currentLink().path(), QStringLiteral("/music-v2/raw/31/aac64he-mp4")
+        );
+        QCOMPARE(requestsTo("/tracks/31/download-info"), 0);
+        const Tests::MockRequest* request = nullptr;
+        for (const Tests::MockRequest& recorded : server.requests()) {
+            if (!request && recorded.path == QLatin1String("/get-file-info")) {
+                request = &recorded;
+            }
+        }
+        QVERIFY(request);
+        QCOMPARE(
+            request->headers.value("x-yandex-music-client"), QByteArray(Yandex::kFileInfoClient)
+        );
+        const auto item = [&](const char* name) {
+            return request->query.queryItemValue(QLatin1String(name), QUrl::FullyDecoded);
+        };
+        QCOMPARE(item("trackId"), QStringLiteral("31"));
+        QCOMPARE(item("quality"), QStringLiteral("lq"));
+        QCOMPARE(item("codecs"), QStringLiteral("he-aac-mp4,mp3"));
+        QCOMPARE(item("transports"), QStringLiteral("raw"));
+        const Yandex::FileInfoRequest asked{
+            QStringLiteral("31"),
+            QStringLiteral("lq"),
+            {QStringLiteral("he-aac-mp4"), QStringLiteral("mp3")},
+            QStringLiteral("raw")
+        };
+        QCOMPARE(item("sign"), Yandex::SignFileInfo(asked, item("ts").toLongLong()));
+
+        QVERIFY(QTest::qWaitFor([&] { return playback.player.preloadedIndex() == 1; }, 5000));
+        QCOMPARE(playback.player.nextLink().path(), QStringLiteral("/music-v2/raw/32/aac64he-mp4"));
+        playback.player.stop();
+    }
+
+    void economyFallsBackToTheStandardLink_data() {
+        QTest::addColumn<QString>("name");
+        for (const char* name : {"403-not-allowed", "429-concurrency-limit", "encraw", "no-url"}) {
+            QTest::newRow(name) << QStringLiteral("get-file-info/%1").arg(name);
+        }
+    }
+    void economyFallsBackToTheStandardLink() {  // spec QUAL-03
+        QFETCH(QString, name);
+        PlaybackStack playback;
+        if (!setUpAudio(playback, {41})) {
+            QSKIP("no audio output");
+        }
+        server.fixture("GET", QStringLiteral("/get-file-info"), name);
+        QSignalSpy failures(&playback.player, &Core::Player::failed);
+        QSignalSpy statuses(&playback.player, &Core::Player::statusMessage);
+        playback.player.setQuality(Yandex::Quality::Economy);
+        playback.player.setQueue(NumberedTracks({41}), "A", false);
+        playback.player.playIndex(0);
+        QVERIFY(QTest::qWaitFor(
+            [&] { return playback.engine.state() == Audio::AudioEngine::State::Playing; }, 3000
+        ));
+        QVERIFY(playback.player.currentLink().path().endsWith(QStringLiteral("/t41")));
+        QCOMPARE(playback.player.currentBitrate(), 320);
+        QCOMPARE(failures.count(), 0);
+        QCOMPARE(statuses.count(), 0);
+        playback.player.stop();
+    }
+
+    void economyWaitsForTheNetworkLikeAnyLink() {  // spec QUAL-04
+        PlaybackStack playback;
+        if (!setUpAudio(playback, {45})) {
+            QSKIP("no audio output");
+        }
+        server.on("GET", QStringLiteral("/get-file-info"), [](const Tests::MockRequest&) {
+            return Tests::MockResponse{200, "{}", 0, 0};  // the connection closes before the body
+        });
+        playback.player.setNetworkRetryDelays(60'000, 60'000);
+        playback.player.setQuality(Yandex::Quality::Economy);
+        playback.player.setQueue(NumberedTracks({45}), "A", false);
+        playback.player.playIndex(0);
+        QVERIFY(QTest::qWaitFor([&] { return playback.player.isWaitingForNetwork(); }, 3000));
+        QCOMPARE(requestsTo("/tracks/45/download-info"), 0);
+
+        server.economyTracks({"45"}, EconomyFile());
+        playback.player.setNetworkOnline(true);
+        QVERIFY(QTest::qWaitFor(
+            [&] { return playback.engine.state() == Audio::AudioEngine::State::Playing; }, 3000
+        ));
+        QCOMPARE(
+            playback.player.currentLink().path(), QStringLiteral("/music-v2/raw/45/aac64he-mp4")
+        );
+        playback.player.stop();
+    }
+
+    void changingTheQualityRefetchesOnlyThePreload() {  // spec QUAL-05
+        PlaybackStack playback;
+        if (!setUpAudio(playback, {51, 52})) {
+            QSKIP("no audio output");
+        }
+        server.economyTracks({"51", "52"}, EconomyFile());
+        playback.player.setQueue(NumberedTracks({51, 52}), "A", false);
+        playback.player.playIndex(0);
+        QVERIFY(QTest::qWaitFor([&] { return playback.player.preloadedIndex() == 1; }, 5000));
+        QVERIFY(playback.player.nextLink().path().endsWith(QStringLiteral("/t52")));
+
+        playback.player.setQuality(Yandex::Quality::Economy);
+        QVERIFY(QTest::qWaitFor(
+            [&] {
+                return playback.player.nextLink().path()
+                    == QStringLiteral("/music-v2/raw/52/aac64he-mp4");
+            },
+            5000
+        ));
+        QVERIFY(playback.player.currentLink().path().endsWith(QStringLiteral("/t51")));
+        QCOMPARE(playback.player.currentBitrate(), 320);
+        QTest::qWait(300);  // let the new preload download complete
+        QSignalSpy advanced(&playback.engine, &Audio::AudioEngine::trackAdvanced);
+        QVERIFY(playback.player.seekTo(2.4));
+        QVERIFY(advanced.wait(4000));
+        QCOMPARE(playback.player.currentTrack()->id, QStringLiteral("52"));
+        QCOMPARE(playback.player.currentBitrate(), 64);
         playback.player.stop();
     }
 

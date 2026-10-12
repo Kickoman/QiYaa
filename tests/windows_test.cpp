@@ -10,6 +10,7 @@
 #include "ui/now_playing_window.h"
 #include "ui/playlist_window.h"
 #include "yandex/api_client.h"
+#include "yandex/file_info.h"
 
 #include <QAction>
 #include <QApplication>
@@ -215,6 +216,47 @@ private Q_SLOTS:
         saved.sync();
         App::Application fallback(options);
         QCOMPARE(fallback.player()->shuffleAlgorithm(), Core::ShuffleAlgorithm::WithoutRepeats);
+    }
+
+    void qualityMenuChoosesAndPersistsTheQuality() {  // spec QUAL-06
+        QTemporaryDir directory;
+        QVERIFY(directory.isValid());
+        App::Application::Options options;
+        options.offline = true;
+        options.audio = false;
+        options.mediaIntegration = false;
+        options.language = App::Language::English;
+        options.settingsFile = directory.filePath(QStringLiteral("settings.ini"));
+        {
+            App::Application configured(options);
+            QCOMPARE(configured.player()->quality(), Yandex::Quality::Standard);
+            configured.mainWindow()->menuRequested(QPoint(100, 100));
+            auto* menu = configured.mainWindow()->findChild<QMenu*>(QStringLiteral("qualityMenu"));
+            QVERIFY(menu);
+            QCOMPARE(menu->actions().size(), 2);
+            QCOMPARE(menu->actions()[0]->text(), QStringLiteral("Standard"));
+            QVERIFY(menu->actions()[0]->isChecked());
+            menu->actions()[1]->trigger();
+            QCOMPARE(configured.player()->quality(), Yandex::Quality::Economy);
+            QVERIFY(menu->actions()[1]->isChecked());
+            QVERIFY(!menu->actions()[0]->isChecked());
+        }
+        {
+            App::Application restored(options);
+            QCOMPARE(restored.player()->quality(), Yandex::Quality::Economy);
+            restored.mainWindow()->menuRequested(QPoint(100, 100));
+            auto* menu = restored.mainWindow()->findChild<QMenu*>(QStringLiteral("qualityMenu"));
+            QVERIFY(menu);
+            QVERIFY(menu->actions()[1]->isChecked());
+        }
+        QSettings saved(options.settingsFile, QSettings::IniFormat);
+        QCOMPARE(
+            saved.value(QStringLiteral("playback/quality")).toString(), QStringLiteral("economy")
+        );
+        saved.setValue(QStringLiteral("playback/quality"), QStringLiteral("lossless"));
+        saved.sync();
+        App::Application fallback(options);
+        QCOMPARE(fallback.player()->quality(), Yandex::Quality::Standard);
     }
 
     void defaultLayoutIsStacked() {

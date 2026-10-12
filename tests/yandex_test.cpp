@@ -1,6 +1,7 @@
 #include "support/spec_fixtures.h"
 #include "support/yandex_json.h"
 #include "yandex/api_client.h"
+#include "yandex/file_info.h"
 #include "yandex/token.h"
 #include "yandex/track_url.h"
 
@@ -10,10 +11,14 @@
 #include <QJsonDocument>
 #include <QJsonObject>
 #include <QJsonValue>
+#include <QLatin1String>
 #include <QList>
+#include <QNetworkAccessManager>
 #include <QObject>
+#include <QSignalSpy>
 #include <QString>
 #include <QTest>
+#include <QUrl>
 
 #include <optional>
 
@@ -74,6 +79,97 @@ private Q_SLOTS:
         const QJsonObject actual =
             info ? Tests::ToJson(*info) : QJsonObject{{QStringLiteral("invalid"), true}};
         QCOMPARE(Tests::Json(actual), Tests::Expected(name));
+    }
+    void fileInfoRepliesAreParsedOrFallBack_data() {
+        QTest::addColumn<QString>("name");
+        for (const char* name :
+             {"lq-he-aac-mp4", "nq-mp3", "encraw", "no-url", "403-not-allowed",
+              "429-concurrency-limit"}) {
+            QTest::newRow(name) << QStringLiteral("get-file-info/%1").arg(name);
+        }
+    }
+    void fileInfoRepliesAreParsedOrFallBack() {
+        QFETCH(QString, name);
+        std::optional<Yandex::FileInfo> info;
+        if (Tests::FixtureStatus(name) == 200) {
+            info = Yandex::ParseFileInfo(ResultOf(name));
+        }
+        const QJsonObject actual =
+            info ? Tests::ToJson(*info) : QJsonObject{{QStringLiteral("fallback"), true}};
+        QCOMPARE(Tests::Json(actual), Tests::Expected(name));
+    }
+    // The worked example of spec/player/quality.md.
+    void signsFileInfoLikeTheSpecExample() {
+        const Yandex::FileInfoRequest request{
+            QStringLiteral("155647609"),
+            QStringLiteral("lq"),
+            {QStringLiteral("he-aac-mp4"), QStringLiteral("mp3")},
+            QStringLiteral("raw")
+        };
+        QCOMPARE(
+            Yandex::SignFileInfo(request, 1'760'000'000),
+            QStringLiteral("keefcyb+nfzl1cRn8glR+ZyzpQf/h2gSrMF0fHIOHpQ")
+        );
+        QUrl url(QStringLiteral("https://api.music.yandex.net/get-file-info"));
+        url.setQuery(Yandex::FileInfoQuery(request, 1'760'000'000), QUrl::StrictMode);
+        QCOMPARE(
+            url.toEncoded(),
+            QByteArray("https://api.music.yandex.net/get-file-info?ts=1760000000&trackId=155647609"
+                       "&quality=lq&codecs=he-aac-mp4%2Cmp3&transports=raw"
+                       "&sign=keefcyb%2Bnfzl1cRn8glR%2BZyzpQf%2Fh2gSrMF0fHIOHpQ")
+        );
+    }
+    void onlyAPlainFileInAnAskedCodecIsUsable() {
+        const Yandex::FileInfoRequest request{
+            QStringLiteral("1"),
+            QStringLiteral("lq"),
+            {QStringLiteral("he-aac-mp4"), QStringLiteral("mp3")},
+            QStringLiteral("raw")
+        };
+        Yandex::FileInfo info;
+        info.codec = QStringLiteral("he-aac-mp4");
+        info.transport = QStringLiteral("raw");
+        QVERIFY(Yandex::IsUsable(info, request));
+        info.transport = QStringLiteral("encraw");
+        QVERIFY(!Yandex::IsUsable(info, request));
+        info.transport = QStringLiteral("raw");
+        info.codec = QStringLiteral("flac-mp4");
+        QVERIFY(!Yandex::IsUsable(info, request));
+    }
+    // Against the real API when QIYAA_YANDEX_TOKEN holds a token: are the signing key and the
+    // client header still accepted (spec/player/quality.md)? A fallback would mean they are not.
+    void economyLinkFromTheRealApi() {
+        const QString token = qEnvironmentVariable("QIYAA_YANDEX_TOKEN");
+        if (token.isEmpty()) {
+            QSKIP("QIYAA_YANDEX_TOKEN is not set");
+        }
+        QNetworkAccessManager network;
+        Yandex::ApiClient api(&network);
+        api.setToken(token);
+        QSignalSpy failures(&api, &Yandex::ApiClient::requestFailed);
+        std::optional<Yandex::ResolvedUrl> link;
+        Yandex::RequestError error;
+        api.resolveTrackUrl(
+            QStringLiteral("155647609"), Yandex::Quality::Economy,
+            [&](const Yandex::ResolvedUrl& resolved, const Yandex::RequestError& failed) {
+                link = resolved;
+                error = failed;
+            }
+        );
+        QVERIFY(QTest::qWaitFor([&] { return link.has_value(); }, 20'000));
+        QVERIFY2(!error.isError(), qPrintable(error.text));
+        QCOMPARE(failures.count(), 0);
+        QCOMPARE(link->codec, QStringLiteral("he-aac-mp4"));
+        QCOMPARE(link->bitrateKbps, 64);
+        QVERIFY(link->url.host().endsWith(QLatin1String(".strm.yandex.net")));
+    }
+    void qualityNamesRoundTrip() {
+        for (const Yandex::Quality quality :
+             {Yandex::Quality::Standard, Yandex::Quality::Economy}) {
+            QCOMPARE(Yandex::QualityFromKey(Yandex::QualityKey(quality)), quality);
+        }
+        QCOMPARE(Yandex::QualityKey(Yandex::Quality::Economy), QStringLiteral("economy"));
+        QCOMPARE(Yandex::QualityFromKey(QStringLiteral("lossless")), std::nullopt);
     }
     void normalizesTokens() {
         QCOMPARE(

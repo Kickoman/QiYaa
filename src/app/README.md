@@ -394,6 +394,9 @@ them in the interface language. The main menu, top to bottom:
 - Visualization: Spectrum, Oscilloscope, Off (exclusive; a choice calls `saveState()`);
 - Shuffle: "Random track" or "Without repeats" (exclusive); chooses the preferred algorithm
   and saves `shuffle/algorithm`. It does not toggle the shuffle button or restart audio.
+- Quality (`qualityMenu`): "Standard" or "Economy: a third of the data" (exclusive); calls
+  `Player::setQuality` and saves `playback/quality` (spec/player/quality.md). The track that
+  plays goes on; the next one is fetched in the new quality.
 - Skins: every `*.wsz` in `:/skins`, sorted by name, shown without the extension; then "Load a
   skin…" (file dialog starting in the home directory, filter `*.wsz *.zip`);
 - Size: 100 %, 125 %, 150 %, 175 %, 200 %, 250 %, 300 % (exclusive, checked when the current
@@ -430,6 +433,7 @@ constructor; "setter" is the matching `set*Visible`.
 |---|---|---|---|---|
 | `skin` | QString: a file path or `:/skins/<file>.wsz` | empty = built-in `base-2.91.wsz` | ctor, unless `--skin` | `loadSkin()` on success |
 | `shuffle/algorithm` | QString: `random` or `without-repeats` | `without-repeats` (anything else too) | ctor | on `Player::modesChanged` |
+| `playback/quality` | QString: `standard` or `economy` (`Yandex::QualityKey`) | `standard` (anything else too) | ctor | the Quality menu |
 | `language` | QString: `be`, `ru` or `en` | `be` (anything else too) | ctor, unless `Options::language` | `setLanguage()` |
 | `scale` | double | 1.0 | ctor | `setScale(…, ScaleScope::Saved)` |
 | `alwaysOnTop` | bool | false | ctor | `setAlwaysOnTop()` |

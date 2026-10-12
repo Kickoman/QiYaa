@@ -53,7 +53,7 @@ JamServerDialog::JamServerDialog(
     auto* shareNote = new QLabel(tr(
         "The jam page gets a Listen button: the guests' browsers play the files you play, roughly "
         "in time with you. They are your subscription's files: Yandex Music licenses them for "
-        "your own listening."
+        "your own listening. Only at the Standard quality: economy files are not shared."
     ));
     shareNote->setWordWrap(true);
     layout->addWidget(shareNote);

@@ -20,6 +20,7 @@
 #include "ui/now_playing_window.h"
 #include "ui/playlist_window.h"
 #include "ui/snap.h"
+#include "yandex/file_info.h"
 #include "yandex/token.h"
 #ifdef QIYAA_HAVE_MPRIS
 #include "integrations/mpris.h"
@@ -236,6 +237,10 @@ Application::Application(const Options& options, QObject* parent)
         settings.value(QStringLiteral("shuffle/algorithm")).toString() == QLatin1String("random")
             ? Core::ShuffleAlgorithm::Random
             : Core::ShuffleAlgorithm::WithoutRepeats
+    );
+    corePlayer.setQuality(
+        Yandex::QualityFromKey(settings.value(QStringLiteral("playback/quality")).toString())
+            .value_or(Yandex::Quality::Standard)
     );
     connect(&corePlayer, &Core::Player::modesChanged, this, [this] {
         settings.setValue(
@@ -1373,6 +1378,23 @@ void Application::fillWindowActions(QMenu* menu) {
         action->setCheckable(true);
         action->setChecked(corePlayer.shuffleAlgorithm() == algorithm);
         shuffleGroup->addAction(action);
+    }
+
+    QMenu* qualityMenu = menu->addMenu(tr("Quality"));
+    qualityMenu->setObjectName(QStringLiteral("qualityMenu"));
+    auto* qualityGroup = new QActionGroup(qualityMenu);
+    const std::pair<Yandex::Quality, QString> qualities[] = {
+        {Yandex::Quality::Standard, tr("Standard")},
+        {Yandex::Quality::Economy, tr("Economy: a third of the data")}
+    };
+    for (const auto& [quality, name] : qualities) {
+        QAction* action = qualityMenu->addAction(name, this, [this, quality] {
+            corePlayer.setQuality(quality);
+            settings.setValue(QStringLiteral("playback/quality"), Yandex::QualityKey(quality));
+        });
+        action->setCheckable(true);
+        action->setChecked(corePlayer.quality() == quality);
+        qualityGroup->addAction(action);
     }
 
     QMenu* skinsMenu = menu->addMenu(tr("Skins"));

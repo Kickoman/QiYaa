@@ -235,6 +235,18 @@
         <source>Send statistics</source>
         <translation>Адпраўляць статыстыку</translation>
     </message>
+    <message>
+        <source>Quality</source>
+        <translation>Якасць</translation>
+    </message>
+    <message>
+        <source>Standard</source>
+        <translation>Стандартная</translation>
+    </message>
+    <message>
+        <source>Economy: a third of the data</source>
+        <translation>Эканомія: утрая менш трафіку</translation>
+    </message>
 </context>
 <context>
     <name>Core::Player</name>
@@ -459,12 +471,12 @@
         <translation>Захаваць</translation>
     </message>
     <message>
-        <source>The jam page gets a Listen button: the guests&apos; browsers play the files you play, roughly in time with you. They are your subscription&apos;s files: Yandex Music licenses them for your own listening.</source>
-        <translation>На старонцы джэма з&apos;явіцца кнопка «Слухаць»: браўзеры гасцей граюць тыя ж файлы, што і вы, прыкладна адначасова з вамі. Гэта файлы вашай падпіскі: Яндэкс Музыка дае іх для вашага асабістага праслухоўвання.</translation>
-    </message>
-    <message>
         <source>Guests may listen</source>
         <translation>Госці могуць слухаць</translation>
+    </message>
+    <message>
+        <source>The jam page gets a Listen button: the guests&apos; browsers play the files you play, roughly in time with you. They are your subscription&apos;s files: Yandex Music licenses them for your own listening. Only at the Standard quality: economy files are not shared.</source>
+        <translation>На старонцы джэма з&apos;явіцца кнопка «Слухаць»: браўзеры гасцей граюць тыя ж файлы, што і вы, прыкладна адначасова з вамі. Гэта файлы вашай падпіскі: Яндэкс Музыка дае іх для вашага асабістага праслухоўвання. Толькі пры стандартнай якасці: файлы эканоміі не перадаюцца.</translation>
     </message>
 </context>
 <context>

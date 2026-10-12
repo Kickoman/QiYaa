@@ -66,6 +66,18 @@ QJsonObject ToJson(const Yandex::DownloadInfo& info) {
     };
 }
 
+QJsonObject ToJson(const Yandex::FileInfo& info) {
+    return {
+        {QStringLiteral("quality"), info.quality},
+        {QStringLiteral("codec"), info.codec},
+        {QStringLiteral("bitrateKbps"), info.bitrateKbps},
+        {QStringLiteral("transport"), info.transport},
+        {QStringLiteral("url"), info.url.toString()},
+        {QStringLiteral("urls"), QJsonArray::fromStringList(info.urls)},
+        {QStringLiteral("key"), info.key.isEmpty() ? QJsonValue(QJsonValue::Null) : info.key}
+    };
+}
+
 QJsonObject TracksJson(const QList<Yandex::Track>& tracks) {
     QJsonArray array;
     for (const Yandex::Track& track : tracks) {

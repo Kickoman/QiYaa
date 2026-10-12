@@ -22,6 +22,19 @@ and [GLM](https://github.com/g-truc/glm) (MIT). On Windows it uses [GLEW](https:
 | [miniaudio](https://github.com/mackron/miniaudio) — David Reid | 0.11.25 (`9634bed`) | Public domain / MIT-0 | `contrib/miniaudio/` |
 | [miniz](https://github.com/richgel999/miniz) — Rich Geldreich, RAD Game Tools, Valve | 3.1.2 (`77d0dce`) | MIT | `contrib/miniz/` |
 | [QR Code generator](https://github.com/nayuki/QR-Code-generator) (C++) — Project Nayuki | 1.8.0 (`7ad95ce`) | MIT | `contrib/qrcodegen/` (only in builds with the jam) |
+| [minimp4](https://github.com/lieff/minimp4) — Lieff and contributors | `2a3014a` | CC0 1.0 | `contrib/minimp4/` |
+| [FDK AAC](https://github.com/mstorsjo/fdk-aac) — Fraunhofer IIS, the decoder libraries only | 2.0.3 (`716f439`) | Software License for The Fraunhofer FDK AAC Codec Library for Android (see below) | `contrib/fdk-aac/` (`CMakeLists.txt` there is QiYaa's) |
+
+**FDK AAC and patents.** Fraunhofer's license (`contrib/fdk-aac/LICENSE`, upstream's `NOTICE`)
+allows redistributing the library in source and binary form, and QiYaa does so to play the economy
+quality (HE-AAC). Every binary package carries the license's full text as `fdk-aac-LICENSE.txt`
+(next to this file: `/usr/share/doc/qiyaa/` in the .deb and the AppImage, the program folder on
+Windows, `Contents/Resources/` of the macOS app), and its source is this repository. Its section 3 grants **no patent license**: AAC and HE-AAC are
+covered by patents licensed through Via LA or their owners, and the library "may be used only for
+purposes that are authorized by appropriate patent licenses". QiYaa has no such license. The same
+holds for any other AAC decoder that is not part of the operating system, FFmpeg's included. The
+FDK license is not compatible with the GPL, which QiYaa does not use. Fraunhofer's name may not be
+used to endorse or promote QiYaa. QiYaa does not change the library's code.
 
 ## Test data
 
