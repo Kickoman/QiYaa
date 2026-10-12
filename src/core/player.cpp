@@ -374,11 +374,23 @@ void Player::next() {
     stop();
 }
 
+Yandex::WaveEvent WaveEventOf(Player::TrackEvent event) {
+    switch (event) {
+        case Player::TrackEvent::Started: return Yandex::WaveEvent::TrackStarted;
+        case Player::TrackEvent::Finished: return Yandex::WaveEvent::TrackFinished;
+        case Player::TrackEvent::Skipped: break;
+    }
+    return Yandex::WaveEvent::Skip;
+}
+
 int PreviousTarget(double positionSeconds, int cursor, int size, bool repeat) {
     if (positionSeconds > kPreviousRestartsAfterSeconds) {
         return -1;
     }
-    return cursor > 0 ? cursor - 1 : (repeat ? size - 1 : 0);
+    if (cursor > 0) {
+        return cursor - 1;
+    }
+    return repeat ? size - 1 : 0;
 }
 
 void Player::previous() {

@@ -566,16 +566,8 @@ void Library::searchTracks(
             if (error.isError()) {
                 return callback({}, error);
             }
-            callback(
-                ParseTrackArray(
-                    result.toObject()
-                        .value(QStringLiteral("tracks"))
-                        .toObject()
-                        .value(QStringLiteral("results"))
-                        .toArray()
-                ),
-                error
-            );
+            const QJsonObject found = result.toObject().value(QStringLiteral("tracks")).toObject();
+            callback(ParseTrackArray(found.value(QStringLiteral("results")).toArray()), error);
         }
     );
 }
@@ -595,9 +587,9 @@ void Library::search(const QString& text, TCallback<SearchResult> callback) {
         searchResult.bestKind = ParseSearchKind(best.value(QStringLiteral("type")).toString());
         const QJsonObject item = best.value(QStringLiteral("result")).toObject();
         searchResult.bestId = StringField(item, "id");
-        searchResult.bestName =
-            item.value(item.contains(QStringLiteral("name")) ? QStringLiteral("name") : QStringLiteral("title"))
-                .toString();
+        const QString nameKey =
+            item.contains(QStringLiteral("name")) ? QStringLiteral("name") : QStringLiteral("title");
+        searchResult.bestName = item.value(nameKey).toString();
         searchResult.tracks = ParseTrackArray(
             object.value(QStringLiteral("tracks")).toObject().value(QStringLiteral("results")).toArray()
         );

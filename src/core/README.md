@@ -121,6 +121,8 @@ Q_SIGNALS:
     void modesChanged();                              // shuffle or repeat
     void seeked(double seconds);                      // the clamped target
 };
+
+Yandex::WaveEvent WaveEventOf(Player::TrackEvent event);   // Started, Finished, Skipped → TrackStarted, TrackFinished, Skip
 ```
 
 ### Threads and lifetime
@@ -577,7 +579,7 @@ The scenarios are [spec/player/sources.md](../../spec/player/sources.md),
 - **A wave** (`playWave`): `Library::startWave(seeds)`. On success the wave state (session,
   station = first seed, track id → batch id) is shared by two callbacks for the life of that
   queue: `more` asks `moreWave` with the ids of the last 5 queued tracks (WAVE-05), and `events`
-  maps `TrackEvent` Started, Finished, Skipped to `WaveEvent` TrackStarted, TrackFinished, Skip
+  maps each `TrackEvent` with `WaveEventOf` (also used by `JamMode`'s wave) and sends it
   with the batch the track came in (TRK-04 to TRK-06). `RadioStarted` is sent before
   `setQueue`, so before the first track's `trackStarted` (TRK-03). The seeds become
   `lastWaveSeeds()`.

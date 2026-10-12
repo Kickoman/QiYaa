@@ -16,6 +16,7 @@
 
 #include <algorithm>
 #include <memory>
+#include <optional>
 
 namespace Ui {
 
@@ -50,8 +51,8 @@ void LazySubmenu(
             guardedMenu->removeAction(placeholder);
             placeholder->deleteLater();
             if (!error.isEmpty()) {
-                guardedMenu->addAction(QCoreApplication::translate("Ui::LibraryMenu", "Error: %1").arg(error))
-                    ->setEnabled(false);
+                const QString text = QCoreApplication::translate("Ui::LibraryMenu", "Error: %1").arg(error);
+                guardedMenu->addAction(text)->setEnabled(false);
                 return;
             }
             if (items.isEmpty()) {
@@ -195,14 +196,12 @@ void AddLibraryActions(
     );
 
     menu->addAction(QCoreApplication::translate("Ui::LibraryMenu", "Search…"), menu, [sources, dialogParent] {
-        const QString text =
-            AskText(
-                dialogParent,
-                QCoreApplication::translate("Ui::LibraryMenu", "Search"),
-                QCoreApplication::translate("Ui::LibraryMenu", "Artist, album or track:")
-            )
-                .value_or(QString())
-                .trimmed();
+        const std::optional<QString> answer = AskText(
+            dialogParent,
+            QCoreApplication::translate("Ui::LibraryMenu", "Search"),
+            QCoreApplication::translate("Ui::LibraryMenu", "Artist, album or track:")
+        );
+        const QString text = answer.value_or(QString()).trimmed();
         if (!text.isEmpty()) {
             sources->search(text);
         }
@@ -211,20 +210,16 @@ void AddLibraryActions(
     menu->addSeparator();
     const QString id = track ? track->id : QString();
     const bool liked = track && library->isLiked(id);
-    QAction* like = menu->addAction(
-        liked ? QCoreApplication::translate("Ui::LibraryMenu", "Remove from Liked")
-              : QCoreApplication::translate("Ui::LibraryMenu", "Like"),
-        menu,
-        [sources, id, liked] { sources->setLiked(id, !liked); }
-    );
+    const QString likeText = liked
+        ? QCoreApplication::translate("Ui::LibraryMenu", "Remove from Liked")
+        : QCoreApplication::translate("Ui::LibraryMenu", "Like");
+    QAction* like = menu->addAction(likeText, menu, [sources, id, liked] { sources->setLiked(id, !liked); });
     const Yandex::Track* currentTrack = player->currentTrack();
     const bool isCurrent = track && currentTrack && id == currentTrack->id;
-    QAction* dislike = menu->addAction(
-        isCurrent ? QCoreApplication::translate("Ui::LibraryMenu", "Dislike (skip)")
-                  : QCoreApplication::translate("Ui::LibraryMenu", "Dislike"),
-        menu,
-        [sources, id] { sources->dislikeAndSkip(id); }
-    );
+    const QString dislikeText = isCurrent
+        ? QCoreApplication::translate("Ui::LibraryMenu", "Dislike (skip)")
+        : QCoreApplication::translate("Ui::LibraryMenu", "Dislike");
+    QAction* dislike = menu->addAction(dislikeText, menu, [sources, id] { sources->dislikeAndSkip(id); });
     const QUrl webUrl = track ? track->webUrl() : QUrl();
     QAction* open = menu->addAction(
         QCoreApplication::translate("Ui::LibraryMenu", "Open the track in the browser"),

@@ -46,13 +46,11 @@ QStringList Types(const QJsonArray& events) {
 }
 
 QByteArray Marker(int seconds) {
-    return QJsonDocument(
-               QJsonObject{
-                   {QStringLiteral("version"), QStringLiteral("0.4.9")},
-                   {QStringLiteral("seconds"), seconds},
-               }
-    )
-        .toJson(QJsonDocument::Compact);
+    const QJsonObject marker{
+        {QStringLiteral("version"), QStringLiteral("0.4.9")},
+        {QStringLiteral("seconds"), seconds},
+    };
+    return QJsonDocument(marker).toJson(QJsonDocument::Compact);
 }
 
 QSet<QString> Keys(const QJsonObject& object) {

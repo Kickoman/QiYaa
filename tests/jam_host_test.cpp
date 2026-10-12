@@ -502,12 +502,8 @@ private Q_SLOTS:
     void aCheckAnswersForEveryIdInOrderAndAFailureFailsThemAll() {  // HOST-30
         Stack stack(&library);
         QVERIFY(stack.created());
-        catalog.result(
-            "POST",
-            "/tracks/",
-            QJsonDocument(QJsonArray{YandexTrack(QStringLiteral("22"), false), YandexTrack(QStringLiteral("11"))})
-                .toJson(QJsonDocument::Compact)
-        );
+        const QJsonArray tracks{YandexTrack(QStringLiteral("22"), false), YandexTrack(QStringLiteral("11"))};
+        catalog.result("POST", "/tracks/", QJsonDocument(tracks).toJson(QJsonDocument::Compact));
         stack.receive(Text(
             {{QStringLiteral("type"), QStringLiteral("validateRequest")},
              {QStringLiteral("requestId"), QStringLiteral("v1")},

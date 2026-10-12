@@ -88,10 +88,7 @@ WaveMore(QPointer<Player> player, Yandex::Library* library, std::shared_ptr<Wave
 
 Player::TEventCallback WaveEvents(Yandex::Library* library, std::shared_ptr<WaveState> state) {
     return [library, state](Player::TrackEvent event, const Track& track, double played) {
-        const Yandex::WaveEvent waveEvent = event == Player::TrackEvent::Started ? Yandex::WaveEvent::TrackStarted
-            : event == Player::TrackEvent::Finished
-            ? Yandex::WaveEvent::TrackFinished
-            : Yandex::WaveEvent::Skip;
+        const Yandex::WaveEvent waveEvent = WaveEventOf(event);
         library->waveFeedback(
             state->session, state->station, state->batchOfTrack.value(track.id), waveEvent, &track, played
         );
@@ -252,12 +249,15 @@ void Sources::setLiked(const QString& trackId, bool liked) {
         if (!guardedPlayer) {
             return;
         }
-        ShowStatus(
-            guardedPlayer,
-            !error.isEmpty() ? tr("Error: %1").arg(error)
-                : liked      ? tr("Added to Liked")
-                             : tr("Removed from Liked")
-        );
+        QString text;
+        if (!error.isEmpty()) {
+            text = tr("Error: %1").arg(error);
+        } else if (liked) {
+            text = tr("Added to Liked");
+        } else {
+            text = tr("Removed from Liked");
+        }
+        ShowStatus(guardedPlayer, text);
     });
 }
 

@@ -306,11 +306,9 @@ Skin Skin::LoadFile(const QString& path, const Skin* fallback) {
         throw Error((path + QStringLiteral(": ") + file.errorString()).toStdString());
     }
     if (file.size() > kMaxArchiveBytes) {
-        throw Error(
-            (path
-             + QStringLiteral(": %1 bytes, more than the %2 a skin may have").arg(file.size()).arg(kMaxArchiveBytes))
-                .toStdString()
-        );
+        const QString limit =
+            QStringLiteral(": %1 bytes, more than the %2 a skin may have").arg(file.size()).arg(kMaxArchiveBytes);
+        throw Error((path + limit).toStdString());
     }
     try {
         return LoadWsz(file.readAll(), fallback);

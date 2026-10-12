@@ -274,12 +274,9 @@ void EqualizerWindow::paintSkin(QPainter& painter) {
 
     auto toggle = [&](TControl kind, const Skins::ToggleSprite& sprite, bool on, QPoint at) {
         const bool down = pressedControl.kind == kind && pressedInside;
-        activeSkin.draw(
-            painter,
-            TSheet::EqMain,
-            on ? (down ? sprite.onPressed : sprite.on) : (down ? sprite.offPressed : sprite.off),
-            at
-        );
+        const QRect& onFace = down ? sprite.onPressed : sprite.on;
+        const QRect& offFace = down ? sprite.offPressed : sprite.off;
+        activeSkin.draw(painter, TSheet::EqMain, on ? onFace : offFace, at);
     };
     toggle(TControl::On, Skins::EqualizerSprites::kOn, equalizerSettings.enabled, Skins::EqualizerSprites::kOnPosition);
     toggle(TControl::Auto, Skins::EqualizerSprites::kAuto, autoEnabled, Skins::EqualizerSprites::kAutoPosition);

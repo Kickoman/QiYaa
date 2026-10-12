@@ -406,31 +406,31 @@ void HostSession::applyState(const State& message) {
 void HostSession::search(const SearchRequest& message) {
     QPointer<HostSession> self(this);
     const QString id = message.requestId;
-    yandexLibrary
-        ->searchTracks(message.text, [self, id](const QList<Yandex::Track>& tracks, const Yandex::RequestError& error) {
-            if (!self) {
-                return;
-            }
-            SearchResult reply;
-            reply.requestId = id;
-            if (error.isError()) {
-                qWarning("jam: a guest's search failed: %s", qPrintable(error.text));
-                const bool unauthorized = error.httpStatus == 401 || error.httpStatus == 403;
-                reply.error = unauthorized ? SearchError::Unauthorized : SearchError::Failed;
-            } else {
-                std::vector<Track> found;
-                for (const Yandex::Track& track : tracks) {
-                    const std::optional<Track> jamTrack = track.available ? JamTrackOf(track) : std::nullopt;
-                    if (jamTrack && found.size() < static_cast<size_t>(kMaxSearchResults)) {
-                        found.push_back(*jamTrack);
-                    }
+    auto sendResults = [self, id](const QList<Yandex::Track>& tracks, const Yandex::RequestError& error) {
+        if (!self) {
+            return;
+        }
+        SearchResult reply;
+        reply.requestId = id;
+        if (error.isError()) {
+            qWarning("jam: a guest's search failed: %s", qPrintable(error.text));
+            const bool unauthorized = error.httpStatus == 401 || error.httpStatus == 403;
+            reply.error = unauthorized ? SearchError::Unauthorized : SearchError::Failed;
+        } else {
+            std::vector<Track> found;
+            for (const Yandex::Track& track : tracks) {
+                const std::optional<Track> jamTrack = track.available ? JamTrackOf(track) : std::nullopt;
+                if (jamTrack && found.size() < static_cast<size_t>(kMaxSearchResults)) {
+                    found.push_back(*jamTrack);
                 }
-                reply.tracks = found;
             }
-            if (self->connected) {
-                self->client.send(reply);  // HOST-28, HOST-29
-            }
-        });
+            reply.tracks = found;
+        }
+        if (self->connected) {
+            self->client.send(reply);  // HOST-28, HOST-29
+        }
+    };
+    yandexLibrary->searchTracks(message.text, sendResults);
 }
 
 void HostSession::validate(const ValidateRequest& message) {

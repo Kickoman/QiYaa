@@ -369,10 +369,12 @@ void MainWindow::paintShaded(QPainter& painter) {
         const double fraction =
             seekPreview >= 0 ? seekPreview : std::clamp(corePlayer->engine()->positionSeconds() / duration, 0.0, 1.0);
         const int x = static_cast<int>(std::lround(fraction * (17 - 3)));
-        const QRect thumb = x == 0 ? Skins::kShadePositionThumbLeft
-            : x >= 14
-            ? Skins::kShadePositionThumbRight
-            : Skins::kShadePositionThumb;
+        QRect thumb = Skins::kShadePositionThumb;
+        if (x == 0) {
+            thumb = Skins::kShadePositionThumbLeft;
+        } else if (x >= 14) {
+            thumb = Skins::kShadePositionThumbRight;
+        }
         activeSkin.draw(painter, TSheet::TitleBar, thumb, QPoint(226 + x, 4));
     }
 }
@@ -401,10 +403,12 @@ void MainWindow::paintSkin(QPainter& painter) {
     drawButton(painter, Element::Close, Skins::MainWindowSprites::kClose, Skins::kCloseButton, Skins::kCloseButtonDown);
     activeSkin.draw(painter, TSheet::TitleBar, Skins::kClutterBar, Skins::MainWindowSprites::kClutter);
 
-    const QRect indicator = state == Audio::AudioEngine::State::Paused ? Skins::kPausedIndicator
-        : stopped
-        ? Skins::kStoppedIndicator
-        : Skins::kPlayingIndicator;
+    QRect indicator = Skins::kPlayingIndicator;
+    if (state == Audio::AudioEngine::State::Paused) {
+        indicator = Skins::kPausedIndicator;
+    } else if (stopped) {
+        indicator = Skins::kStoppedIndicator;
+    }
     activeSkin.draw(painter, TSheet::PlayPaus, indicator, Skins::MainWindowSprites::kPlayPause);
     if (!stopped && state != Audio::AudioEngine::State::Paused) {
         // Little LED: green while playing, red while waiting for data.
@@ -510,12 +514,9 @@ void MainWindow::paintSkin(QPainter& painter) {
 
     auto toggle = [&](Element element, const Skins::ToggleSprite& sprite, bool on, QPoint at) {
         const bool down = pressedElement == element && pressedInside;
-        activeSkin.draw(
-            painter,
-            TSheet::ShufRep,
-            on ? (down ? sprite.onPressed : sprite.on) : (down ? sprite.offPressed : sprite.off),
-            at
-        );
+        const QRect& onFace = down ? sprite.onPressed : sprite.on;
+        const QRect& offFace = down ? sprite.offPressed : sprite.off;
+        activeSkin.draw(painter, TSheet::ShufRep, on ? onFace : offFace, at);
     };
     toggle(Element::EqToggle, Skins::kEqButton, eqOn, Skins::MainWindowSprites::kEqButton);
     toggle(Element::PlaylistToggle, Skins::kPlaylistButton, playlistOn, Skins::MainWindowSprites::kPlaylistButton);

@@ -102,11 +102,9 @@ private Q_SLOTS:
         server.fixture("GET", "/account/status", "account-status/ok");
         // Every test's wave is the same session. Answered from the start: a 404 would move the
         // session to the station endpoint for good (TRK-10).
+        const QString sessionId = Tests::ExpectedObject("rotor-session-new/ok").value("sessionId").toString();
         server.fixture(
-            "POST",
-            QStringLiteral("/rotor/session/%1/feedback")
-                .arg(Tests::ExpectedObject("rotor-session-new/ok").value("sessionId").toString()),
-            "rotor-session-feedback/ok"
+            "POST", QStringLiteral("/rotor/session/%1/feedback").arg(sessionId), "rotor-session-feedback/ok"
         );
         bool done = false;
         library.connectAccount([&](const Yandex::Account&, const QString&) { done = true; });
@@ -300,9 +298,8 @@ private Q_SLOTS:
         QVERIFY(
             QTest::qWaitFor([&] { return server.last(QStringLiteral("/rotor/session/%1/tracks").arg(session)); }, 3000)
         );
-        const QJsonObject moreBody =
-            QJsonDocument::fromJson(server.last(QStringLiteral("/rotor/session/%1/tracks").arg(session))->body)
-                .object();
+        const QByteArray moreRequest = server.last(QStringLiteral("/rotor/session/%1/tracks").arg(session))->body;
+        const QJsonObject moreBody = QJsonDocument::fromJson(moreRequest).object();
         QCOMPARE(moreBody.value("queue").toArray(), QJsonArray{firstId});
 
         // Dislike: the request, then a skip and the next track, from the new batch (TRK-07).

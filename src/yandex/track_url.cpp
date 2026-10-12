@@ -55,10 +55,13 @@ std::optional<DownloadInfo> ParseDownloadInfo(const QByteArray& json) {
     const QJsonObject object = document.object();
     auto text = [&](const char* key) {
         const QJsonValue value = object.value(QLatin1String(key));
-        return value.isString() ? value.toString()
-            : value.isDouble()
-            ? QString::number(static_cast<qint64>(value.toDouble()))
-            : QString();
+        if (value.isString()) {
+            return value.toString();
+        }
+        if (value.isDouble()) {
+            return QString::number(static_cast<qint64>(value.toDouble()));
+        }
+        return QString();
     };
     DownloadInfo info;
     info.host = text("host");

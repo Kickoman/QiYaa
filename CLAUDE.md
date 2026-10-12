@@ -43,9 +43,19 @@ README is its file-level reference.
 - **No formats of our own.** Foreign files (`.wsz` and the bitmaps in it, `.eqf`, `.milk`, the
   token file) are read with every size bounded before anything is allocated. Downloads are not
   capped: a track is held whole in memory as its bytes arrive, and a cover is read whole.
+- **Lines are up to 120 characters**, not the shared 100: Qt and the skin sprites have long names.
 - **clang-format is the authority on layout** (`.clang-format`, clang-format 18; CI fails on any
   difference). It keeps the opening brace of a constructor body on the line of the last
-  initializer; an empty body is still `{ }`.
+  initializer; an empty body is still `{ }`. Arguments go all on one line (the call's or the next)
+  or each on its own line, never packed over two. A broken expression is indented by blocks, never
+  aligned far to the right under its first operand.
+- **Name a value instead of breaking a call chain.** clang-format cannot keep `.toPoint()` on the
+  line of a closing parenthesis: a chain that does not fit becomes `settings` / `.value(…)` /
+  `.toPoint()` on separate lines, or an object alone on a line before `->call(…)`. Give the inner
+  value a name (`const QPoint rightOfMain = …;`), or name a long lambda before passing it. A list of
+  `.arg(…)` calls or a JSON path, one call per line, is fine.
+- **One conditional operator per expression.** `a ? b : c` is fine; a nested or chained one is not:
+  write a `switch` (in a small function that returns the value) or an `if`/`else if` chain.
 - **Language.** Code, comments, module READMEs and the developer documents
   (`docs/architecture.md`, `docs/code-style.md`, this file) are in English. The top-level README
   and the rest of `docs/` are for users and are in Russian.

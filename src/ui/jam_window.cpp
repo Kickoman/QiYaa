@@ -300,10 +300,12 @@ void JamWindow::renderTabs(Canvas& canvas) {
     );
     const bool connected = jamHost->isConnected();
     const Jam::Status status = jamHost->connection();
-    const QString state = connected ? tr("Connected")
-        : status == Jam::Status::Connecting || status == Jam::Status::Online
-        ? tr("Connecting…")
-        : tr("No connection");
+    QString state = tr("No connection");
+    if (connected) {
+        state = tr("Connected");
+    } else if (status == Jam::Status::Connecting || status == Jam::Status::Online) {
+        state = tr("Connecting…");
+    }
     const int stateWidth = canvas.textWidth(state) + 2;  // advances are fractional
     const int stateX = canvas.right - stateWidth;
     if (stateX - 8 > searchTab.right() + kGap) {
@@ -502,11 +504,11 @@ void JamWindow::field(Canvas& canvas, const QRect& rect, Field which, const QStr
             }
         }
     }
-    canvas.controls
-        << Control{rect, hint, true, [this, which] {
-                       focus = which;
-                       update();
-                   }};
+    const auto focusField = [this, which] {
+        focus = which;
+        update();
+    };
+    canvas.controls << Control{rect, hint, true, focusField};
 }
 
 const QImage& JamWindow::qrCode() {
@@ -585,25 +587,25 @@ void JamWindow::search(const QString& text) {
     listScroll = 0;
     const int request = ++searchRequest;
     QPointer<JamWindow> self(this);
-    yandexLibrary
-        ->searchTracks(query, [self, request](const QList<Yandex::Track>& tracks, const Yandex::RequestError& error) {
-            if (!self || request != self->searchRequest) {
-                return;
-            }
-            self->foundTracks.clear();
-            if (error.isError()) {
-                self->results = Results::Failed;
-                self->searchProblem = error.text;
-            } else {
-                self->results = Results::Found;
-                for (const Yandex::Track& track : tracks) {
-                    if (track.available && self->foundTracks.size() < Jam::kMaxSearchResults) {
-                        self->foundTracks << track;
-                    }
+    auto showResults = [self, request](const QList<Yandex::Track>& tracks, const Yandex::RequestError& error) {
+        if (!self || request != self->searchRequest) {
+            return;
+        }
+        self->foundTracks.clear();
+        if (error.isError()) {
+            self->results = Results::Failed;
+            self->searchProblem = error.text;
+        } else {
+            self->results = Results::Found;
+            for (const Yandex::Track& track : tracks) {
+                if (track.available && self->foundTracks.size() < Jam::kMaxSearchResults) {
+                    self->foundTracks << track;
                 }
             }
-            self->update();
-        });
+        }
+        self->update();
+    };
+    yandexLibrary->searchTracks(query, showResults);
     update();
 }
 

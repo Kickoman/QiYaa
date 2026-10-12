@@ -5,6 +5,7 @@
 #include "skins/skin.h"
 #include "skins/sprites.h"
 
+#include <QAction>
 #include <QApplication>
 #include <QCloseEvent>
 #include <QContextMenuEvent>
@@ -584,8 +585,8 @@ void PlaylistWindow::skinMouseRelease(QPoint pos, Qt::MouseButton button) {
                 break;
             case Button::Remove: {
                 auto* menu = new QMenu(this);
-                menu->addAction(tr("Remove the selected"), this, [this] { removeSelected(); })
-                    ->setEnabled(!selectedRows.isEmpty());
+                QAction* remove = menu->addAction(tr("Remove the selected"), this, [this] { removeSelected(); });
+                remove->setEnabled(!selectedRows.isEmpty());
                 menu->addAction(tr("Clear the playlist"), this, [this] { clearQueue(); });
                 popupAt(menu, {43, skinSize().height() - 30});
                 break;
@@ -692,9 +693,14 @@ void PlaylistWindow::popupAt(QMenu* menu, QPoint skinPos) {
 }
 
 void PlaylistWindow::contextMenuEvent(QContextMenuEvent* event) {
-    const int row = event->reason() == QContextMenuEvent::Keyboard
-        ? (cursorRow >= 0 ? cursorRow : corePlayer->currentIndex())
-        : rowAt(toSkin(event->pos()));
+    int row = -1;
+    if (event->reason() != QContextMenuEvent::Keyboard) {
+        row = rowAt(toSkin(event->pos()));
+    } else if (cursorRow >= 0) {
+        row = cursorRow;
+    } else {
+        row = corePlayer->currentIndex();
+    }
     if (row < 0) {
         Q_EMIT sourcesMenuRequested(event->globalPos());
         return;

@@ -215,18 +215,16 @@ Application::Application(const Options& options, QObject* parent)
     , jamMode(&corePlayer, &yandexLibrary) {
     firstRun = settings.allKeys().isEmpty();
     // Before any window: they take their texts from the translation.
-    translations.apply(options.language.value_or(
-        LanguageFromCode(settings.value(QStringLiteral("language")).toString()).value_or(kDefaultLanguage)
-    ));
+    const std::optional<Language> storedLanguage =
+        LanguageFromCode(settings.value(QStringLiteral("language")).toString());
+    translations.apply(options.language.value_or(storedLanguage.value_or(kDefaultLanguage)));
+    const bool randomShuffle =
+        settings.value(QStringLiteral("shuffle/algorithm")).toString() == QLatin1String("random");
     corePlayer.setShuffleAlgorithm(
-        settings.value(QStringLiteral("shuffle/algorithm")).toString() == QLatin1String("random")
-            ? Core::ShuffleAlgorithm::Random
-            : Core::ShuffleAlgorithm::WithoutRepeats
+        randomShuffle ? Core::ShuffleAlgorithm::Random : Core::ShuffleAlgorithm::WithoutRepeats
     );
-    corePlayer.setQuality(
-        Yandex::QualityFromKey(settings.value(QStringLiteral("playback/quality")).toString())
-            .value_or(Yandex::Quality::Standard)
-    );
+    const QString storedQuality = settings.value(QStringLiteral("playback/quality")).toString();
+    corePlayer.setQuality(Yandex::QualityFromKey(storedQuality).value_or(Yandex::Quality::Standard));
     connect(&corePlayer, &Core::Player::modesChanged, this, [this] {
         settings.setValue(
             QStringLiteral("shuffle/algorithm"),
@@ -261,12 +259,13 @@ Application::Application(const Options& options, QObject* parent)
         networkManager, temporaryDirectory ? temporaryDirectory->filePath(QStringLiteral("covers")) : QString()
     );
     nowPlayingWindowInstance = std::make_unique<Ui::NowPlayingWindow>(&corePlayer, coverCache.get(), currentSkin.get());
-    for (QWidget* widget : std::initializer_list<QWidget*>{
-             mainWindowInstance.get(),
-             equalizerWindowInstance.get(),
-             playlistWindowInstance.get(),
-             nowPlayingWindowInstance.get()
-         }) {
+    const std::initializer_list<QWidget*> windowsWithShortcuts{
+        mainWindowInstance.get(),
+        equalizerWindowInstance.get(),
+        playlistWindowInstance.get(),
+        nowPlayingWindowInstance.get(),
+    };
+    for (QWidget* widget : windowsWithShortcuts) {
         installShortcuts(widget);
     }
     equalizerWindowInstance->setSecondary();
@@ -567,12 +566,13 @@ void Application::watchNetwork() {
     }
     auto apply = [this](Information::Reachability reachability) {
         // Local and Site say little about the Yandex servers: leave those to the timer.
-        corePlayer.setNetworkOnline(
-            reachability == Information::Reachability::Online ? std::optional(true)
-                : reachability == Information::Reachability::Disconnected
-                ? std::optional(false)
-                : std::nullopt
-        );
+        std::optional<bool> online;
+        if (reachability == Information::Reachability::Online) {
+            online = true;
+        } else if (reachability == Information::Reachability::Disconnected) {
+            online = false;
+        }
+        corePlayer.setNetworkOnline(online);
 #ifdef QIYAA_HAVE_JAM
         if (jamHostSession && reachability == Information::Reachability::Online) {
             jamHostSession->networkBack();  // HOST-26
@@ -651,9 +651,10 @@ void Application::setUpJam() {
         }
         if (items.isEmpty()) {
             mainWindowInstance->setStatusText(tr("Select jam tracks to remove them"));
-        } else if (!std::all_of(items.cbegin(), items.cend(), [this](const QString& itemId) {
-                       return jamHostSession->remove(itemId);
-                   })) {
+            return true;
+        }
+        const auto removeItem = [this](const QString& itemId) { return jamHostSession->remove(itemId); };
+        if (!std::all_of(items.cbegin(), items.cend(), removeItem)) {
             mainWindowInstance->setStatusText(tr("No connection to the jam server"));
         }
         return true;
@@ -777,25 +778,14 @@ void Application::layoutWindows() {
     mainWindowInstance->placeAt(mainPosition);
     equalizerWindowInstance->placeAt(settings.value(QStringLiteral("equalizer/pos"), equalizerDefault).toPoint());
     playlistWindowInstance->placeAt(settings.value(QStringLiteral("playlist/pos"), playlistDefault).toPoint());
-    nowPlayingWindowInstance->placeAt(
-        settings.value(QStringLiteral("nowPlaying/pos"), mainPosition + QPoint(mainWindowInstance->width(), 0))
-            .toPoint()
-    );
+    const QPoint rightOfMain = mainPosition + QPoint(mainWindowInstance->width(), 0);
+    const QPoint belowRightOfMain = rightOfMain + QPoint(0, mainWindowInstance->height());
+    nowPlayingWindowInstance->placeAt(settings.value(QStringLiteral("nowPlaying/pos"), rightOfMain).toPoint());
     if (milkdropWindowInstance) {
-        milkdropWindowInstance->placeAt(
-            settings
-                .value(
-                    QStringLiteral("milkdrop/pos"),
-                    mainPosition + QPoint(mainWindowInstance->width(), mainWindowInstance->height())
-                )
-                .toPoint()
-        );
+        milkdropWindowInstance->placeAt(settings.value(QStringLiteral("milkdrop/pos"), belowRightOfMain).toPoint());
     }
     if (jamWindowInstance) {
-        jamWindowInstance->placeAt(
-            settings.value(QStringLiteral("jamWindow/pos"), mainPosition + QPoint(mainWindowInstance->width(), 0))
-                .toPoint()
-        );
+        jamWindowInstance->placeAt(settings.value(QStringLiteral("jamWindow/pos"), rightOfMain).toPoint());
     }
 }
 

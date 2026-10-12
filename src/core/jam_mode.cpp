@@ -39,15 +39,6 @@ struct JamMode::Wave {
 
 namespace {
 
-Yandex::WaveEvent WaveEventOf(Player::TrackEvent event) {
-    switch (event) {
-        case Player::TrackEvent::Started: return Yandex::WaveEvent::TrackStarted;
-        case Player::TrackEvent::Finished: return Yandex::WaveEvent::TrackFinished;
-        case Player::TrackEvent::Skipped: break;
-    }
-    return Yandex::WaveEvent::Skip;
-}
-
 QList<Track> Playable(const QList<Track>& tracks) {
     QList<Track> playable;
     std::copy_if(tracks.cbegin(), tracks.cend(), std::back_inserter(playable), [](const Track& track) {

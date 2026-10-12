@@ -527,10 +527,8 @@ AudioEngine::InitResult AudioEngine::init() {
         bool known = false;
         for (int i = 0; i < MA_BACKEND_COUNT && !known; ++i) {
             const auto backend = ma_backend(i);
-            if (QString::fromLatin1(ma_get_backend_name(backend))
-                    .remove(QLatin1Char(' '))
-                    .compare(requestedBackend, Qt::CaseInsensitive)
-                == 0) {
+            const QString name = QString::fromLatin1(ma_get_backend_name(backend)).remove(QLatin1Char(' '));
+            if (name.compare(requestedBackend, Qt::CaseInsensitive) == 0) {
                 candidates = {backend};
                 known = true;
             }

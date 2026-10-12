@@ -36,14 +36,13 @@ class TestYandex : public QObject {
 private Q_SLOTS:
     void signsTrackUrlLikeYaamp() {
         Yandex::DownloadInfo info{"s123vla.storage.yandex.net", "/rmusic/U2FsdGVk/abc", "000612a3b4c5d", "deadbeef"};
-        const QByteArray expectedSign =
-            QCryptographicHash::hash("XGRlBW9FXlekgbPrRHuSiArmusic/U2FsdGVk/abcdeadbeef", QCryptographicHash::Md5)
-                .toHex();
-        QCOMPARE(
-            Yandex::BuildTrackUrl(info).toString(),
+        const QByteArray signedText = "XGRlBW9FXlekgbPrRHuSiArmusic/U2FsdGVk/abcdeadbeef";
+        const QString expectedSign =
+            QString::fromLatin1(QCryptographicHash::hash(signedText, QCryptographicHash::Md5).toHex());
+        const QString expectedUrl =
             QStringLiteral("https://s123vla.storage.yandex.net/get-mp3/%1/000612a3b4c5d/rmusic/U2FsdGVk/abc")
-                .arg(QString::fromLatin1(expectedSign))
-        );
+                .arg(expectedSign);
+        QCOMPARE(Yandex::BuildTrackUrl(info).toString(), expectedUrl);
     }
     void downloadVariantsAreParsedAndTheBestIsPicked_data() {
         QTest::addColumn<QString>("name");

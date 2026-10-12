@@ -19,13 +19,19 @@ public:
         if (trackCount == 0) {
             return -1;
         }
-        return currentIndex + 1 < trackCount ? currentIndex + 1 : (repeat ? 0 : -1);
+        if (currentIndex + 1 < trackCount) {
+            return currentIndex + 1;
+        }
+        return repeat ? 0 : -1;
     }
     int previous(bool repeat) const override {
         if (trackCount == 0) {
             return -1;
         }
-        return currentIndex > 0 ? currentIndex - 1 : (repeat ? trackCount - 1 : 0);
+        if (currentIndex > 0) {
+            return currentIndex - 1;
+        }
+        return repeat ? trackCount - 1 : 0;
     }
 
 protected:
@@ -75,13 +81,19 @@ public:
         if (order.isEmpty()) {
             return -1;
         }
-        return position + 1 < order.size() ? order[position + 1] : (repeat ? order.front() : -1);
+        if (position + 1 < order.size()) {
+            return order[position + 1];
+        }
+        return repeat ? order.front() : -1;
     }
     int previous(bool repeat) const override {
         if (order.isEmpty()) {
             return -1;
         }
-        return position > 0 ? order[position - 1] : (repeat ? order.back() : order.front());
+        if (position > 0) {
+            return order[position - 1];
+        }
+        return repeat ? order.back() : order.front();
     }
 
 private:

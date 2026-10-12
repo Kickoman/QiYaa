@@ -222,9 +222,8 @@ private Q_SLOTS:
         library.moreWave(sessionId, {"38634572"}, more.callback());
         QVERIFY(more.wait());
         QCOMPARE(Tests::Json(Tests::ToJson(more.value)), Tests::Expected("rotor-session-tracks/ok"));
-        const QJsonObject moreBody =
-            QJsonDocument::fromJson(server.last(QStringLiteral("/rotor/session/%1/tracks").arg(sessionId))->body)
-                .object();
+        const QByteArray moreRequest = server.last(QStringLiteral("/rotor/session/%1/tracks").arg(sessionId))->body;
+        const QJsonObject moreBody = QJsonDocument::fromJson(moreRequest).object();
         QCOMPARE(moreBody.value("queue").toArray().first().toString(), QStringLiteral("38634572"));
     }
 
@@ -486,10 +485,10 @@ private Q_SLOTS:
             tracks << Yandex::ApiClient::ParseTrack(QJsonDocument::fromJson(TrackJson(i, "t")).object());
         }
         QStringList log;
-        player
-            .setQueue(tracks, "W", false, {}, [&](Core::Player::TrackEvent event, const Yandex::Track& track, double) {
-                log << QStringLiteral("%1:%2").arg(static_cast<int>(event)).arg(track.id);
-            });
+        const auto record = [&](Core::Player::TrackEvent event, const Yandex::Track& track, double) {
+            log << QStringLiteral("%1:%2").arg(static_cast<int>(event)).arg(track.id);
+        };
+        player.setQueue(tracks, "W", false, {}, record);
         player.playIndex(0);
         QVERIFY(QTest::qWaitFor([&] { return log.contains("0:1"); }, 3000));
         player.playIndex(1);
