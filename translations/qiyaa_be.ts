@@ -232,8 +232,8 @@
         <translation>Мова</translation>
     </message>
     <message>
-        <source>Send anonymous usage statistics</source>
-        <translation>Адпраўляць ананімную статыстыку выкарыстання</translation>
+        <source>Send statistics</source>
+        <translation>Адпраўляць статыстыку</translation>
     </message>
 </context>
 <context>

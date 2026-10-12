@@ -232,8 +232,8 @@
         <translation>Язык</translation>
     </message>
     <message>
-        <source>Send anonymous usage statistics</source>
-        <translation>Отправлять анонимную статистику использования</translation>
+        <source>Send statistics</source>
+        <translation>Отправлять статистику</translation>
     </message>
 </context>
 <context>

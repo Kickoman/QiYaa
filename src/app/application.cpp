@@ -1434,10 +1434,9 @@ void Application::fillWindowActions(QMenu* menu) {
     );
 #ifdef QIYAA_HAVE_TELEMETRY
     if (!startOptions.telemetryUrl.isEmpty()) {
-        QAction* telemetryAction =
-            menu->addAction(tr("Send anonymous usage statistics"), this, [this](bool on) {
-                setTelemetryEnabled(on);
-            });
+        QAction* telemetryAction = menu->addAction(tr("Send statistics"), this, [this](bool on) {
+            setTelemetryEnabled(on);
+        });
         telemetryAction->setCheckable(true);
         telemetryAction->setChecked(telemetryEnabled());
     }

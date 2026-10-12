@@ -302,8 +302,8 @@ connections are made at the end of the constructor:
 | `feature vis`, `equalizer`, `skin`, `language`, `milkdrop`, `jam` | `MainWindow::visModeChanged`, the equalizer's `settingsChanged`, `loadSkin`, `setLanguage`, `setMilkdropVisible`, the host session's phase |
 
 A skin is `base`, a built-in skin's name or `custom`, never a path. `quit()` records `exit`
-and waits for the last batch within its 1.5 s, like the plays reports. The menu's "Send anonymous
-usage statistics" (`setTelemetryEnabled`) is shown only in a telemetry build with a URL. Off:
+and waits for the last batch within its 1.5 s, like the plays reports. The menu's "Send
+statistics" (`setTelemetryEnabled`) is shown only in a telemetry build with a URL. Off:
 `Reporter::forget()` and `ForgetAll` delete what waits. On: `startTelemetry()` again, as a new
 session.
 - After `--scale`, window positions are not saved for the rest of the run, unless the user picks a
