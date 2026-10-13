@@ -2,7 +2,6 @@
 
 #include <QCryptographicHash>
 #include <QMessageAuthenticationCode>
-#include <QSettings>
 #include <QSysInfo>
 #include <QUuid>
 
@@ -14,16 +13,17 @@ QString MachineId(const QByteArray& systemId) {
     return QString::fromLatin1(mac.left(16).toHex());
 }
 
-QString MachineIdFor(QSettings& settings) {
-    QByteArray systemId = QSysInfo::machineUniqueId();
-    if (systemId.isEmpty()) {
-        const QString key = QStringLiteral("telemetry/machine");
-        if (!settings.contains(key)) {
-            settings.setValue(key, QUuid::createUuid().toString(QUuid::WithoutBraces));
-        }
-        systemId = settings.value(key).toString().toLatin1();
+QString MachineIdFor(const QString& stored, const std::function<void(const QString&)>& store) {
+    const QByteArray systemId = QSysInfo::machineUniqueId();
+    if (!systemId.isEmpty()) {
+        return MachineId(systemId);
     }
-    return MachineId(systemId);
+    if (!stored.isEmpty()) {
+        return MachineId(stored.toLatin1());
+    }
+    const QString made = QUuid::createUuid().toString(QUuid::WithoutBraces);
+    store(made);
+    return MachineId(made.toLatin1());
 }
 
 }  // namespace Telemetry

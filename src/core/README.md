@@ -1,20 +1,20 @@
 # `src/core` — playback controller, sources and cover cache
 
-This folder decides what plays. `Player` holds the queue of the current source and moves through
-it: play, pause, stop, next, previous, shuffle and repeat. It asks an endless source (a wave)
-for more tracks before the queue runs out. For each track it resolves the download link through
-`Yandex::ApiClient` and streams the mp3 bytes into `Audio::AudioEngine`. It also preloads the
-following track, so the engine can go on without a gap, and it reports each track's start and end:
-a play report to Yandex and a per-queue callback that the wave uses for feedback. `Sources` turns
-what the user picks (likes, playlists, artists, albums, waves, stations, search) into the
-`Player`'s queue and builds the wave's callbacks; it is the desktop counterpart of the Android
-app's queue manager, and `spec/player` describes both. `JamMode` is the queue while the app hosts
-a jam: the current track, the jam part that mirrors the server's queue, and the jam wave
-(`spec/jam/host.md`). `CoverCache`
-downloads album covers and keeps them in memory and on disk. The folder does not decode or output
-audio or chain streams at the sample level ([src/audio](../audio/README.md)). It does not speak
-the Yandex API, sign links or build cover URLs itself ([src/yandex](../yandex/README.md)). It
-builds no menus ([src/ui](../ui/README.md), `library_menu.cpp`) and shows nothing on screen. Namespace `Core`, library `qiyaa_core`.
+This folder decides what plays. `Player` holds the queue of the current source and moves through it:
+play, pause, stop, next, previous, shuffle and repeat. It asks an endless source (a wave) for more
+tracks before the queue runs out. For each track it resolves the download link through
+`Yandex::ApiClient` and streams the file's bytes (mp3, or AAC in MP4 at the economy quality) into
+`Audio::AudioEngine`. It also preloads the following track, so the engine can go on without a gap,
+and it reports each track's start and end: a play report to Yandex and a per-queue callback that the
+wave uses for feedback. `Sources` turns what the user picks (likes, playlists, artists, albums,
+waves, stations, search) into the `Player`'s queue and builds the wave's callbacks; it is the
+desktop counterpart of the Android app's queue manager, and `spec/player` describes both. `JamMode`
+is the queue while the app hosts a jam: the current track, the jam part that mirrors the server's
+queue, and the jam wave (`spec/jam/host.md`). `CoverCache` downloads album covers and keeps them in
+memory and on disk. The folder does not decode or output audio or chain streams at the sample level
+([src/audio](../audio/README.md)). It does not speak the Yandex API, sign links or build cover URLs
+itself ([src/yandex](../yandex/README.md)). It builds no menus ([src/ui](../ui/README.md),
+`library_menu.cpp`) and shows nothing on screen. Namespace `Core`, library `qiyaa_core`.
 
 | File | Contains |
 |---|---|

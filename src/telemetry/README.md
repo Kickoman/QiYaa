@@ -16,7 +16,12 @@ Kickoman/QiYaa-jam.
 | `system_info.h/.cpp` | `SystemFields`: the system part of the start event |
 
 Dependencies: Qt Core and Network (public), Qt Gui for the screens; `dbghelp` on Windows, the
-platform's `dl` elsewhere. Nothing of QiYaa's own.
+platform's `dl` elsewhere. Nothing of QiYaa's own, and it neither throws nor reads the settings:
+
+```bash
+grep -rn --include='*.h' --include='*.cpp' '#include "' src/telemetry/ | grep -v '"telemetry/'   # must print nothing
+grep -rnw --include='*.h' --include='*.cpp' 'throw\|QSettings' src/telemetry/                     # must print nothing
+```
 
 ## `reporter.h`
 
@@ -87,7 +92,8 @@ an unknown module `unknown`, and replaces characters a module name may not have 
 ## `machine_id.h`, `system_info.h`
 
 `MachineId(systemId)` is the first 16 bytes, in hex, of HMAC-SHA256 with the key `QiYaa
-telemetry` over `systemId`. `MachineIdFor(settings)` takes `QSysInfo::machineUniqueId()`, or,
-when the OS has none, a random UUID kept as `telemetry/machine` in the settings.
+telemetry` over `systemId`. `MachineIdFor(stored, store)` takes `QSysInfo::machineUniqueId()`,
+or, when the OS has none, `stored`: a random UUID the app keeps as `telemetry/machine`. When that
+is empty too, it makes one and hands it to `store`.
 `SystemFields()` gives `os`, `osName`, `osVersion`, `kernel`, `arch`, `qt`, `package` (from
 `QIYAA_PACKAGE`), `locale`, `screens` and `dpr`, each cut to its schema's pattern.

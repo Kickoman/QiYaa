@@ -14,7 +14,6 @@
 #include <QProcess>
 #include <QRegularExpression>
 #include <QSet>
-#include <QSettings>
 #include <QSysInfo>
 #include <QTemporaryDir>
 #include <QTest>
@@ -133,10 +132,11 @@ private Q_SLOTS:
 
     void machineIdIsTheAppsHashOfTheSystemId() {
         QCOMPARE(Telemetry::MachineId("abc"), QStringLiteral("3a8271ff2b263f300989f47f507a3804"));
-        QSettings settings(directory->filePath(QStringLiteral("settings.ini")), QSettings::IniFormat);
-        const QString id = Telemetry::MachineIdFor(settings);
+        QString stored;
+        const auto store = [&stored](const QString& id) { stored = id; };
+        const QString id = Telemetry::MachineIdFor(stored, store);
         QVERIFY(QRegularExpression(QStringLiteral("^[0-9a-f]{32}$")).match(id).hasMatch());
-        QCOMPARE(Telemetry::MachineIdFor(settings), id);
+        QCOMPARE(Telemetry::MachineIdFor(stored, store), id);
         QVERIFY(!id.startsWith(QString::fromLatin1(QSysInfo::machineUniqueId().left(8))));
     }
 
@@ -325,7 +325,7 @@ private Q_SLOTS:
             {QDir(directory->path()).filePath(crashed + QStringLiteral(".crash")), crashed, QStringLiteral("0.4.9"), how
             }
         );
-        QVERIFY(probe.waitForFinished(30000));
+        QVERIFY(QTest::qWaitFor([&] { return probe.state() == QProcess::NotRunning; }, 30000));
 
         auto run = reporter();
         run->begin(StartFields());

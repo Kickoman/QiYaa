@@ -56,7 +56,7 @@ Inside the module `skinned_window.h` is included by the main, equalizer, playlis
 ```bash
 grep -rnE --include='*.h' --include='*.cpp' '#include "(app|integrations)/' src/ui/  # must print nothing
 grep -rn --include='*.h' --include='*.cpp' 'throw' src/ui/                           # must print nothing
-grep -rn --include='*.h' --include='*.cpp' 'catch' src/ui/ | grep -v 'Audio::Error'  # must print nothing
+grep -rn --include='*.h' --include='*.cpp' 'catch' src/ui/ | grep -v 'Audio::Error\|qrcodegen::data_too_long'  # must print nothing
 grep -rniE --include='*.h' --include='*.cpp' '#include <(projectM|QOpenGL)' src/ui/  # must print nothing
 grep -nE '#include <Q(Widget|Screen|GuiApplication|Window|Painter)>' src/ui/snap.*   # must print nothing
 ```
@@ -877,8 +877,10 @@ Nothing is parsed here: bitmaps, `region.txt` and `PLEDIT.TXT` arrive parsed in 
 
 ## Errors
 
-Nothing in `src/ui` throws. The only `catch` is `EqualizerWindow`'s around `Audio::ParseEqf`: an
-`Audio::Error` becomes `statusText("EQ: <file>: " + what())`. Everything else is data:
+Nothing in `src/ui` throws. There are two `catch`es. `EqualizerWindow`'s around `Audio::ParseEqf`
+turns an `Audio::Error` into `statusText("EQ: <file>: " + what())`. `JamWindow`'s around
+`qrcodegen::QrCode::encodeText` turns `qrcodegen::data_too_long` into a warning and no code.
+Everything else is data:
 
 | Failure | Reported as |
 |---|---|

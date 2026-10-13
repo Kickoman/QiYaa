@@ -21,6 +21,15 @@ jobs:
       - run: sudo apt-get update && sudo apt-get install -y clang-format-18
       - run: git ls-files 'src/*.cpp' 'src/*.h' 'tests/*.cpp' 'tests/*.h' | xargs clang-format-18 --dry-run --Werror
 
+  # The invariants the module READMEs write down ("# must print nothing") and the module table of
+  # docs/architecture.md.
+  readmes:
+    name: README checks
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+      - run: python3 tools/check_readmes.py
+
   build:
     name: ${{ matrix.name }}
     runs-on: ${{ matrix.os }}

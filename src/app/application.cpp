@@ -999,11 +999,13 @@ void Application::startTelemetry() {
         return;
     }
     const QString version = QCoreApplication::applicationVersion();
+    const QString machineKey = QStringLiteral("telemetry/machine");
+    const auto storeMachine = [this, &machineKey](const QString& id) { settings.setValue(machineKey, id); };
     telemetryReporter = std::make_unique<Telemetry::Reporter>(Telemetry::Reporter::Config{
         startOptions.telemetryUrl,
         telemetryDirectory(),
         version.isEmpty() ? QStringLiteral("dev") : version,
-        Telemetry::MachineIdFor(settings),
+        Telemetry::MachineIdFor(settings.value(machineKey).toString(), storeMachine),
         networkManager
     });
     static const QRegularExpression notBackend(QStringLiteral("[^A-Za-z0-9 _-]"));

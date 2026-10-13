@@ -3,12 +3,12 @@
 #include <QByteArray>
 #include <QString>
 
-class QSettings;
+#include <functional>
 
 namespace Telemetry {
 
 QString MachineId(const QByteArray& systemId);
 
-QString MachineIdFor(QSettings& settings);
+QString MachineIdFor(const QString& stored, const std::function<void(const QString&)>& store);
 
 }  // namespace Telemetry

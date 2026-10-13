@@ -465,17 +465,19 @@ constructor; "setter" is the matching `set*Visible`.
 | `milkdrop/seconds` | int, seconds per preset (the window clamps to 5..3600) | 30 | ctor | on `settingsChanged` |
 | `milkdrop/preset` | QString: preset name | empty = the window's own pick | ctor | on `settingsChanged` |
 | `milkdrop/black` | QStringList: names of blacklisted presets | empty | ctor | on `settingsChanged` |
-
 | `jam/server` | QString: the jam server's address, `https://…` | `QIYAA_JAM_URL` | each time the host session connects; ctor and the dialog for the jam window | "Server settings…" |
 | `jam/waveFeedback` | bool: the jam wave learns from skips (HOST-12, HOST-16) | true | when a jam starts | "Server settings…" |
 | `jam/shareAudio` | bool: guests may listen along (spec/jam/listen.md) | false | at each `playing` | "Server settings…" |
 | `jamWindow/visible` | bool | false | un-minimise only: the jam window is shown by the menu and by "Continue" | `setJamWindowVisible()` |
 | `jamWindow/pos` | QPoint | main position + (main width, 0) | `start()` | `saveState()` |
 | `jamWindow/steps` | QSize: resize steps of 25×29 skin px | (1, 8): 300×348 | ctor | on `sizeStepsChanged` |
+| `telemetry/enabled` | bool: "Send statistics" | true | `startTelemetry()`, the menu | `setTelemetryEnabled()`, from the menu |
+| `telemetry/firstStart` | QString: the ISO date of the first start with telemetry | absent | only whether it exists | `startTelemetry()`, once ([Telemetry](#telemetry)) |
+| `telemetry/machine` | QString: a random UUID, the machine id when the OS has none | absent | `startTelemetry()` | `startTelemetry()`, when the OS has no id and the key is absent |
 
 The `milkdrop/*` keys are read and written only in a build with `QIYAA_HAVE_MILKDROP`, the `jam/*`
-and `jamWindow/*` keys only in a jam build. The resize
-steps are clamped to 0..40 per axis by the windows.
+and `jamWindow/*` keys only in a jam build, the `telemetry/*` keys only in a telemetry build. The
+resize steps are clamped to 0..40 per axis by the windows.
 
 ## File format: `settings.ini`
 

@@ -11,7 +11,7 @@ Every folder of `src/` is one module: one namespace, one static library `qiyaa_<
 README. Dependencies point one way, and a module never includes a header of a module to its right:
 
 ```
-audio, yandex, skins  →  vis, core  →  jam  →  ui, integrations  →  app  →  qiyaa (src/app/main.cpp)
+audio, yandex, skins, telemetry  →  vis, core  →  jam  →  ui, integrations  →  app  →  qiyaa (src/app/main.cpp)
 ```
 
 | Module | Namespace | What it does | Links PUBLIC | Links PRIVATE |
@@ -19,19 +19,22 @@ audio, yandex, skins  →  vis, core  →  jam  →  ui, integrations  →  app 
 | [src/audio](../src/audio/README.md) | `Audio` | Plays a file while it downloads: decoder thread, ring buffer, equalizer, gapless chaining, `.eqf` presets; AAC in MP4 for the economy quality | Qt Core | miniaudio, minimp4, fdk-aac |
 | [src/yandex](../src/yandex/README.md) | `Yandex` | Yandex Music HTTP API, OAuth device login, signed track links, the token file | Qt Core, Network | |
 | [src/skins](../src/skins/README.md) | `Skins` | Loads `.wsz` skins: sheets, `region.txt`, `pledit.txt`, `viscolor.txt`, bitmap text; sprite tables | Qt Gui | miniz |
+| [src/telemetry](../src/telemetry/README.md) | `Telemetry` | Usage statistics and crash reports ([spec/telemetry](../spec/telemetry/README.md)): the events kept on disk until the jam server takes them, the crash handler. Optional (`QIYAA_WITH_TELEMETRY`, on in the releases) | Qt Core, Network | Qt Gui; dbghelp (Windows) or dl |
 | [src/vis](../src/vis/README.md) | `Vis` | Spectrum, oscilloscope, FFT; Milkdrop through projectM in a `QOpenGLWindow` | Qt Gui (+ OpenGL) | audio, skins (+ projectM) |
 | [src/core](../src/core/README.md) | `Core` | `Player` (queue, transport, downloads, preload, track events), `Sources` (what a pick plays, wave callbacks), `JamMode` (the queue while hosting a jam) and `CoverCache` | audio, yandex, Qt Gui, Network | |
 | [src/jam](../src/jam/README.md) | `Jam` | The jam: protocol messages and their JSON, the WebSocket connection to a jam server, the host's stored session, and `HostSession` (create, resume, the guests' search and checks, end). Optional (Qt WebSockets) | core, yandex, Qt Core, WebSockets | |
 | [src/ui](../src/ui/README.md) | `Ui` | The skinned windows, snapping and docking, the Yandex menus, the login dialog, the jam window | audio, vis, Qt Widgets (+ jam) | core, skins, yandex (+ qrcodegen) |
-| [src/integrations](../src/integrations/README.md) | `Integrations` | Media keys and system media panels: MPRIS (Linux) or SMTC (Windows) | Qt Gui (+ DBus) | audio, core, yandex |
-| [src/app](../src/app/README.md) | `App` | `Application`: owns and wires everything, menus, shortcuts, settings, login, "Continue the jam?"; `main()` | audio, core, skins, yandex | integrations, jam, ui, vis |
+| [src/integrations](../src/integrations/README.md) | `Integrations` | Media keys and system media panels: MPRIS (Linux), SMTC (Windows) or MediaPlayer (macOS) | Qt Gui (+ DBus) | audio, core, yandex |
+| [src/app](../src/app/README.md) | `App` | `Application`: owns and wires everything, menus, shortcuts, settings, login, "Continue the jam?"; `main()` | audio, core, skins, yandex | integrations, jam, ui, vis (+ telemetry) |
 
 Vendored code lives in `contrib/` (miniaudio, miniz, qrcodegen, minimp4, fdk-aac's decoder) and is
 not changed. The interface texts are English sources in the code, translated into Belarusian (the
 default) and Russian in [translations/](../translations/README.md). `spec/` is a submodule
 with the behaviour and test data shared with the Android app ([spec/README.md](../spec/README.md)).
-Milkdrop (`QIYAA_HAVE_MILKDROP`), the jam (`QIYAA_HAVE_JAM`), MPRIS (`QIYAA_HAVE_MPRIS`) and SMTC
-(`QIYAA_HAVE_SMTC`) are optional; the build options are in [building.md](building.md#параметры-cmake).
+Milkdrop (`QIYAA_HAVE_MILKDROP`), the jam (`QIYAA_HAVE_JAM`), telemetry (`QIYAA_HAVE_TELEMETRY`),
+MPRIS (`QIYAA_HAVE_MPRIS`) and SMTC (`QIYAA_HAVE_SMTC`) are optional; the macOS media controls
+(`QIYAA_HAVE_MAC_MEDIA_CONTROLS`) are always built on macOS. The build options are in
+[building.md](building.md#параметры-cmake).
 
 ## Who owns what
 
@@ -66,8 +69,8 @@ Ui (menu)  ──source──▶  Core::Player  ──resolveTrackUrl──▶  
    ring, applies the equalizer, copies the frames into `VisTap` and applies volume and balance.
 4. The main window's timer reads `VisTap` through the engine and draws the spectrum or the
    oscilloscope with `Vis`; the Milkdrop window feeds the same samples to projectM.
-5. `Integrations::MediaControls` turns `Player`'s state into what MPRIS or SMTC expect and their
-   commands into `Player` calls.
+5. `Integrations::MediaControls` turns `Player`'s state into what MPRIS, SMTC or MediaPlayer
+   expect and their commands into `Player` calls.
 
 ## Threads
 
@@ -85,6 +88,8 @@ The hand-offs between the three audio threads are in [src/audio](../src/audio/RE
 Two modules throw: [src/skins](../src/skins/README.md#errors) (`Skins::Error` for a broken `.wsz`)
 and [src/audio](../src/audio/README.md#errors) (`Audio::Error` for a broken `.eqf`). Both loaders
 are synchronous and their callers in `src/app` and `src/ui` catch the error and show its message.
+The vendored QR code generator throws a third, `qrcodegen::data_too_long`, which `Ui::JamWindow`
+catches where it makes the code.
 An exception never crosses Qt's event loop. Everything else — a network failure, a missing link, an
 audio device that does not open — is data: an error string in a callback or a signal, an
 `InitResult`, an empty `std::optional`. `main` catches whatever escapes as a bug and exits with 2
@@ -100,6 +105,7 @@ audio device that does not open — is data: an error string in a callback or a 
 | decoding, seeking, gapless, the equalizer DSP | [src/audio](../src/audio/README.md) |
 | an API call, a new source, login | [src/yandex](../src/yandex/README.md), then `src/core/sources.cpp` and the menu in `src/ui/library_menu.cpp` |
 | the spectrum, the oscilloscope, Milkdrop rendering | [src/vis](../src/vis/README.md) |
-| media keys, MPRIS, SMTC | [src/integrations](../src/integrations/README.md) |
+| media keys, MPRIS, SMTC, MediaPlayer | [src/integrations](../src/integrations/README.md) |
+| usage statistics, crash reports | [spec/telemetry](../spec/telemetry/README.md), then [src/telemetry](../src/telemetry/README.md) |
 | menus, shortcuts, settings, start-up and shut-down order, command-line options | [src/app](../src/app/README.md) |
 | tests, golden screenshots, the mock HTTP server | [tests](../tests/README.md) |
