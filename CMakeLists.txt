@@ -130,12 +130,15 @@ qiyaa_add_module(core
     src/core/failure_policy.cpp src/core/failure_policy.h
     src/core/jam_mode.cpp       src/core/jam_mode.h
     src/core/player.cpp         src/core/player.h
-    src/core/track_navigator.cpp src/core/track_navigator.h)
+    src/core/track.cpp          src/core/track.h
+    src/core/track_navigator.cpp src/core/track_navigator.h
+    src/core/track_source.cpp   src/core/track_source.h)
 target_link_libraries(qiyaa_core PUBLIC qiyaa_audio qiyaa_yandex Qt6::Gui Qt6::Network)
 
 qiyaa_add_module(sources_yandex
     src/sources/yandex/catalog.cpp  src/sources/yandex/catalog.h
     src/sources/yandex/jam_wave.cpp src/sources/yandex/jam_wave.h
+    src/sources/yandex/source.cpp   src/sources/yandex/source.h
     src/sources/yandex/tracks.cpp   src/sources/yandex/tracks.h)
 target_link_libraries(qiyaa_sources_yandex PUBLIC qiyaa_core qiyaa_yandex Qt6::Core)
 

@@ -14,7 +14,8 @@ Yandex half of the jam's own vibe: the rotor session, its seeds and its feedback
 |---|---|
 | `catalog.h/.cpp` | `Catalog`: playing a pick (likes, playlist, recommendations, artist, album, vibe or station, search) with a ticket each, the vibe's load-more and feedback callbacks, like and dislike by track ID |
 | `jam_wave.h/.cpp` | `JamWave` (a `Core::JamWave`) and `JamWaves`, the factory `Core::JamMode` takes |
-| `tracks.h/.cpp` | `WaveEventOf`: a `Player` track event as rotor feedback |
+| `source.h/.cpp` | `Source`, the `Core::TrackSource` of Yandex tracks: the cover and the web page |
+| `tracks.h/.cpp` | `kSourceName`, `KeyOf`, `TrackOf`, `TracksOf`, `YandexTrackOf`, `CatalogId`: `Core::Track` ↔ `Yandex::Track`; `WaveEventOf` |
 
 ## Dependencies
 
@@ -86,6 +87,9 @@ The scenarios are [spec/player/sources.md](../../../spec/player/sources.md),
   `A jam is on: add tracks to the jam` (HOST-21). Likes and dislikes still work (HOST-17).
 
 **Traps:**
+- One Yandex track can have two keys: a guest's jam item without an album is `11`, the same track
+  from the host's catalogue `11:1`. Compare `CatalogId`s where Yandex's identity matters, keys
+  where the queue's does.
 - The vibe's callbacks hold the `Library` and a `QPointer<Player>`, not the `Catalog`: the
   `Player` closes the open track, and sends its feedback, while the application shuts down,
   after the `Catalog` may be gone.
@@ -120,11 +124,40 @@ this is how Yandex answers it (spec/jam/host.md, HOST-11, HOST-13, HOST-16):
 - The library callbacks hold the `JamWave` (`shared_from_this`), as the `Player`'s event callback
   does: a wave track that closes after the jam ended still gets its feedback.
 
-## `tracks.h`: `WaveEventOf`
+## `tracks.h`: `Core::Track` ↔ `Yandex::Track`
 
 ```cpp
+inline const QString kSourceName = "yandex";
+Core::TrackKey KeyOf(const QString& trackId, const QString& albumId);   // {"yandex", "<track>:<album>" or "<track>"}
+Core::Track TrackOf(const Yandex::Track& track);
+QList<Core::Track> TracksOf(const QList<Yandex::Track>& tracks);
+std::optional<Yandex::Track> YandexTrackOf(const Core::Track& track);  // nullopt: another source's track
+QString CatalogId(const Core::TrackKey& key);                          // the track id alone; empty for another source
 Yandex::WaveEvent WaveEventOf(Core::Player::TrackEvent event);   // Started, Finished, Skipped → TrackStarted, TrackFinished, Skip
 ```
+
+- The key's id is Yandex's own `<track id>:<album id>` form, the one `download-info` and the rotor
+  feedback take; without an album it is the track id alone. A Yandex id never holds `:`, so
+  `YandexTrackOf` splits at the first one.
+- `TrackOf` keeps every field: `album` is `albumTitle`, `cover` is the raw `coverUri` template
+  (`%%` for the size). `YandexTrackOf(TrackOf(t))` is `t` (`everySpecTrackComesBackWhole`).
+- What wants the track id alone takes `CatalogId`: likes and dislikes, the vibe's history, the
+  `track:<id>` seed, the origin of a vibe's tracks, a jam item's id.
+
+## `source.h`: `Source`
+
+```cpp
+class Source : public Core::TrackSource {
+public:
+    QUrl coverUrl(const Core::Track& track, int pixels) const override;   // Yandex::Track::coverUrl
+    QUrl webPage(const Core::Track& track) const override;                // Yandex::Track::webUrl
+};
+```
+
+`src/app` adds it to its `Core::SourceRegistry` under `kSourceName`. Both answers come from the
+client ([src/yandex](../../yandex/README.md)): the avatars URL with `%%` replaced by
+`<pixels>x<pixels>`, and `https://music.yandex.ru/album/<album>/track/<track>` (without an album,
+`…/track/<track>`). Another source's track gets empty URLs.
 
 ## Not here
 

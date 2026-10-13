@@ -19,6 +19,8 @@ library `qiyaa_core`.
 | File | Contains |
 |---|---|
 | `player.h/.cpp` | `Player`: the queue and cursor, transport, shuffle and repeat, source-request tickets, the endless-source hook `TLoadMoreCallback`, track events `TEventCallback`, link resolution, download streaming, the gapless preload, and the engine's poll timer |
+| `track.h/.cpp` | `Track`, `TrackKey`, `CoverRef`: a track of any source |
+| `track_source.h/.cpp` | `TrackSource`, what each music source implements, and `SourceRegistry`, the sources by name |
 | `track_navigator.h/.cpp` | `TrackNavigator`, `ShuffleAlgorithm`, `MakeTrackNavigator`: sequential, random and stored shuffled traversal |
 | `failure_policy.h/.cpp` | `FailureKind`, `FailureAction`, `DecideOnFailure`: what the `Player` does about a track that cannot play |
 | `jam_mode.h/.cpp` | `JamMode`, `JamEntry`, `JamSlot`, `JamPlayback`, and `JamWave`, what `JamMode` asks of the source of its wave: the jam mode of the queue; it knows nothing of the network or the protocol |
@@ -493,6 +495,55 @@ FailureAction DecideOnFailure(FailureKind kind, int failuresInRow, bool hasNext,
 - `stop()` and `setQueue` do not reset `currentBitrate()`.
 - The timer starts on the engine's next `stateChanged`. An engine that is already playing when
   the `Player` is constructed is not polled until its state changes.
+
+## `track.h`: `Track`, `TrackKey`, `CoverRef`
+
+```cpp
+struct TrackKey { QString source; QString id; bool operator==(const TrackKey&) const = default; };
+struct CoverRef { QString value; };
+struct Track {
+    TrackKey key;
+    QString title;
+    QStringList artists;
+    QString album;
+    qint64 durationMs = 0;
+    int year = 0;
+    QString genre;
+    CoverRef cover;
+    bool available = true;
+    QString displayTitle() const;   // "Artist1, Artist2 - Title", or the title alone
+};
+```
+
+- A track of any music source ([src/sources](../sources/README.md)). `key.source` names the
+  source (`yandex`); `key.id` is the source's own and means nothing to the core. A Yandex track's
+  is `<track id>:<album id>`, or the track id alone.
+- `cover` is read only by the track's source, through `TrackSource::coverUrl`.
+- What only one source needs is not here: the source encodes it in `key.id` or keeps it.
+
+## `track_source.h`: `TrackSource`, `SourceRegistry`
+
+```cpp
+class TrackSource {
+public:
+    virtual QUrl coverUrl(const Track& track, int pixels) const = 0;   // empty: no cover
+    virtual QUrl webPage(const Track& track) const = 0;                // empty: no web page
+};
+
+class SourceRegistry {                                                 // built by src/app
+public:
+    void add(const QString& source, TrackSource* port);                // does not take ownership
+    TrackSource* find(const QString& source) const;                    // nullptr: unknown source
+    QUrl coverUrl(const Track& track, int pixels) const;               // the track's source's; empty if unknown
+    QUrl webPage(const Track& track) const;
+};
+```
+
+- A port's `coverUrl` and `webPage` are cheap and pure: no input or output, and the same URL for
+  the same track and size. `coverUrl` runs on every `CoverCache::ready`.
+- A port answers for its own source's tracks; for another's it returns empty URLs.
+- Opening a track, its events and what a source can do (like, quality) come with
+  [#27](https://github.com/Kickoman/QiYaa/issues/27).
 
 ## `track_navigator.h`: `TrackNavigator`
 

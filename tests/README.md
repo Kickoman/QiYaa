@@ -28,6 +28,7 @@ is formatting (the clang-format check in `.github/workflows/ci.yml`).
 | `mp4_aac_test.cpp` | `Audio::Mp4AacBackend` through an `ma_decoder` over memory: `IsMp4`, the rate, length, level and 440 Hz of the test m4a, seeking to the same samples as playing through, the end, a file cut short, an MP4 without its index; with `QIYAA_MP4_SAMPLE=<path>` it also decodes that file (a Yandex economy file kept outside the repository) |
 | `dsp_test.cpp` | EQ response and processing, the 17 built-in EQ presets, `.eqf` read/write, `EqualizerWindow::GraphCurve`, the FFT analyzer, spectrum and oscilloscope rendering; the reference vectors of `spec/dsp` (checks them, and writes them with `QIYAA_WRITE_DSP_VECTORS=1`) |
 | `library_test.cpp` | `Yandex::Library`/`ApiClient` against the mock server serving spec fixtures: request shapes and parsing for every source the menu offers, likes, waves, search with each kind of best result, errors, device login and wave feedback. Also `Core::Player` track events, preloading, endless sources, shuffle not applying in a wave, and repeat not replaying the only track of a wave (WAVE-12); the economy quality (QUAL-02 to QUAL-05): the request and its signature, the fallbacks, the network wait, the preload fetched again |
+| `yandex_source_test.cpp` | `src/sources/yandex`'s tracks: the key with and without an album, every spec track back whole, another source's track, the cover and web page through `Core::SourceRegistry` against the client's, `Core::Track::displayTitle` |
 | `sources_test.cpp` | `YandexSource::Catalog` against the `spec/player` scenarios on spec fixtures, one function per scenario group: the last pick wins, stale failures, search as one pick, a failed source keeps the queue, likes with their count, an empty source keeping the queue, search's best result, and a wave played on the Null output (radio start, load more with the last ids, batch ids on the events, dislike and skip) |
 | `jam_mode_test.cpp` | `Core::JamMode` with `YandexSource::JamWaves` against `spec/jam/host.md` by ID, on a player without a sound card and spec fixtures: the start keeping the playing track, the jam part following the state with the smallest change, started and playing reports, Previous restarting, an item into a waiting player, the jam wave from the seeds behind the items and a new session for new seeds, a late reply of the previous jam's wave kept out of the next jam, no play reports and wave feedback only to the jam wave, skip by item, picks refused during the jam, and the end |
 | `failures_test.cpp` | What the `Player` does when a track cannot play (`spec/player/errors.md`): the failure policy as a table, `ClassifyReply` on real replies, and on the Null output a broken and an undecodable track skipped, three in a row stopping, the count reset by a track that plays, a broken last track, a rejected account, no network (pause, then continue the same track), and a download cut short that waits instead of moving on |
@@ -85,6 +86,7 @@ QT_QPA_PLATFORM=offscreen QIYAA_AUDIO_BACKEND=null build/tests/audio_test queued
 | `snap_test` | ui | plain |
 | `region_test` | skins | plain |
 | `yandex_test` | yandex (+ `qiyaa_test_yandex`) | plain; `QIYAA_YANDEX_TOKEN` adds a check against the real API |
+| `yandex_source_test` | core sources_yandex yandex (+ `qiyaa_test_yandex`) | plain |
 | `skin_test` | skins | plain |
 | `mp4_aac_test` | audio (+ `qiyaa_miniaudio`) | plain; `QIYAA_TEST_DATA`; `QIYAA_MP4_SAMPLE` adds a file of your own |
 | `audio_test` | audio core | plain; `QIYAA_TEST_DATA` |
@@ -204,9 +206,10 @@ audio decoder and races that are not there. CI's GCC 13 has it. With GCC 11, lin
   readers). It PUBLIC-links Qt6::Core and Qt6::Network, and its PUBLIC include directory is
   `tests/`, so the headers are `"support/…"`. It gets `QIYAA_SPEC_DIR` (the absolute path of
   `spec/`) as a PRIVATE definition. Every `qiyaa_add_test` target links it. Only `library_test`,
-  `sources_test`, `failures_test`, `yandex_test` and `windows_test` use it. `mpris_test` is added by hand and does not link it.
+  `sources_test`, `failures_test`, `yandex_test`, `yandex_source_test` and `windows_test` use it. `mpris_test` is added by hand and does not link it.
 - `qiyaa_test_yandex`: `support/yandex_json.cpp`. It PUBLIC-links `qiyaa_test_support` and
-  `qiyaa_yandex`. Only `library_test`, `sources_test` and `yandex_test` link it.
+  `qiyaa_yandex`. Only `library_test`, `sources_test`, `yandex_test` and `yandex_source_test` link
+  it.
 - Each suite links the modules in the table above, plus what those modules link PUBLIC. For
   example, `audio_test` reaches `Yandex::ApiClient` through `qiyaa_core`'s PUBLIC link to
   `qiyaa_yandex`.
