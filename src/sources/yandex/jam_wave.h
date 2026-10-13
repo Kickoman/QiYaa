@@ -23,7 +23,7 @@ public:
     void trackEvent(Core::Player::TrackEvent event, const Core::Track& track, double playedSeconds) override;
     bool hasSession() const override { return !session.isEmpty(); }
     int seedsVersion() const override { return sessionSeedsVersion; }
-    void endSession() override { session.clear(); }
+    void endSession() override;
 
 private:
     struct Origin {
@@ -40,6 +40,7 @@ private:
     QString session;
     QString station;
     int sessionSeedsVersion = -1;
+    int sessionNumber = 0;
     QHash<QString, Origin> originOfTrack;
 };
 

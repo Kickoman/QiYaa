@@ -38,6 +38,7 @@ bool JamWave::start(const QStringList& seeds, int seedsVersion, const Core::Trac
                 return done({});
             }
             self->session = batch.sessionId;
+            ++self->sessionNumber;
             self->station = startSeeds.value(0);
             self->sessionSeedsVersion = seedsVersion;
             self->addBatch(batch);
@@ -58,13 +59,18 @@ void JamWave::more(TDone done) {
         recent << CatalogId(track.key);
     }
     std::shared_ptr<JamWave> self = shared_from_this();
-    yandexLibrary->moreWave(session, recent, [self, done](const Yandex::WaveBatch& batch, const QString& error) {
-        if (!error.isEmpty()) {
-            qWarning("jam wave: %s", qPrintable(error));
-        }
-        self->addBatch(batch);
-        done(TracksOf(batch.tracks));
-    });
+    const int askedSession = sessionNumber;
+    yandexLibrary
+        ->moreWave(session, recent, [self, done, askedSession](const Yandex::WaveBatch& batch, const QString& error) {
+            if (!error.isEmpty()) {
+                qWarning("jam wave: %s", qPrintable(error));
+            }
+            if (self->sessionNumber != askedSession) {
+                return done({});
+            }
+            self->addBatch(batch);
+            done(TracksOf(batch.tracks));
+        });
 }
 
 void JamWave::trackEvent(Core::Player::TrackEvent event, const Core::Track& track, double playedSeconds) {
@@ -79,6 +85,11 @@ void JamWave::trackEvent(Core::Player::TrackEvent event, const Core::Track& trac
     yandexLibrary->waveFeedback(
         origin->session, origin->station, origin->batch, WaveEventOf(event), &*yandexTrack, playedSeconds
     );
+}
+
+void JamWave::endSession() {
+    session.clear();
+    ++sessionNumber;
 }
 
 void JamWave::addBatch(const Yandex::WaveBatch& batch) {

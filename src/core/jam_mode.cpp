@@ -206,7 +206,13 @@ void JamMode::loadWave(JamWave::TDone done) {
         self->appendWave(tracks, done);
     };
     if (wave->hasSession() && wave->seedsVersion() == lastSeedsVersion) {  // HOST-11
-        return wave->more(deliver);
+        return wave->more([self, state, done, deliver](const QList<Track>& tracks) {
+            if (self && self->active && self->wave == state && !state->hasSession()) {
+                done({});
+                return self->corePlayer->requestMore();
+            }
+            deliver(tracks);
+        });
     }
     if (!wave->start(lastSeeds, lastSeedsVersion, corePlayer->currentTrack(), deliver)) {  // HOST-13
         done({});

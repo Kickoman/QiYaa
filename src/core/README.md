@@ -674,8 +674,10 @@ its two signals.
 - **What `JamMode` expects of a `JamWave`**: `start` and `more` call `done` once, later, with the
   tracks (empty when there are none); `start` returns false, without calling `done`, when it has
   nothing to start from. `trackEvent` is called for every event of a wave slot's track, and after
-  the jam ended for any track; the wave ignores tracks it did not give. A reply for the wave of an
-  earlier jam (one that ended, with a new one started before the reply came) is dropped.
+  the jam ended for any track; the wave ignores tracks it did not give.
+- **Late replies.** A reply for the wave of an earlier jam (one that ended, with a new one started
+  before the reply came) is dropped. So is a `more` reply for a session that new seeds closed while
+  it was asked for (HOST-11): `JamMode` then asks again at once, which starts the new session.
 - **Not learning** (HOST-15, HOST-16): no play reports; rotor feedback (radioStarted, trackStarted,
   trackFinished, skip) only for the jam wave's tracks, to the session each came from, and only when
   `start` got `waveFeedback`.

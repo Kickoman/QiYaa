@@ -257,6 +257,30 @@ private Q_SLOTS:
         QCOMPARE(stack.jam.queueSlots()[2].kind, Core::JamSlot::Kind::Wave);
     }
 
+    void aReplyOfASessionThatNewSeedsClosedStaysOutOfTheQueue() {  // HOST-11
+        Stack stack(&library);
+        waveAnswers();
+        const QString moreTracks = QStringLiteral("/rotor/session/%1/tracks").arg(QStringLiteral("S1-onyourwave"));
+        server.fixture("POST", moreTracks, "rotor-session-tracks/ok", 300);
+        const qsizetype before = server.requests().size();
+        stack.jam.start(QStringLiteral("Джем"), false);
+        stack.jam.setQueue({Item("i1", "11"), Item("i2", "22")}, {QStringLiteral("track:11")}, 1);
+        QTRY_COMPARE(Ids(stack.player), (QStringList{"11", "22", kFirstWaveTrack}));
+        stack.player.next();
+        QTRY_COMPARE(requestsTo(moreTracks, before).size(), 1);
+        stack.jam.setQueue({Item("i2", "22")}, {QStringLiteral("track:33")}, 2);
+        QCOMPARE(Ids(stack.player), (QStringList{"11", "22"}));
+        QTRY_COMPARE(requestsTo(QStringLiteral("/rotor/session/new"), before).size(), 2);
+        QCOMPARE(
+            seedsOf(requestsTo(QStringLiteral("/rotor/session/new"), before).last()),
+            QJsonArray{QStringLiteral("track:33")}
+        );
+        QTRY_COMPARE(Ids(stack.player), (QStringList{"11", "22", kFirstWaveTrack}));
+        QTest::qWait(400);
+        QCOMPARE(Ids(stack.player), (QStringList{"11", "22", kFirstWaveTrack}));
+        waveAnswers();
+    }
+
     void withoutSeedsTheWaveStartsFromTheCurrentTrack() {  // HOST-13
         Stack stack(&library);
         waveAnswers();
