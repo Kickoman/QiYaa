@@ -199,7 +199,7 @@ private Q_SLOTS:
         QFETCH(QString, text);
         App::Translations translations;
         QVERIFY(translations.apply(static_cast<App::Language>(language)));
-        QCOMPARE(QCoreApplication::translate("Core::Sources", "Liked: %n track(s)", nullptr, count), text);
+        QCOMPARE(QCoreApplication::translate("YandexSource::Catalog", "Liked: %n track(s)", nullptr, count), text);
     }
 };
 

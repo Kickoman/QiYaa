@@ -5,6 +5,7 @@
 #include "jam/host_session.h"
 #include "jam/session_store.h"
 #include "skins/skin.h"
+#include "sources/yandex/jam_wave.h"
 #include "support/jam_stub_server.h"
 #include "support/mock_http_server.h"
 #include "support/spec_fixtures.h"
@@ -115,7 +116,7 @@ private:
 
         Stack(Yandex::Library* library, const Skins::Skin* skin, const QFont& font)
             : player(library, &engine)
-            , jam(&player, library)
+            , jam(&player, YandexSource::JamWaves(library))
             , host(&jam, library, Jam::SessionStore(directory.filePath(QStringLiteral("jam.json"))), options())
             , window(&host, library, skin)
             , status(&window, &Ui::JamWindow::statusText) {

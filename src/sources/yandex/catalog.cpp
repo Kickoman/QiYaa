@@ -1,7 +1,8 @@
-#include "core/sources.h"
+#include "sources/yandex/catalog.h"
 
 #include "core/jam_mode.h"
 #include "core/player.h"
+#include "sources/yandex/tracks.h"
 #include "yandex/api_client.h"
 #include "yandex/library.h"
 
@@ -14,15 +15,15 @@
 #include <functional>
 #include <memory>
 
-namespace Core {
+namespace YandexSource {
 
+using Core::Player;
 using Yandex::Track;
 
 namespace {
 
 constexpr qsizetype kWaveHistory = 5;
 
-// The tracks the Player would queue: the empty check of a source runs on these (SRC-08).
 bool HasAvailable(const QList<Track>& tracks) {
     return std::any_of(tracks.cbegin(), tracks.cend(), [](const Track& track) { return track.available; });
 }
@@ -31,8 +32,6 @@ void ShowStatus(Player* player, const QString& text) {
     Q_EMIT player->statusMessage(text);
 }
 
-// The callback for a request that loads a source's tracks: applies them if `ticket` is still the
-// latest pick.
 auto QueueLoader(Player* player, const QString& title, quint64 ticket) {
     QPointer<Player> guardedPlayer(player);
     return [guardedPlayer, title, ticket](const QList<Track>& tracks, const QString& error) {
@@ -40,25 +39,25 @@ auto QueueLoader(Player* player, const QString& title, quint64 ticket) {
             return;
         }
         if (!error.isEmpty()) {
-            return ShowStatus(guardedPlayer, QCoreApplication::translate("Core::Sources", "Error: %1").arg(error));
+            return ShowStatus(
+                guardedPlayer, QCoreApplication::translate("YandexSource::Catalog", "Error: %1").arg(error)
+            );
         }
-        if (!HasAvailable(tracks)) {  // SRC-07, SRC-08: the queue stays
-            return ShowStatus(guardedPlayer, QCoreApplication::translate("Core::Sources", "%1: empty").arg(title));
+        if (!HasAvailable(tracks)) {  // SRC-07, SRC-08
+            return ShowStatus(
+                guardedPlayer, QCoreApplication::translate("YandexSource::Catalog", "%1: empty").arg(title)
+            );
         }
         guardedPlayer->setQueue(tracks, title, true);
     };
 }
 
-// What a wave remembers for its feedback: the session, the station (the first seed) and which
-// batch each track came in.
 struct WaveState {
     QString session;
     QString station;
     QHash<QString, QString> batchOfTrack;
 };
 
-// The wave's callbacks hold the Library and the Player, not the Sources: the Player closes the
-// open track, and sends its feedback, while the application shuts down.
 Player::TLoadMoreCallback
 WaveMore(QPointer<Player> player, Yandex::Library* library, std::shared_ptr<WaveState> state) {
     return [player, library, state](std::function<void(const QList<Track>&)> done) {
@@ -97,16 +96,16 @@ Player::TEventCallback WaveEvents(Yandex::Library* library, std::shared_ptr<Wave
 
 }  // namespace
 
-Sources::Sources(Player* player, Yandex::Library* library, QObject* parent)
+Catalog::Catalog(Player* player, Yandex::Library* library, QObject* parent)
     : QObject(parent)
     , corePlayer(player)
     , yandexLibrary(library) { }
 
-void Sources::showStatus(const QString& text) {
+void Catalog::showStatus(const QString& text) {
     ShowStatus(corePlayer, text);
 }
 
-bool Sources::refusedForJam() {
+bool Catalog::refusedForJam() {
     if (!jamMode || !jamMode->isActive()) {
         return false;
     }
@@ -114,7 +113,7 @@ bool Sources::refusedForJam() {
     return true;
 }
 
-void Sources::playLikes(bool autoplay) {
+void Catalog::playLikes(bool autoplay) {
     if (refusedForJam()) {
         return;
     }
@@ -128,7 +127,7 @@ void Sources::playLikes(bool autoplay) {
         if (!error.isEmpty()) {
             return ShowStatus(guardedPlayer, tr("Error: %1").arg(error));
         }
-        if (!HasAvailable(tracks)) {  // SRC-07, SRC-08: the queue stays
+        if (!HasAvailable(tracks)) {  // SRC-07, SRC-08
             return ShowStatus(guardedPlayer, tr("Liked: empty"));
         }
         guardedPlayer->setQueue(tracks, tr("Liked"), autoplay);
@@ -138,14 +137,14 @@ void Sources::playLikes(bool autoplay) {
     });
 }
 
-void Sources::playPlaylist(const Yandex::PlaylistReference& playlist) {
+void Catalog::playPlaylist(const Yandex::PlaylistReference& playlist) {
     if (refusedForJam()) {
         return;
     }
     yandexLibrary->playlistTracks(playlist, QueueLoader(corePlayer, playlist.title, corePlayer->newSourceRequest()));
 }
 
-void Sources::playRecommendations(const Yandex::PlaylistReference& playlist) {
+void Catalog::playRecommendations(const Yandex::PlaylistReference& playlist) {
     if (refusedForJam()) {
         return;
     }
@@ -154,28 +153,28 @@ void Sources::playRecommendations(const Yandex::PlaylistReference& playlist) {
     );
 }
 
-void Sources::playArtist(const QString& artistId, const QString& name) {
+void Catalog::playArtist(const QString& artistId, const QString& name) {
     if (refusedForJam()) {
         return;
     }
     yandexLibrary->artistTopTracks(artistId, QueueLoader(corePlayer, name, corePlayer->newSourceRequest()));
 }
 
-void Sources::playAlbum(const QString& albumId, const QString& title) {
+void Catalog::playAlbum(const QString& albumId, const QString& title) {
     if (refusedForJam()) {
         return;
     }
     yandexLibrary->albumTracks(albumId, QueueLoader(corePlayer, title, corePlayer->newSourceRequest()));
 }
 
-void Sources::playWave(const QStringList& seeds, const QString& title) {
+void Catalog::playWave(const QStringList& seeds, const QString& title) {
     if (refusedForJam()) {
         return;
     }
     Yandex::Library* library = yandexLibrary;
     showStatus(tr("%1: loading…").arg(title));
     QPointer<Player> guardedPlayer(corePlayer);
-    QPointer<Sources> self(this);
+    QPointer<Catalog> self(this);
     const quint64 ticket = corePlayer->newSourceRequest();
     library->startWave(
         seeds,
@@ -186,7 +185,7 @@ void Sources::playWave(const QStringList& seeds, const QString& title) {
             if (!error.isEmpty()) {
                 return ShowStatus(guardedPlayer, tr("Vibe error: %1").arg(error));
             }
-            if (!HasAvailable(batch.tracks)) {  // WAVE-03: no queue, no feedback
+            if (!HasAvailable(batch.tracks)) {  // WAVE-03
                 return ShowStatus(guardedPlayer, tr("%1: empty").arg(title));
             }
             auto state = std::make_shared<WaveState>();
@@ -206,11 +205,11 @@ void Sources::playWave(const QStringList& seeds, const QString& title) {
     );
 }
 
-void Sources::playMyWave() {
+void Catalog::playMyWave() {
     playWave({kMyWaveSeed}, tr("My Vibe"));
 }
 
-void Sources::search(const QString& text) {
+void Catalog::search(const QString& text) {
     if (refusedForJam()) {
         return;
     }
@@ -228,7 +227,6 @@ void Sources::search(const QString& text) {
             if (!error.isEmpty()) {
                 return ShowStatus(guardedPlayer, tr("Search error: %1").arg(error));
             }
-            // The second request belongs to the same pick: a newer one drops it too (SRC-03).
             if (result.bestKind == Yandex::SearchResult::Kind::Artist && !result.bestId.isEmpty()) {
                 return library->artistTopTracks(result.bestId, QueueLoader(guardedPlayer, result.bestName, ticket));
             }
@@ -243,7 +241,7 @@ void Sources::search(const QString& text) {
     );
 }
 
-void Sources::setLiked(const QString& trackId, bool liked) {
+void Catalog::setLiked(const QString& trackId, bool liked) {
     QPointer<Player> guardedPlayer(corePlayer);
     yandexLibrary->setLiked(trackId, liked, [guardedPlayer, liked](bool, const QString& error) {
         if (!guardedPlayer) {
@@ -261,7 +259,7 @@ void Sources::setLiked(const QString& trackId, bool liked) {
     });
 }
 
-void Sources::dislikeAndSkip(const QString& trackId) {
+void Catalog::dislikeAndSkip(const QString& trackId) {
     QPointer<Player> guardedPlayer(corePlayer);
     yandexLibrary->dislike(trackId, [guardedPlayer](bool, const QString& error) {
         if (!guardedPlayer) {
@@ -274,4 +272,4 @@ void Sources::dislikeAndSkip(const QString& trackId) {
     }
 }
 
-}  // namespace Core
+}  // namespace YandexSource

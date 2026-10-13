@@ -199,7 +199,4 @@ private:
     quint64 preloadGeneration = 0;
 };
 
-// The rotor feedback a track event gives: started, finished, or a skip.
-Yandex::WaveEvent WaveEventOf(Player::TrackEvent event);
-
 }  // namespace Core

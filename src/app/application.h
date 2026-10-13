@@ -4,8 +4,8 @@
 #include "audio/audio_engine.h"
 #include "core/jam_mode.h"
 #include "core/player.h"
-#include "core/sources.h"
 #include "skins/skin.h"
+#include "sources/yandex/catalog.h"
 #include "yandex/api_client.h"
 #include "yandex/library.h"
 
@@ -151,7 +151,7 @@ private:
     Yandex::Library yandexLibrary;
     Audio::AudioEngine audioEngine;
     Core::Player corePlayer;
-    Core::Sources sources;
+    YandexSource::Catalog catalog;
     Core::JamMode jamMode;
     std::unique_ptr<Jam::HostSession> jamHostSession;
     QPointer<QMessageBox> storedJamQuestion;

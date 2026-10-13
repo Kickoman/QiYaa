@@ -18,6 +18,10 @@ README is its file-level reference.
   that mirror a wire format (`DownloadInfo::ts`, `DownloadInfo::s`). Numeric kernels ported from a
   named source keep that source's formula letters: the natural spline (webamp's `spline.js`), the
   RBJ cookbook biquads and the FFT.
+- **Music sources are a group of modules.** `src/sources/` holds only folders and its README is
+  their index; `src/sources/<name>` is a module with the namespace `<Name>Source` (`YandexSource`:
+  `Yandex` is the API client's) and the library `qiyaa_sources_<name>`. The rule for modules and
+  groups is in [docs/architecture.md](docs/architecture.md#modules).
 - **Include root is `src/`.** Project headers are written from there (`"audio/audio_engine.h"`),
   tests from `tests/` (`"support/mock_http_server.h"`).
 - **Includes.** A `.cpp` may rely on what its own header includes, and an override does not
@@ -70,11 +74,11 @@ README is its file-level reference.
   instead": a non-obvious private decision gets its one or two lines in the code (rule 1 allows
   them), and the rest of what private code does is not written down. READMEs move to this rule
   when a change touches them, not in a pass of their own.
-- **A README's invariants run in CI.** A command in a `bash` block of `src/*/README.md` or
+- **A README's invariants run in CI.** A command in a `bash` block of a README under `src/` or of
   `tests/README.md` whose line says `# must print nothing` is a check:
   [tools/check_readmes.py](tools/check_readmes.py) runs them all from the repository root and fails
-  on any output. It also fails when a folder of `src/` has no README or no row in the module table
-  of `docs/architecture.md`.
+  on any output. It also fails when a folder under `src/` has no README, or a module (a folder with
+  files of its own) has no row in the module table of `docs/architecture.md`.
 - **Interface texts are English sources in `tr()`** (or `QCoreApplication::translate` outside a
   `QObject`), translated into Belarusian (the default) and Russian in `translations/*.ts`. Never
   write Russian or Belarusian into the code; update the `.ts` files in the same change

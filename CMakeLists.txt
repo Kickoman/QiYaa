@@ -60,8 +60,9 @@ else()
 endif()
 add_subdirectory(contrib/fdk-aac)
 
-# One static library per folder of src/. Dependencies point one way:
-#   audio, yandex, skins  ->  vis, core  ->  jam  ->  ui, integrations  ->  app  ->  qiyaa (main)
+# One static library per module: a folder of src/ with sources in it (src/sources/yandex is qiyaa_sources_yandex).
+# Dependencies point one way:
+#   audio, yandex, skins  ->  vis, core  ->  sources/yandex  ->  jam  ->  ui, integrations  ->  app  ->  qiyaa (main)
 function(qiyaa_target_defaults target)
     target_compile_definitions(${target} PUBLIC QT_NO_KEYWORDS)
     if(MSVC)
@@ -129,9 +130,14 @@ qiyaa_add_module(core
     src/core/failure_policy.cpp src/core/failure_policy.h
     src/core/jam_mode.cpp       src/core/jam_mode.h
     src/core/player.cpp         src/core/player.h
-    src/core/sources.cpp        src/core/sources.h
     src/core/track_navigator.cpp src/core/track_navigator.h)
 target_link_libraries(qiyaa_core PUBLIC qiyaa_audio qiyaa_yandex Qt6::Gui Qt6::Network)
+
+qiyaa_add_module(sources_yandex
+    src/sources/yandex/catalog.cpp  src/sources/yandex/catalog.h
+    src/sources/yandex/jam_wave.cpp src/sources/yandex/jam_wave.h
+    src/sources/yandex/tracks.cpp   src/sources/yandex/tracks.h)
+target_link_libraries(qiyaa_sources_yandex PUBLIC qiyaa_core qiyaa_yandex Qt6::Core)
 
 # Jam: a shared queue the app hosts for guests (spec/jam). Needs Qt WebSockets; without it the
 # app builds without the jam, like without Milkdrop.
@@ -173,7 +179,7 @@ qiyaa_add_module(ui
     src/ui/snap.cpp             src/ui/snap.h)
 target_link_libraries(qiyaa_ui
     PUBLIC qiyaa_audio qiyaa_vis Qt6::Widgets
-    PRIVATE qiyaa_core qiyaa_skins qiyaa_yandex)
+    PRIVATE qiyaa_core qiyaa_skins qiyaa_sources_yandex qiyaa_yandex)
 if(QIYAA_HAVE_JAM)
     # The jam window and its QR code (contrib/qrcodegen, MIT).
     add_library(qiyaa_qrcodegen STATIC contrib/qrcodegen/qrcodegen.cpp)
@@ -312,7 +318,7 @@ qiyaa_add_module(app
     src/app/paths.cpp           src/app/paths.h
     src/app/translations.cpp    src/app/translations.h)
 target_link_libraries(qiyaa_app
-    PUBLIC qiyaa_audio qiyaa_core qiyaa_skins qiyaa_yandex
+    PUBLIC qiyaa_audio qiyaa_core qiyaa_skins qiyaa_sources_yandex qiyaa_yandex
     PRIVATE qiyaa_integrations qiyaa_ui qiyaa_vis)
 if(QIYAA_HAVE_JAM)
     target_link_libraries(qiyaa_app PRIVATE qiyaa_jam)

@@ -26,9 +26,9 @@ HTTP, OAuth and the token file format in [src/yandex](../yandex/README.md); `.ws
 
 `qiyaa_app` is built from `application.*`, `offline_sources.*` and `paths.*`:
 
-- PUBLIC `qiyaa_audio`, `qiyaa_core`, `qiyaa_skins`, `qiyaa_yandex`: `application.h` holds
-  `Audio::AudioEngine`, `Core::Player`, `Skins::Skin`, `Yandex::ApiClient` and `Yandex::Library`
-  by value.
+- PUBLIC `qiyaa_audio`, `qiyaa_core`, `qiyaa_skins`, `qiyaa_sources_yandex`, `qiyaa_yandex`:
+  `application.h` holds `Audio::AudioEngine`, `Core::Player`, `Core::JamMode`, `Skins::Skin`,
+  `YandexSource::Catalog`, `Yandex::ApiClient` and `Yandex::Library` by value.
 - PRIVATE `qiyaa_integrations`, `qiyaa_ui`, `qiyaa_vis`: the header only forward-declares the
   windows, `Core::CoverCache` and `Integrations::MediaControls`.
 - PRIVATE `qiyaa_jam` in a jam build (`QIYAA_HAVE_JAM`), with the define
@@ -123,7 +123,7 @@ public:
 and every method must be called from the GUI thread (the audio engine's decoder thread and device
 callback stay inside [src/audio](../audio/README.md)). `Application` owns everything it wires:
 `QSettings`, the base and the current `Skins::Skin`, `ApiClient`, `Library`, `AudioEngine`,
-`Player`, `Sources` and `JamMode` as members; its own `QNetworkAccessManager` unless
+`Player`, `YandexSource::Catalog` and `JamMode` (with `YandexSource::JamWaves`) as members; its own `QNetworkAccessManager` unless
 `Options::network` lends one; the `Jam::HostSession`, `CoverCache`, `MediaControls`, the `Mpris`, `MacMediaControls` or
 `Smtc` object (held as `std::unique_ptr<QObject>`) and the windows (five, and the jam window in a
 jam build) through `std::unique_ptr`.
@@ -155,7 +155,7 @@ that may hold its file.
    with built-in presets from `:/milkdrop` and user presets from `<ConfigDirectory>/milkdrop`
    (`<temp dir>/milkdrop` when `readOnlySettings`). Every window gets the shortcuts listed below;
    all but the main window are "secondary" (no taskbar button on Windows).
-6. Gives `Sources` the `JamMode` (a pick during a jam is refused, HOST-21). In a jam build
+6. Gives `Catalog` the `JamMode` (a pick during a jam is refused, HOST-21). In a jam build
    (`setUpJam()`) creates the `Jam::HostSession`: the server and the wave feedback from the
    `jam/*` settings at each use, the queue title `Jam`, the app's version for `hello`, and the
    session file `jam-session.json` next to the settings file (so `readOnlySettings` and a test's
@@ -354,7 +354,7 @@ accepted token formats and the rule that an empty own file means "logged out" ar
 and calls `Library::connectAccount`. On error the marquee shows `Login failed: <error>`. On
 success it calls `Yandex::SaveToken(TokenFile(), token)` if `save`, shows
 `Hello, <displayName>!`, and, if the play queue is empty and no jam is on or offered, calls
-`Core::Sources::playLikes(false)` (queues the liked tracks without starting playback).
+`YandexSource::Catalog::playLikes(false)` (queues the liked tracks without starting playback).
 
 `login()` runs `Ui::LoginDialog` modally (`exec()`, a nested event loop) and, on accept, calls
 `applyToken(dialog.token(), true)`. `logout()` first ends a jam being created or on (the guests

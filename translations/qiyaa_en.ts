@@ -12,7 +12,7 @@
     </message>
 </context>
 <context>
-    <name>Core::Sources</name>
+    <name>YandexSource::Catalog</name>
     <message numerus="yes">
         <source>Liked: %n track(s)</source>
         <translation>

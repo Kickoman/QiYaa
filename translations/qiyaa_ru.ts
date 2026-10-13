@@ -296,81 +296,6 @@
     </message>
 </context>
 <context>
-    <name>Core::Sources</name>
-    <message>
-        <source>Error: %1</source>
-        <translation>Ошибка: %1</translation>
-    </message>
-    <message>
-        <source>%1: empty</source>
-        <translation>%1: пусто</translation>
-    </message>
-    <message>
-        <source>A jam is on: add tracks to the jam</source>
-        <translation>Идёт джем: добавляйте треки в джем</translation>
-    </message>
-    <message>
-        <source>Liked: loading…</source>
-        <translation>Мне нравится: загрузка…</translation>
-    </message>
-    <message>
-        <source>Liked: empty</source>
-        <translation>Мне нравится: пусто</translation>
-    </message>
-    <message>
-        <source>Liked</source>
-        <translation>Мне нравится</translation>
-    </message>
-    <message numerus="yes">
-        <source>Liked: %n track(s)</source>
-        <translation>
-            <numerusform>Мне нравится: %n трек</numerusform>
-            <numerusform>Мне нравится: %n трека</numerusform>
-            <numerusform>Мне нравится: %n треков</numerusform>
-        </translation>
-    </message>
-    <message>
-        <source>%1: similar</source>
-        <translation>%1: похожие</translation>
-    </message>
-    <message>
-        <source>%1: loading…</source>
-        <translation>%1: загрузка…</translation>
-    </message>
-    <message>
-        <source>Vibe error: %1</source>
-        <translation>Ошибка волны: %1</translation>
-    </message>
-    <message>
-        <source>My Vibe</source>
-        <translation>Моя волна</translation>
-    </message>
-    <message>
-        <source>Search: %1</source>
-        <translation>Поиск: %1</translation>
-    </message>
-    <message>
-        <source>Search error: %1</source>
-        <translation>Ошибка поиска: %1</translation>
-    </message>
-    <message>
-        <source>Nothing found</source>
-        <translation>Ничего не найдено</translation>
-    </message>
-    <message>
-        <source>Added to Liked</source>
-        <translation>Добавлено в «Мне нравится»</translation>
-    </message>
-    <message>
-        <source>Removed from Liked</source>
-        <translation>Убрано из «Мне нравится»</translation>
-    </message>
-    <message>
-        <source>Disliked</source>
-        <translation>Дизлайк поставлен</translation>
-    </message>
-</context>
-<context>
     <name>Ui::EqualizerWindow</name>
     <message>
         <source>Equalizer preset</source>
@@ -1002,6 +927,81 @@ Right click or ADD: pick what to listen to.</source>
     <message>
         <source>the code has expired, start again</source>
         <translation>код устарел, начните заново</translation>
+    </message>
+</context>
+<context>
+    <name>YandexSource::Catalog</name>
+    <message>
+        <source>Error: %1</source>
+        <translation>Ошибка: %1</translation>
+    </message>
+    <message>
+        <source>%1: empty</source>
+        <translation>%1: пусто</translation>
+    </message>
+    <message>
+        <source>A jam is on: add tracks to the jam</source>
+        <translation>Идёт джем: добавляйте треки в джем</translation>
+    </message>
+    <message>
+        <source>Liked: loading…</source>
+        <translation>Мне нравится: загрузка…</translation>
+    </message>
+    <message>
+        <source>Liked: empty</source>
+        <translation>Мне нравится: пусто</translation>
+    </message>
+    <message>
+        <source>Liked</source>
+        <translation>Мне нравится</translation>
+    </message>
+    <message numerus="yes">
+        <source>Liked: %n track(s)</source>
+        <translation>
+            <numerusform>Мне нравится: %n трек</numerusform>
+            <numerusform>Мне нравится: %n трека</numerusform>
+            <numerusform>Мне нравится: %n треков</numerusform>
+        </translation>
+    </message>
+    <message>
+        <source>%1: similar</source>
+        <translation>%1: похожие</translation>
+    </message>
+    <message>
+        <source>%1: loading…</source>
+        <translation>%1: загрузка…</translation>
+    </message>
+    <message>
+        <source>Vibe error: %1</source>
+        <translation>Ошибка волны: %1</translation>
+    </message>
+    <message>
+        <source>My Vibe</source>
+        <translation>Моя волна</translation>
+    </message>
+    <message>
+        <source>Search: %1</source>
+        <translation>Поиск: %1</translation>
+    </message>
+    <message>
+        <source>Search error: %1</source>
+        <translation>Ошибка поиска: %1</translation>
+    </message>
+    <message>
+        <source>Nothing found</source>
+        <translation>Ничего не найдено</translation>
+    </message>
+    <message>
+        <source>Added to Liked</source>
+        <translation>Добавлено в «Мне нравится»</translation>
+    </message>
+    <message>
+        <source>Removed from Liked</source>
+        <translation>Убрано из «Мне нравится»</translation>
+    </message>
+    <message>
+        <source>Disliked</source>
+        <translation>Дизлайк поставлен</translation>
     </message>
 </context>
 </TS>

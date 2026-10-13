@@ -3,10 +3,13 @@
 
     python3 tools/check_readmes.py      # from anywhere; needs bash and GNU grep
 
-A check is a command in a ```bash block of src/*/README.md or tests/README.md whose line holds
-"# must print nothing"; a line ending in a backslash goes on into the next. Each check runs from
-the repository root, and any output, on stdout or stderr, fails it. Every folder of src/ must also
-have a README.md and a row in the module table of docs/architecture.md.
+A check is a command in a ```bash block of a README.md under src/ or of tests/README.md whose line
+holds "# must print nothing"; a line ending in a backslash goes on into the next. Each check runs
+from the repository root, and any output, on stdout or stderr, fails it.
+
+Every folder under src/ needs a README.md. A folder with files of its own is a module and needs a
+row in the module table of docs/architecture.md; a folder that holds only folders is a group, and
+its README is an index of the modules in it.
 """
 import re
 import subprocess
@@ -45,20 +48,32 @@ def run(command: str) -> str:
     return result.stdout + result.stderr
 
 
+def folders(parent: Path):
+    """Yields every folder under `parent`, depth first."""
+    for folder in sorted(p for p in parent.iterdir() if p.is_dir()):
+        yield folder
+        yield from folders(folder)
+
+
+def is_module(folder: Path) -> bool:
+    return any(p.is_file() and p.name != "README.md" for p in folder.iterdir())
+
+
 def module_problems() -> list[str]:
     table = (ROOT / "docs" / "architecture.md").read_text(encoding="utf-8")
-    listed = set(re.findall(r"^\| \[src/(\w+)\]", table, re.MULTILINE))
+    listed = set(re.findall(r"^\| \[(src/[\w/]+)\]", table, re.MULTILINE))
     problems = []
-    for folder in sorted(p for p in (ROOT / "src").iterdir() if p.is_dir()):
+    for folder in folders(ROOT / "src"):
+        name = folder.relative_to(ROOT).as_posix()
         if not (folder / "README.md").is_file():
-            problems.append(f"src/{folder.name} has no README.md")
-        if folder.name not in listed:
-            problems.append(f"src/{folder.name} is not in the module table of docs/architecture.md")
+            problems.append(f"{name} has no README.md")
+        if is_module(folder) and name not in listed:
+            problems.append(f"{name} is not in the module table of docs/architecture.md")
     return problems
 
 
 def main() -> int:
-    readmes = sorted(ROOT.glob("src/*/README.md")) + [ROOT / "tests" / "README.md"]
+    readmes = sorted(ROOT.glob("src/**/README.md")) + [ROOT / "tests" / "README.md"]
     failed = 0
     count = 0
     for readme in readmes:

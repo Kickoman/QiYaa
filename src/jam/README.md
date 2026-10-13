@@ -14,7 +14,7 @@ The module is optional: it is built only with Qt WebSockets (`QIYAA_HAVE_JAM`, s
 
 ```bash
 grep -rln 'include "\(ui\|app\|audio\|skins\|vis\|integrations\)/' src/jam/   # must print nothing
-grep -ln 'include "\(core\|yandex\)/' src/jam/* | grep -vx 'src/jam/host_session\.\(h\|cpp\)'   # must print nothing
+grep -ln 'include "\(core\|yandex\|sources\)/' src/jam/* | grep -vx 'src/jam/host_session\.\(h\|cpp\)'   # must print nothing
 ```
 
 | File | Contains |

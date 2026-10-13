@@ -4,6 +4,7 @@
 #include "jam/codec.h"
 #include "jam/host_session.h"
 #include "jam/session_store.h"
+#include "sources/yandex/jam_wave.h"
 #include "support/jam_stub_server.h"
 #include "support/mock_http_server.h"
 #include "support/spec_fixtures.h"
@@ -167,7 +168,7 @@ private:
 
         explicit Stack(Yandex::Library* library, const std::optional<Jam::Session>& stored = {})
             : player(library, &engine)
-            , jam(&player, library)
+            , jam(&player, YandexSource::JamWaves(library))
             , host(&jam, library, Stored(store, stored), options())
             , refused(&host, &Jam::HostSession::refused)
             , ended(&host, &Jam::HostSession::ended) { }

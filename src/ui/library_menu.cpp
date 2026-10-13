@@ -1,7 +1,7 @@
 #include "ui/library_menu.h"
 
 #include "core/player.h"
-#include "core/sources.h"
+#include "sources/yandex/catalog.h"
 #include "ui/input_dialogs.h"
 #include "yandex/api_client.h"
 #include "yandex/library.h"
@@ -85,7 +85,7 @@ QString StationTypeTitle(const QString& type) {
 void AddLibraryActions(
     QMenu* menu,
     Core::Player* player,
-    Core::Sources* sources,
+    YandexSource::Catalog* catalog,
     const Yandex::Track* track,
     QWidget* dialogParent,
     std::function<void()> loginRequested
@@ -98,21 +98,21 @@ void AddLibraryActions(
         return;
     }
 
-    menu->addAction(QCoreApplication::translate("Ui::LibraryMenu", "My Vibe"), menu, [sources] {
-        sources->playMyWave();
+    menu->addAction(QCoreApplication::translate("Ui::LibraryMenu", "My Vibe"), menu, [catalog] {
+        catalog->playMyWave();
     });
-    menu->addAction(QCoreApplication::translate("Ui::LibraryMenu", "Liked"), menu, [sources] {
-        sources->playLikes(true);
+    menu->addAction(QCoreApplication::translate("Ui::LibraryMenu", "Liked"), menu, [catalog] {
+        catalog->playLikes(true);
     });
 
     QMenu* wheel = menu->addMenu(QCoreApplication::translate("Ui::LibraryMenu", "Wheel of vibes"));
     LazySubmenu<Yandex::Wave>(
         wheel,
-        [library, sources](auto callback) { library->wheelWaves(sources->lastWaveSeeds(), callback); },
-        [sources](QMenu* submenu, const QList<Yandex::Wave>& waves) {
+        [library, catalog](auto callback) { library->wheelWaves(catalog->lastWaveSeeds(), callback); },
+        [catalog](QMenu* submenu, const QList<Yandex::Wave>& waves) {
             for (const Yandex::Wave& wave : waves) {
-                QAction* action = submenu->addAction(wave.name, submenu, [sources, wave] {
-                    sources->playWave(wave.seeds, wave.name);
+                QAction* action = submenu->addAction(wave.name, submenu, [catalog, wave] {
+                    catalog->playWave(wave.seeds, wave.name);
                 });
                 action->setToolTip(wave.description);
             }
@@ -124,9 +124,9 @@ void AddLibraryActions(
     LazySubmenu<Yandex::PlaylistReference>(
         forYou,
         [library](auto callback) { library->personalPlaylists(callback); },
-        [sources](QMenu* submenu, const QList<Yandex::PlaylistReference>& items) {
+        [catalog](QMenu* submenu, const QList<Yandex::PlaylistReference>& items) {
             for (const Yandex::PlaylistReference& playlist : items) {
-                submenu->addAction(playlist.title, submenu, [sources, playlist] { sources->playPlaylist(playlist); });
+                submenu->addAction(playlist.title, submenu, [catalog, playlist] { catalog->playPlaylist(playlist); });
             }
         }
     );
@@ -135,19 +135,19 @@ void AddLibraryActions(
     LazySubmenu<Yandex::PlaylistReference>(
         playlists,
         [library](auto callback) { library->userPlaylists(callback); },
-        [sources](QMenu* submenu, const QList<Yandex::PlaylistReference>& items) {
+        [catalog](QMenu* submenu, const QList<Yandex::PlaylistReference>& items) {
             for (const Yandex::PlaylistReference& playlist : items) {
                 QMenu* playlistMenu =
                     submenu->addMenu(QStringLiteral("%1 (%2)").arg(playlist.title).arg(playlist.trackCount));
                 playlistMenu->addAction(
                     QCoreApplication::translate("Ui::LibraryMenu", "Listen"),
                     playlistMenu,
-                    [sources, playlist] { sources->playPlaylist(playlist); }
+                    [catalog, playlist] { catalog->playPlaylist(playlist); }
                 );
                 playlistMenu->addAction(
                     QCoreApplication::translate("Ui::LibraryMenu", "Similar tracks"),
                     playlistMenu,
-                    [sources, playlist] { sources->playRecommendations(playlist); }
+                    [catalog, playlist] { catalog->playRecommendations(playlist); }
                 );
             }
         }
@@ -157,10 +157,10 @@ void AddLibraryActions(
     LazySubmenu<Yandex::NamedReference>(
         artists,
         [library](auto callback) { library->likedArtists(callback); },
-        [sources](QMenu* submenu, const QList<Yandex::NamedReference>& items) {
+        [catalog](QMenu* submenu, const QList<Yandex::NamedReference>& items) {
             for (const Yandex::NamedReference& artist : items) {
-                submenu->addAction(artist.name, submenu, [sources, artist] {
-                    sources->playArtist(artist.id, artist.name);
+                submenu->addAction(artist.name, submenu, [catalog, artist] {
+                    catalog->playArtist(artist.id, artist.name);
                 });
             }
         }
@@ -170,9 +170,9 @@ void AddLibraryActions(
     LazySubmenu<Yandex::NamedReference>(
         albums,
         [library](auto callback) { library->likedAlbums(callback); },
-        [sources](QMenu* submenu, const QList<Yandex::NamedReference>& items) {
+        [catalog](QMenu* submenu, const QList<Yandex::NamedReference>& items) {
             for (const Yandex::NamedReference& album : items) {
-                submenu->addAction(album.name, submenu, [sources, album] { sources->playAlbum(album.id, album.name); });
+                submenu->addAction(album.name, submenu, [catalog, album] { catalog->playAlbum(album.id, album.name); });
             }
         }
     );
@@ -181,21 +181,21 @@ void AddLibraryActions(
     LazySubmenu<Yandex::Station>(
         stations,
         [library](auto callback) { library->stations(callback); },
-        [sources](QMenu* submenu, const QList<Yandex::Station>& items) {
+        [catalog](QMenu* submenu, const QList<Yandex::Station>& items) {
             QMap<QString, QMenu*> groups;
             for (const Yandex::Station& station : items) {
                 QMenu*& group = groups[station.type];
                 if (!group) {
                     group = submenu->addMenu(StationTypeTitle(station.type));
                 }
-                group->addAction(station.name, group, [sources, station] {
-                    sources->playWave({station.id}, station.name);
+                group->addAction(station.name, group, [catalog, station] {
+                    catalog->playWave({station.id}, station.name);
                 });
             }
         }
     );
 
-    menu->addAction(QCoreApplication::translate("Ui::LibraryMenu", "Search…"), menu, [sources, dialogParent] {
+    menu->addAction(QCoreApplication::translate("Ui::LibraryMenu", "Search…"), menu, [catalog, dialogParent] {
         const std::optional<QString> answer = AskText(
             dialogParent,
             QCoreApplication::translate("Ui::LibraryMenu", "Search"),
@@ -203,7 +203,7 @@ void AddLibraryActions(
         );
         const QString text = answer.value_or(QString()).trimmed();
         if (!text.isEmpty()) {
-            sources->search(text);
+            catalog->search(text);
         }
     });
 
@@ -213,13 +213,13 @@ void AddLibraryActions(
     const QString likeText = liked
         ? QCoreApplication::translate("Ui::LibraryMenu", "Remove from Liked")
         : QCoreApplication::translate("Ui::LibraryMenu", "Like");
-    QAction* like = menu->addAction(likeText, menu, [sources, id, liked] { sources->setLiked(id, !liked); });
+    QAction* like = menu->addAction(likeText, menu, [catalog, id, liked] { catalog->setLiked(id, !liked); });
     const Yandex::Track* currentTrack = player->currentTrack();
     const bool isCurrent = track && currentTrack && id == currentTrack->id;
     const QString dislikeText = isCurrent
         ? QCoreApplication::translate("Ui::LibraryMenu", "Dislike (skip)")
         : QCoreApplication::translate("Ui::LibraryMenu", "Dislike");
-    QAction* dislike = menu->addAction(dislikeText, menu, [sources, id] { sources->dislikeAndSkip(id); });
+    QAction* dislike = menu->addAction(dislikeText, menu, [catalog, id] { catalog->dislikeAndSkip(id); });
     const QUrl webUrl = track ? track->webUrl() : QUrl();
     QAction* open = menu->addAction(
         QCoreApplication::translate("Ui::LibraryMenu", "Open the track in the browser"),

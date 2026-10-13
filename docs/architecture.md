@@ -7,11 +7,15 @@ rules for changing the code are [code-style.md](code-style.md) and, where QiYaa 
 
 ## Modules
 
-Every folder of `src/` is one module: one namespace, one static library `qiyaa_<folder>`, one
-README. Dependencies point one way, and a module never includes a header of a module to its right:
+A folder of `src/` with files of its own is one module: one namespace, one static library
+`qiyaa_<folder>`, one README. A folder that holds only folders is a group: its README is an index,
+and each folder in it is a module named after both. `src/sources/` is the one group: each music
+source is a module `src/sources/<name>` with the namespace `<Name>Source` and the library
+`qiyaa_sources_<name>`. Dependencies point one way, and a module never includes a header of a
+module to its right:
 
 ```
-audio, yandex, skins, telemetry  →  vis, core  →  jam  →  ui, integrations  →  app  →  qiyaa (src/app/main.cpp)
+audio, yandex, skins, telemetry  →  vis, core  →  sources/yandex  →  jam  →  ui, integrations  →  app  →  qiyaa (src/app/main.cpp)
 ```
 
 | Module | Namespace | What it does | Links PUBLIC | Links PRIVATE |
@@ -21,11 +25,12 @@ audio, yandex, skins, telemetry  →  vis, core  →  jam  →  ui, integrations
 | [src/skins](../src/skins/README.md) | `Skins` | Loads `.wsz` skins: sheets, `region.txt`, `pledit.txt`, `viscolor.txt`, bitmap text; sprite tables | Qt Gui | miniz |
 | [src/telemetry](../src/telemetry/README.md) | `Telemetry` | Usage statistics and crash reports ([spec/telemetry](../spec/telemetry/README.md)): the events kept on disk until the jam server takes them, the crash handler. Optional (`QIYAA_WITH_TELEMETRY`, on in the releases) | Qt Core, Network | Qt Gui; dbghelp (Windows) or dl |
 | [src/vis](../src/vis/README.md) | `Vis` | Spectrum, oscilloscope, FFT; Milkdrop through projectM in a `QOpenGLWindow` | Qt Gui (+ OpenGL) | audio, skins (+ projectM) |
-| [src/core](../src/core/README.md) | `Core` | `Player` (queue, transport, downloads, preload, track events), `Sources` (what a pick plays, wave callbacks), `JamMode` (the queue while hosting a jam) and `CoverCache` | audio, yandex, Qt Gui, Network | |
+| [src/core](../src/core/README.md) | `Core` | `Player` (queue, transport, downloads, preload, track events), `JamMode` (the queue while hosting a jam) and `CoverCache` | audio, yandex, Qt Gui, Network | |
+| [src/sources/yandex](../src/sources/yandex/README.md) | `YandexSource` | Yandex Music as a source: `Catalog` (what a pick plays, wave callbacks, likes) and the jam's own vibe | core, yandex, Qt Core | |
 | [src/jam](../src/jam/README.md) | `Jam` | The jam: protocol messages and their JSON, the WebSocket connection to a jam server, the host's stored session, and `HostSession` (create, resume, the guests' search and checks, end). Optional (Qt WebSockets) | core, yandex, Qt Core, WebSockets | |
-| [src/ui](../src/ui/README.md) | `Ui` | The skinned windows, snapping and docking, the Yandex menus, the login dialog, the jam window | audio, vis, Qt Widgets (+ jam) | core, skins, yandex (+ qrcodegen) |
+| [src/ui](../src/ui/README.md) | `Ui` | The skinned windows, snapping and docking, the Yandex menus, the login dialog, the jam window | audio, vis, Qt Widgets (+ jam) | core, skins, sources/yandex, yandex (+ qrcodegen) |
 | [src/integrations](../src/integrations/README.md) | `Integrations` | Media keys and system media panels: MPRIS (Linux), SMTC (Windows) or MediaPlayer (macOS) | Qt Gui (+ DBus) | audio, core, yandex |
-| [src/app](../src/app/README.md) | `App` | `Application`: owns and wires everything, menus, shortcuts, settings, login, "Continue the jam?"; `main()` | audio, core, skins, yandex | integrations, jam, ui, vis (+ telemetry) |
+| [src/app](../src/app/README.md) | `App` | `Application`: owns and wires everything, menus, shortcuts, settings, login, "Continue the jam?"; `main()` | audio, core, skins, sources/yandex, yandex | integrations, jam, ui, vis (+ telemetry) |
 
 Vendored code lives in `contrib/` (miniaudio, miniz, qrcodegen, minimp4, fdk-aac's decoder) and is
 not changed. The interface texts are English sources in the code, translated into Belarusian (the
@@ -39,7 +44,8 @@ MPRIS (`QIYAA_HAVE_MPRIS`) and SMTC (`QIYAA_HAVE_SMTC`) are optional; the macOS 
 ## Who owns what
 
 `App::Application` is the composition root. It holds the settings, the skins, the network manager,
-`Yandex::ApiClient`, `Yandex::Library`, `Audio::AudioEngine` and `Core::Player` as members, and the
+`Yandex::ApiClient`, `Yandex::Library`, `Audio::AudioEngine`, `Core::Player`, `YandexSource::Catalog`
+and `Core::JamMode` as members, and the
 windows, the cover cache and the media integration through `std::unique_ptr`. Member order is the
 construction order and, reversed, the destruction order: the windows go first, while everything
 they point at still exists. Nothing below `app` creates or connects windows, reads `QSettings` or
@@ -56,10 +62,10 @@ Ui (menu)  ──source──▶  Core::Player  ──resolveTrackUrl──▶  
                                                                     EQ → VisTap → volume, balance
 ```
 
-1. A menu item from `Ui::AddLibraryActions` calls `Core::Sources`, which asks `Yandex::Library`
-   for a source (a playlist, the likes, a wave) and hands the tracks to `Player::setQueue`. An
-   endless source also gives a callback that fetches more tracks; for a wave, `Sources` also
-   sends wave feedback from `Player`'s track events.
+1. A menu item from `Ui::AddLibraryActions` calls `YandexSource::Catalog`, which asks
+   `Yandex::Library` for a source (a playlist, the likes, a wave) and hands the tracks to
+   `Player::setQueue`. An endless source also gives a callback that fetches more tracks; for a
+   wave, `Catalog` also sends wave feedback from `Player`'s track events.
 2. `Player::playIndex` asks `ApiClient::resolveTrackUrl` for the link of the track's file in the
    chosen quality (a signed mp3 link, or AAC in MP4 at the economy quality), starts a stream in
    the engine and appends the download to it chunk by chunk. When the download completes, it
@@ -105,7 +111,8 @@ audio device that does not open — is data: an error string in a callback or a 
 | sprite positions, skin parsing, bitmap text | [src/skins](../src/skins/README.md) |
 | what plays next, shuffle, repeat, preload, play reports | [src/core](../src/core/README.md) |
 | decoding, seeking, gapless, the equalizer DSP | [src/audio](../src/audio/README.md) |
-| an API call, a new source, login | [src/yandex](../src/yandex/README.md), then `src/core/sources.cpp` and the menu in `src/ui/library_menu.cpp` |
+| an API call, a new pick, login | [src/yandex](../src/yandex/README.md), then [src/sources/yandex](../src/sources/yandex/README.md) and the menu in `src/ui/library_menu.cpp` |
+| a new music source | [src/sources](../src/sources/README.md) |
 | the spectrum, the oscilloscope, Milkdrop rendering | [src/vis](../src/vis/README.md) |
 | media keys, MPRIS, SMTC, MediaPlayer | [src/integrations](../src/integrations/README.md) |
 | usage statistics, crash reports | [spec/telemetry](../spec/telemetry/README.md), then [src/telemetry](../src/telemetry/README.md) |

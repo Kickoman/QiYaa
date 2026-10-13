@@ -1,6 +1,6 @@
 #include "audio/audio_engine.h"
 #include "core/player.h"
-#include "core/sources.h"
+#include "sources/yandex/catalog.h"
 #include "support/mock_http_server.h"
 #include "support/spec_fixtures.h"
 #include "yandex/api_client.h"
@@ -20,8 +20,8 @@
 #include <QTest>
 #include <QVariant>
 
-// Core::Sources against the spec/player scenarios, on the spec API fixtures. Each test names the
-// scenarios it checks.
+// YandexSource::Catalog against the spec/player scenarios, on the spec API fixtures. Each test names
+// the scenarios it checks.
 
 namespace {
 
@@ -56,7 +56,7 @@ private:
     struct Stack {
         Audio::AudioEngine engine;  // not initialised
         Core::Player player;
-        Core::Sources sources;
+        YandexSource::Catalog sources;
         QSignalSpy status;
         explicit Stack(Yandex::Library* library)
             : player(library, &engine)

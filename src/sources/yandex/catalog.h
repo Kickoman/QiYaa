@@ -4,26 +4,24 @@
 #include <QString>
 #include <QStringList>
 
+namespace Core {
+class JamMode;
+class Player;
+}  // namespace Core
+
 namespace Yandex {
 class Library;
 struct PlaylistReference;
 }  // namespace Yandex
 
-namespace Core {
+namespace YandexSource {
 
-class JamMode;
-class Player;
-
-// What the user picks to listen to, turned into the Player's queue: likes, playlists, artists,
-// albums, waves and stations, search. Takes a source-request ticket for each pick, so the last
-// pick wins; builds the wave's load-more and feedback callbacks; likes and dislikes the current
-// track. Reports through Player::statusMessage.
-class Sources : public QObject {
+class Catalog : public QObject {
     Q_OBJECT
 public:
     static inline const QString kMyWaveSeed = QStringLiteral("user:onyourwave");
 
-    Sources(Player* player, Yandex::Library* library, QObject* parent = nullptr);
+    Catalog(Core::Player* player, Yandex::Library* library, QObject* parent = nullptr);
 
     void playLikes(bool autoplay);
     void playPlaylist(const Yandex::PlaylistReference& playlist);
@@ -37,20 +35,18 @@ public:
     void setLiked(const QString& trackId, bool liked);
     void dislikeAndSkip(const QString& trackId);
 
-    // The seeds of the last wave started, My Wave before any: what the wheel of waves matches.
     const QStringList& lastWaveSeeds() const { return waveSeeds; }
 
-    // While its jam is on, a pick does not replace the queue (HOST-21).
-    void setJamMode(const JamMode* jam) { jamMode = jam; }
+    void setJamMode(const Core::JamMode* jam) { jamMode = jam; }
 
 private:
     void showStatus(const QString& text);
     bool refusedForJam();
 
-    Player* corePlayer;
+    Core::Player* corePlayer;
     Yandex::Library* yandexLibrary;
     QStringList waveSeeds{kMyWaveSeed};
-    const JamMode* jamMode = nullptr;
+    const Core::JamMode* jamMode = nullptr;
 };
 
-}  // namespace Core
+}  // namespace YandexSource

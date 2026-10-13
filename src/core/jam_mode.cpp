@@ -1,9 +1,7 @@
 #include "core/jam_mode.h"
 
 #include "audio/audio_engine.h"
-#include "yandex/library.h"
 
-#include <QHash>
 #include <QPointer>
 #include <QtGlobal>
 
@@ -14,28 +12,6 @@
 namespace Core {
 
 using Yandex::Track;
-
-// The jam wave's session and, for every wave track, the session, station and batch it came in:
-// a track's feedback goes to its own session even after a new one started (HOST-11, TRK-08).
-struct JamMode::Wave {
-    struct Origin {
-        QString session;
-        QString station;
-        QString batch;
-    };
-
-    bool feedback = false;
-    QString session;
-    QString station;
-    int seedsVersion = -1;
-    QHash<QString, Origin> originOfTrack;
-
-    void addBatch(const Yandex::WaveBatch& batch) {
-        for (const Track& track : batch.tracks) {
-            originOfTrack.insert(track.id, Origin{session, station, batch.batchId});
-        }
-    }
-};
 
 namespace {
 
@@ -49,11 +25,10 @@ QList<Track> Playable(const QList<Track>& tracks) {
 
 }  // namespace
 
-JamMode::JamMode(Player* player, Yandex::Library* library, QObject* parent)
+JamMode::JamMode(Player* player, TJamWaveFactory makeWave, QObject* parent)
     : QObject(parent)
     , corePlayer(player)
-    , yandexLibrary(library)
-    , wave(std::make_shared<Wave>()) {
+    , waveFactory(std::move(makeWave)) {
     reportTimer.setInterval(kJamPlayingReportMs);
     connect(&reportTimer, &QTimer::timeout, this, [this] {
         if (corePlayer->engine()->state() == Audio::AudioEngine::State::Playing) {
@@ -83,8 +58,8 @@ void JamMode::start(const QString& title, bool waveFeedback) {
     if (active) {
         return;
     }
-    wave = std::make_shared<Wave>();
-    wave->feedback = waveFeedback;
+    QPointer<JamMode> self(this);
+    wave = waveFactory(waveFeedback, [self] { return self ? self->recentWaveTracks() : QList<Track>{}; });
     lastSeeds.clear();
     lastSeedsVersion = -1;
 
@@ -101,33 +76,25 @@ void JamMode::start(const QString& title, bool waveFeedback) {
     trackSlots = corePlayer->playlist().isEmpty() ? QList<JamSlot>{} : QList<JamSlot>{JamSlot{}};
     active = true;
 
-    QPointer<JamMode> self(this);
-    Yandex::Library* library = yandexLibrary;
-    const std::shared_ptr<Wave> state = wave;
+    const std::shared_ptr<JamWave> state = wave;
     Player::TLoadMoreCallback more = [self](std::function<void(const QList<Track>&)> done) {
         if (!self || !self->active) {
             return done({});
         }
         self->loadWave(std::move(done));
     };
-    Player::TEventCallback events =
-        [self, library, state](Player::TrackEvent event, const Track& track, double played) {
-            if (self && self->active) {
-                const JamSlot slot = self->currentSlot();
-                if (event == Player::TrackEvent::Started && slot.kind == JamSlot::Kind::Item) {
-                    Q_EMIT self->itemStarted(slot.itemId);  // HOST-05
-                }
-                self->schedulePlaybackReport();
+    Player::TEventCallback events = [self, state](Player::TrackEvent event, const Track& track, double played) {
+        if (self && self->active) {
+            const JamSlot slot = self->currentSlot();
+            if (event == Player::TrackEvent::Started && slot.kind == JamSlot::Kind::Item) {
+                Q_EMIT self->itemStarted(slot.itemId);  // HOST-05
             }
-            const auto origin = state->originOfTrack.constFind(track.id);
-            const bool waveTrack = origin != state->originOfTrack.constEnd()
-                && (!self || !self->active || self->currentSlot().kind == JamSlot::Kind::Wave);
-            if (waveTrack && state->feedback) {  // HOST-16: the jam wave's own session only
-                library->waveFeedback(
-                    origin->session, origin->station, origin->batch, WaveEventOf(event), &track, played
-                );
-            }
-        };
+            self->schedulePlaybackReport();
+        }
+        if (!self || !self->active || self->currentSlot().kind == JamSlot::Kind::Wave) {
+            state->trackEvent(event, track, played);  // HOST-16
+        }
+    };
     // HOST-15: no play reports; HOST-07: Previous restarts the track.
     corePlayer->changeSource(title, std::move(more), std::move(events), QueueRules{false, true});
     reportTimer.start();
@@ -231,67 +198,34 @@ void JamMode::reportPlayback() {
     Q_EMIT playback(report);
 }
 
-void JamMode::loadWave(std::function<void(const QList<Track>&)> done) {
-    const std::shared_ptr<Wave> state = wave;
+void JamMode::loadWave(JamWave::TDone done) {
     QPointer<JamMode> self(this);
-    if (!state->session.isEmpty() && state->seedsVersion == lastSeedsVersion) {  // HOST-11
-        QStringList recent;
-        for (qsizetype i = trackSlots.size() - 1; i >= 0 && recent.size() < kJamWaveHistory; --i) {
-            if (trackSlots[i].kind == JamSlot::Kind::Wave && i < corePlayer->playlist().size()) {
-                recent.prepend(corePlayer->playlist()[i].id);
-            }
+    auto deliver = [self, done](const QList<Track>& tracks) {
+        if (!self || !self->active) {
+            return done({});
         }
-        yandexLibrary->moreWave(
-            state->session,
-            recent,
-            [self, state, done](const Yandex::WaveBatch& batch, const QString& error) {
-                if (!error.isEmpty()) {
-                    qWarning("jam wave: %s", qPrintable(error));
-                }
-                state->addBatch(batch);
-                if (!self || !self->active) {
-                    return done({});
-                }
-                self->appendWave(batch.tracks, done);
-            }
-        );
-        return;
+        self->appendWave(tracks, done);
+    };
+    if (wave->hasSession() && wave->seedsVersion() == lastSeedsVersion) {  // HOST-11
+        return wave->more(deliver);
     }
-    QStringList seeds = lastSeeds;
-    if (const Track* current = corePlayer->currentTrack(); seeds.isEmpty() && current) {
-        seeds = {QStringLiteral("track:") + current->id};  // HOST-13
-    }
-    if (seeds.isEmpty()) {  // HOST-13: nothing has played and there are no seeds
+    if (!wave->start(lastSeeds, lastSeedsVersion, corePlayer->currentTrack(), deliver)) {  // HOST-13
         done({});
         return reportPlayback();
     }
-    const int seedsVersion = lastSeedsVersion;
-    Yandex::Library* library = yandexLibrary;
-    library->startWave(
-        seeds,
-        [self, state, done, seeds, seedsVersion, library](const Yandex::WaveBatch& batch, const QString& error) {
-            if (!error.isEmpty() || Playable(batch.tracks).isEmpty()) {
-                if (!error.isEmpty()) {
-                    qWarning("jam wave: %s", qPrintable(error));
-                }
-                return done({});
-            }
-            state->session = batch.sessionId;
-            state->station = seeds.value(0);
-            state->seedsVersion = seedsVersion;
-            state->addBatch(batch);
-            if (state->feedback) {
-                library->waveFeedback(state->session, state->station, batch.batchId, Yandex::WaveEvent::RadioStarted);
-            }
-            if (!self || !self->active) {
-                return done({});
-            }
-            self->appendWave(batch.tracks, done);
-        }
-    );
 }
 
-void JamMode::appendWave(const QList<Track>& tracks, std::function<void(const QList<Track>&)> done) {
+QList<Track> JamMode::recentWaveTracks() const {
+    QList<Track> recent;
+    for (qsizetype i = trackSlots.size() - 1; i >= 0 && recent.size() < kJamWaveHistory; --i) {
+        if (trackSlots[i].kind == JamSlot::Kind::Wave && i < corePlayer->playlist().size()) {
+            recent.prepend(corePlayer->playlist()[i]);
+        }
+    }
+    return recent;
+}
+
+void JamMode::appendWave(const QList<Track>& tracks, JamWave::TDone done) {
     const QList<Track> playable = Playable(tracks);
     for (qsizetype i = 0; i < playable.size(); ++i) {
         trackSlots << JamSlot{JamSlot::Kind::Wave, {}, {}};
@@ -301,7 +235,7 @@ void JamMode::appendWave(const QList<Track>& tracks, std::function<void(const QL
 }
 
 void JamMode::dropDeferredWave() {
-    if (!active || wave->session.isEmpty() || wave->seedsVersion == lastSeedsVersion
+    if (!active || !wave->hasSession() || wave->seedsVersion() == lastSeedsVersion
         || currentSlot().kind == JamSlot::Kind::Wave) {
         return;
     }
@@ -315,7 +249,7 @@ void JamMode::dropDeferredWave() {
             deferred << i;
         }
     }
-    wave->session.clear();  // HOST-11: new seeds, a new session next
+    wave->endSession();  // HOST-11
     if (!deferred.isEmpty()) {
         removeSlots(deferred);
     }

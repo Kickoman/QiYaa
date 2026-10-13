@@ -1,4 +1,4 @@
-# `src/core` — playback controller, sources and cover cache
+# `src/core` — playback controller, jam mode and cover cache
 
 This folder decides what plays. `Player` holds the queue of the current source and moves through it:
 play, pause, stop, next, previous, shuffle and repeat. It asks an endless source (a wave) for more
@@ -6,23 +6,22 @@ tracks before the queue runs out. For each track it resolves the download link t
 `Yandex::ApiClient` and streams the file's bytes (mp3, or AAC in MP4 at the economy quality) into
 `Audio::AudioEngine`. It also preloads the following track, so the engine can go on without a gap,
 and it reports each track's start and end: a play report to Yandex and a per-queue callback that the
-wave uses for feedback. `Sources` turns what the user picks (likes, playlists, artists, albums,
-waves, stations, search) into the `Player`'s queue and builds the wave's callbacks; it is the
-desktop counterpart of the Android app's queue manager, and `spec/player` describes both. `JamMode`
-is the queue while the app hosts a jam: the current track, the jam part that mirrors the server's
-queue, and the jam wave (`spec/jam/host.md`). `CoverCache` downloads album covers and keeps them in
-memory and on disk. The folder does not decode or output audio or chain streams at the sample level
-([src/audio](../audio/README.md)). It does not speak the Yandex API, sign links or build cover URLs
-itself ([src/yandex](../yandex/README.md)). It builds no menus ([src/ui](../ui/README.md),
-`library_menu.cpp`) and shows nothing on screen. Namespace `Core`, library `qiyaa_core`.
+wave uses for feedback. `JamMode` is the queue while the app hosts a jam: the current track, the
+jam part that mirrors the server's queue, and the jam wave (`spec/jam/host.md`), which a source
+provides through `JamWave`. `CoverCache` downloads album covers and keeps them in memory and on
+disk. The folder does not decide what a pick plays or talk to a source's catalogue
+([src/sources](../sources/README.md)). It does not decode or output audio or chain streams at the
+sample level ([src/audio](../audio/README.md)). It does not speak the Yandex API, sign links or
+build cover URLs itself ([src/yandex](../yandex/README.md)). It builds no menus
+([src/ui](../ui/README.md), `library_menu.cpp`) and shows nothing on screen. Namespace `Core`,
+library `qiyaa_core`.
 
 | File | Contains |
 |---|---|
 | `player.h/.cpp` | `Player`: the queue and cursor, transport, shuffle and repeat, source-request tickets, the endless-source hook `TLoadMoreCallback`, track events `TEventCallback`, link resolution, download streaming, the gapless preload, and the engine's poll timer |
 | `track_navigator.h/.cpp` | `TrackNavigator`, `ShuffleAlgorithm`, `MakeTrackNavigator`: sequential, random and stored shuffled traversal |
 | `failure_policy.h/.cpp` | `FailureKind`, `FailureAction`, `DecideOnFailure`: what the `Player` does about a track that cannot play |
-| `jam_mode.h/.cpp` | `JamMode`, `JamEntry`, `JamSlot`, `JamPlayback`: the jam mode of the queue; it knows nothing of the network or the protocol |
-| `sources.h/.cpp` | `Sources`: playing a source (likes, playlist, recommendations, artist, album, wave or station, search) with a ticket each, the wave's load-more and feedback callbacks, like and dislike by track ID |
+| `jam_mode.h/.cpp` | `JamMode`, `JamEntry`, `JamSlot`, `JamPlayback`, and `JamWave`, what `JamMode` asks of the source of its wave: the jam mode of the queue; it knows nothing of the network or the protocol |
 | `cover_cache.h/.cpp` | `CoverCache`: cover images by URL, with an LRU of 30 in memory, files in a cache directory and one download per URL at a time |
 
 ## Dependencies
@@ -31,7 +30,8 @@ itself ([src/yandex](../yandex/README.md)). It builds no menus ([src/ui](../ui/R
   `cover_cache.h`) and `Qt6::Network` (`QNetworkAccessManager`, `QNetworkReply`). It links nothing
   PRIVATE.
 - It deliberately does not link `Qt6::Widgets`, `qiyaa_skins`, `qiyaa_vis`, or anything above it
-  in the order `audio`, `yandex`, `skins` → `vis`, `core` → `ui`, `integrations` → `app`. It
+  in the order `audio`, `yandex`, `skins` → `vis`, `core` → `sources` → `jam` → `ui`,
+  `integrations` → `app`. It
   reaches miniaudio only through `qiyaa_audio`, which links it PRIVATE. Which modules link
   `qiyaa_core` is in [docs/architecture.md](../../docs/architecture.md#modules).
 - `player` and `cover_cache` do not include each other.
@@ -40,7 +40,7 @@ itself ([src/yandex](../yandex/README.md)). It builds no menus ([src/ui](../ui/R
   lifetime](#threads-and-lifetime)).
 
 ```bash
-grep -rnE --include='*.h' --include='*.cpp' '#include "(ui|vis|skins|integrations|app)/' src/core/     # must print nothing
+grep -rnE --include='*.h' --include='*.cpp' '#include "(sources|jam|ui|vis|skins|integrations|app)/' src/core/   # must print nothing
 grep -rnE --include='*.h' --include='*.cpp' '#include <(QWidget|QApplication|QDialog|QMenu|QtWidgets)' src/core/   # must print nothing
 grep -rnwE --include='*.h' --include='*.cpp' 'throw|catch' src/core/                                    # must print nothing
 grep -rn --include='*.h' --include='*.cpp' -e '->poll()' src/ | grep -v '^src/core/player.cpp:'         # must print nothing
@@ -121,8 +121,6 @@ Q_SIGNALS:
     void modesChanged();                              // shuffle or repeat
     void seeked(double seconds);                      // the clamped target
 };
-
-Yandex::WaveEvent WaveEventOf(Player::TrackEvent event);   // Started, Finished, Skipped → TrackStarted, TrackFinished, Skip
 ```
 
 ### Threads and lifetime
@@ -296,7 +294,7 @@ Four counters, each bumped by different calls and each guarding one kind of late
 | `generation` | `stop`, `playIndex`, gapless advance | the link reply of a track that is no longer current |
 | `preloadGeneration` | every new preload | the link reply of a preload that was cancelled or replaced |
 
-Tickets start at 1, so 0 never matches. `Sources` takes one for every pick.
+Tickets start at 1, so 0 never matches. `YandexSource::Catalog` takes one for every pick.
 
 ### Endless sources (`TLoadMoreCallback`)
 
@@ -449,7 +447,7 @@ FailureAction DecideOnFailure(FailureKind kind, int failuresInRow, bool hasNext,
 
 | Signal | Emitted |
 |---|---|
-| `statusMessage(text)` | `"Audio error: <message>"` (from `AudioEngine::errorOccurred`), the failure statuses (`"The track does not play: …"`, `"Stopped: 3 tracks in a row did not play"`, `"Access error: …"`, `"No network — waiting for it…"`, `"Cannot get link: …"` without an output device, `"Download failed: …"`), and `"Loading more tracks…"` (loading more tracks). `Sources` also emits it on the `Player` for source loads, likes and dislikes, which makes it the app's one status line |
+| `statusMessage(text)` | `"Audio error: <message>"` (from `AudioEngine::errorOccurred`), the failure statuses (`"The track does not play: …"`, `"Stopped: 3 tracks in a row did not play"`, `"Access error: …"`, `"No network — waiting for it…"`, `"Cannot get link: …"` without an output device, `"Download failed: …"`), and `"Loading more tracks…"` (loading more tracks). `YandexSource::Catalog` also emits it on the `Player` for picks, likes and dislikes, which makes it the app's one status line |
 | `playlistChanged` | by `setQueue`; by `appendTracks` when something was added; by `removeTracks` always, even when no index was valid |
 | `queueReplaced` | by `setQueue` and `clearQueue` only, before `playlistChanged` |
 | `currentTrackChanged` | by `setQueue`, even for an empty queue; by `playIndex` at once; again from `trackStarted` once the bitrate is known; twice on a gapless advance; by `removeTracks` when the current track was removed |
@@ -529,84 +527,32 @@ Repeated lookahead returns the same candidate and does not advance. Empty queues
 
 Tests cover the interface without an audio engine, plus Player's real preload and gapless transitions.
 
-## `sources.h`: `Sources`
-
-```cpp
-class Sources : public QObject {
-public:
-    static inline const QString kMyWaveSeed = "user:onyourwave";
-    Sources(Player* player, Yandex::Library* library, QObject* parent = nullptr);
-
-    void playLikes(bool autoplay);                               // "Liked"
-    void playPlaylist(const Yandex::PlaylistReference& playlist);
-    void playRecommendations(const Yandex::PlaylistReference& playlist);   // "<title>: similar"
-    void playArtist(const QString& artistId, const QString& name);        // top tracks
-    void playAlbum(const QString& albumId, const QString& title);
-    void playWave(const QStringList& seeds, const QString& title);        // waves and stations
-    void playMyWave();                                           // {kMyWaveSeed}, "My Vibe"
-    void search(const QString& text);                            // "Search: <text>"
-
-    void setLiked(const QString& trackId, bool liked);
-    void dislikeAndSkip(const QString& trackId);                 // skip only if the ID is current
-
-    const QStringList& lastWaveSeeds() const;                    // what the wheel of waves matches
-};
-```
-
-The scenarios are [spec/player/sources.md](../../spec/player/sources.md),
-[wave.md](../../spec/player/wave.md) and [tracking.md](../../spec/player/tracking.md);
-`tests/sources_test.cpp` checks them by ID.
-
-- **One ticket per pick.** Every `play…` and `search` takes `Player::newSourceRequest()` before
-  its request, and its reply is applied only if `isLatestSourceRequest(ticket)` (SRC-01, SRC-02).
-  A search whose best result is an artist or album asks for that one's tracks with the same
-  ticket (SRC-03). Replies are dropped silently; the HTTP request is not aborted. The `Player` is
-  held through `QPointer`.
-- **Listening along** (`spec/jam/listen.md`). `JamPlayback::link` is `Player::currentLink()`: the
-  file of the current track once its link resolved, including a preloaded track that took over;
-  `JamPlayback::nextLink` is `Player::nextLink()`, the preloaded next file. The host session sends
-  them to the jam's guests when the host allows it.
-- **Statuses**, all through `Player::statusMessage` (English sources, shown translated; see
-  [translations](../../translations/README.md)): `<title>: loading…` (vibes, likes),
-  `Search: <text>…`, `Error: …`, `Vibe error: …`, `Search error: …`, `<title>: empty`,
-  `Nothing found`, `Liked: N tracks`, `Added to Liked`,
-  `Removed from Liked`, `Disliked`.
-- **An empty source keeps the queue** (SRC-07, SRC-08, WAVE-03): when a reply has no available
-  track (none at all, or all `available: false`), the status is `<title>: empty` (search:
-  `Nothing found`) and nothing else happens: no `setQueue`, and for a wave no `RadioStarted`.
-- **Search** (SRC-09 to SRC-12): a best artist queues its top 100 under its name, a best album its
-  tracks under its title, anything else the found tracks as `Search: <text>`.
-- **A wave** (`playWave`): `Library::startWave(seeds)`. On success the wave state (session,
-  station = first seed, track id → batch id) is shared by two callbacks for the life of that
-  queue: `more` asks `moreWave` with the ids of the last 5 queued tracks (WAVE-05), and `events`
-  maps each `TrackEvent` with `WaveEventOf` (also used by `JamMode`'s wave) and sends it
-  with the batch the track came in (TRK-04 to TRK-06). `RadioStarted` is sent before
-  `setQueue`, so before the first track's `trackStarted` (TRK-03). The seeds become
-  `lastWaveSeeds()`.
-- **Likes**: `setLiked` and `dislikeAndSkip` call the `Library` and report in the status line;
-  `dislikeAndSkip` calls `Player::next()` at once only when `trackId` matches the current track,
-  which closes it with `Skip` (TRK-07). Disliking another track leaves playback alone, including
-  when playback advances while a menu for the previous track is open.
-
-**Traps:**
-- The wave's callbacks hold the `Library` and a `QPointer<Player>`, not the `Sources`: the
-  `Player` closes the open track, and sends its feedback, while the application shuts down,
-  after the `Sources` may be gone.
-- `playLikes(false)` (after login) fills the queue without starting playback.
-
 ## `jam_mode.h`: `JamMode`
 
 ```cpp
 struct JamEntry { QString itemId; Yandex::Track track; QString addedBy; };
 struct JamSlot { enum class Kind { Item, Wave, Other }; Kind kind; QString itemId; QString addedBy; };
 struct JamPlayback { enum class Kind { Item, Wave, Idle }; Kind kind; QString itemId;
-                     std::optional<Yandex::Track> track; qint64 positionMs; bool paused; };
+                     std::optional<Yandex::Track> track; qint64 positionMs; bool paused; QUrl link, nextLink; };
 inline constexpr int kJamPlayingReportMs = 10'000;
 inline constexpr int kJamWaveHistory = 5;
 
+class JamWave {                                       // one jam's wave; a source makes it
+public:
+    using TDone = std::function<void(const QList<Yandex::Track>& tracks)>;
+    using TRecent = std::function<QList<Yandex::Track>()>;
+    virtual bool start(const QStringList& seeds, int seedsVersion, const Yandex::Track* current, TDone done) = 0;
+    virtual void more(TDone done) = 0;
+    virtual void trackEvent(Player::TrackEvent event, const Yandex::Track& track, double playedSeconds) = 0;
+    virtual bool hasSession() const = 0;
+    virtual int seedsVersion() const = 0;
+    virtual void endSession() = 0;
+};
+using TJamWaveFactory = std::function<std::shared_ptr<JamWave>(bool feedback, JamWave::TRecent recent)>;
+
 class JamMode : public QObject {
 public:
-    JamMode(Player* player, Yandex::Library* library, QObject* parent = nullptr);
+    JamMode(Player* player, TJamWaveFactory makeWave, QObject* parent = nullptr);
     bool isActive() const;
     const QList<JamSlot>& queueSlots() const;         // one per track of Player::playlist()
     JamSlot currentSlot() const;
@@ -643,15 +589,26 @@ its two signals.
   track that did not change keeps its preload. The current item is left out even while the state
   still lists it. Into an empty queue, the first item plays at once; a new item after the cursor
   plays at once when the player waits at the end or nothing is in progress (HOST-08).
-- **The jam wave** (HOST-10 to HOST-13) is the `Player`'s load-more: when at most 2 tracks are left,
-  `JamMode` asks `Library::startWave` with the last state's seeds (no seeds: `track:<current id>`;
-  nothing played: no wave, `playing{idle}`), or `moreWave` of its session with the last 5 wave
-  tracks. The session remembers the `seedsVersion` it started with. When the jam part becomes empty
-  again under new seeds (the current track is not a wave track, no item follows), the old
-  session's deferred tracks are removed and the next load starts a new session.
+- **The jam wave** (HOST-10 to HOST-13) is the `Player`'s load-more. `start` makes one `JamWave`
+  for the jam with the factory (`feedback` = `waveFeedback`; `recent` gives the last 5 wave tracks
+  of the queue, `kJamWaveHistory`). When at most 2 tracks are left, `JamMode` asks
+  `JamWave::more` while the wave has a session started under the last state's `seedsVersion`, and
+  otherwise `JamWave::start` with the last state's seeds and the current track. `start` returning
+  false (no seeds and nothing played) means no wave and `playing{idle}`. When the jam part becomes
+  empty again under new seeds (the current track is not a wave track, no item follows), the old
+  session's deferred tracks are removed, `endSession()` is called, and the next load starts a new
+  session. What the wave asks of its service: [src/sources/yandex](../sources/yandex/README.md#jam_waveh-jamwave-jamwaves).
+- **What `JamMode` expects of a `JamWave`**: `start` and `more` call `done` once, later, with the
+  tracks (empty when there are none); `start` returns false, without calling `done`, when it has
+  nothing to start from. `trackEvent` is called for every event of a wave slot's track, and after
+  the jam ended for any track; the wave ignores tracks it did not give.
 - **Not learning** (HOST-15, HOST-16): no play reports; rotor feedback (radioStarted, trackStarted,
   trackFinished, skip) only for the jam wave's tracks, to the session each came from, and only when
   `start` got `waveFeedback`.
+- **Listening along** (`spec/jam/listen.md`). `JamPlayback::link` is `Player::currentLink()`: the
+  file of the current track once its link resolved, including a preloaded track that took over;
+  `JamPlayback::nextLink` is `Player::nextLink()`, the preloaded next file. The host session sends
+  them to the jam's guests when the host allows it.
 - **Reports**: `itemStarted(itemId)` when a jam item's `Started` fires; `playback` after every
   track event, on the engine's state changes, seeks, and every 10 s while playing (HOST-05,
   HOST-06). `Idle` when nothing plays (empty queue, or stopped waiting at the end).
@@ -659,13 +616,12 @@ its two signals.
 - **End** (HOST-32, HOST-33): the wave tracks after the cursor are removed, the jam items stay as
   ordinary tracks, the current track plays on, and `changeSource` with the default rules brings the
   play reports and a finite queue back.
-- `Sources::setJamMode(jam)`: while the jam is on, every pick (likes, playlists, artists, albums,
-  waves, stations, search) leaves the queue alone and says `A jam is on: add tracks to the jam`
-  (HOST-21). Likes and dislikes still work (HOST-17).
+- `YandexSource::Catalog::setJamMode(jam)` refuses every pick while the jam is on (HOST-21).
 
 **Traps:**
-- The `Player`'s load-more and event callbacks hold a `QPointer<JamMode>` and a shared wave state:
-  a wave track that closes after `end()`, or while the app shuts down, still gets its feedback.
+- The `Player`'s load-more and event callbacks hold a `QPointer<JamMode>` and the jam's
+  `std::shared_ptr<JamWave>`: a wave track that closes after `end()`, or while the app shuts down,
+  still gets its feedback.
 - HOST-09 (a broken last jam track waits for the jam wave) is the `Player`'s own ERR-07 for an
   endless queue: `DecideOnFailure` says Next (the policy table in `tests/failures_test.cpp`), and
   `next()` at the end waits for more. `jam_mode_test` does not repeat it.
@@ -780,8 +736,10 @@ no exception may cross the event loop, so they must not throw.
   `errorOccurred` texts: [src/audio](../audio/README.md).
 - `download-info` and the signed link, `Track` and `Track::coverUrl`, the `/play-audio` report,
   and wave sessions and feedback: [src/yandex](../yandex/README.md).
-- The Yandex menu that calls `Sources`, the status line, the playlist and "Now playing" windows:
-  [src/ui](../ui/README.md).
+- What a pick plays, the vibe's callbacks, likes and dislikes, and the jam wave's rotor session:
+  [src/sources/yandex](../sources/yandex/README.md).
+- The Yandex menu that calls `YandexSource::Catalog`, the status line, the playlist and "Now
+  playing" windows: [src/ui](../ui/README.md).
 - Media keys, MPRIS and SMTC state, and the cover `artUrl` built from `localFile()`:
   [src/integrations](../integrations/README.md).
 - Creating the `Player` and the cache and choosing the cache directory, loading the likes without

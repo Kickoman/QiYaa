@@ -6,6 +6,7 @@
 #include "integrations/media_controls.h"
 #include "jam/host_session.h"
 #include "skins/error.h"
+#include "sources/yandex/jam_wave.h"
 #include "telemetry/machine_id.h"
 #include "telemetry/reporter.h"
 #include "telemetry/system_info.h"
@@ -211,8 +212,8 @@ Application::Application(const Options& options, QObject* parent)
     , apiClient(networkManager)
     , yandexLibrary(&apiClient)
     , corePlayer(&yandexLibrary, &audioEngine)
-    , sources(&corePlayer, &yandexLibrary)
-    , jamMode(&corePlayer, &yandexLibrary) {
+    , catalog(&corePlayer, &yandexLibrary)
+    , jamMode(&corePlayer, YandexSource::JamWaves(&yandexLibrary)) {
     firstRun = settings.allKeys().isEmpty();
     // Before any window: they take their texts from the translation.
     const std::optional<Language> storedLanguage =
@@ -329,7 +330,7 @@ Application::Application(const Options& options, QObject* parent)
 #endif
 
     // Before the loops over windows() below, which take in the jam window.
-    sources.setJamMode(&jamMode);
+    catalog.setJamMode(&jamMode);
     setUpJam();
 
     mainWindowInstance->setVolume(settings.value(QStringLiteral("volume"), 75).toInt());
@@ -737,7 +738,7 @@ void Application::offerStoredJam() {
         } else if (question->clickedButton() == no) {
             jamHostSession->discardStored();
             if (corePlayer.playlist().isEmpty() && yandexLibrary.isLoggedIn()) {
-                sources.playLikes(false);
+                catalog.playLikes(false);
             }
         }
     });
@@ -843,7 +844,7 @@ void Application::applyToken(const QString& token, bool save) {
 #endif
         const bool jam = jamMode.isActive() || storedJamQuestion;
         if (corePlayer.playlist().isEmpty() && !jam) {
-            sources.playLikes(false);
+            catalog.playLikes(false);
         }
     });
 }
@@ -1350,7 +1351,7 @@ void Application::fillWindowActions(QMenu* menu) {
 void Application::showSourcesMenu(QPoint globalPosition) {
     auto* menu = new QMenu(mainWindowInstance.get());
     menu->setAttribute(Qt::WA_DeleteOnClose);
-    Ui::AddLibraryActions(menu, &corePlayer, &sources, corePlayer.currentTrack(), mainWindowInstance.get(), [this] {
+    Ui::AddLibraryActions(menu, &corePlayer, &catalog, corePlayer.currentTrack(), mainWindowInstance.get(), [this] {
         login();
     });
     menu->popup(globalPosition);
@@ -1359,7 +1360,7 @@ void Application::showSourcesMenu(QPoint globalPosition) {
 void Application::showMainMenu(QPoint globalPosition, const Yandex::Track* track) {
     auto* menu = new QMenu(mainWindowInstance.get());
     menu->setAttribute(Qt::WA_DeleteOnClose);
-    Ui::AddLibraryActions(menu, &corePlayer, &sources, track, mainWindowInstance.get(), [this] { login(); });
+    Ui::AddLibraryActions(menu, &corePlayer, &catalog, track, mainWindowInstance.get(), [this] { login(); });
     menu->addSeparator();
     addJamMenu(menu);
     fillWindowActions(menu);

@@ -9,12 +9,9 @@
 #include <QStringList>
 #include <QTimer>
 
+#include <functional>
 #include <memory>
 #include <optional>
-
-namespace Yandex {
-class Library;
-}  // namespace Yandex
 
 namespace Core {
 
@@ -47,12 +44,29 @@ struct JamPlayback {
 inline constexpr int kJamPlayingReportMs = 10'000;
 inline constexpr int kJamWaveHistory = 5;
 
+class JamWave {
+public:
+    using TDone = std::function<void(const QList<Yandex::Track>& tracks)>;
+    using TRecent = std::function<QList<Yandex::Track>()>;
+
+    virtual ~JamWave() = default;
+
+    virtual bool start(const QStringList& seeds, int seedsVersion, const Yandex::Track* current, TDone done) = 0;
+    virtual void more(TDone done) = 0;
+    virtual void trackEvent(Player::TrackEvent event, const Yandex::Track& track, double playedSeconds) = 0;
+    virtual bool hasSession() const = 0;
+    virtual int seedsVersion() const = 0;
+    virtual void endSession() = 0;
+};
+
+using TJamWaveFactory = std::function<std::shared_ptr<JamWave>(bool feedback, JamWave::TRecent recent)>;
+
 // The jam mode of the queue (spec/jam/host.md, HOST-01 to HOST-17, HOST-32, HOST-33): the
 // current track, then the jam part (the mirror of the server's queue), then the jam wave.
 class JamMode : public QObject {
     Q_OBJECT
 public:
-    JamMode(Player* player, Yandex::Library* library, QObject* parent = nullptr);
+    JamMode(Player* player, TJamWaveFactory makeWave, QObject* parent = nullptr);
     ~JamMode() override;
 
     bool isActive() const { return active; }
@@ -71,10 +85,9 @@ Q_SIGNALS:
     void playback(const Core::JamPlayback& playback);
 
 private:
-    struct Wave;
-
-    void loadWave(std::function<void(const QList<Yandex::Track>&)> done);
-    void appendWave(const QList<Yandex::Track>& tracks, std::function<void(const QList<Yandex::Track>&)> done);
+    void loadWave(JamWave::TDone done);
+    void appendWave(const QList<Yandex::Track>& tracks, JamWave::TDone done);
+    QList<Yandex::Track> recentWaveTracks() const;
     void dropDeferredWave();
     void removeSlots(const QList<int>& indices);
     void insertItems(int at, const QList<JamEntry>& entries);
@@ -82,12 +95,12 @@ private:
     void schedulePlaybackReport();
 
     Player* corePlayer;
-    Yandex::Library* yandexLibrary;
+    TJamWaveFactory waveFactory;
     bool active = false;
     QList<JamSlot> trackSlots;
     QStringList lastSeeds;
     int lastSeedsVersion = -1;
-    std::shared_ptr<Wave> wave;
+    std::shared_ptr<JamWave> wave;
     QTimer reportTimer;
     bool reportPending = false;
 };

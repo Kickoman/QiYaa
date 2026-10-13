@@ -20,7 +20,7 @@ to Yandex ([src/yandex](../yandex/README.md)), or create, lay out, connect and s
 | `gen_window.h/.cpp` | `GenWindow` — abstract GEN.BMP frame: title, close button, resize grip |
 | `now_playing_window.h/.cpp` | `NowPlayingWindow` — cover and details of the current track |
 | `milkdrop_window.h/.cpp` | `MilkdropWindow` — projectM view in a GEN frame: preset switching, black-preset skipping, full screen. Built only with Milkdrop |
-| `library_menu.h/.cpp` | `AddLibraryActions`: the Yandex menu items, which call `Core::Sources` |
+| `library_menu.h/.cpp` | `AddLibraryActions`: the Yandex menu items, which call `YandexSource::Catalog` |
 | `login_dialog.h/.cpp` | `LoginDialog` — Yandex login by device code or by a pasted token |
 | `input_dialogs.h/.cpp` | `AskText`, `AskItem`: `QInputDialog` questions with the app's own OK and Cancel |
 | `jam_window.h/.cpp` | `JamWindow` — the host's jam in a GEN frame: start, QR code and link, settings, guests, end, search that adds tracks. Built only with the jam |
@@ -37,8 +37,8 @@ the next repaint; `SkinnedWindow::changeEvent` answers `QEvent::LanguageChange` 
 `qiyaa_ui` links PUBLIC `qiyaa_audio` (`equalizer_window.h` includes `audio/eq_presets.h` and
 `audio/equalizer.h`), `qiyaa_vis` (`main_window.h` includes `vis/visualizer.h`,
 `milkdrop_window.h` includes `vis/milkdrop_presets.h`) and `Qt6::Widgets`; PRIVATE `qiyaa_core`,
-`qiyaa_skins` and `qiyaa_yandex` (the headers only forward-declare `Core::Player`,
-`Core::CoverCache`, `Skins::Skin`, `Yandex::DeviceLogin`). `milkdrop_window.*` is added to the
+`qiyaa_skins`, `qiyaa_sources_yandex` and `qiyaa_yandex` (the headers only forward-declare
+`Core::Player`, `Core::CoverCache`, `Skins::Skin`, `YandexSource::Catalog`, `Yandex::DeviceLogin`). `milkdrop_window.*` is added to the
 target only when Milkdrop is built; `QIYAA_HAVE_MILKDROP` then comes PUBLIC from `qiyaa_vis`.
 `jam_window.*` and `jam_server_dialog.*` are added only when the jam is built: `qiyaa_ui` then
 links PUBLIC `qiyaa_jam` (`QIYAA_HAVE_JAM` comes with it) and PRIVATE `qiyaa_qrcodegen`
@@ -809,28 +809,28 @@ screen; a right click in the view or in the frame's content opens the preset men
 void AddLibraryActions(
     QMenu* menu,
     Core::Player* player,                 // library and current track for the dislike label
-    Core::Sources* sources,               // what every item plays
+    YandexSource::Catalog* catalog,       // what every item plays
     const Yandex::Track* track,            // target of like/dislike/open; nullptr disables them
     QWidget* dialogParent,                // parent of the search input dialog
     std::function<void()> loginRequested  // the only item when not logged in
 );
 ```
 
-The menu only builds items; what they play, and every status they report, is `Core::Sources`
-([src/core](../core/README.md#sourcesh-sources)).
+The menu only builds items; what they play, and every status they report, is
+`YandexSource::Catalog` ([src/sources/yandex](../sources/yandex/README.md#catalogh-catalog)).
 
 - When logged in: My Vibe, Liked, submenus Wheel of vibes (the vibes around
-  `Sources::lastWaveSeeds()`), For you, Playlists (Listen / Similar tracks), Artists, Albums,
+  `Catalog::lastWaveSeeds()`), For you, Playlists (Listen / Similar tracks), Artists, Albums,
   Stations (grouped by station type), Search…, then like/unlike, dislike and open in the browser;
   those three are disabled without a target track. The target's ID, liked state and browser URL
   are captured when the menu is built, so changing the queue does not retarget an open menu.
-  The dislike label includes "(skip)" when the target is current at menu creation; `Sources`
+  The dislike label includes "(skip)" when the target is current at menu creation; `Catalog`
   checks again when the action runs and skips only if that track is still current.
 - Submenus load their lists straight from `Yandex::Library` on their first `aboutToShow`, once per
   menu instance: a disabled `Loading…`, then the items, `(empty)` or a disabled `Error: …`.
 
 **Traps:**
-- Menu actions capture `Player*`, `Sources*` and `Library*` unguarded; that is safe only because
+- Menu actions capture `Player*`, `Catalog*` and `Library*` unguarded; that is safe only because
   the app owns them for the whole run.
 - Submenus never reload: build a new menu for fresh data.
 
@@ -885,7 +885,7 @@ Everything else is data:
 | Failure | Reported as |
 |---|---|
 | `.eqf` cannot be opened, is above 1 MiB, cannot be saved | `EqualizerWindow::statusText`: `EQ: <file>: <reason>`, `EQ: <file> is <n> KB, and presets are 1024 KB at most`, `EQ: <file> не сохранён: <reason>` |
-| Yandex request fails | a source's error goes out through `Core::Sources` as `Player::statusMessage`; a submenu's list shows a disabled `Error: …` item |
+| Yandex request fails | a source's error goes out through `YandexSource::Catalog` as `Player::statusMessage`; a submenu's list shows a disabled `Error: …` item |
 | Device login fails, pasted text holds no token | labels in `LoginDialog` |
 | No usable OpenGL, projectM fails | `MilkdropWindow::failure()`, painted in the frame; `qWarning` |
 | A preset fails or stays black | handled by switching (see `MilkdropWindow`); `qWarning` |
