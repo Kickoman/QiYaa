@@ -16,7 +16,7 @@ audio, yandex, skins, telemetry  →  vis, core  →  jam  →  ui, integrations
 
 | Module | Namespace | What it does | Links PUBLIC | Links PRIVATE |
 |---|---|---|---|---|
-| [src/audio](../src/audio/README.md) | `Audio` | Plays a file while it downloads: decoder thread, ring buffer, equalizer, gapless chaining, `.eqf` presets; AAC in MP4 for the economy quality | Qt Core | miniaudio, minimp4, fdk-aac |
+| [src/audio](../src/audio/README.md) | `Audio` | Plays a file while it downloads: decoder thread, blocks of audio with what they are, equalizer, gapless chaining, `.eqf` presets; AAC in MP4 for the economy quality | Qt Core | miniaudio, minimp4, fdk-aac |
 | [src/yandex](../src/yandex/README.md) | `Yandex` | Yandex Music HTTP API, OAuth device login, signed track links, the token file | Qt Core, Network | |
 | [src/skins](../src/skins/README.md) | `Skins` | Loads `.wsz` skins: sheets, `region.txt`, `pledit.txt`, `viscolor.txt`, bitmap text; sprite tables | Qt Gui | miniz |
 | [src/telemetry](../src/telemetry/README.md) | `Telemetry` | Usage statistics and crash reports ([spec/telemetry](../spec/telemetry/README.md)): the events kept on disk until the jam server takes them, the crash handler. Optional (`QIYAA_WITH_TELEMETRY`, on in the releases) | Qt Core, Network | Qt Gui; dbghelp (Windows) or dl |
@@ -52,8 +52,8 @@ Ui (menu)  ──source──▶  Core::Player  ──resolveTrackUrl──▶  
                             │  ▲
           download bytes    │  │ poll(): state, trackFinished, trackAdvanced
                             ▼  │
-                      Audio::AudioEngine ─▶ decoder thread ─▶ ring (2 s) ─▶ device callback
-                                                                  EQ → VisTap → volume, balance
+                      Audio::AudioEngine ─▶ decoder thread ─▶ blocks (2 s) ─▶ device callback
+                                                                    EQ → VisTap → volume, balance
 ```
 
 1. A menu item from `Ui::AddLibraryActions` calls `Core::Sources`, which asks `Yandex::Library`
@@ -65,8 +65,9 @@ Ui (menu)  ──source──▶  Core::Player  ──resolveTrackUrl──▶  
    the engine and appends the download to it chunk by chunk. When the download completes, it
    resolves and downloads the next track into a queued stream, so the engine continues without a
    gap.
-3. The engine decodes on its own thread into a ring buffer; miniaudio's device thread reads the
-   ring, applies the equalizer, copies the frames into `VisTap` and applies volume and balance.
+3. The engine decodes on its own thread into a queue of blocks, each saying which track, where in
+   it and for which start or seek it is; miniaudio's device thread plays them, applies the
+   equalizer, copies the frames into `VisTap` and applies volume and balance.
 4. The main window's timer reads `VisTap` through the engine and draws the spectrum or the
    oscilloscope with `Vis`; the Milkdrop window feeds the same samples to projectM.
 5. `Integrations::MediaControls` turns `Player`'s state into what MPRIS, SMTC or MediaPlayer
@@ -77,11 +78,12 @@ Ui (menu)  ──source──▶  Core::Player  ──resolveTrackUrl──▶  
 | Thread | What runs there |
 |---|---|
 | Qt main thread | Everything outside `src/audio`: every window, every network callback, `Player`, the engine's public API and signals |
-| Decoder thread (one per stream start) | `ma_decoder` on the downloaded bytes, writes into the ring |
-| Device thread (miniaudio's) | Reads the ring, equalizer, `VisTap`, gains; takes no lock and allocates nothing |
+| Decoder thread (one per engine) | Owns every `ma_decoder`, decides whether a track ends or the queued one follows, writes the blocks; takes commands from the engine and sends it events |
+| Device thread (miniaudio's) | Plays the blocks, equalizer, `VisTap`, gains; takes no lock and allocates nothing |
 | WinRT thread (Windows) | SMTC button presses, handed straight to the main thread |
 
-The hand-offs between the three audio threads are in [src/audio](../src/audio/README.md#threads).
+Each audio thread owns its own state and the three talk only through queues; the channels are in
+[src/audio](../src/audio/README.md#threads).
 
 ## Errors
 

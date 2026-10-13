@@ -82,7 +82,7 @@ public:
     void previous();
     void playIndex(int index);
     void shutDown();                                  // for quitting; irreversible
-    bool seekTo(double seconds);                      // false if the engine can't seek (yet)
+    bool seekTo(double seconds);                      // false while the engine has no stream
     bool seekFraction(double fraction);               // 0..1 of durationSeconds()
     void setShuffle(bool on);
     void setShuffleAlgorithm(ShuffleAlgorithm algorithm);
@@ -278,7 +278,7 @@ above.
   endless queue starts with shuffle on.
 - **`seekTo(seconds)`**: clamps the target to `[0, durationSeconds()]`, or to `>= 0` when the
   duration is 0. It returns `false` and emits nothing when `AudioEngine::seek` refuses, which
-  happens while stopped and until the engine's decoder has opened the stream. On success it moves
+  happens while there is no stream (stopped, or no audio device). On success it moves
   the played-seconds baseline to the target and emits `seeked(target)`. `seekFraction(f)` is
   `seekTo(clamp(f, 0, 1) * durationSeconds())`, and returns `false` when the duration is 0.
 - **`shutDown()`**: takes a new ticket, so source loads still in flight become stale. Then
@@ -775,9 +775,9 @@ no exception may cross the event loop, so they must not throw.
 
 ## Not here
 
-- Decoding, the ring buffer, stream buffers, when a queued stream is chained, the commit window
-  before the boundary, when `trackAdvanced` and `trackFinished` fire, seeking within the
-  downloaded part, and the `errorOccurred` texts: [src/audio](../audio/README.md).
+- Decoding, the blocks of audio, stream buffers, when a queued stream is chained, when
+  `trackAdvanced` and `trackFinished` fire, seeking within the downloaded part, and the
+  `errorOccurred` texts: [src/audio](../audio/README.md).
 - `download-info` and the signed link, `Track` and `Track::coverUrl`, the `/play-audio` report,
   and wave sessions and feedback: [src/yandex](../yandex/README.md).
 - The Yandex menu that calls `Sources`, the status line, the playlist and "Now playing" windows:
