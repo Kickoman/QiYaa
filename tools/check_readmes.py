@@ -9,12 +9,13 @@ from the repository root, and any output, on stdout or stderr, fails it.
 
 Every folder under src/ needs a README.md. A folder with files of its own is a module and needs a
 row in the module table of docs/architecture.md; a folder that holds only folders is a group, and
-its README is an index of the modules in it.
+its README is an index of the modules in it. Folders and files are those git tracks, so a stray
+.DS_Store or an untracked folder changes nothing.
 """
 import re
 import subprocess
 import sys
-from pathlib import Path
+from pathlib import Path, PurePosixPath
 
 ROOT = Path(__file__).resolve().parent.parent
 MARK = "# must print nothing"
@@ -48,27 +49,24 @@ def run(command: str) -> str:
     return result.stdout + result.stderr
 
 
-def folders(parent: Path):
-    """Yields every folder under `parent`, depth first."""
-    for folder in sorted(p for p in parent.iterdir() if p.is_dir()):
-        yield folder
-        yield from folders(folder)
-
-
-def is_module(folder: Path) -> bool:
-    return any(p.is_file() and p.name != "README.md" for p in folder.iterdir())
+def tracked_files() -> list[PurePosixPath]:
+    result = subprocess.run(["git", "ls-files", "src"], cwd=ROOT, capture_output=True, text=True, check=True)
+    return [PurePosixPath(line) for line in result.stdout.splitlines()]
 
 
 def module_problems() -> list[str]:
     table = (ROOT / "docs" / "architecture.md").read_text(encoding="utf-8")
     listed = set(re.findall(r"^\| \[(src/[\w/]+)\]", table, re.MULTILINE))
+    files = tracked_files()
+    folders = {parent for file in files for parent in file.parents if parent != PurePosixPath(".")}
+    folders.discard(PurePosixPath("src"))
     problems = []
-    for folder in folders(ROOT / "src"):
-        name = folder.relative_to(ROOT).as_posix()
-        if not (folder / "README.md").is_file():
-            problems.append(f"{name} has no README.md")
-        if is_module(folder) and name not in listed:
-            problems.append(f"{name} is not in the module table of docs/architecture.md")
+    for folder in sorted(folders):
+        own = [file.name for file in files if file.parent == folder]
+        if "README.md" not in own:
+            problems.append(f"{folder} has no README.md")
+        if any(name != "README.md" for name in own) and str(folder) not in listed:
+            problems.append(f"{folder} is not in the module table of docs/architecture.md")
     return problems
 
 

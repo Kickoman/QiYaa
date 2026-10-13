@@ -78,7 +78,8 @@ README is its file-level reference.
   `tests/README.md` whose line says `# must print nothing` is a check:
   [tools/check_readmes.py](tools/check_readmes.py) runs them all from the repository root and fails
   on any output. It also fails when a folder under `src/` has no README, or a module (a folder with
-  files of its own) has no row in the module table of `docs/architecture.md`.
+  files of its own) has no row in the module table of `docs/architecture.md`; it counts only what
+  git tracks.
 - **Interface texts are English sources in `tr()`** (or `QCoreApplication::translate` outside a
   `QObject`), translated into Belarusian (the default) and Russian in `translations/*.ts`. Never
   write Russian or Belarusian into the code; update the `.ts` files in the same change

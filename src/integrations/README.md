@@ -19,10 +19,11 @@ integration is on, build the hooks or pick the backend ([src/app](../app/README.
 
 ## Dependencies
 
-`qiyaa_integrations` links PUBLIC `Qt6::Gui` and PRIVATE `qiyaa_audio` and `qiyaa_core` (the
-sources include `audio/audio_engine.h` besides the `core` headers). It knows no music source: a
-track is a `Core::Track`, and its cover and web page come from `Core::SourceRegistry`. In the module order it sits beside `ui`, above `core`
-and below `app`. The top-level `CMakeLists.txt` adds at most one backend:
+`qiyaa_integrations` links PUBLIC `Qt6::Gui` and PRIVATE `qiyaa_audio` and `qiyaa_core` (the sources
+include `audio/audio_engine.h` besides the `core` headers). It knows no music source: a track is a
+`Core::Track`, and its cover and web page come from `Core::SourceRegistry`. In the module order it
+sits beside `ui`, above `core` and below `app`. The top-level `CMakeLists.txt` adds at most one
+backend:
 
 | Backend | Built when | Adds |
 |---|---|---|
@@ -105,7 +106,7 @@ Q_SIGNALS:
   `seekTo(seconds)` returns false when the duration is 0, otherwise the result of
   `Player::seekTo`, which clamps the target to the track and fails when the engine can't seek
   there yet.
-- **Covers** are the 400×400 px variant (`kCoverPixels`, via `SourceRegistry::coverUrl(track, 400)`). On
+- **Covers** are the 400×400 px variant (`kCoverPixels`, through `SourceRegistry::coverUrl`). On
   every `Player::currentTrackChanged` it calls `CoverCache::get` for that URL *before* emitting
   `trackChanged`: a cover already on disk is therefore a `file://` URL in `artUrl()` when the
   listeners run, and a missing one starts downloading. When `CoverCache::ready` reports the current
@@ -253,10 +254,10 @@ reaching clients, `Seek` being ignored while not seekable, and the `.instance` n
 copy. It skips itself without a session bus, and skips the `gdbus` cases without `gdbus`.
 
 **Traps:**
-- `xesam:url` is meant to be the address of the track's own file; QiYaa gives the web page because
-  a Yandex track has no file of its own. A local track ([#30](https://github.com/Kickoman/QiYaa/issues/30))
-  wants `file://` there, which a port with only `webPage` cannot give
-  ([#27](https://github.com/Kickoman/QiYaa/issues/27)).
+- `xesam:url` is meant to be the address of the track's own file; QiYaa gives the web page because a
+  Yandex track has no file of its own. A local track
+  ([#30](https://github.com/Kickoman/QiYaa/issues/30)) wants `file://` there, which a port with only
+  `webPage` cannot give ([#27](https://github.com/Kickoman/QiYaa/issues/27)).
 - The track path changed with #26 from `…/track/<id>` to `…/track/<source>/<id>`. It is opaque to
   clients, but a client that stored one finds no match.
 - Renaming an adaptor property, slot or signal renames the D-Bus member and breaks every client.

@@ -35,14 +35,14 @@ the next repaint; `SkinnedWindow::changeEvent` answers `QEvent::LanguageChange` 
 ## Dependencies
 
 `qiyaa_ui` links PUBLIC `qiyaa_audio` (`equalizer_window.h` includes `audio/eq_presets.h` and
-`audio/equalizer.h`), `qiyaa_vis` (`main_window.h` includes `vis/visualizer.h`,
-`milkdrop_window.h` includes `vis/milkdrop_presets.h`) and `Qt6::Widgets`; PRIVATE `qiyaa_core`,
-`qiyaa_skins`, `qiyaa_sources_yandex` and `qiyaa_yandex` (the headers only forward-declare
-`Core::Player`, `Core::CoverCache`, `Skins::Skin`, `YandexSource::Catalog`, `Yandex::DeviceLogin`). `milkdrop_window.*` is added to the
-target only when Milkdrop is built; `QIYAA_HAVE_MILKDROP` then comes PUBLIC from `qiyaa_vis`.
-`jam_window.*` and `jam_server_dialog.*` are added only when the jam is built: `qiyaa_ui` then
-links PUBLIC `qiyaa_jam` (`QIYAA_HAVE_JAM` comes with it) and PRIVATE `qiyaa_qrcodegen`
-(`contrib/qrcodegen`, MIT).
+`audio/equalizer.h`), `qiyaa_vis` (`main_window.h` includes `vis/visualizer.h`, `milkdrop_window.h`
+includes `vis/milkdrop_presets.h`) and `Qt6::Widgets`; PRIVATE `qiyaa_core`, `qiyaa_skins`,
+`qiyaa_sources_yandex` and `qiyaa_yandex` (the headers only forward-declare `Core::Player`,
+`Core::CoverCache`, `Skins::Skin`, `YandexSource::Catalog`, `Yandex::DeviceLogin`).
+`milkdrop_window.*` is added to the target only when Milkdrop is built; `QIYAA_HAVE_MILKDROP` then
+comes PUBLIC from `qiyaa_vis`. `jam_window.*` and `jam_server_dialog.*` are added only when the jam
+is built: `qiyaa_ui` then links PUBLIC `qiyaa_jam` (`QIYAA_HAVE_JAM` comes with it) and PRIVATE
+`qiyaa_qrcodegen` (`contrib/qrcodegen`, MIT).
 
 It deliberately does not link `qiyaa_app` or `qiyaa_integrations` (both sit above it),
 `libprojectM` or `Qt6::OpenGL` (the OpenGL window is `Vis::MilkdropView`; `Qt6::OpenGL` arrives only
@@ -577,10 +577,10 @@ public:
 `coverRect()` is a square at the top-left of the content inset by 4 px, with side
 min(inset height, inset width / 2).
 
-Title `NOW PLAYING`. The content uses the PLEDIT.TXT colours and font (`Skin::playlistStyle()`).
-The cover is requested at 400 px (`SourceRegistry::coverUrl(track, 400)`) from `Core::CoverCache` and drawn with
-smooth scaling (a photo, unlike the sprites); until it arrives an outline stands in. Next to it: the
-title (bold 11 px, `current` colour), artists, album with year, duration and `♥ In Liked`
+Title `NOW PLAYING`. The content uses the PLEDIT.TXT colours and font (`Skin::playlistStyle()`). The
+cover is requested at 400 px (`SourceRegistry::coverUrl(track, 400)`) from `Core::CoverCache` and
+drawn with smooth scaling (a photo, unlike the sprites); until it arrives an outline stands in. Next
+to it: the title (bold 11 px, `current` colour), artists, album with year, duration and `♥ In Liked`
 for a liked Yandex track (`Catalog::isLiked`), each elided on the right; lines that do not fit are
 left out. Without a track: `Nothing is playing`. Repaints on `currentTrackChanged`,
 `Catalog::likesChanged` and `CoverCache::ready` for the current cover. A left click on the cover

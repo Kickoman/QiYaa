@@ -32,9 +32,9 @@ library `qiyaa_core`.
 - `qiyaa_core` links PUBLIC `qiyaa_audio`, `qiyaa_yandex`, `Qt6::Gui` (`QImage` in
   `cover_cache.h`) and `Qt6::Network` (`QNetworkAccessManager`, `QNetworkReply`). It links nothing
   PRIVATE.
-- It deliberately does not link `Qt6::Widgets`, `qiyaa_skins`, `qiyaa_vis`, or anything above it
-  in the order `audio`, `yandex`, `skins` → `vis`, `core` → `sources` → `jam` → `ui`,
-  `integrations` → `app`. It reaches miniaudio only through `qiyaa_audio`, which links it PRIVATE. Which modules link
+- It deliberately does not link `Qt6::Widgets`, `qiyaa_skins`, `qiyaa_vis`, or anything above it in
+  the order `audio`, `yandex`, `skins` → `vis`, `core` → `sources` → `jam` → `ui`, `integrations` →
+  `app`. It reaches miniaudio only through `qiyaa_audio`, which links it PRIVATE. Which modules link
   `qiyaa_core` is in [docs/architecture.md](../../docs/architecture.md#modules).
 - `player` and `cover_cache` do not include each other.
 - Only `player.*` and `failure_policy.h` include `yandex/`: the links, the downloads, the play
@@ -225,8 +225,8 @@ above.
      `statusMessage("Cannot get link: <error>")` and a stop. On success: the download starts into
      the stream begun above, then `trackStarted`.
 - **`trackStarted(track, bitrate)`** (private): stores the bitrate, sends
-  `ApiClient::reportPlayStarted(account, track.key.id, durationMs, <new UUID>)`, opens the track and remembers the
-  current `TEventCallback` for its closing event. It resets the played seconds, sends
+  `ApiClient::reportPlayStarted(account, track.key.id, durationMs, <new UUID>)`, opens the track and
+  remembers the current `TEventCallback` for its closing event. It resets the played seconds, sends
   `Started(track, 0)`, emits `currentTrackChanged` and calls `maybePreload()`.
 - **`next()`**: with an empty queue, nothing happens. If a preload exists in any phase:
   `playIndex(preload index)`. Else if `pickNext() >= 0`: `playIndex` of it. Else, if the source is
@@ -662,15 +662,16 @@ its two signals.
   track that did not change keeps its preload. The current item is left out even while the state
   still lists it. Into an empty queue, the first item plays at once; a new item after the cursor
   plays at once when the player waits at the end or nothing is in progress (HOST-08).
-- **The jam wave** (HOST-10 to HOST-13) is the `Player`'s load-more. `start` makes one `JamWave`
-  for the jam with the factory (`feedback` = `waveFeedback`; `recent` gives the last 5 wave tracks
-  of the queue, `kJamWaveHistory`). When at most 2 tracks are left, `JamMode` asks
-  `JamWave::more` while the wave has a session started under the last state's `seedsVersion`, and
-  otherwise `JamWave::start` with the last state's seeds and the current track. `start` returning
-  false (no seeds and nothing played) means no wave and `playing{idle}`. When the jam part becomes
-  empty again under new seeds (the current track is not a wave track, no item follows), the old
-  session's deferred tracks are removed, `endSession()` is called, and the next load starts a new
-  session. What the wave asks of its service: [src/sources/yandex](../sources/yandex/README.md#jam_waveh-jamwave-jamwaves).
+- **The jam wave** (HOST-10 to HOST-13) is the `Player`'s load-more. `start` makes one `JamWave` for
+  the jam with the factory (`feedback` = `waveFeedback`; `recent` gives the last 5 wave tracks of
+  the queue, `kJamWaveHistory`). When at most 2 tracks are left, `JamMode` asks `JamWave::more`
+  while the wave has a session started under the last state's `seedsVersion`, and otherwise
+  `JamWave::start` with the last state's seeds and the current track. `start` returning false (no
+  seeds and nothing played) means no wave and `playing{idle}`. When the jam part becomes empty again
+  under new seeds (the current track is not a wave track, no item follows), the old session's
+  deferred tracks are removed, `endSession()` is called, and the next load starts a new session.
+  What the wave asks of its service:
+  [src/sources/yandex](../sources/yandex/README.md#jam_waveh-jamwave-jamwaves).
 - **What `JamMode` expects of a `JamWave`**: `start` and `more` call `done` once, later, with the
   tracks (empty when there are none); `start` returns false, without calling `done`, when it has
   nothing to start from. `trackEvent` is called for every event of a wave slot's track, and after

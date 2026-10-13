@@ -138,9 +138,10 @@ Q_SIGNALS:
   `codec`; a network failure is the callback's error, as for any link (spec QUAL-04); any other
   failure takes the standard path for the same track, with no error (QUAL-03), after
   `requestFailed` (so telemetry counts it: a revoked key shows up there) and a `qInfo` line.
-- `reportPlayStarted` posts `/play-audio` and reports a start only: the played and end positions
-  are always 0. `trackId` is `<id>` or `<id>:<albumId>`, the form `resolveTrackUrl` takes: the part
-  before the first `:` is `track-id`, the rest `album-id` (empty without one). It has no callback; a failure is logged with `qWarning` (`play-audio failed: …`).
+- `reportPlayStarted` posts `/play-audio` and reports a start only: the played and end positions are
+  always 0. `trackId` is `<id>` or `<id>:<albumId>`, the form `resolveTrackUrl` takes: the part
+  before the first `:` is `track-id`, the rest `album-id` (empty without one). It has no callback; a
+  failure is logged with `qWarning` (`play-audio failed: …`).
 - `pendingPosts()` counts `postForm` and `postJson` requests; GETs, including both requests of
   `resolveTrackUrl`, are not counted. A POST is uncounted only after its callback has run, so a
   POST sent from inside a callback is counted before the total can reach 0. `postsSettled()` fires

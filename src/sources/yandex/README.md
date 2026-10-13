@@ -94,8 +94,8 @@ The scenarios are [spec/player/sources.md](../../../spec/player/sources.md),
 - **Likes**: `setLiked` and `dislikeAndSkip` call the `Library` with the catalog id and report in
   the status line; another source's key is never liked (`isLiked` is false, `owns` tells the menu).
   `dislikeAndSkip` calls `Player::next()` at once only when the key is the current Yandex track
-  (`isCurrent`), which closes it with `Skip` (TRK-07). Disliking another track leaves playback alone, including
-  when playback advances while a menu for the previous track is open.
+  (`isCurrent`), which closes it with `Skip` (TRK-07). Disliking another track leaves playback
+  alone, including when playback advances while a menu for the previous track is open.
 - **During a jam** (`setJamMode`): while the jam is on, every pick (likes, playlists, artists,
   albums, vibes, stations, search) leaves the queue alone and says
   `A jam is on: add tracks to the jam` (HOST-21). Likes and dislikes still work (HOST-17).
@@ -119,8 +119,9 @@ public:
 Core::TJamWaveFactory JamWaves(Yandex::Library* library);     // what Core::JamMode takes
 ```
 
-What `Core::JamMode` asks of the jam's vibe is in [src/core](../../core/README.md#jam_modeh-jammode);
-this is how Yandex answers it (spec/jam/host.md, HOST-11, HOST-13, HOST-16):
+What `Core::JamMode` asks of the jam's vibe is in
+[src/core](../../core/README.md#jam_modeh-jammode); this is how Yandex answers it (spec/jam/host.md,
+HOST-11, HOST-13, HOST-16):
 
 - `start(seeds, seedsVersion, current, done)`: `Library::startWave` with `seeds`; without seeds
   `track:<catalog id of current>` when the current track is a Yandex one; without either it
@@ -177,7 +178,8 @@ client ([src/yandex](../../yandex/README.md)): the avatars URL with `%%` replace
 
 ## Not here
 
-- The rotor endpoints, the feedback's JSON and the track model: [src/yandex](../../yandex/README.md).
+- The rotor endpoints, the feedback's JSON and the track model:
+  [src/yandex](../../yandex/README.md).
 - When the queue asks for more, the jam's slots, and when its vibe starts or goes on:
   [src/core](../../core/README.md).
 - The Yandex menu that calls `Catalog` and the status line: [src/ui](../../ui/README.md).

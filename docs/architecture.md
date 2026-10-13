@@ -44,12 +44,12 @@ MPRIS (`QIYAA_HAVE_MPRIS`) and SMTC (`QIYAA_HAVE_SMTC`) are optional; the macOS 
 ## Who owns what
 
 `App::Application` is the composition root. It holds the settings, the skins, the network manager,
-`Yandex::ApiClient`, `Yandex::Library`, `Audio::AudioEngine`, `Core::Player`, `YandexSource::Catalog`
-and `Core::JamMode` as members, and the
-windows, the cover cache and the media integration through `std::unique_ptr`. Member order is the
-construction order and, reversed, the destruction order: the windows go first, while everything
-they point at still exists. Nothing below `app` creates or connects windows, reads `QSettings` or
-knows where files live. Details: [src/app](../src/app/README.md).
+`Yandex::ApiClient`, `Yandex::Library`, `Audio::AudioEngine`, `Core::Player`,
+`YandexSource::Source`, `Core::SourceRegistry`, `YandexSource::Catalog` and `Core::JamMode` as
+members, and the windows, the cover cache and the media integration through `std::unique_ptr`.
+Member order is the construction order and, reversed, the destruction order: the windows go first,
+while everything they point at still exists. Nothing below `app` creates or connects windows, reads
+`QSettings` or knows where files live. Details: [src/app](../src/app/README.md).
 
 ## Playing a track
 
@@ -64,8 +64,9 @@ Ui (menu)  ──source──▶  Core::Player  ──resolveTrackUrl──▶  
 
 1. A menu item from `Ui::AddLibraryActions` calls `YandexSource::Catalog`, which asks
    `Yandex::Library` for a source (a playlist, the likes, a wave) and hands the tracks to
-   `Player::setQueue` as `Core::Track`s, keyed by source and the source's own id. An endless source also gives a callback that fetches more tracks; for a
-   wave, `Catalog` also sends wave feedback from `Player`'s track events.
+   `Player::setQueue` as `Core::Track`s, keyed by source and the source's own id. An endless source
+   also gives a callback that fetches more tracks; for a wave, `Catalog` also sends wave feedback
+   from `Player`'s track events.
 2. `Player::playIndex` asks `ApiClient::resolveTrackUrl` for the link of the track's file in the
    chosen quality (a signed mp3 link, or AAC in MP4 at the economy quality), starts a stream in
    the engine and appends the download to it chunk by chunk. When the download completes, it

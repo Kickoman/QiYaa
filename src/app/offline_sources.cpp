@@ -1,7 +1,6 @@
 #include "app/offline_sources.h"
 
 #include "audio/audio_engine.h"
-#include "sources/yandex/tracks.h"
 
 #include <QByteArray>
 #include <QFile>
@@ -52,7 +51,7 @@ QList<Core::Track> DemoTracks() {
     for (const auto& [name, seconds] : samples) {
         Core::Track track;
         const QString text = QString::fromUtf8(name);
-        track.key = {YandexSource::kSourceName, QString::number(id++)};
+        track.key = {QStringLiteral("demo"), QString::number(id++)};
         track.artists << text.section(QStringLiteral(" - "), 0, 0);
         track.title = text.section(QStringLiteral(" - "), 1);
         track.durationMs = seconds * 1000;

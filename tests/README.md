@@ -202,11 +202,12 @@ audio decoder and races that are not there. CI's GCC 13 has it. With GCC 11, lin
 
 ## Dependencies
 
-- `qiyaa_test_support`: a static library from `support/` (the mock server and the spec
-  readers). It PUBLIC-links Qt6::Core and Qt6::Network, and its PUBLIC include directory is
-  `tests/`, so the headers are `"support/…"`. It gets `QIYAA_SPEC_DIR` (the absolute path of
-  `spec/`) as a PRIVATE definition. Every `qiyaa_add_test` target links it. Only `library_test`,
-  `sources_test`, `failures_test`, `yandex_test`, `yandex_source_test` and `windows_test` use it. `mpris_test` is added by hand and does not link it.
+- `qiyaa_test_support`: a static library from `support/` (the mock server and the spec readers). It
+  PUBLIC-links Qt6::Core and Qt6::Network, and its PUBLIC include directory is `tests/`, so the
+  headers are `"support/…"`. It gets `QIYAA_SPEC_DIR` (the absolute path of `spec/`) as a PRIVATE
+  definition. Every `qiyaa_add_test` target links it. Only `library_test`, `sources_test`,
+  `failures_test`, `yandex_test`, `yandex_source_test` and `windows_test` use it. `mpris_test` is
+  added by hand and does not link it.
 - `qiyaa_test_yandex`: `support/yandex_json.cpp`. It PUBLIC-links `qiyaa_test_support` and
   `qiyaa_yandex`. Only `library_test`, `sources_test`, `yandex_test` and `yandex_source_test` link
   it.

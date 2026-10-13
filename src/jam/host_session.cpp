@@ -27,7 +27,7 @@ constexpr qint64 kMaxDurationMs = 86'400'000;
 
 const QStringList kGoneReasons = {QStringLiteral("room-not-found"), QStringLiteral("bad-secret")};
 
-const QRegularExpression& CatalogId() {
+const QRegularExpression& CatalogIdPattern() {
     static const QRegularExpression pattern(QStringLiteral("^[0-9A-Za-z_-]{1,64}$"));
     return pattern;
 }
@@ -62,12 +62,12 @@ QString Cut(const QString& text, int maximum) {
 }  // namespace
 
 std::optional<Track> JamTrackOf(const Yandex::Track& track) {
-    if (!CatalogId().match(track.id).hasMatch()) {
+    if (!CatalogIdPattern().match(track.id).hasMatch()) {
         return std::nullopt;
     }
     Track jamTrack;
     jamTrack.id = track.id;
-    jamTrack.albumId = CatalogId().match(track.albumId).hasMatch() ? track.albumId : QString();
+    jamTrack.albumId = CatalogIdPattern().match(track.albumId).hasMatch() ? track.albumId : QString();
     jamTrack.title = Cut(Clean(track.title), kMaxTitleLength);
     if (jamTrack.title.isEmpty()) {
         return std::nullopt;

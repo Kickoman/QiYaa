@@ -375,9 +375,9 @@ bundled skin, or the path picked in the file dialog.
 
 ### Menus
 
-`showMainMenu(globalPosition, track)` (a `const Core::Track*`) answers the main window's options button and right-click,
-and the playlist's ADD button and right-click. The track is the playlist row under the cursor
-for `trackMenuRequested`, and the current track for the other entry points.
+`showMainMenu(globalPosition, track)` (a `const Core::Track*`) answers the main window's options
+button and right-click, and the playlist's ADD button and right-click. The track is the playlist row
+under the cursor for `trackMenuRequested`, and the current track for the other entry points.
 `showSourcesMenu(globalPosition)` answers the main window's eject button with the current track.
 Both build a `QMenu` parented to the main window, open it with `popup()` and delete it on close.
 
@@ -593,8 +593,9 @@ timer, parented to the engine, appends 64 KiB per tick until the end of the file
 `finishData()` and deletes itself. It bypasses `Core::Player`: the playlist does not show the
 file.
 
-`DemoTracks()` returns nine fixed "Artist - Title" entries, Yandex tracks with the keys `1`..`9`
-and durations from 164 to 395 s. They have no cover and no audio.
+`DemoTracks()` returns nine fixed "Artist - Title" entries with the keys `demo`/`1`..`9` and
+durations from 164 to 395 s. No port answers for the source `demo`: they have no cover and no web
+page, the menus offer no like, dislike or "Open in the browser" for them, and they have no audio.
 
 **Traps:**
 - `StreamLocalFile` feeds the engine's *current* stream (the `appendData`/`finishData` overloads
