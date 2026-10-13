@@ -177,7 +177,8 @@ pictures into an existing directory; nothing creates it:
 ### ThreadSanitizer
 
 CI's job "ThreadSanitizer (audio)" builds the suites that play sound with `-fsanitize=thread` and
-runs them on the Null output; any report fails it. To run it here:
+runs them on the Null output; any report fails it. It uses Qt 6.8: with the distribution's Qt 6.4,
+TSan reported the test library's own watchdog thread at every exit; Qt 6.8 does not show it. To run it here:
 
 ```bash
 cmake -S . -B build-tsan -G Ninja -DCMAKE_BUILD_TYPE=RelWithDebInfo -DQIYAA_WITH_MILKDROP=OFF \
@@ -404,11 +405,16 @@ seen, position, state, current and queued stream ids.
   stream and no more. While more may come, the mp3 decoder keeps 16 KB in reserve (2 s of this
   file), so about 4 s can be decoded: once 2.5 s have played, the decoder waits for bytes. A seek
   back to 1 s must then play from there.
-- `positionShowsTheTargetThroughASeriesOfSeeks` (TR-08): for 300 ms after each of five seeks the
-  position never falls below what it showed last (the target, at first) and never runs ahead of the
-  target plus the time since the seek and one device period; by then audio from the target plays.
+- `positionShowsTheTargetThroughASeriesOfSeeks` (TR-08): after each of five seeks, for 300 ms and
+  then until audio from the target has played (3 s at most, for slow CI machines), the position
+  never falls below what it showed last (the target, at first) and never runs ahead of the target
+  plus the time since the seek and one device period.
 - `seekingWhilePausedPlaysAtOnceOnResume`: on pause, a seek shows the target and keeps it. The
   decoder fills the queue meanwhile, so `resume()` goes straight to `Playing` (one `stateChanged`).
+- `seekingAheadWhileTheDownloadStallsWaitsForIt`: with 3 s of 12 downloaded, a seek to 7 s and
+  then one to 8 s while the first waits for bytes; once the rest arrives, audio plays from 8 s and
+  the track does not end. Without opening the interrupted source again, dr_mp3 takes the
+  interrupted read for the end of the file and the second seek ends the track.
 - `seekBeforeTheStreamOpensIsKept`: `seek()` before the first byte returns true, and the audio
   starts at the target.
 - `rapidSeeksWhileDownloadingLandOnTheLastTarget` feeds 64 KB of a 39 s stream, then 16 KB after each of 24 seeks

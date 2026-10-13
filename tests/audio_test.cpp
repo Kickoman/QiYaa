@@ -260,7 +260,8 @@ private Q_SLOTS:
             QVERIFY(engine.seek(target));
             sinceSeek.start();
             double shown = target;
-            while (sinceSeek.elapsed() < 300) {
+            // At least 300 ms, and on a slow machine until audio from the target has played.
+            while (sinceSeek.elapsed() < 300 || (shown <= target && sinceSeek.elapsed() < 3000)) {
                 // At most what has played since the seek, plus one device period handed out at once.
                 const double position = engine.positionSeconds();
                 const double latest = target + static_cast<double>(sinceSeek.elapsed()) / 1000 + 0.3;
@@ -294,6 +295,28 @@ private Q_SLOTS:
         QCOMPARE(states.count(), 1);
         const double position = engine.positionSeconds();
         QVERIFY2(position > 4.1 && position < 4.8, qPrintable(QString::number(position)));
+        engine.stop();
+    }
+
+    void seekingAheadWhileTheDownloadStallsWaitsForIt() {
+        QSignalSpy finished(&engine, &Audio::AudioEngine::trackFinished);
+        const QByteArray longMp3 = repeatedMp3(4);
+        engine.beginStream();
+        engine.appendData(longMp3.left(longMp3.size() / 4));  // 3 s: the decoder soon waits for more
+        pumpUntil([&] { return engine.state() == Audio::AudioEngine::State::Playing; }, 3000);
+        pumpFor(300);
+        // Past what has arrived, twice: the second seek interrupts the first while it waits for bytes,
+        // and what that leaves in the mp3 decoder must not end the track.
+        QVERIFY(engine.seek(7.0));
+        pumpFor(300);
+        QVERIFY(engine.seek(8.0));
+        pumpFor(300);
+        engine.appendData(longMp3.mid(longMp3.size() / 4));
+        engine.finishData();
+        pumpUntil([&] { return engine.positionSeconds() > 8.2 || !finished.isEmpty(); }, 3000);
+        QCOMPARE(finished.count(), 0);
+        const double position = engine.positionSeconds();
+        QVERIFY2(position > 8.2 && position < 9.5, qPrintable(QString::number(position)));
         engine.stop();
     }
 

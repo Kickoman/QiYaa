@@ -281,8 +281,9 @@ stream gets `OpenFailed`, and `poll()` stops the engine and reports the error.
 
 Reads and byte seeks wait for bytes on the decoder's condition variable. A command that seeks or
 drops the source being read (`Start`, `Seek`, `Stop`, shutting down) makes them return
-`MA_CANCELLED` at once; such a source is sought again or dropped before it reads on, and an open
-cut short that way is tried again, not reported. So a seek into the downloaded part plays at once
+`MA_CANCELLED` at once. Such a source is opened again before it reads on (dr_mp3 takes the empty
+read for the end of the file, and a seek forwards would then end the track), and an open cut short
+that way is tried again, not reported. So a seek into the downloaded part plays at once
 while the download is stalled (TR-09). Commands are handled between blocks. While the queue is full
 or it waits for a successor, the decoder looks again every 10 ms (the callback wakes no one). It
 decodes ahead of playback by at most the queue, 2 s.

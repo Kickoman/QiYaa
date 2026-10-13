@@ -31,7 +31,8 @@ jobs:
       - run: python3 tools/check_readmes.py
 
   # The audio engine's threads under ThreadSanitizer: the suites that play sound, on the Null output.
-  # Qt itself is not instrumented; tests/tsan.supp may silence Qt's libraries, never our code.
+  # Qt itself is not instrumented; tests/tsan.supp may silence Qt's libraries, never our code. Qt 6.8:
+  # with Qt 6.4, TSan reported the test library's own watchdog thread at every exit.
   tsan:
     name: ThreadSanitizer (audio)
     runs-on: ubuntu-24.04
@@ -39,9 +40,14 @@ jobs:
       - uses: actions/checkout@v4
         with:
           submodules: true
+      - uses: jurplel/install-qt-action@v4
+        with:
+          version: '6.8.3'
+          arch: linux_gcc_64
+          cache: true
       - run: |
           sudo apt-get update
-          sudo apt-get install -y qt6-base-dev qt6-tools-dev qt6-l10n-tools libgl1-mesa-dev ninja-build
+          sudo apt-get install -y ninja-build libgl1-mesa-dev
           # TSan's shadow memory does not fit the kernel's default ASLR range on this image.
           sudo sysctl vm.mmap_rnd_bits=28
       - run: |

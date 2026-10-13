@@ -35,11 +35,7 @@ struct Decoder::Source {
         : owner(parent)
         , stream(id)
         , bytes(std::move(source)) { }
-    ~Source() {
-        if (opened) {
-            ma_decoder_uninit(&decoder);
-        }
-    }
+    ~Source() { close(); }
     Source(const Source&) = delete;
     Source& operator=(const Source&) = delete;
 
@@ -47,8 +43,9 @@ struct Decoder::Source {
     const uint64_t stream;
     const std::shared_ptr<ByteSource> bytes;
     uint64_t offset = 0;
-    // A read or seek gave way to a command: the decoder's state is unknown until the source is
-    // sought or dropped.
+    // A read gave way to a command. What miniaudio's decoder holds then is unknown (dr_mp3 takes the
+    // empty read for the end of the file, and only a seek backwards clears that), so the source is
+    // opened again before it reads on.
     bool interrupted = false;
     ma_decoder decoder{};
     bool opened = false;
@@ -99,6 +96,13 @@ struct Decoder::Source {
         }
         source.offset = static_cast<uint64_t>(target);
         return MA_SUCCESS;
+    }
+
+    void close() {
+        if (opened) {
+            ma_decoder_uninit(&decoder);
+            opened = false;
+        }
     }
 
     bool startsAsMp4() {
@@ -281,12 +285,15 @@ void Decoder::step() {
         }
         return;
     }
-    if (source.interrupted && !source.seekTo) {
-        source.seekTo = source.nextFrame;  // the command that interrupted it did not move it
+    if (source.interrupted) {
+        if (!source.seekTo) {
+            source.seekTo = source.nextFrame;  // the command that interrupted it did not move it
+        }
+        source.close();
+        return;
     }
     if (source.seekTo) {
         const int64_t target = *source.seekTo;
-        source.interrupted = false;
         const ma_result result = ma_decoder_seek_to_pcm_frame(&source.decoder, static_cast<ma_uint64>(target));
         if (source.interrupted) {
             return;
@@ -351,12 +358,10 @@ void Decoder::decodeBlock(Source& source) {
         return idle(kRecheck);
     }
     ma_uint64 framesRead = 0;
-    source.interrupted = false;
     const ma_result result =
         ma_decoder_read_pcm_frames(&source.decoder, block->samples.data(), kBlockFrames, &framesRead);
     if (source.interrupted) {
-        source.seekTo = source.nextFrame;  // what the decoder holds now is unknown; a command may move it
-        return;
+        return;  // not pushed: the source is opened again first
     }
     if (framesRead > 0) {
         block->generation = generation;
