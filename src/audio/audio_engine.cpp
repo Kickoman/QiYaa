@@ -25,6 +25,14 @@ namespace {
 constexpr ma_uint32 kChannels = 2;
 constexpr ma_uint32 kRingSeconds = 2;
 
+// The device callback must never block, so every atomic it touches has to be lock-free on every
+// platform we build for, not just usually.
+static_assert(
+    std::atomic<bool>::is_always_lock_free && std::atomic<int>::is_always_lock_free
+    && std::atomic<float>::is_always_lock_free && std::atomic<ma_uint64>::is_always_lock_free
+    && std::atomic<ma_int64>::is_always_lock_free
+);
+
 }  // namespace
 
 class StreamBuffer {

@@ -1,0 +1,10 @@
+# ThreadSanitizer suppressions for the CI job "ThreadSanitizer (audio)". Only for libraries that are
+# not built with -fsanitize=thread, never for QiYaa's own code.
+#
+# Qt hands work between its own threads (the network thread, posted events) with synchronisation
+# compiled into its libraries, which TSan does not see; it then reports the allocations, frees and
+# eventfd writes made on either side. These entries ignore what those libraries do themselves; every
+# access from QiYaa's code is still checked.
+called_from_lib:libglib-2.0.so
+called_from_lib:libQt6Core.so
+called_from_lib:libQt6Network.so

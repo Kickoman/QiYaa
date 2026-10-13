@@ -10,8 +10,8 @@ void VisTap::write(std::span<const float> stereoFrames) {
     uint32_t position = writePosition.load(std::memory_order_relaxed);
     for (size_t i = 0; i < frameCount; ++i, ++position) {
         const uint32_t index = position & (kSize - 1);
-        leftSamples[index] = stereoFrames[i * 2];
-        rightSamples[index] = stereoFrames[i * 2 + 1];
+        leftSamples[index].store(stereoFrames[i * 2], std::memory_order_relaxed);
+        rightSamples[index].store(stereoFrames[i * 2 + 1], std::memory_order_relaxed);
     }
     writePosition.store(position, std::memory_order_release);
 }
@@ -22,8 +22,8 @@ void VisTap::read(std::span<float> left, std::span<float> right) const {
     const uint32_t start = end - count;
     for (uint32_t i = 0; i < count; ++i) {
         const uint32_t index = (start + i) & (kSize - 1);
-        left[i] = leftSamples[index];
-        right[i] = rightSamples[index];
+        left[i] = leftSamples[index].load(std::memory_order_relaxed);
+        right[i] = rightSamples[index].load(std::memory_order_relaxed);
     }
 }
 
@@ -34,15 +34,10 @@ VisReadResult VisTap::readNew(uint32_t cursor, std::span<float> stereo) const {
     const uint32_t start = end - count;
     for (uint32_t i = 0; i < count; ++i) {
         const uint32_t index = (start + i) & (kSize - 1);
-        stereo[i * 2] = leftSamples[index];
-        stereo[i * 2 + 1] = rightSamples[index];
+        stereo[i * 2] = leftSamples[index].load(std::memory_order_relaxed);
+        stereo[i * 2 + 1] = rightSamples[index].load(std::memory_order_relaxed);
     }
     return {count, end};
-}
-
-void VisTap::clear() {
-    leftSamples.fill(0);
-    rightSamples.fill(0);
 }
 
 }  // namespace Audio

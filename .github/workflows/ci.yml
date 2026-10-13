@@ -30,6 +30,29 @@ jobs:
       - uses: actions/checkout@v4
       - run: python3 tools/check_readmes.py
 
+  # The audio engine's threads under ThreadSanitizer: the suites that play sound, on the Null output.
+  # Qt itself is not instrumented; tests/tsan.supp may silence Qt's libraries, never our code.
+  tsan:
+    name: ThreadSanitizer (audio)
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          submodules: true
+      - run: |
+          sudo apt-get update
+          sudo apt-get install -y qt6-base-dev qt6-tools-dev qt6-l10n-tools libgl1-mesa-dev ninja-build
+          # TSan's shadow memory does not fit the kernel's default ASLR range on this image.
+          sudo sysctl vm.mmap_rnd_bits=28
+      - run: |
+          cmake -S . -B build -G Ninja -DCMAKE_BUILD_TYPE=RelWithDebInfo -DQIYAA_WITH_MILKDROP=OFF \
+            -DCMAKE_C_FLAGS=-fsanitize=thread -DCMAKE_CXX_FLAGS=-fsanitize=thread \
+            -DCMAKE_EXE_LINKER_FLAGS=-fsanitize=thread
+          cmake --build build --target audio_test failures_test library_test sources_test
+      - run: ctest --test-dir build --output-on-failure -R '^(audio|failures|library|sources)_test$'
+        env:
+          TSAN_OPTIONS: halt_on_error=1 second_deadlock_stack=1 suppressions=${{ github.workspace }}/tests/tsan.supp
+
   build:
     name: ${{ matrix.name }}
     runs-on: ${{ matrix.os }}

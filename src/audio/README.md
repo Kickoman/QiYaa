@@ -634,13 +634,14 @@ public:
     // UI thread.
     VisReadResult readNew(uint32_t cursor, std::span<float> stereo) const;
     uint32_t position() const;                                   // frames written, wraps at 2^32
-    void clear();
 };
 ```
 
-- Two arrays of 4096 floats (left, right) and a free-running `std::atomic<uint32_t>` frame counter;
-  slot = counter & 4095. `write()` stores the samples, then the counter (release); readers load the
-  counter (acquire) and copy. Nothing is locked, and the arrays never move.
+- Two arrays of 4096 `std::atomic<float>` (left, right) and a free-running `std::atomic<uint32_t>`
+  frame counter; slot = counter & 4095. `write()` stores the samples (relaxed), then the counter
+  (release); readers load the counter (acquire) and copy. Nothing is locked, and the arrays never
+  move. `std::atomic_ref<float>` over plain floats would do the same, but libc++ has it only from
+  LLVM 19, and the macOS build is older.
 - `read()` copies the latest min(`left.size()`, `right.size()`, `kSize`) frames, oldest first.
   `readNew()` copies the frames written since `cursor`, at most `kSize` and at most `stereo.size() /
   2` (the newest ones), interleaved into `stereo`, and returns their number in `frames` and the
@@ -653,16 +654,14 @@ public:
   from `visCursor()`, so it does not replay what played while it was off.
 
 **Traps:**
-- Readers race with the writer on plain floats: a copy can mix old and new samples. That is a
-  data race in C++ terms (ThreadSanitizer can flag it); it cannot crash because the arrays never
-  move.
+- A copy can mix old and new samples when the writer laps the reader. Each sample is atomic, so
+  that is a torn picture, not a data race: ThreadSanitizer stays quiet.
 - One callback can write more than 4096 frames (a 100 ms period at 48 kHz is 4800); only the last
   4096 survive. A `readNew()` reader that falls more than 4096 frames behind loses the older ones
   silently.
 - The counter stops during pause, underruns, pending seeks and after a halted boundary: `read()`
   keeps returning the last frames, `readNew()` returns 0 frames.
 - Samples can exceed ±1 (equalizer boost) and do not follow the volume.
-- `clear()` is not safe while `write()` runs, and nothing calls it.
 
 ## `error.h`, `miniaudio_impl.c`
 

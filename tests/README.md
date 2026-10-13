@@ -24,7 +24,7 @@ is formatting (the clang-format check in `.github/workflows/ci.yml`).
 | `region_test.cpp` | `Skins::ParseRegionTxt` and `RegionFromPolygons`: sections, several polygons, degenerate and missing points, empty input |
 | `yandex_test.cpp` | Track-link signing (`BuildTrackUrl`), download variants and the best full mp3, `ParseDownloadInfo` and the signed link, `ApiClient::ParseTrack` and the cover URL, all on spec fixtures; `get-file-info` replies parsed or falling back, the signature and the encoded query of the spec's example, `IsUsable`, the quality names; `NormalizeToken` on five input shapes; with `QIYAA_YANDEX_TOKEN=<token>` it also gets an economy link from the real API, which fails once Yandex stops accepting the signing key |
 | `skin_test.cpp` | The built-in base skin, loading every bundled `:/skins/*.wsz`, and the `Skins::Error` messages |
-| `audio_test.cpp` | `Audio::AudioEngine` on the test mp3: streaming in chunks, pause, the decode-error message, seeks during download, the `Core::Player` polling timer, and gapless chaining of a queued stream; the test m4a playing with half of it downloaded |
+| `audio_test.cpp` | `Audio::AudioEngine` on the test mp3: streaming in chunks, pause, the decode-error message, seeks during download and into the downloaded part of a stalled download (TR-09), the `Core::Player` polling timer, and gapless chaining of a queued stream; the test m4a playing with half of it downloaded |
 | `mp4_aac_test.cpp` | `Audio::Mp4AacBackend` through an `ma_decoder` over memory: `IsMp4`, the rate, length, level and 440 Hz of the test m4a, seeking to the same samples as playing through, the end, a file cut short, an MP4 without its index; with `QIYAA_MP4_SAMPLE=<path>` it also decodes that file (a Yandex economy file kept outside the repository) |
 | `dsp_test.cpp` | EQ response and processing, the 17 built-in EQ presets, `.eqf` read/write, `EqualizerWindow::GraphCurve`, the FFT analyzer, spectrum and oscilloscope rendering; the reference vectors of `spec/dsp` (checks them, and writes them with `QIYAA_WRITE_DSP_VECTORS=1`) |
 | `library_test.cpp` | `Yandex::Library`/`ApiClient` against the mock server serving spec fixtures: request shapes and parsing for every source the menu offers, likes, waves, search with each kind of best result, errors, device login and wave feedback. Also `Core::Player` track events, preloading, endless sources, shuffle not applying in a wave, and repeat not replaying the only track of a wave (WAVE-12); the economy quality (QUAL-02 to QUAL-05): the request and its signature, the fallbacks, the network wait, the preload fetched again |
@@ -43,6 +43,7 @@ is formatting (the clang-format check in `.github/workflows/ci.yml`).
 | `translations_test.cpp` | The interface languages: every text of `translations/*.ts` translated with the placeholders of its source and the right number of plural forms, no English text saying "wave", the app starting in Belarusian or in the saved language, another language applied while it runs (a window title, a menu text), and the plural forms of Belarusian, Russian and English |
 | `mpris_test.cpp` | `Integrations::Mpris` over a session bus, driven by `gdbus` as an external client |
 | `milkdrop_test.cpp` | `Vis::MilkdropPresets`, preset switching and black-preset handling in `Ui::MilkdropWindow`; with OpenGL 3.3, projectM rendering, the black-picture detector and fullscreen |
+| `tsan.supp` | ThreadSanitizer suppressions for Qt's and GLib's own libraries (see **ThreadSanitizer**) |
 | `data/sine440_3s.mp3` | 3 s of a 440 Hz sine: MPEG-1 Layer III, 64 kbps, 44.1 kHz, stereo, ID3v2.4 tag, 24,494 bytes |
 | `data/sine440_3s_heaac.m4a` | The same sine as HE-AAC (SBR) 64 kbps, 44.1 kHz, stereo, in MP4 with `moov` before `mdat`, 25,818 bytes. Encoded by fdk-aac 2.0.3's `aac-enc -t 5 -r 64000` from a generated WAV (amplitude 0.5), muxed by `ffmpeg 4.4 -c copy -movflags +faststart -map_metadata -1 -fflags +bitexact`. Its AudioSpecificConfig signals SBR implicitly (AAC-LC at 22,050 Hz), unlike Yandex's files, which signal it explicitly |
 | `data/screen-2560x1440.json` | Offscreen-platform config: one screen `"qhd"`, 2560×1440 at (0, 0), logical DPI 96, device pixel ratio 1 |
@@ -160,8 +161,10 @@ pictures into an existing directory; nothing creates it:
 - `sine440_3s_heaac.m4a` feeds `mp4_aac_test`, `audio_test`'s MP4 case and the economy files of
   `library_test`. `mp4_aac_test` checks 44,100 Hz, a length of 3 to 3.2 s, an RMS of 0.25 to 0.45
   and 440 ± 3 Hz on it.
-  `audio_test` checks 44,100 Hz and 2 channels on it. `rapidSeeksWhileDownloadingLandOnTheLastTarget` joins 13
-  copies into a stream of about 39 s, which works because MP3 frames concatenate.
+  `audio_test` checks 44,100 Hz and 2 channels on it. Its longer streams (`repeatedMp3(n)`, up to
+  39 s) join copies of the mp3 without its ID3 tag and its LAME "Info" frame (`BareMp3Frames`):
+  the Info frame states the length, 3 s, and the mp3 decoder stops there, so whole copies joined
+  would still play for 3 s only.
 - `screen-2560x1440.json` is used only by `windows_test`.
 - `golden/` holds the seven PNGs of `screenshots_test` and the eleven `jam-*.png` of
   `jam_window_test` (the jam page on each built-in skin, and the start, search and offline pages
@@ -170,6 +173,23 @@ pictures into an existing directory; nothing creates it:
   and drawn at 8 px without antialiasing or hinting: the jam window's text is the system's PLEDIT
   font otherwise, which differs between systems. Recording writes here, into the source
   tree.
+
+### ThreadSanitizer
+
+CI's job "ThreadSanitizer (audio)" builds the suites that play sound with `-fsanitize=thread` and
+runs them on the Null output; any report fails it. To run it here:
+
+```bash
+cmake -S . -B build-tsan -G Ninja -DCMAKE_BUILD_TYPE=RelWithDebInfo -DQIYAA_WITH_MILKDROP=OFF \
+  -DCMAKE_C_FLAGS=-fsanitize=thread -DCMAKE_CXX_FLAGS=-fsanitize=thread -DCMAKE_EXE_LINKER_FLAGS=-fsanitize=thread
+cmake --build build-tsan --target audio_test failures_test library_test sources_test
+TSAN_OPTIONS="halt_on_error=1 suppressions=$PWD/tests/tsan.supp" \
+  ctest --test-dir build-tsan --output-on-failure -R '^(audio|failures|library|sources)_test$'
+```
+
+Qt is not instrumented, so the synchronisation inside it is invisible and its threads look racy;
+`tsan.supp` ignores what Qt's and GLib's libraries do themselves (`called_from_lib`). An entry
+that would hide an access from QiYaa's own code does not go there: such a report is a bug.
 
 ## Dependencies
 
@@ -374,8 +394,13 @@ finishedCount)` puts the engine's state into the failure messages of the chainin
 seen, position, state, current and queued stream ids.
 
 - `streamsInChunksAndPlays` feeds the file like a slow network, 4 KB every 10 ms.
-- `rapidSeeksWhileDownloadingLandOnTheLastTarget` feeds 64 KB, then 16 KB after each of 24 seeks (3 rounds of 8
-  targets, some past what has been downloaded). A final seek to 12 s must play from [12, 14) s.
+- `seekingIntoTheDownloadedPartPlaysAtOnceWhileTheDownloadStalls` (TR-09) feeds half of a 12 s
+  stream and no more. While more may come, the mp3 decoder keeps 16 KB in reserve (2 s of this
+  file), so about 4 s can be decoded: once 2.5 s have played, the decoder waits for bytes. A seek
+  back to 1 s must then play from there. The engine before #24 fails it (its decoder serves a seek
+  only after the next bytes arrive), so it is marked `QEXPECT_FAIL` until the rework.
+- `rapidSeeksWhileDownloadingLandOnTheLastTarget` feeds 64 KB of a 39 s stream, then 16 KB after each of 24 seeks
+  (3 rounds of 8 targets, some past what has been downloaded). A final seek to 12 s must play from [12, 14) s.
 - `playerPollsTheEngine`: nobody calls `engine.poll()`, so the `Core::Player`'s own timer must
   notice the end of the track.
 - `restartingWhileStreamingDoesNotHang`: five `beginStream()` calls 30 ms apart, mid-download, must not hang

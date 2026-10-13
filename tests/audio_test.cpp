@@ -18,6 +18,34 @@
 
 using Audio::AudioEngine;
 
+namespace {
+
+// The test mp3 without its ID3 tag and its LAME "Info" frame: copies of what is left join into one
+// longer stream. With the Info frame first, the mp3 decoder stops after the length it states (3 s).
+QByteArray BareMp3Frames(const QByteArray& file) {
+    const auto byte = [&](qsizetype index) { return static_cast<uchar>(file.at(index)); };
+    qsizetype offset = 0;
+    if (file.startsWith("ID3")) {
+        const qsizetype tagSize =
+            (byte(6) & 0x7f) << 21 | (byte(7) & 0x7f) << 14 | (byte(8) & 0x7f) << 7 | (byte(9) & 0x7f);
+        const qsizetype footer = (byte(5) & 0x10) ? 10 : 0;
+        offset = 10 + tagSize + footer;
+    }
+    // MPEG-1 Layer III: 144 * bitrate / rate bytes, one more with the padding bit.
+    constexpr int kKbps[] = {0, 32, 40, 48, 56, 64, 80, 96, 112, 128, 160, 192, 224, 256, 320, 0};
+    constexpr int kRates[] = {44'100, 48'000, 32'000, 0};
+    const uchar flags = byte(offset + 2);
+    const int rate = kRates[(flags >> 2) & 3];
+    const qsizetype frameSize = rate ? 144 * kKbps[flags >> 4] * 1000 / rate + ((flags >> 1) & 1) : 0;
+    const QByteArray firstFrame = file.mid(offset, frameSize);
+    if (firstFrame.contains("Info") || firstFrame.contains("Xing")) {
+        offset += frameSize;
+    }
+    return file.mid(offset);
+}
+
+}  // namespace
+
 class TestAudio : public QObject {
     Q_OBJECT
 private:
@@ -44,6 +72,9 @@ private:
             QTest::qWait(20);
         }
     }
+    void pumpFor(int ms) {
+        pumpUntil([] { return false; }, ms);
+    }
 
     Audio::AudioEngine::TStreamId startNearEnd(double at = 2.2) {
         const auto stream = engine.beginStream();
@@ -52,6 +83,16 @@ private:
         pumpUntil([&] { return engine.state() == Audio::AudioEngine::State::Playing; }, 3000);
         engine.seek(at);
         pumpUntil([&] { return engine.positionSeconds() >= at; }, 2000);
+        return stream;
+    }
+
+    // One stream of `times` × 3 s.
+    QByteArray repeatedMp3(int times) const {
+        const QByteArray frames = BareMp3Frames(mp3);
+        QByteArray stream;
+        for (int i = 0; i < times; ++i) {
+            stream += frames;
+        }
         return stream;
     }
 
@@ -154,11 +195,7 @@ private Q_SLOTS:
     }
 
     void rapidSeeksWhileDownloadingLandOnTheLastTarget() {
-        // ~39 s stream: the 3 s file 13 times over (MP3 frames concatenate).
-        QByteArray longMp3;
-        for (int i = 0; i < 13; ++i) {
-            longMp3 += mp3;
-        }
+        const QByteArray longMp3 = repeatedMp3(13);  // 39 s
         engine.beginStream();
         qsizetype fed = 0;
         auto feed = [&](qsizetype byteCount) {
@@ -186,6 +223,30 @@ private Q_SLOTS:
         const double position = engine.positionSeconds();
         QVERIFY2(position >= 12.0 && position < 14.0, qPrintable(QString::number(position)));
         engine.stop();
+    }
+
+    void seekingIntoTheDownloadedPartPlaysAtOnceWhileTheDownloadStalls() {  // TR-09
+        const QByteArray longMp3 = repeatedMp3(4);
+        engine.beginStream();
+        // 6 s of a 12 s stream, and then the download stalls. While more may come, the mp3 decoder
+        // keeps 16 KB in reserve (2 s of this 64 kbps file), so about 4 s can be decoded: by 2.5 s the
+        // decoder has used them all and waits for bytes.
+        engine.appendData(longMp3.left(longMp3.size() / 2));
+        pumpUntil([&] { return engine.state() == Audio::AudioEngine::State::Playing; }, 3000);
+        QCOMPARE(engine.state(), Audio::AudioEngine::State::Playing);
+        pumpUntil([&] { return engine.positionSeconds() >= 2.5; }, 4000);
+        QVERIFY2(engine.positionSeconds() >= 2.5, qPrintable(QString::number(engine.positionSeconds())));
+        QVERIFY(engine.seek(1.0));
+        pumpFor(300);
+        const double early = engine.positionSeconds();
+        pumpFor(300);
+        const double later = engine.positionSeconds();
+        engine.stop();
+        QEXPECT_FAIL("", "#24: the decoder serves the seek only after the next bytes arrive", Abort);
+        QVERIFY2(
+            later > early + 0.15 && later < 2.0,
+            qPrintable(QStringLiteral("%1 s, then %2 s").arg(early, 0, 'f', 2).arg(later, 0, 'f', 2))
+        );
     }
 
     void playerPollsTheEngine() {
