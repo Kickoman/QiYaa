@@ -1,10 +1,12 @@
 #include "audio/audio_engine.h"
 #include "core/jam_mode.h"
 #include "core/player.h"
+#include "core/track.h"
 #include "jam/codec.h"
 #include "jam/host_session.h"
 #include "jam/session_store.h"
 #include "sources/yandex/jam_wave.h"
+#include "sources/yandex/tracks.h"
 #include "support/jam_stub_server.h"
 #include "support/mock_http_server.h"
 #include "support/spec_fixtures.h"
@@ -124,8 +126,8 @@ Jam::Session StoredSession(QStringList outbox = {}) {
 
 QStringList Ids(const Core::Player& player) {
     QStringList ids;
-    for (const Yandex::Track& track : player.playlist()) {
-        ids << track.id;
+    for (const Core::Track& track : player.playlist()) {
+        ids << YandexSource::CatalogId(track.key);
     }
     return ids;
 }
@@ -592,13 +594,13 @@ private Q_SLOTS:
         track.id = QStringLiteral("44");
         track.title = QStringLiteral("D");
         track.artists = {QStringLiteral("Сплин")};
-        QVERIFY(stack.host.add(track));
+        QVERIFY(stack.host.add(YandexSource::TrackOf(track)));
         QTRY_VERIFY(!OfType<Jam::Add>(stack.sent()).empty());
         QCOMPARE(OfType<Jam::Add>(stack.sent()).back(), (Jam::Add{"r2", {}, Jam::JamTrackOf(track)}));
         Yandex::Track next;
         next.id = QStringLiteral("55");
         next.title = QStringLiteral("E");
-        QVERIFY(stack.host.playNext(next));
+        QVERIFY(stack.host.playNext(YandexSource::TrackOf(next)));
         QTRY_COMPARE(OfType<Jam::Add>(stack.sent()).size(), static_cast<size_t>(2));
         QVERIFY(OfType<Jam::Pin>(stack.sent()).empty());
         stack.state(1, {Item("i1", "11"), Item("i2", "44", kHostId), Item("i3", "55", kHostId)});
@@ -606,7 +608,7 @@ private Q_SLOTS:
         QCOMPARE(OfType<Jam::Pin>(stack.sent()).back(), (Jam::Pin{"r4", "i3"}));
         stack.state(2, {Item("i1", "11"), Item("i2", "44", kHostId), Item("i3", "55", kHostId)});
         QCOMPARE(OfType<Jam::Pin>(stack.sent()).size(), static_cast<size_t>(1));
-        QVERIFY(stack.host.playNext(track));
+        QVERIFY(stack.host.playNext(YandexSource::TrackOf(track)));
         QTRY_COMPARE(OfType<Jam::Pin>(stack.sent()).size(), static_cast<size_t>(2));
         QCOMPARE(OfType<Jam::Pin>(stack.sent()).back(), (Jam::Pin{"r5", "i2"}));
         QVERIFY(stack.host.remove(QStringLiteral("i1")));
@@ -670,7 +672,7 @@ private Q_SLOTS:
         Yandex::Track track;
         track.id = QStringLiteral("44");
         track.title = QStringLiteral("D");
-        QVERIFY(stack.host.playNext(track));
+        QVERIFY(stack.host.playNext(YandexSource::TrackOf(track)));
         QTRY_VERIFY(!OfType<Jam::Add>(stack.sent()).empty());
         stack.receive(Rejected(QStringLiteral("r2"), QStringLiteral("queue-limit")));
         QTRY_COMPARE(stack.refused.size(), 1);
@@ -678,6 +680,28 @@ private Q_SLOTS:
         stack.state(1, {Item("i2", "44", kHostId)});
         QTest::qWait(50);
         QVERIFY(OfType<Jam::Pin>(stack.sent()).empty());
+    }
+
+    void onlyAYandexTrackCrossesIntoTheJam() {
+        Core::Track local;
+        local.key = {QStringLiteral("local"), QStringLiteral("/music/a.mp3")};
+        local.title = QStringLiteral("A");
+        QVERIFY(!Jam::JamTrackOf(local));
+        Jam::Track jamTrack;
+        jamTrack.id = QStringLiteral("44");
+        jamTrack.albumId = QStringLiteral("7");
+        jamTrack.title = QStringLiteral("D");
+        jamTrack.artists = {QStringLiteral("Сплин")};
+        jamTrack.durationMs = 1'000;
+        jamTrack.coverUri = QStringLiteral("avatars.yandex.net/a/%%");
+        const Core::Track track = Jam::CoreTrackOf(jamTrack);
+        QCOMPARE(track.key.id, QStringLiteral("44:7"));
+        QVERIFY(track.available);
+        const std::optional<Jam::Track> back = Jam::JamTrackOf(track);
+        QVERIFY(back);
+        QCOMPARE(*back, jamTrack);
+        jamTrack.albumId.clear();
+        QCOMPARE(Jam::CoreTrackOf(jamTrack).key.id, QStringLiteral("44"));
     }
 
     void aJamTrackKeepsOnlyWhatTheProtocolTakes() {

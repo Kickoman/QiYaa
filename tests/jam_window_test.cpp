@@ -5,6 +5,7 @@
 #include "jam/host_session.h"
 #include "jam/session_store.h"
 #include "skins/skin.h"
+#include "sources/yandex/catalog.h"
 #include "sources/yandex/jam_wave.h"
 #include "support/jam_stub_server.h"
 #include "support/mock_http_server.h"
@@ -109,6 +110,7 @@ private:
         bool greeted = false;
         Audio::AudioEngine engine;
         Core::Player player;
+        YandexSource::Catalog catalog;
         Core::JamMode jam;
         Jam::HostSession host;
         Ui::JamWindow window;
@@ -116,9 +118,10 @@ private:
 
         Stack(Yandex::Library* library, const Skins::Skin* skin, const QFont& font)
             : player(library, &engine)
+            , catalog(&player, library)
             , jam(&player, YandexSource::JamWaves(library))
             , host(&jam, library, Jam::SessionStore(directory.filePath(QStringLiteral("jam.json"))), options())
-            , window(&host, library, skin)
+            , window(&host, &catalog, skin)
             , status(&window, &Ui::JamWindow::statusText) {
             window.setTextFont(font);
             window.setSizeSteps(QSize(1, 8));

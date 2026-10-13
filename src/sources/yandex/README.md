@@ -12,7 +12,7 @@ Yandex half of the jam's own vibe: the rotor session, its seeds and its feedback
 
 | File | Contains |
 |---|---|
-| `catalog.h/.cpp` | `Catalog`: playing a pick (likes, playlist, recommendations, artist, album, vibe or station, search) with a ticket each, the vibe's load-more and feedback callbacks, like and dislike by track ID |
+| `catalog.h/.cpp` | `Catalog`: playing a pick (likes, playlist, recommendations, artist, album, vibe or station, search) with a ticket each, the vibe's load-more and feedback callbacks, like and dislike by track key |
 | `jam_wave.h/.cpp` | `JamWave` (a `Core::JamWave`) and `JamWaves`, the factory `Core::JamMode` takes |
 | `source.h/.cpp` | `Source`, the `Core::TrackSource` of Yandex tracks: the cover and the web page |
 | `tracks.h/.cpp` | `kSourceName`, `KeyOf`, `TrackOf`, `TracksOf`, `YandexTrackOf`, `CatalogId`: `Core::Track` ↔ `Yandex::Track`; `WaveEventOf` |
@@ -22,10 +22,13 @@ Yandex half of the jam's own vibe: the rotor session, its seeds and its feedback
 - `qiyaa_sources_yandex` links PUBLIC `qiyaa_core`, `qiyaa_yandex` and `Qt6::Core`, nothing PRIVATE.
 - `jam`, `ui` and `app` link it ([docs/architecture.md](../../../docs/architecture.md#modules)).
 - It includes only `core/`, `yandex/` and its own folder.
+- `Yandex::Track` stays here, in the client and in the jam's protocol translation
+  (`jam/host_session`); everything else sees `Core::Track`.
 
 ```bash
 grep -rn --include='*.cpp' --include='*.h' '#include "' src/sources/yandex/ | grep -v '"\(core\|yandex\|sources/yandex\)/'   # must print nothing
 grep -rnw --include='*.cpp' --include='*.h' 'throw\|catch' src/sources/yandex/                                           # must print nothing
+grep -rlw --include='*.h' --include='*.cpp' --include='*.mm' 'Yandex::Track' src/ | grep -v '^src/\(yandex\|sources/yandex\)/\|^src/jam/host_session\.\(h\|cpp\)$'   # must print nothing
 ```
 
 ## `catalog.h`: `Catalog`
@@ -44,12 +47,19 @@ public:
     void playWave(const QStringList& seeds, const QString& title);        // vibes and stations
     void playMyWave();                                           // {kMyWaveSeed}, "My Vibe"
     void search(const QString& text);                            // "Search: <text>"
+    void searchTracks(const QString& text,                       // tracks only, for the jam window
+                      std::function<void(const QList<Core::Track>&, const Yandex::RequestError&)> callback);
 
-    void setLiked(const QString& trackId, bool liked);
-    void dislikeAndSkip(const QString& trackId);                 // skip only if the ID is current
+    bool owns(const Core::TrackKey& key) const;                  // a Yandex track
+    bool isLiked(const Core::TrackKey& key) const;
+    bool isCurrent(const Core::TrackKey& key) const;             // the same Yandex track as the current one
+    void setLiked(const Core::TrackKey& key, bool liked);
+    void dislikeAndSkip(const Core::TrackKey& key);              // skip only if it is current
 
     const QStringList& lastWaveSeeds() const;                    // what the wheel of vibes matches
     void setJamMode(const Core::JamMode* jam);                   // HOST-21
+Q_SIGNALS:
+    void likesChanged();                                         // Library::likesChanged
 };
 ```
 
@@ -78,9 +88,13 @@ The scenarios are [spec/player/sources.md](../../../spec/player/sources.md),
   maps each `TrackEvent` with `WaveEventOf` and sends it with the batch the track came in (TRK-04
   to TRK-06). `RadioStarted` is sent before `setQueue`, so before the first track's
   `trackStarted` (TRK-03). The seeds become `lastWaveSeeds()`.
-- **Likes**: `setLiked` and `dislikeAndSkip` call the `Library` and report in the status line;
-  `dislikeAndSkip` calls `Player::next()` at once only when `trackId` matches the current track,
-  which closes it with `Skip` (TRK-07). Disliking another track leaves playback alone, including
+- **Tracks** go to the `Player` as `Core::Track`s (`TracksOf`). The vibe's history, the batch of
+  each track and every like and dislike use the catalog id (`CatalogId`); the feedback's
+  `trackId` is `<id>:<albumId>` as before.
+- **Likes**: `setLiked` and `dislikeAndSkip` call the `Library` with the catalog id and report in
+  the status line; another source's key is never liked (`isLiked` is false, `owns` tells the menu).
+  `dislikeAndSkip` calls `Player::next()` at once only when the key is the current Yandex track
+  (`isCurrent`), which closes it with `Skip` (TRK-07). Disliking another track leaves playback alone, including
   when playback advances while a menu for the previous track is open.
 - **During a jam** (`setJamMode`): while the jam is on, every pick (likes, playlists, artists,
   albums, vibes, stations, search) leaves the queue alone and says
@@ -109,16 +123,17 @@ What `Core::JamMode` asks of the jam's vibe is in [src/core](../../core/README.m
 this is how Yandex answers it (spec/jam/host.md, HOST-11, HOST-13, HOST-16):
 
 - `start(seeds, seedsVersion, current, done)`: `Library::startWave` with `seeds`; without seeds
-  `track:<current id>`; without either it returns false and asks nothing. A reply with an error or
+  `track:<catalog id of current>` when the current track is a Yandex one; without either it
+  returns false and asks nothing. A reply with an error or
   without an available track opens no session and gives `done({})`. Otherwise the session, the
   station (the first seed) and `seedsVersion` are kept, `RadioStarted` goes out when `feedback`,
   and `done` gets the batch.
-- `more(done)`: `Library::moreWave` of the open session with the ids of `recent()`, the last
-  wave tracks of the jam's queue.
+- `more(done)`: `Library::moreWave` of the open session with the catalog ids of `recent()`, the
+  last wave tracks of the jam's queue. Both give `done` the batch as `Core::Track`s.
 - Every batch records, for each of its track ids, the session, station and batch it came in, so a
   track's feedback goes to its own session even after a new one started (TRK-08).
-- `trackEvent`: rotor feedback (`WaveEventOf`) for a track of this vibe only, and only when
-  `feedback`.
+- `trackEvent`: rotor feedback (`WaveEventOf`) for a track of this vibe only (found by catalog id),
+  and only when `feedback`.
 - `endSession()` forgets the session: the next load starts one. A reply still in flight records
   its tracks under the session as it is when the reply comes.
 - The library callbacks hold the `JamWave` (`shared_from_this`), as the `Player`'s event callback

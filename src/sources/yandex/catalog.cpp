@@ -14,6 +14,7 @@
 #include <algorithm>
 #include <functional>
 #include <memory>
+#include <optional>
 
 namespace YandexSource {
 
@@ -48,7 +49,7 @@ auto QueueLoader(Player* player, const QString& title, quint64 ticket) {
                 guardedPlayer, QCoreApplication::translate("YandexSource::Catalog", "%1: empty").arg(title)
             );
         }
-        guardedPlayer->setQueue(tracks, title, true);
+        guardedPlayer->setQueue(TracksOf(tracks), title, true);
     };
 }
 
@@ -60,14 +61,14 @@ struct WaveState {
 
 Player::TLoadMoreCallback
 WaveMore(QPointer<Player> player, Yandex::Library* library, std::shared_ptr<WaveState> state) {
-    return [player, library, state](std::function<void(const QList<Track>&)> done) {
+    return [player, library, state](std::function<void(const QList<Core::Track>&)> done) {
         if (!player) {
             return;
         }
         QStringList queue;
-        const QList<Track>& playlist = player->playlist();
+        const QList<Core::Track>& playlist = player->playlist();
         for (qsizetype i = std::max<qsizetype>(0, playlist.size() - kWaveHistory); i < playlist.size(); ++i) {
-            queue << playlist[i].id;
+            queue << CatalogId(playlist[i].key);
         }
         library->moreWave(
             state->session,
@@ -79,17 +80,22 @@ WaveMore(QPointer<Player> player, Yandex::Library* library, std::shared_ptr<Wave
                 for (const Track& track : nextBatch.tracks) {
                     state->batchOfTrack.insert(track.id, nextBatch.batchId);
                 }
-                done(nextBatch.tracks);
+                done(TracksOf(nextBatch.tracks));
             }
         );
     };
 }
 
 Player::TEventCallback WaveEvents(Yandex::Library* library, std::shared_ptr<WaveState> state) {
-    return [library, state](Player::TrackEvent event, const Track& track, double played) {
-        const Yandex::WaveEvent waveEvent = WaveEventOf(event);
+    return [library, state](Player::TrackEvent event, const Core::Track& track, double played) {
+        const std::optional<Track> yandexTrack = YandexTrackOf(track);
         library->waveFeedback(
-            state->session, state->station, state->batchOfTrack.value(track.id), waveEvent, &track, played
+            state->session,
+            state->station,
+            state->batchOfTrack.value(CatalogId(track.key)),
+            WaveEventOf(event),
+            yandexTrack ? &*yandexTrack : nullptr,
+            played
         );
     };
 }
@@ -99,7 +105,9 @@ Player::TEventCallback WaveEvents(Yandex::Library* library, std::shared_ptr<Wave
 Catalog::Catalog(Player* player, Yandex::Library* library, QObject* parent)
     : QObject(parent)
     , corePlayer(player)
-    , yandexLibrary(library) { }
+    , yandexLibrary(library) {
+    connect(library, &Yandex::Library::likesChanged, this, &Catalog::likesChanged);
+}
 
 void Catalog::showStatus(const QString& text) {
     ShowStatus(corePlayer, text);
@@ -130,7 +138,7 @@ void Catalog::playLikes(bool autoplay) {
         if (!HasAvailable(tracks)) {  // SRC-07, SRC-08
             return ShowStatus(guardedPlayer, tr("Liked: empty"));
         }
-        guardedPlayer->setQueue(tracks, tr("Liked"), autoplay);
+        guardedPlayer->setQueue(TracksOf(tracks), tr("Liked"), autoplay);
         ShowStatus(
             guardedPlayer, tr("Liked: %n track(s)", nullptr, static_cast<int>(guardedPlayer->playlist().size()))
         );
@@ -199,7 +207,7 @@ void Catalog::playWave(const QStringList& seeds, const QString& title) {
             }
             library->waveFeedback(state->session, state->station, batch.batchId, Yandex::WaveEvent::RadioStarted);
             guardedPlayer->setQueue(
-                batch.tracks, title, true, WaveMore(guardedPlayer, library, state), WaveEvents(library, state)
+                TracksOf(batch.tracks), title, true, WaveMore(guardedPlayer, library, state), WaveEvents(library, state)
             );
         }
     );
@@ -236,14 +244,36 @@ void Catalog::search(const QString& text) {
             if (!HasAvailable(result.tracks)) {  // SRC-12
                 return ShowStatus(guardedPlayer, tr("Nothing found"));
             }
-            guardedPlayer->setQueue(result.tracks, title, true);
+            guardedPlayer->setQueue(TracksOf(result.tracks), title, true);
         }
     );
 }
 
-void Catalog::setLiked(const QString& trackId, bool liked) {
+void Catalog::searchTracks(
+    const QString& text,
+    std::function<void(const QList<Core::Track>&, const Yandex::RequestError&)> callback
+) {
+    yandexLibrary->searchTracks(text, [callback](const QList<Track>& tracks, const Yandex::RequestError& error) {
+        callback(TracksOf(tracks), error);
+    });
+}
+
+bool Catalog::owns(const Core::TrackKey& key) const {
+    return key.source == kSourceName;
+}
+
+bool Catalog::isLiked(const Core::TrackKey& key) const {
+    return owns(key) && yandexLibrary->isLiked(CatalogId(key));
+}
+
+bool Catalog::isCurrent(const Core::TrackKey& key) const {
+    const Core::Track* current = corePlayer->currentTrack();
+    return current && owns(key) && CatalogId(current->key) == CatalogId(key);
+}
+
+void Catalog::setLiked(const Core::TrackKey& key, bool liked) {
     QPointer<Player> guardedPlayer(corePlayer);
-    yandexLibrary->setLiked(trackId, liked, [guardedPlayer, liked](bool, const QString& error) {
+    yandexLibrary->setLiked(CatalogId(key), liked, [guardedPlayer, liked](bool, const QString& error) {
         if (!guardedPlayer) {
             return;
         }
@@ -259,15 +289,15 @@ void Catalog::setLiked(const QString& trackId, bool liked) {
     });
 }
 
-void Catalog::dislikeAndSkip(const QString& trackId) {
+void Catalog::dislikeAndSkip(const Core::TrackKey& key) {
     QPointer<Player> guardedPlayer(corePlayer);
-    yandexLibrary->dislike(trackId, [guardedPlayer](bool, const QString& error) {
+    yandexLibrary->dislike(CatalogId(key), [guardedPlayer](bool, const QString& error) {
         if (!guardedPlayer) {
             return;
         }
         ShowStatus(guardedPlayer, error.isEmpty() ? tr("Disliked") : tr("Error: %1").arg(error));
     });
-    if (const auto* current = corePlayer->currentTrack(); current && current->id == trackId) {
+    if (isCurrent(key)) {
         corePlayer->next();
     }
 }

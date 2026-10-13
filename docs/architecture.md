@@ -25,11 +25,11 @@ audio, yandex, skins, telemetry  →  vis, core  →  sources/yandex  →  jam  
 | [src/skins](../src/skins/README.md) | `Skins` | Loads `.wsz` skins: sheets, `region.txt`, `pledit.txt`, `viscolor.txt`, bitmap text; sprite tables | Qt Gui | miniz |
 | [src/telemetry](../src/telemetry/README.md) | `Telemetry` | Usage statistics and crash reports ([spec/telemetry](../spec/telemetry/README.md)): the events kept on disk until the jam server takes them, the crash handler. Optional (`QIYAA_WITH_TELEMETRY`, on in the releases) | Qt Core, Network | Qt Gui; dbghelp (Windows) or dl |
 | [src/vis](../src/vis/README.md) | `Vis` | Spectrum, oscilloscope, FFT; Milkdrop through projectM in a `QOpenGLWindow` | Qt Gui (+ OpenGL) | audio, skins (+ projectM) |
-| [src/core](../src/core/README.md) | `Core` | `Player` (queue, transport, downloads, preload, track events), `JamMode` (the queue while hosting a jam) and `CoverCache` | audio, yandex, Qt Gui, Network | |
-| [src/sources/yandex](../src/sources/yandex/README.md) | `YandexSource` | Yandex Music as a source: `Catalog` (what a pick plays, wave callbacks, likes) and the jam's own vibe | core, yandex, Qt Core | |
-| [src/jam](../src/jam/README.md) | `Jam` | The jam: protocol messages and their JSON, the WebSocket connection to a jam server, the host's stored session, and `HostSession` (create, resume, the guests' search and checks, end). Optional (Qt WebSockets) | core, yandex, Qt Core, WebSockets | |
+| [src/core](../src/core/README.md) | `Core` | `Track` and `TrackKey` (a track of any source), `TrackSource` and `SourceRegistry` (what a source answers about its tracks), `Player` (queue, transport, downloads, preload, track events), `JamMode` (the queue while hosting a jam) and `CoverCache` | audio, yandex, Qt Gui, Network | |
+| [src/sources/yandex](../src/sources/yandex/README.md) | `YandexSource` | Yandex Music as a source: `Yandex::Track` ↔ `Core::Track`, its `TrackSource` (cover, web page), `Catalog` (what a pick plays, wave callbacks, likes) and the jam's own vibe | core, yandex, Qt Core | |
+| [src/jam](../src/jam/README.md) | `Jam` | The jam: protocol messages and their JSON, the WebSocket connection to a jam server, the host's stored session, and `HostSession` (create, resume, the guests' search and checks, end). Optional (Qt WebSockets) | core, yandex, Qt Core, WebSockets | sources/yandex |
 | [src/ui](../src/ui/README.md) | `Ui` | The skinned windows, snapping and docking, the Yandex menus, the login dialog, the jam window | audio, vis, Qt Widgets (+ jam) | core, skins, sources/yandex, yandex (+ qrcodegen) |
-| [src/integrations](../src/integrations/README.md) | `Integrations` | Media keys and system media panels: MPRIS (Linux), SMTC (Windows) or MediaPlayer (macOS) | Qt Gui (+ DBus) | audio, core, yandex |
+| [src/integrations](../src/integrations/README.md) | `Integrations` | Media keys and system media panels: MPRIS (Linux), SMTC (Windows) or MediaPlayer (macOS) | Qt Gui (+ DBus) | audio, core |
 | [src/app](../src/app/README.md) | `App` | `Application`: owns and wires everything, menus, shortcuts, settings, login, "Continue the jam?"; `main()` | audio, core, skins, sources/yandex, yandex | integrations, jam, ui, vis (+ telemetry) |
 
 Vendored code lives in `contrib/` (miniaudio, miniz, qrcodegen, minimp4, fdk-aac's decoder) and is
@@ -64,7 +64,7 @@ Ui (menu)  ──source──▶  Core::Player  ──resolveTrackUrl──▶  
 
 1. A menu item from `Ui::AddLibraryActions` calls `YandexSource::Catalog`, which asks
    `Yandex::Library` for a source (a playlist, the likes, a wave) and hands the tracks to
-   `Player::setQueue`. An endless source also gives a callback that fetches more tracks; for a
+   `Player::setQueue` as `Core::Track`s, keyed by source and the source's own id. An endless source also gives a callback that fetches more tracks; for a
    wave, `Catalog` also sends wave feedback from `Player`'s track events.
 2. `Player::playIndex` asks `ApiClient::resolveTrackUrl` for the link of the track's file in the
    chosen quality (a signed mp3 link, or AAC in MP4 at the economy quality), starts a stream in

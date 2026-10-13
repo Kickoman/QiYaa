@@ -1,7 +1,8 @@
 #pragma once
 
+#include "core/continuation.h"
 #include "core/player.h"
-#include "yandex/api_client.h"
+#include "core/track.h"
 
 #include <QList>
 #include <QObject>
@@ -17,7 +18,7 @@ namespace Core {
 
 struct JamEntry {
     QString itemId;
-    Yandex::Track track;
+    Track track;
     QString addedBy;
 };
 
@@ -34,7 +35,7 @@ struct JamPlayback {
     enum class Kind { Item, Wave, Idle };
     Kind kind = Kind::Idle;
     QString itemId;
-    std::optional<Yandex::Track> track;
+    std::optional<Track> track;
     qint64 positionMs = 0;
     bool paused = true;
     QUrl link;  // the current file, for guests who listen along (spec/jam/listen.md)
@@ -44,16 +45,11 @@ struct JamPlayback {
 inline constexpr int kJamPlayingReportMs = 10'000;
 inline constexpr int kJamWaveHistory = 5;
 
-class JamWave {
+class JamWave : public Continuation {
 public:
-    using TDone = std::function<void(const QList<Yandex::Track>& tracks)>;
-    using TRecent = std::function<QList<Yandex::Track>()>;
+    using TRecent = std::function<QList<Track>()>;
 
-    virtual ~JamWave() = default;
-
-    virtual bool start(const QStringList& seeds, int seedsVersion, const Yandex::Track* current, TDone done) = 0;
-    virtual void more(TDone done) = 0;
-    virtual void trackEvent(Player::TrackEvent event, const Yandex::Track& track, double playedSeconds) = 0;
+    virtual bool start(const QStringList& seeds, int seedsVersion, const Track* current, TDone done) = 0;
     virtual bool hasSession() const = 0;
     virtual int seedsVersion() const = 0;
     virtual void endSession() = 0;
@@ -86,8 +82,8 @@ Q_SIGNALS:
 
 private:
     void loadWave(JamWave::TDone done);
-    void appendWave(const QList<Yandex::Track>& tracks, JamWave::TDone done);
-    QList<Yandex::Track> recentWaveTracks() const;
+    void appendWave(const QList<Track>& tracks, JamWave::TDone done);
+    QList<Track> recentWaveTracks() const;
     void dropDeferredWave();
     void removeSlots(const QList<int>& indices);
     void insertItems(int at, const QList<JamEntry>& entries);

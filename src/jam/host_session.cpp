@@ -1,7 +1,9 @@
 #include "jam/host_session.h"
 
 #include "core/jam_mode.h"
+#include "core/track.h"
 #include "jam/codec.h"
+#include "sources/yandex/tracks.h"
 #include "yandex/api_client.h"
 #include "yandex/library.h"
 
@@ -83,16 +85,19 @@ std::optional<Track> JamTrackOf(const Yandex::Track& track) {
     return jamTrack;
 }
 
-Yandex::Track YandexTrackOf(const Track& track) {
-    Yandex::Track yandexTrack;
-    yandexTrack.id = track.id;
-    yandexTrack.albumId = track.albumId;
-    yandexTrack.title = track.title;
-    yandexTrack.artists = track.artists;
-    yandexTrack.durationMs = track.durationMs;
-    yandexTrack.coverUri = track.coverUri;
-    yandexTrack.available = true;
-    return yandexTrack;
+std::optional<Track> JamTrackOf(const Core::Track& track) {
+    const std::optional<Yandex::Track> yandexTrack = YandexSource::YandexTrackOf(track);
+    return yandexTrack ? JamTrackOf(*yandexTrack) : std::nullopt;
+}
+
+Core::Track CoreTrackOf(const Track& track) {
+    Core::Track coreTrack;
+    coreTrack.key = YandexSource::KeyOf(track.id, track.albumId);
+    coreTrack.title = track.title;
+    coreTrack.artists = track.artists;
+    coreTrack.durationMs = track.durationMs;
+    coreTrack.cover = {track.coverUri};
+    return coreTrack;
 }
 
 HostSession::HostSession(
@@ -224,15 +229,16 @@ void HostSession::end() {
     endLocally(HostEnd::ByHost);
 }
 
-bool HostSession::add(const Yandex::Track& track) {
+bool HostSession::add(const Core::Track& track) {
     const std::optional<Track> jamTrack = JamTrackOf(track);
     return jamTrack && request([&](const QString& id) { return Add{id, {}, *jamTrack}; });
 }
 
-bool HostSession::playNext(const Yandex::Track& track) {
+bool HostSession::playNext(const Core::Track& track) {
+    const QString catalogId = YandexSource::CatalogId(track.key);
     if (currentRoom) {
         for (const QueueItem& item : currentRoom->queue) {
-            if (item.track.id == track.id) {
+            if (item.track.id == catalogId) {
                 return pin(item.itemId);
             }
         }
@@ -242,7 +248,7 @@ bool HostSession::playNext(const Yandex::Track& track) {
     if (!jamTrack || !connected || !client.send(Add{id, {}, *jamTrack})) {
         return false;
     }
-    pendingPinTrack = track.id;
+    pendingPinTrack = catalogId;
     pendingPinAdd = id;
     return true;
 }
@@ -385,7 +391,7 @@ void HostSession::applyState(const State& message) {
     currentRoom = message.room;
     QList<Core::JamEntry> entries;
     for (const QueueItem& item : message.room.queue) {
-        entries << Core::JamEntry{item.itemId, YandexTrackOf(item.track), item.addedBy};
+        entries << Core::JamEntry{item.itemId, CoreTrackOf(item.track), item.addedBy};
     }
     jam->setQueue(entries, message.room.fallback.seeds, message.room.fallback.seedsVersion);
     if (pendingPinTrack.isEmpty()) {

@@ -1,6 +1,7 @@
 #include "app/application.h"
 #include "core/cover_cache.h"
 #include "core/jam_mode.h"
+#include "sources/yandex/tracks.h"
 #include "support/mock_http_server.h"
 #include "ui/equalizer_window.h"
 #include "ui/jam_window.h"
@@ -304,10 +305,10 @@ private Q_SLOTS:
     }
 
     void newQueueClearsSelection() {
-        application->player()->setQueue(MakeTracks(10), "A", false);
+        application->player()->setQueue(YandexSource::TracksOf(MakeTracks(10)), "A", false);
         Click(playlist, {60, 20 + 3 + 6});
         QCOMPARE(playlist->selection().size(), 1);
-        application->player()->setQueue(MakeTracks(10), "B", false);
+        application->player()->setQueue(YandexSource::TracksOf(MakeTracks(10)), "B", false);
         QVERIFY(playlist->selection().isEmpty());
         QKeyEvent deleteKey(QEvent::KeyPress, Qt::Key_Delete, Qt::NoModifier);
         QCoreApplication::sendEvent(playlist, &deleteKey);
@@ -315,7 +316,7 @@ private Q_SLOTS:
     }
 
     void shiftArrowsGrowTheRange() {
-        application->player()->setQueue(MakeTracks(10), "A", false);
+        application->player()->setQueue(YandexSource::TracksOf(MakeTracks(10)), "A", false);
         Click(playlist, {60, 20 + 3 + 6});  // row 0
         for (int i = 0; i < 3; ++i) {
             QKeyEvent down(QEvent::KeyPress, Qt::Key_Down, Qt::ShiftModifier);
@@ -351,7 +352,7 @@ private Q_SLOTS:
         Tests::MockHttpServer server;
         QVERIFY(connectLibrary(server));
         const QList<Track> tracks = MakeTracks(5);
-        application->player()->setQueue(tracks, "Test", false);
+        application->player()->setQueue(YandexSource::TracksOf(tracks), "Test", false);
         const QString likedId = actionText == QStringLiteral("Remove from Liked") ? tracks[2].id : tracks[0].id;
         application->library()->setLiked(likedId, true, [](bool, const QString&) {});
         QTRY_VERIFY(application->library()->isLiked(likedId));
@@ -385,7 +386,7 @@ private Q_SLOTS:
         Tests::MockHttpServer server;
         QVERIFY(connectLibrary(server));
         const QList<Track> tracks = MakeTracks(3);
-        application->player()->setQueue(tracks, "Test", false);
+        application->player()->setQueue(YandexSource::TracksOf(tracks), "Test", false);
         QDesktopServices::setUrlHandler(QStringLiteral("https"), this, "recordTrackUrl");
         QMenu* menu = OpenContextMenu(playlist, {60, 20 + 3 + 2 * 13 + 6});
         QVERIFY(menu);
@@ -393,18 +394,18 @@ private Q_SLOTS:
         QVERIFY(action);
         QList<Track> replacement = MakeTracks(1);
         replacement[0].id = QStringLiteral("999");
-        application->player()->setQueue(replacement, "Replacement", false);
+        application->player()->setQueue(YandexSource::TracksOf(replacement), "Replacement", false);
         action->trigger();
         menu->close();
         QCOMPARE(openedUrl, tracks[2].webUrl());
-        QCOMPARE(application->player()->currentTrack()->id, replacement[0].id);
+        QCOMPARE(application->player()->currentTrack()->key.id, replacement[0].id);
     }
 
     void playlistKeyboardMenuUsesTheFocusedRow() {
         Tests::MockHttpServer server;
         QVERIFY(connectLibrary(server));
         const QList<Track> tracks = MakeTracks(3);
-        application->player()->setQueue(tracks, "Test", false);
+        application->player()->setQueue(YandexSource::TracksOf(tracks), "Test", false);
         Click(playlist, {60, 20 + 3 + 2 * 13 + 6});
         QDesktopServices::setUrlHandler(QStringLiteral("https"), this, "recordTrackUrl");
         QMenu* menu = OpenContextMenu(playlist, {0, 0}, QContextMenuEvent::Keyboard);
@@ -421,7 +422,7 @@ private Q_SLOTS:
         Tests::MockHttpServer server;
         QVERIFY(connectLibrary(server));
         const QList<Track> tracks = MakeTracks(30);
-        application->player()->setQueue(tracks, "Test", false);
+        application->player()->setQueue(YandexSource::TracksOf(tracks), "Test", false);
         application->setScale(1.5);
         playlist->setScrollOffset(10);
         QDesktopServices::setUrlHandler(QStringLiteral("https"), this, "recordTrackUrl");
@@ -463,7 +464,7 @@ private Q_SLOTS:
         Tests::MockHttpServer server;
         QVERIFY(connectLibrary(server));
         const QList<Track> tracks = MakeTracks(3);
-        application->player()->setQueue(tracks, "Test", false);
+        application->player()->setQueue(YandexSource::TracksOf(tracks), "Test", false);
         Click(playlist, {60, 20 + 3 + 2 * 13 + 6});
         QDesktopServices::setUrlHandler(QStringLiteral("https"), this, "recordTrackUrl");
         QMenu* menu = nullptr;
@@ -497,7 +498,7 @@ private Q_SLOTS:
         Tests::MockHttpServer server;
         QVERIFY(connectLibrary(server));
         const QList<Track> tracks = MakeTracks(3);
-        application->player()->setQueue(tracks, "Test", false);
+        application->player()->setQueue(YandexSource::TracksOf(tracks), "Test", false);
         QMenu* menu = OpenContextMenu(playlist, {60, 20 + 3 + 6});
         QVERIFY(menu);
         QAction* action = FindAction(menu, QStringLiteral("Dislike (skip)"));
@@ -539,7 +540,7 @@ private Q_SLOTS:
     }
 
     void playlistShowsQueueAndPlaysOnDoubleClick() {
-        application->player()->setQueue(MakeTracks(50), "Test", false);
+        application->player()->setQueue(YandexSource::TracksOf(MakeTracks(50)), "Test", false);
         QCOMPARE(playlist->visibleRows(), 13);  // default height 232: (232-58)/13
         const QPoint thirdRow(60, 20 + 3 + 2 * 13 + 6);
         QCOMPARE(playlist->rowAt(thirdRow), 2);
@@ -557,7 +558,7 @@ private Q_SLOTS:
     }
 
     void playlistScrollsAndResizes() {
-        application->player()->setQueue(MakeTracks(50), "Test", false);
+        application->player()->setQueue(YandexSource::TracksOf(MakeTracks(50)), "Test", false);
         QWheelEvent wheel(
             QPointF(60, 60),
             playlist->mapToGlobal(QPointF(60, 60)),
@@ -578,7 +579,7 @@ private Q_SLOTS:
     }
 
     void deleteRemovesTheSelectedRows() {
-        application->player()->setQueue(MakeTracks(5), "Test", false);
+        application->player()->setQueue(YandexSource::TracksOf(MakeTracks(5)), "Test", false);
         Click(playlist, {60, 20 + 3 + 6});  // row 0
         QKeyEvent shiftDown(QEvent::KeyPress, Qt::Key_Down, Qt::ShiftModifier);
         QCoreApplication::sendEvent(playlist, &shiftDown);
@@ -654,7 +655,7 @@ private Q_SLOTS:
     }
 
     void shadeModesKeepTheStack() {
-        application->player()->setQueue(MakeTracks(3), "A", false);
+        application->player()->setQueue(YandexSource::TracksOf(MakeTracks(3)), "A", false);
         const QPoint mainPosition = main->pos();
         main->setShaded(true);
         QCOMPARE(main->size(), QSize(275, 14));
@@ -705,7 +706,7 @@ private Q_SLOTS:
     }
 
     void playlistScrollIsValidAfterUnshade() {
-        application->player()->setQueue(MakeTracks(40), "A", false);
+        application->player()->setQueue(YandexSource::TracksOf(MakeTracks(40)), "A", false);
         playlist->setShaded(true);
         application->player()->playIndex(39);  // scrolls the one-row shaded view to row 39
         playlist->setShaded(false);
@@ -728,7 +729,7 @@ private Q_SLOTS:
     }
 
     void nothingPlaysAfterShutDown() {
-        application->player()->setQueue(MakeTracks(3), "A", false);
+        application->player()->setQueue(YandexSource::TracksOf(MakeTracks(3)), "A", false);
         application->player()->shutDown();
         application->player()->playIndex(2);
         QCOMPARE(application->player()->currentIndex(), 0);
@@ -790,7 +791,7 @@ private Q_SLOTS:
     }
 
     void mainShadeTransportWorks() {
-        application->player()->setQueue(MakeTracks(3), "A", false);
+        application->player()->setQueue(YandexSource::TracksOf(MakeTracks(3)), "A", false);
         main->setShaded(true);
         Click(main, {204 + 4, 6});  // mini "next"
         QCOMPARE(application->player()->currentIndex(), 1);
@@ -814,7 +815,7 @@ private Q_SLOTS:
         tracks[0].albumTitle = QStringLiteral("Группа крови");
         tracks[0].year = 1988;
         tracks[0].coverUri = server.baseUrl() + QStringLiteral("/cover/%%");
-        application->player()->setQueue(tracks, "A", false);
+        application->player()->setQueue(YandexSource::TracksOf(tracks), "A", false);
         application->setNowPlayingVisible(true);
         Ui::NowPlayingWindow* nowPlaying = application->nowPlayingWindow();
         QVERIFY(QTest::qWaitForWindowExposed(nowPlaying));
@@ -857,7 +858,7 @@ private Q_SLOTS:
 
     void duringAJamThePlaylistDoesNotEditTheQueue() {  // HOST-21
 #ifdef QIYAA_HAVE_JAM
-        application->player()->setQueue(MakeTracks(3), "A", false);
+        application->player()->setQueue(YandexSource::TracksOf(MakeTracks(3)), "A", false);
         application->player()->playIndex(0);
         application->jam()->start(QStringLiteral("Джем"), false);
         QVERIFY(application->jam()->isActive());

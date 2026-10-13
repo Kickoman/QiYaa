@@ -1,6 +1,7 @@
 #include "app/offline_sources.h"
 
 #include "audio/audio_engine.h"
+#include "sources/yandex/tracks.h"
 
 #include <QByteArray>
 #include <QFile>
@@ -34,7 +35,7 @@ void StreamLocalFile(Audio::AudioEngine* engine, const QString& path) {
     timer->start(20);
 }
 
-QList<Yandex::Track> DemoTracks() {
+QList<Core::Track> DemoTracks() {
     const std::pair<const char*, int> samples[] = {
         {"Кино - Группа крови", 285},
         {"Земфира - Искала", 237},
@@ -46,12 +47,12 @@ QList<Yandex::Track> DemoTracks() {
         {"Кино - Кукушка", 395},
         {"Nirvana - Come As You Are", 219},
     };
-    QList<Yandex::Track> out;
+    QList<Core::Track> out;
     int id = 1;
     for (const auto& [name, seconds] : samples) {
-        Yandex::Track track;
+        Core::Track track;
         const QString text = QString::fromUtf8(name);
-        track.id = QString::number(id++);
+        track.key = {YandexSource::kSourceName, QString::number(id++)};
         track.artists << text.section(QStringLiteral(" - "), 0, 0);
         track.title = text.section(QStringLiteral(" - "), 1);
         track.durationMs = seconds * 1000;

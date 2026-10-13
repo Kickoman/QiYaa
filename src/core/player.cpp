@@ -15,8 +15,6 @@
 namespace Core {
 
 using Audio::AudioEngine;
-using Yandex::Track;
-
 namespace {
 constexpr int kLoadMoreWhenLeft = 2;
 constexpr int kDownloadTimeoutMs = 30'000;
@@ -113,7 +111,7 @@ Player::Player(Yandex::Library* library, Audio::AudioEngine* engine, QObject* pa
 }
 
 void Player::setQueue(
-    const QList<Yandex::Track>& tracks,
+    const QList<Track>& tracks,
     const QString& title,
     bool autoplay,
     TLoadMoreCallback more,
@@ -122,7 +120,7 @@ void Player::setQueue(
     stop();
     reportEvent = std::move(events);
     queuedTracks.clear();
-    for (const Yandex::Track& track : tracks) {
+    for (const Track& track : tracks) {
         if (track.available) {
             queuedTracks << track;
         }
@@ -147,9 +145,9 @@ void Player::setQueue(
     }
 }
 
-void Player::appendTracks(const QList<Yandex::Track>& tracks) {
+void Player::appendTracks(const QList<Track>& tracks) {
     bool added = false;
-    for (const Yandex::Track& track : tracks) {
+    for (const Track& track : tracks) {
         if (track.available) {
             queuedTracks << track;
             added = true;
@@ -166,9 +164,9 @@ void Player::appendTracks(const QList<Yandex::Track>& tracks) {
     refreshPreload();
 }
 
-void Player::insertTracks(int index, const QList<Yandex::Track>& tracks) {
-    QList<Yandex::Track> added;
-    for (const Yandex::Track& track : tracks) {
+void Player::insertTracks(int index, const QList<Track>& tracks) {
+    QList<Track> added;
+    for (const Track& track : tracks) {
         if (track.available) {
             added << track;
         }
@@ -237,7 +235,7 @@ void Player::clearQueue() {
     setQueue({}, {}, false);
 }
 
-const Yandex::Track* Player::currentTrack() const {
+const Track* Player::currentTrack() const {
     return (playingIndex >= 0 && playingIndex < queuedTracks.size()) ? &queuedTracks[playingIndex] : nullptr;
 }
 
@@ -428,7 +426,7 @@ void Player::maybeLoadMore() {
     loadingMore = true;
     const quint64 requestGeneration = queueGeneration;
     QPointer<Player> self(this);
-    loadMore([self, requestGeneration](const QList<Yandex::Track>& tracks) {
+    loadMore([self, requestGeneration](const QList<Track>& tracks) {
         if (!self || requestGeneration != self->queueGeneration) {
             return;
         }
@@ -469,9 +467,9 @@ void Player::playIndex(int index) {
     currentDownloaded = false;
     streamFailure.reset();
     currentBytes = 0;
-    const Yandex::Track track = queuedTracks[index];
+    const Track track = queuedTracks[index];
 
-    if (preload && preload->stream && preload->trackId == track.id && preload->stream == audioEngine->queuedStream()) {
+    if (preload && preload->stream && preload->key == track.key && preload->stream == audioEngine->queuedStream()) {
         const Preload upcoming = *std::exchange(preload, std::nullopt);
         streamId = audioEngine->playQueuedNow();
         download = upcoming.reply;
@@ -490,7 +488,7 @@ void Player::playIndex(int index) {
     maybeLoadMore();
 
     yandexLibrary->api()->resolveTrackUrl(
-        track.id,
+        track.key.id,
         audioQuality,
         [this, self = QPointer<Player>(this), requestGeneration, track](
             const Yandex::ResolvedUrl& link, const Yandex::RequestError& error
@@ -514,11 +512,11 @@ void Player::playIndex(int index) {
     );
 }
 
-void Player::trackStarted(const Yandex::Track& track, int bitrate) {
+void Player::trackStarted(const Track& track, int bitrate) {
     bitrateKbps = bitrate;
     if (queueRules.playReports) {
         yandexLibrary->api()->reportPlayStarted(
-            yandexLibrary->account(), track, QUuid::createUuid().toString(QUuid::WithoutBraces)
+            yandexLibrary->account(), track.key.id, track.durationMs, QUuid::createUuid().toString(QUuid::WithoutBraces)
         );
     }
     openTrack = track;
@@ -654,7 +652,7 @@ void Player::retryAfterNetwork() {
     const quint64 requestGeneration = ++generation;
     const Track track = *currentTrack();
     yandexLibrary->api()->resolveTrackUrl(
-        track.id,
+        track.key.id,
         audioQuality,
         [this, self = QPointer<Player>(this), requestGeneration, track](
             const Yandex::ResolvedUrl& link, const Yandex::RequestError& error
@@ -728,12 +726,12 @@ void Player::maybePreload() {
     }
     Preload upcoming;
     upcoming.index = index;
-    upcoming.trackId = queuedTracks[index].id;
+    upcoming.key = queuedTracks[index].key;
     upcoming.generation = ++preloadGeneration;
     preload = upcoming;
     QPointer<Player> self(this);
     yandexLibrary->api()->resolveTrackUrl(
-        upcoming.trackId,
+        upcoming.key.id,
         audioQuality,
         [self,
          requestGeneration = upcoming.generation](const Yandex::ResolvedUrl& link, const Yandex::RequestError& error) {
@@ -771,7 +769,7 @@ void Player::cancelPreload() {
 void Player::refreshPreload() {
     if (preload) {
         int index = -1;
-        if (const int nextIndex = pickNext(); nextIndex >= 0 && queuedTracks[nextIndex].id == preload->trackId) {
+        if (const int nextIndex = pickNext(); nextIndex >= 0 && queuedTracks[nextIndex].key == preload->key) {
             index = nextIndex;
         }
         if (index >= 0) {

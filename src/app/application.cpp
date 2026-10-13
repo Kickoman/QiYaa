@@ -7,6 +7,7 @@
 #include "jam/host_session.h"
 #include "skins/error.h"
 #include "sources/yandex/jam_wave.h"
+#include "sources/yandex/tracks.h"
 #include "telemetry/machine_id.h"
 #include "telemetry/reporter.h"
 #include "telemetry/system_info.h"
@@ -214,6 +215,7 @@ Application::Application(const Options& options, QObject* parent)
     , corePlayer(&yandexLibrary, &audioEngine)
     , catalog(&corePlayer, &yandexLibrary)
     , jamMode(&corePlayer, YandexSource::JamWaves(&yandexLibrary)) {
+    trackSources.add(YandexSource::kSourceName, &yandexSource);
     firstRun = settings.allKeys().isEmpty();
     // Before any window: they take their texts from the translation.
     const std::optional<Language> storedLanguage =
@@ -259,7 +261,9 @@ Application::Application(const Options& options, QObject* parent)
     coverCache = std::make_unique<Core::CoverCache>(
         networkManager, temporaryDirectory ? temporaryDirectory->filePath(QStringLiteral("covers")) : QString()
     );
-    nowPlayingWindowInstance = std::make_unique<Ui::NowPlayingWindow>(&corePlayer, coverCache.get(), currentSkin.get());
+    nowPlayingWindowInstance = std::make_unique<Ui::NowPlayingWindow>(
+        &corePlayer, &catalog, &trackSources, coverCache.get(), currentSkin.get()
+    );
     const std::initializer_list<QWidget*> windowsWithShortcuts{
         mainWindowInstance.get(),
         equalizerWindowInstance.get(),
@@ -481,7 +485,8 @@ Application::Application(const Options& options, QObject* parent)
             mainWindowInstance->activateWindow();
         };
         hooks.quit = [this] { quit(); };
-        mediaControls = std::make_unique<Integrations::MediaControls>(&corePlayer, coverCache.get(), hooks);
+        mediaControls =
+            std::make_unique<Integrations::MediaControls>(&corePlayer, &trackSources, coverCache.get(), hooks);
         connect(
             mainWindowInstance.get(),
             &Ui::MainWindow::volumeChanged,
@@ -600,7 +605,7 @@ void Application::setUpJam() {
     const Jam::SessionStore store(QFileInfo(settings.fileName()).dir().filePath(QStringLiteral("jam-session.json")));
     jamHostSession = std::make_unique<Jam::HostSession>(&jamMode, &yandexLibrary, store, std::move(options));
 
-    jamWindowInstance = std::make_unique<Ui::JamWindow>(jamHostSession.get(), &yandexLibrary, currentSkin.get());
+    jamWindowInstance = std::make_unique<Ui::JamWindow>(jamHostSession.get(), &catalog, currentSkin.get());
     installShortcuts(jamWindowInstance.get());
     jamWindowInstance->setSecondary();
     jamWindowInstance->setSizeSteps(settings.value(QStringLiteral("jamWindow/steps"), QSize(1, 8)).toSize());
@@ -1351,16 +1356,24 @@ void Application::fillWindowActions(QMenu* menu) {
 void Application::showSourcesMenu(QPoint globalPosition) {
     auto* menu = new QMenu(mainWindowInstance.get());
     menu->setAttribute(Qt::WA_DeleteOnClose);
-    Ui::AddLibraryActions(menu, &corePlayer, &catalog, corePlayer.currentTrack(), mainWindowInstance.get(), [this] {
-        login();
-    });
+    Ui::AddLibraryActions(
+        menu,
+        &corePlayer,
+        &catalog,
+        &trackSources,
+        corePlayer.currentTrack(),
+        mainWindowInstance.get(),
+        [this] { login(); }
+    );
     menu->popup(globalPosition);
 }
 
-void Application::showMainMenu(QPoint globalPosition, const Yandex::Track* track) {
+void Application::showMainMenu(QPoint globalPosition, const Core::Track* track) {
     auto* menu = new QMenu(mainWindowInstance.get());
     menu->setAttribute(Qt::WA_DeleteOnClose);
-    Ui::AddLibraryActions(menu, &corePlayer, &catalog, track, mainWindowInstance.get(), [this] { login(); });
+    Ui::AddLibraryActions(menu, &corePlayer, &catalog, &trackSources, track, mainWindowInstance.get(), [this] {
+        login();
+    });
     menu->addSeparator();
     addJamMenu(menu);
     fillWindowActions(menu);

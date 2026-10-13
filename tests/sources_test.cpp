@@ -1,6 +1,7 @@
 #include "audio/audio_engine.h"
 #include "core/player.h"
 #include "sources/yandex/catalog.h"
+#include "sources/yandex/tracks.h"
 #include "support/mock_http_server.h"
 #include "support/spec_fixtures.h"
 #include "yandex/api_client.h"
@@ -20,6 +21,8 @@
 #include <QTest>
 #include <QVariant>
 
+#include <optional>
+
 // YandexSource::Catalog against the spec/player scenarios, on the spec API fixtures. Each test names
 // the scenarios it checks.
 
@@ -35,11 +38,11 @@ QString ExpectedTitle(const QString& name, int index = 0) {
         .toString();
 }
 
-Yandex::Track KeptTrack() {
+Core::Track KeptTrack() {
     Yandex::Track track;
     track.id = QStringLiteral("1");
     track.title = QStringLiteral("Kept");
-    return track;
+    return YandexSource::TrackOf(track);
 }
 
 }  // namespace
@@ -281,12 +284,15 @@ private Q_SLOTS:
         QCOMPARE(newBody.value("seeds").toArray(), QJsonArray{"user:onyourwave"});  // WAVE-02
         QCOMPARE(stack.sources.lastWaveSeeds(), QStringList{"user:onyourwave"});
         // The unavailable track of the batch is left out (SRC-05).
-        for (const Yandex::Track& track : stack.player.playlist()) {
+        for (const Core::Track& track : stack.player.playlist()) {
             QVERIFY(track.available);
         }
 
-        const QString firstId = stack.player.playlist().first().id;
-        const QString firstTrack = firstId + u':' + stack.player.playlist().first().albumId;
+        const Core::TrackKey firstKey = stack.player.playlist().first().key;
+        const std::optional<Yandex::Track> firstQueued = YandexSource::YandexTrackOf(stack.player.playlist().first());
+        QVERIFY(firstQueued);
+        const QString firstId = firstQueued->id;
+        const QString firstTrack = firstId + u':' + firstQueued->albumId;
         QList<QJsonObject> events = feedbackEvents(before);
         QCOMPARE(events[0].value("type").toString(), QStringLiteral("radioStarted"));  // TRK-03
         QCOMPARE(events[0].value("batchId").toString(), first.value("batchId").toString());
@@ -304,7 +310,7 @@ private Q_SLOTS:
 
         // Dislike: the request, then a skip and the next track, from the new batch (TRK-07).
         QVERIFY(QTest::qWaitFor([&] { return stack.player.playlist().size() == 2; }, 3000));
-        stack.sources.dislikeAndSkip(firstId);
+        stack.sources.dislikeAndSkip(firstKey);
         QVERIFY(QTest::qWaitFor([&] { return feedbackEvents(before).size() >= 4; }, 5000));
         QCOMPARE(server.last("/users/42/dislikes/tracks/add-multiple")->formValue("track-ids"), firstId);
         events = feedbackEvents(before);

@@ -564,6 +564,8 @@ class NowPlayingWindow : public GenWindow {
 public:
     NowPlayingWindow(
         Core::Player* player,
+        YandexSource::Catalog* catalog,         // the liked state
+        const Core::SourceRegistry* sources,    // the cover and the web page
         Core::CoverCache* covers,
         const Skins::Skin* skin,
         QWidget* parent = nullptr
@@ -576,13 +578,14 @@ public:
 min(inset height, inset width / 2).
 
 Title `NOW PLAYING`. The content uses the PLEDIT.TXT colours and font (`Skin::playlistStyle()`).
-The cover is requested at 400 px (`Track::coverUrl(400)`) from `Core::CoverCache` and drawn with
+The cover is requested at 400 px (`SourceRegistry::coverUrl(track, 400)`) from `Core::CoverCache` and drawn with
 smooth scaling (a photo, unlike the sprites); until it arrives an outline stands in. Next to it: the
 title (bold 11 px, `current` colour), artists, album with year, duration and `♥ In Liked`
-for a liked track, each elided on the right; lines that do not fit are left out. Without a track:
-`Nothing is playing`. Repaints on `currentTrackChanged`, `Library::likesChanged` and
-`CoverCache::ready` for the current cover. A left click on the cover opens `Track::webUrl()` in the
-browser. `Player` and `CoverCache` are not owned.
+for a liked Yandex track (`Catalog::isLiked`), each elided on the right; lines that do not fit are
+left out. Without a track: `Nothing is playing`. Repaints on `currentTrackChanged`,
+`Catalog::likesChanged` and `CoverCache::ready` for the current cover. A left click on the cover
+opens the track's web page (`SourceRegistry::webPage`) in the browser; a track without one leaves
+the click to the window. None of the pointers is owned.
 
 **Traps:**
 - `CoverCache::get` starts the download as a side effect of painting; the repaint comes from
@@ -594,7 +597,7 @@ browser. `Player` and `CoverCache` are not owned.
 class JamWindow : public GenWindow {
 public:
     enum class Page { Jam, Search };
-    JamWindow(Jam::HostSession* host, Yandex::Library* library, const Skins::Skin* skin, QWidget* parent = nullptr);
+    JamWindow(Jam::HostSession* host, YandexSource::Catalog* catalog, const Skins::Skin* skin, QWidget* parent = nullptr);
     void setHostName(const QString& name);       // offered on the start page until the user types
     void setServerName(const QString& server);   // shown on the start page; empty: "not set"
     void setTextFont(const std::optional<QFont>& font);  // tests; default: PLEDIT.TXT font, 9 px
@@ -628,7 +631,7 @@ in the PLEDIT.TXT colours and font like the "Now playing" window. What it shows 
     guests": "Let in" / "Closed"); "Guests · N" with a row per guest (light for online, name,
     kind, "waiting: N", "Remove" to kick), scrolled by the wheel; at the bottom "End the jam",
     which asks "Press again to end" and ends on a second click within 3 s.
-  - **Search page:** a field and "Search" (Enter too), then `Library::searchTracks`: the available
+  - **Search page:** a field and "Search" (Enter too), then `Catalog::searchTracks`: the available
     tracks, 20 at most, each with "To the jam" (`add`) and "Next" (`playNext`), and their
     `statusText`; "Searching…", "Nothing found", "The search failed: …". A newer search replaces an
     older one's answer.
@@ -810,7 +813,8 @@ void AddLibraryActions(
     QMenu* menu,
     Core::Player* player,                 // library and current track for the dislike label
     YandexSource::Catalog* catalog,       // what every item plays
-    const Yandex::Track* track,            // target of like/dislike/open; nullptr disables them
+    const Core::SourceRegistry* sources,  // the target's web page
+    const Core::Track* track,             // target of like/dislike/open; nullptr disables them
     QWidget* dialogParent,                // parent of the search input dialog
     std::function<void()> loginRequested  // the only item when not logged in
 );
@@ -821,9 +825,11 @@ The menu only builds items; what they play, and every status they report, is
 
 - When logged in: My Vibe, Liked, submenus Wheel of vibes (the vibes around
   `Catalog::lastWaveSeeds()`), For you, Playlists (Listen / Similar tracks), Artists, Albums,
-  Stations (grouped by station type), Search…, then like/unlike, dislike and open in the browser;
-  those three are disabled without a target track. The target's ID, liked state and browser URL
-  are captured when the menu is built, so changing the queue does not retarget an open menu.
+  Stations (grouped by station type), Search…, then like/unlike, dislike and open in the browser.
+  Like and dislike are enabled only for a Yandex track (`Catalog::owns`), and open only for a track
+  with a web page (`SourceRegistry::webPage`); all three are disabled without a target track. The
+  target's key, liked state and browser URL are captured when the menu is built, so changing the
+  queue does not retarget an open menu.
   The dislike label includes "(skip)" when the target is current at menu creation; `Catalog`
   checks again when the action runs and skips only if that track is still current.
 - Submenus load their lists straight from `Yandex::Library` on their first `aboutToShow`, once per

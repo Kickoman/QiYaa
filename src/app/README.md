@@ -27,8 +27,9 @@ HTTP, OAuth and the token file format in [src/yandex](../yandex/README.md); `.ws
 `qiyaa_app` is built from `application.*`, `offline_sources.*` and `paths.*`:
 
 - PUBLIC `qiyaa_audio`, `qiyaa_core`, `qiyaa_skins`, `qiyaa_sources_yandex`, `qiyaa_yandex`:
-  `application.h` holds `Audio::AudioEngine`, `Core::Player`, `Core::JamMode`, `Skins::Skin`,
-  `YandexSource::Catalog`, `Yandex::ApiClient` and `Yandex::Library` by value.
+  `application.h` holds `Audio::AudioEngine`, `Core::Player`, `Core::SourceRegistry`,
+  `Core::JamMode`, `Skins::Skin`, `YandexSource::Source`, `YandexSource::Catalog`,
+  `Yandex::ApiClient` and `Yandex::Library` by value.
 - PRIVATE `qiyaa_integrations`, `qiyaa_ui`, `qiyaa_vis`: the header only forward-declares the
   windows, `Core::CoverCache` and `Integrations::MediaControls`.
 - PRIVATE `qiyaa_jam` in a jam build (`QIYAA_HAVE_JAM`), with the define
@@ -123,7 +124,9 @@ public:
 and every method must be called from the GUI thread (the audio engine's decoder thread and device
 callback stay inside [src/audio](../audio/README.md)). `Application` owns everything it wires:
 `QSettings`, the base and the current `Skins::Skin`, `ApiClient`, `Library`, `AudioEngine`,
-`Player`, `YandexSource::Catalog` and `JamMode` (with `YandexSource::JamWaves`) as members; its own `QNetworkAccessManager` unless
+`Player`, `YandexSource::Source`, `Core::SourceRegistry` (the Yandex source under `"yandex"`,
+added first in the constructor, before any window), `YandexSource::Catalog` and `JamMode` (with
+`YandexSource::JamWaves`) as members; its own `QNetworkAccessManager` unless
 `Options::network` lends one; the `Jam::HostSession`, `CoverCache`, `MediaControls`, the `Mpris`, `MacMediaControls` or
 `Smtc` object (held as `std::unique_ptr<QObject>`) and the windows (five, and the jam window in a
 jam build) through `std::unique_ptr`.
@@ -372,7 +375,7 @@ bundled skin, or the path picked in the file dialog.
 
 ### Menus
 
-`showMainMenu(globalPosition, track)` answers the main window's options button and right-click,
+`showMainMenu(globalPosition, track)` (a `const Core::Track*`) answers the main window's options button and right-click,
 and the playlist's ADD button and right-click. The track is the playlist row under the cursor
 for `trackMenuRequested`, and the current track for the other entry points.
 `showSourcesMenu(globalPosition)` answers the main window's eject button with the current track.
@@ -580,7 +583,7 @@ place.
 ```cpp
 namespace App {
 void StreamLocalFile(Audio::AudioEngine* engine, const QString& path);
-QList<Yandex::Track> DemoTracks();
+QList<Core::Track> DemoTracks();
 }
 ```
 
@@ -590,8 +593,8 @@ timer, parented to the engine, appends 64 KiB per tick until the end of the file
 `finishData()` and deletes itself. It bypasses `Core::Player`: the playlist does not show the
 file.
 
-`DemoTracks()` returns nine fixed "Artist - Title" entries with ids `1`..`9` and durations from
-164 to 395 s. They have no cover and no audio.
+`DemoTracks()` returns nine fixed "Artist - Title" entries, Yandex tracks with the keys `1`..`9`
+and durations from 164 to 395 s. They have no cover and no audio.
 
 **Traps:**
 - `StreamLocalFile` feeds the engine's *current* stream (the `appendData`/`finishData` overloads

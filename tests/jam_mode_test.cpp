@@ -3,6 +3,7 @@
 #include "core/player.h"
 #include "sources/yandex/catalog.h"
 #include "sources/yandex/jam_wave.h"
+#include "sources/yandex/tracks.h"
 #include "support/mock_http_server.h"
 #include "support/spec_fixtures.h"
 #include "yandex/api_client.h"
@@ -28,14 +29,14 @@ namespace {
 const QString kFirstWaveTrack = QStringLiteral("38634572");
 const QString kMoreWaveTrack = QStringLiteral("38634573");
 
-Yandex::Track TrackOf(const QString& id) {
+Core::Track TrackOf(const QString& id) {
     Yandex::Track track;
     track.id = id;
     track.albumId = QStringLiteral("1");
     track.title = QStringLiteral("T") + id;
     track.artists = {QStringLiteral("A")};
     track.durationMs = 3'000;
-    return track;
+    return YandexSource::TrackOf(track);
 }
 
 Core::JamEntry Item(const QString& itemId, const QString& trackId) {
@@ -44,8 +45,8 @@ Core::JamEntry Item(const QString& itemId, const QString& trackId) {
 
 QStringList Ids(const Core::Player& player) {
     QStringList ids;
-    for (const Yandex::Track& track : player.playlist()) {
-        ids << track.id;
+    for (const Core::Track& track : player.playlist()) {
+        ids << YandexSource::CatalogId(track.key);
     }
     return ids;
 }
@@ -156,7 +157,7 @@ private Q_SLOTS:
         QCOMPARE(stack.player.queueTitle(), QStringLiteral("Джем"));
         QVERIFY(!stack.player.rules().playReports);
         QCOMPARE(stack.lastPlayback().kind, Core::JamPlayback::Kind::Wave);
-        QCOMPARE(stack.lastPlayback().track->id, QStringLiteral("22"));
+        QCOMPARE(YandexSource::CatalogId(stack.lastPlayback().track->key), QStringLiteral("22"));
     }
 
     void theJamPartFollowsTheStateWithTheSmallestChange() {  // HOST-01 to HOST-04

@@ -15,7 +15,12 @@ class Skin;
 namespace Core {
 class CoverCache;
 class Player;
+class SourceRegistry;
 }  // namespace Core
+
+namespace YandexSource {
+class Catalog;
+}  // namespace YandexSource
 
 namespace Ui {
 
@@ -24,6 +29,8 @@ class NowPlayingWindow : public GenWindow {
 public:
     NowPlayingWindow(
         Core::Player* player,
+        YandexSource::Catalog* catalog,
+        const Core::SourceRegistry* sources,
         Core::CoverCache* covers,
         const Skins::Skin* skin,
         QWidget* parent = nullptr
@@ -38,6 +45,8 @@ protected:
 
 private:
     Core::Player* corePlayer;
+    YandexSource::Catalog* yandexCatalog;
+    const Core::SourceRegistry* trackSources;
     Core::CoverCache* coverCache;
 };
 

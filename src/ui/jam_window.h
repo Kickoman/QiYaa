@@ -1,7 +1,7 @@
 #pragma once
 
+#include "core/track.h"
 #include "ui/gen_window.h"
-#include "yandex/api_client.h"
 
 #include <QFont>
 #include <QImage>
@@ -21,9 +21,9 @@ namespace Jam {
 class HostSession;
 }  // namespace Jam
 
-namespace Yandex {
-class Library;
-}  // namespace Yandex
+namespace YandexSource {
+class Catalog;
+}  // namespace YandexSource
 
 namespace Ui {
 
@@ -35,7 +35,12 @@ class JamWindow : public GenWindow {
 public:
     enum class Page { Jam, Search };
 
-    JamWindow(Jam::HostSession* host, Yandex::Library* library, const Skins::Skin* skin, QWidget* parent = nullptr);
+    JamWindow(
+        Jam::HostSession* host,
+        YandexSource::Catalog* catalog,
+        const Skins::Skin* skin,
+        QWidget* parent = nullptr
+    );
 
     // The name the start page offers, until the user types another.
     void setHostName(const QString& name);
@@ -91,7 +96,7 @@ private:
     QFont textFont() const;
 
     Jam::HostSession* jamHost;
-    Yandex::Library* yandexLibrary;
+    YandexSource::Catalog* yandexCatalog;
     Page currentPage = Page::Jam;
     std::optional<QFont> fontOverride;
     Field focus = Field::None;
@@ -101,7 +106,7 @@ private:
     QString searchText;
     QString startProblem;
     Results results = Results::None;
-    QList<Yandex::Track> foundTracks;
+    QList<Core::Track> foundTracks;
     QString searchProblem;
     int searchRequest = 0;
     int listScroll = 0;

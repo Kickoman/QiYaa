@@ -4,6 +4,7 @@
 #include "yandex/library.h"
 
 #include <algorithm>
+#include <optional>
 #include <utility>
 
 namespace YandexSource {
@@ -15,10 +16,10 @@ JamWave::JamWave(Yandex::Library* library, bool feedback, TRecent recent)
     , sendsFeedback(feedback)
     , recentTracks(std::move(recent)) { }
 
-bool JamWave::start(const QStringList& seeds, int seedsVersion, const Track* current, TDone done) {
+bool JamWave::start(const QStringList& seeds, int seedsVersion, const Core::Track* current, TDone done) {
     QStringList startSeeds = seeds;
-    if (startSeeds.isEmpty() && current) {
-        startSeeds = {QStringLiteral("track:") + current->id};
+    if (startSeeds.isEmpty() && current && !CatalogId(current->key).isEmpty()) {
+        startSeeds = {QStringLiteral("track:") + CatalogId(current->key)};
     }
     if (startSeeds.isEmpty()) {
         return false;
@@ -45,7 +46,7 @@ bool JamWave::start(const QStringList& seeds, int seedsVersion, const Track* cur
                     self->session, self->station, batch.batchId, Yandex::WaveEvent::RadioStarted
                 );
             }
-            done(batch.tracks);
+            done(TracksOf(batch.tracks));
         }
     );
     return true;
@@ -53,8 +54,8 @@ bool JamWave::start(const QStringList& seeds, int seedsVersion, const Track* cur
 
 void JamWave::more(TDone done) {
     QStringList recent;
-    for (const Track& track : recentTracks()) {
-        recent << track.id;
+    for (const Core::Track& track : recentTracks()) {
+        recent << CatalogId(track.key);
     }
     std::shared_ptr<JamWave> self = shared_from_this();
     yandexLibrary->moreWave(session, recent, [self, done](const Yandex::WaveBatch& batch, const QString& error) {
@@ -62,20 +63,21 @@ void JamWave::more(TDone done) {
             qWarning("jam wave: %s", qPrintable(error));
         }
         self->addBatch(batch);
-        done(batch.tracks);
+        done(TracksOf(batch.tracks));
     });
 }
 
-void JamWave::trackEvent(Core::Player::TrackEvent event, const Track& track, double playedSeconds) {
-    if (!sendsFeedback) {
+void JamWave::trackEvent(Core::Player::TrackEvent event, const Core::Track& track, double playedSeconds) {
+    const std::optional<Track> yandexTrack = YandexTrackOf(track);
+    if (!sendsFeedback || !yandexTrack) {
         return;
     }
-    const auto origin = originOfTrack.constFind(track.id);
+    const auto origin = originOfTrack.constFind(yandexTrack->id);
     if (origin == originOfTrack.constEnd()) {
         return;
     }
     yandexLibrary->waveFeedback(
-        origin->session, origin->station, origin->batch, WaveEventOf(event), &track, playedSeconds
+        origin->session, origin->station, origin->batch, WaveEventOf(event), &*yandexTrack, playedSeconds
     );
 }
 

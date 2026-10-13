@@ -2,8 +2,10 @@
 
 #include "core/cover_cache.h"
 #include "core/player.h"
+#include "core/track.h"
+#include "core/track_source.h"
 #include "skins/skin.h"
-#include "yandex/library.h"
+#include "sources/yandex/catalog.h"
 
 #include <QColor>
 #include <QDesktopServices>
@@ -25,16 +27,25 @@ constexpr int kPadding = 4;
 constexpr int kCoverPixels = 400;
 }  // namespace
 
-NowPlayingWindow::
-    NowPlayingWindow(Core::Player* player, Core::CoverCache* covers, const Skins::Skin* skin, QWidget* parent)
+NowPlayingWindow::NowPlayingWindow(
+    Core::Player* player,
+    YandexSource::Catalog* catalog,
+    const Core::SourceRegistry* sources,
+    Core::CoverCache* covers,
+    const Skins::Skin* skin,
+    QWidget* parent
+)
     : GenWindow(skin, QStringLiteral("NOW PLAYING"), parent)
     , corePlayer(player)
+    , yandexCatalog(catalog)
+    , trackSources(sources)
     , coverCache(covers) {
     retranslate();
     connect(corePlayer, &Core::Player::currentTrackChanged, this, [this] { update(); });
-    connect(corePlayer->library(), &Yandex::Library::likesChanged, this, [this] { update(); });
+    connect(yandexCatalog, &YandexSource::Catalog::likesChanged, this, [this] { update(); });
     connect(coverCache, &Core::CoverCache::ready, this, [this](const QUrl& url) {
-        if (const auto* track = corePlayer->currentTrack(); track && track->coverUrl(kCoverPixels) == url) {
+        if (const auto* track = corePlayer->currentTrack();
+            track && trackSources->coverUrl(*track, kCoverPixels) == url) {
             update();
         }
     });
@@ -49,10 +60,10 @@ QRect NowPlayingWindow::coverRect() const {
 void NowPlayingWindow::paintContent(QPainter& painter, const QRect& area) {
     const Skins::Skin::PlaylistStyle& style = skin().playlistStyle();
     painter.fillRect(area, style.normalBackground);
-    const Yandex::Track* track = corePlayer->currentTrack();
+    const Core::Track* track = corePlayer->currentTrack();
 
     const QRect cover = coverRect();
-    const QImage image = track ? coverCache->get(track->coverUrl(kCoverPixels)) : QImage();
+    const QImage image = track ? coverCache->get(trackSources->coverUrl(*track, kCoverPixels)) : QImage();
     if (!image.isNull()) {
         painter.save();
         painter.setRenderHint(QPainter::SmoothPixmapTransform, true);
@@ -96,24 +107,28 @@ void NowPlayingWindow::paintContent(QPainter& painter, const QRect& area) {
     line(bold, style.current, track->title);
     line(font, style.normal, track->artists.join(QStringLiteral(", ")));
     y += 3;
-    QString album = track->albumTitle;
+    QString album = track->album;
     if (track->year > 0) {
         album += album.isEmpty() ? QString::number(track->year) : QStringLiteral(" (%1)").arg(track->year);
     }
     line(font, style.normal, album);
     const int seconds = static_cast<int>(track->durationMs / 1000);
     line(font, style.normal, QStringLiteral("%1:%2").arg(seconds / 60).arg(seconds % 60, 2, 10, QLatin1Char('0')));
-    if (corePlayer->library()->isLiked(track->id)) {
+    if (yandexCatalog->isLiked(track->key)) {
         line(font, style.current, tr("♥ In Liked"));
     }
 }
 
 bool NowPlayingWindow::contentMousePress(QPoint pos, Qt::MouseButton button) {
-    const Yandex::Track* track = corePlayer->currentTrack();
+    const Core::Track* track = corePlayer->currentTrack();
     if (button != Qt::LeftButton || !track || !coverRect().contains(pos)) {
         return false;
     }
-    QDesktopServices::openUrl(track->webUrl());
+    const QUrl page = trackSources->webPage(*track);
+    if (page.isEmpty()) {
+        return false;
+    }
+    QDesktopServices::openUrl(page);
     return true;
 }
 

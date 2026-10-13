@@ -1,8 +1,13 @@
 #pragma once
 
+#include "core/track.h"
+
+#include <QList>
 #include <QObject>
 #include <QString>
 #include <QStringList>
+
+#include <functional>
 
 namespace Core {
 class JamMode;
@@ -12,6 +17,7 @@ class Player;
 namespace Yandex {
 class Library;
 struct PlaylistReference;
+struct RequestError;
 }  // namespace Yandex
 
 namespace YandexSource {
@@ -31,13 +37,23 @@ public:
     void playWave(const QStringList& seeds, const QString& title);
     void playMyWave();
     void search(const QString& text);
+    void searchTracks(
+        const QString& text,
+        std::function<void(const QList<Core::Track>&, const Yandex::RequestError&)> callback
+    );
 
-    void setLiked(const QString& trackId, bool liked);
-    void dislikeAndSkip(const QString& trackId);
+    bool owns(const Core::TrackKey& key) const;
+    bool isLiked(const Core::TrackKey& key) const;
+    bool isCurrent(const Core::TrackKey& key) const;
+    void setLiked(const Core::TrackKey& key, bool liked);
+    void dislikeAndSkip(const Core::TrackKey& key);
 
     const QStringList& lastWaveSeeds() const { return waveSeeds; }
 
     void setJamMode(const Core::JamMode* jam) { jamMode = jam; }
+
+Q_SIGNALS:
+    void likesChanged();
 
 private:
     void showStatus(const QString& text);

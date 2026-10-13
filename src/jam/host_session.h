@@ -14,6 +14,7 @@
 namespace Core {
 class JamMode;
 struct JamPlayback;
+struct Track;
 }  // namespace Core
 
 namespace Yandex {
@@ -45,7 +46,8 @@ inline constexpr int kMaxSearchResults = 20;
 inline constexpr int kMaxOutboxEvents = 500;
 
 std::optional<Track> JamTrackOf(const Yandex::Track& track);
-Yandex::Track YandexTrackOf(const Track& track);
+std::optional<Track> JamTrackOf(const Core::Track& track);
+Core::Track CoreTrackOf(const Track& track);
 
 // The host's side of a jam (spec/jam/host.md): the Client to the server, the jam mode of the
 // queue, and the Library for the guests' search and checks.
@@ -74,8 +76,8 @@ public:
     void discardStored();
     void end();
 
-    bool add(const Yandex::Track& track);
-    bool playNext(const Yandex::Track& track);
+    bool add(const Core::Track& track);
+    bool playNext(const Core::Track& track);
     bool pin(const QString& itemId);
     bool remove(const QString& itemId);
     bool kick(const QString& publicId);

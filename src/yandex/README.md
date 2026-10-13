@@ -56,7 +56,6 @@ struct Track {
     QString genre;
     QString coverUri;      // "avatars.yandex.net/get-music-content/.../%%", %% = size
 
-    QString displayTitle() const;          // "Artist1, Artist2 - Title"
     QUrl webUrl() const;                   // the track's music.yandex.ru page
     QUrl coverUrl(int size = 400) const;   // empty when coverUri is empty
 };
@@ -102,7 +101,7 @@ public:
     void tracks(const QStringList& ids, TCallback<QList<Track>> callback);
     using TUrlCallback = std::function<void(const ResolvedUrl& link, const RequestError& error)>;
     void resolveTrackUrl(const QString& trackId, Quality quality, TUrlCallback callback);
-    void reportPlayStarted(const Account& account, const Track& track, const QString& playId);
+    void reportPlayStarted(const Account& account, const QString& trackId, qint64 durationMs, const QString& playId);
 
     int pendingPosts() const;   // POSTs whose reply has not finished
 
@@ -129,8 +128,7 @@ Q_SIGNALS:
   anything else as an empty string.
 - `Track::coverUrl(size)` replaces `%%` with `<size>x<size>` and prepends `https://` unless the URI
   already starts with `http`. `webUrl()` is `https://music.yandex.ru/album/<albumId>/track/<id>`, or
-  `https://music.yandex.ru/track/<id>` without an album. `displayTitle()` is the bare title when
-  there are no artists.
+  `https://music.yandex.ru/track/<id>` without an album.
 - `tracks(ids)` sends every id in one request; `Library::tracksByIds` does the chunking.
 - `resolveTrackUrl(trackId, quality)` uses the part of `trackId` before the first `:` (so
   `id:albumId` is accepted). At `Quality::Standard` it makes two GETs, described in
@@ -141,7 +139,8 @@ Q_SIGNALS:
   failure takes the standard path for the same track, with no error (QUAL-03), after
   `requestFailed` (so telemetry counts it: a revoked key shows up there) and a `qInfo` line.
 - `reportPlayStarted` posts `/play-audio` and reports a start only: the played and end positions
-  are always 0. It has no callback; a failure is logged with `qWarning` (`play-audio failed: …`).
+  are always 0. `trackId` is `<id>` or `<id>:<albumId>`, the form `resolveTrackUrl` takes: the part
+  before the first `:` is `track-id`, the rest `album-id` (empty without one). It has no callback; a failure is logged with `qWarning` (`play-audio failed: …`).
 - `pendingPosts()` counts `postForm` and `postJson` requests; GETs, including both requests of
   `resolveTrackUrl`, are not counted. A POST is uncounted only after its callback has run, so a
   POST sent from inside a callback is counted before the total can reach 0. `postsSettled()` fires
@@ -547,7 +546,7 @@ Replies are listed after unwrapping. `<uid>` is the logged-in account's uid.
 | `tracks`, `tracksByIds` | `POST /tracks/` form `track-ids=<id,id,…>`, `with-positions=false` | array of [track objects](#track-objects) |
 | `resolveTrackUrl` | `GET /tracks/<id>/download-info`, then see [below](#download-info-and-the-signed-link) | array of `{codec, bitrateInKbps, preview, downloadInfoUrl}` |
 | `resolveTrackUrl` at `Quality::Economy` | `GET /get-file-info` ([below](#get-file-info-the-economy-file)) | `{downloadInfo: {quality, codec, bitrate, transport, url, urls}}` |
-| `reportPlayStarted` | `POST /play-audio` form `track-id`, `album-id`, `from=web-own_tracks-track-track-main`, `play-id`, `uid`, `timestamp` and `client-now` (both the current UTC time, ISO 8601 with ms), `track-length-seconds` (`durationMs / 1000.0`, may have a fraction), `total-played-seconds=0`, `end-position-seconds=0` | none |
+| `reportPlayStarted` | `POST /play-audio` form `track-id`, `album-id` (both from `trackId`), `from=web-own_tracks-track-track-main`, `play-id`, `uid`, `timestamp` and `client-now` (both the current UTC time, ISO 8601 with ms), `track-length-seconds` (`durationMs / 1000.0`, may have a fraction), `total-played-seconds=0`, `end-position-seconds=0` | none |
 | `likedTracks` | `GET /users/<uid>/likes/tracks` | `library.tracks[].id`, then `tracksByIds` |
 | `userPlaylists` | `GET /users/<uid>/playlists/list` | array of playlists: `uid` (or `owner.uid`), `kind`, `title`, `trackCount`; entries without `kind` dropped |
 | `playlistTracks` | `GET /users/<ownerUid>/playlists/<kind>` | `tracks[]` items |
@@ -680,7 +679,8 @@ The error strings, all in English except the device-code expiry:
 - The login dialog (showing the code, the paste field, opening the browser) and the wave glue in
   the library menu (which batch a track came from, the last 5 queued ids sent to `moreWave`, the
   station being the first seed): [src/ui](../ui/README.md).
-- MPRIS and SMTC metadata built from `Track`: [src/integrations](../integrations/README.md).
+- `Core::Track`, built from `Track` by [src/sources/yandex](../sources/yandex/README.md), and the
+  MPRIS and SMTC metadata built from it: [src/integrations](../integrations/README.md).
 - Tests: `tests/yandex_test.cpp` (pure functions: signing, variant choice, tokens, track parsing)
   and `tests/library_test.cpp` (every endpoint against `Tests::MockHttpServer` in `tests/support/`).
   The responses they serve and what parsing must give are shared with the Android app in

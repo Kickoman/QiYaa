@@ -1,13 +1,14 @@
 #include "integrations/mpris.h"
 
 #include "core/player.h"
+#include "core/track.h"
 #include "integrations/media_controls.h"
-#include "yandex/api_client.h"
 
 #include <QCoreApplication>
 #include <QDBusConnection>
 #include <QDBusConnectionInterface>
 #include <QDBusMessage>
+#include <QLatin1Char>
 #include <QVariant>
 
 #include <algorithm>
@@ -19,14 +20,23 @@ namespace {
 const QString kObjectPath = QStringLiteral("/org/mpris/MediaPlayer2");
 const QString kPlayerInterface = QStringLiteral("org.mpris.MediaPlayer2.Player");
 
-QDBusObjectPath TrackPath(const QString& id) {
-    // Object paths allow [A-Za-z0-9_] only.
-    QString safe;
-    for (QChar character : id) {
-        safe += (character.isLetterOrNumber() && character.unicode() < 128) ? character : u'_';
+QString PathElement(const QString& text) {
+    if (text.isEmpty()) {
+        return QStringLiteral("_");
     }
+    QString element;
+    for (const char byte : text.toUtf8()) {
+        const auto value = static_cast<unsigned char>(byte);
+        const bool plain =
+            (value >= 'a' && value <= 'z') || (value >= 'A' && value <= 'Z') || (value >= '0' && value <= '9');
+        element += plain ? QString(QChar(value)) : QStringLiteral("_%1").arg(value, 2, 16, QLatin1Char('0'));
+    }
+    return element;
+}
+
+QDBusObjectPath TrackPath(const Core::TrackKey& key) {
     return QDBusObjectPath(
-        QStringLiteral("/io/github/kickoman/qiyaa/track/") + (safe.isEmpty() ? QStringLiteral("none") : safe)
+        QStringLiteral("/io/github/kickoman/qiyaa/track/") + PathElement(key.source) + u'/' + PathElement(key.id)
     );
 }
 }  // namespace
@@ -106,7 +116,7 @@ QString Mpris::playbackStatus() const {
 }
 
 QVariantMap Mpris::metadata() const {
-    const Yandex::Track* track = mediaControls->player()->currentTrack();
+    const Core::Track* track = mediaControls->player()->currentTrack();
     if (!track) {
         return {
             {QStringLiteral("mpris:trackid"),
@@ -114,14 +124,16 @@ QVariantMap Mpris::metadata() const {
         };
     }
     QVariantMap fields{
-        {QStringLiteral("mpris:trackid"), QVariant::fromValue(TrackPath(track->id))},
+        {QStringLiteral("mpris:trackid"), QVariant::fromValue(TrackPath(track->key))},
         {QStringLiteral("mpris:length"), static_cast<qlonglong>(track->durationMs) * 1000},
         {QStringLiteral("xesam:title"), track->title},
         {QStringLiteral("xesam:artist"), track->artists},
-        {QStringLiteral("xesam:url"), track->webUrl().toString()},
     };
-    if (!track->albumTitle.isEmpty()) {
-        fields.insert(QStringLiteral("xesam:album"), track->albumTitle);
+    if (const QUrl page = mediaControls->webPage(); !page.isEmpty()) {
+        fields.insert(QStringLiteral("xesam:url"), page.toString());
+    }
+    if (!track->album.isEmpty()) {
+        fields.insert(QStringLiteral("xesam:album"), track->album);
     }
     if (const QUrl artUrl = mediaControls->artUrl(); !artUrl.isEmpty()) {
         fields.insert(QStringLiteral("mpris:artUrl"), artUrl.toString());
@@ -235,7 +247,7 @@ void MprisPlayerAdaptor::Seek(qlonglong offsetUs) {
 
 void MprisPlayerAdaptor::SetPosition(const QDBusObjectPath& trackId, qlonglong positionUs) {
     const auto* track = mpris->controls()->player()->currentTrack();
-    if (!canSeek() || !track || trackId != TrackPath(track->id)) {
+    if (!canSeek() || !track || trackId != TrackPath(track->key)) {
         return;
     }
     if (positionUs < 0 || positionUs > static_cast<qlonglong>(track->durationMs) * 1000) {

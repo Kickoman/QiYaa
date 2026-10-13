@@ -7,11 +7,9 @@ class QWidget;
 
 namespace Core {
 class Player;
-}  // namespace Core
-
-namespace Yandex {
+class SourceRegistry;
 struct Track;
-}  // namespace Yandex
+}  // namespace Core
 
 namespace YandexSource {
 class Catalog;
@@ -23,7 +21,8 @@ void AddLibraryActions(
     QMenu* menu,
     Core::Player* player,
     YandexSource::Catalog* catalog,
-    const Yandex::Track* track,
+    const Core::SourceRegistry* sources,
+    const Core::Track* track,
     QWidget* dialogParent,
     std::function<void()> loginRequested
 );

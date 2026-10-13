@@ -2,6 +2,7 @@
 #include "jam/client.h"
 #include "jam/codec.h"
 #include "jam/host_session.h"
+#include "sources/yandex/tracks.h"
 #include "support/mock_http_server.h"
 
 #include <QFile>
@@ -182,7 +183,9 @@ private Q_SLOTS:
         QVERIFY(guest.waitFor<Jam::Ack>([](const Jam::Ack& ack) { return ack.id == QStringLiteral("g3"); }));
 
         Core::Player* player = application->player();
-        QTRY_VERIFY_WITH_TIMEOUT(player->currentTrack() && player->currentTrack()->id == kTrack, 15'000);
+        QTRY_VERIFY_WITH_TIMEOUT(
+            player->currentTrack() && YandexSource::CatalogId(player->currentTrack()->key) == kTrack, 15'000
+        );
         QTRY_COMPARE_WITH_TIMEOUT(application->engine()->state(), Audio::AudioEngine::State::Playing, 15'000);
         const auto playing = guest.waitFor<Jam::State>([](const Jam::State& state) {
             const Jam::NowPlaying& now = state.room.nowPlaying;

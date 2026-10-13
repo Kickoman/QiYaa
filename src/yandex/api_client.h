@@ -37,7 +37,6 @@ struct Track {
     QString genre;
     QString coverUri;
 
-    QString displayTitle() const;
     QUrl webUrl() const;
     QUrl coverUrl(int size = 400) const;
 };
@@ -92,7 +91,7 @@ public:
     void accountStatus(TCallback<Account> callback);
     void tracks(const QStringList& ids, TCallback<QList<Track>> callback);
     void resolveTrackUrl(const QString& trackId, Quality quality, TUrlCallback callback);
-    void reportPlayStarted(const Account& account, const Track& track, const QString& playId);
+    void reportPlayStarted(const Account& account, const QString& trackId, qint64 durationMs, const QString& playId);
 
     int pendingPosts() const { return pendingPostCount; }
 

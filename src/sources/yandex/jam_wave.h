@@ -18,9 +18,9 @@ class JamWave : public Core::JamWave, public std::enable_shared_from_this<JamWav
 public:
     JamWave(Yandex::Library* library, bool feedback, TRecent recent);
 
-    bool start(const QStringList& seeds, int seedsVersion, const Yandex::Track* current, TDone done) override;
+    bool start(const QStringList& seeds, int seedsVersion, const Core::Track* current, TDone done) override;
     void more(TDone done) override;
-    void trackEvent(Core::Player::TrackEvent event, const Yandex::Track& track, double playedSeconds) override;
+    void trackEvent(Core::Player::TrackEvent event, const Core::Track& track, double playedSeconds) override;
     bool hasSession() const override { return !session.isEmpty(); }
     int seedsVersion() const override { return sessionSeedsVersion; }
     void endSession() override { session.clear(); }

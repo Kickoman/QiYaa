@@ -8,6 +8,7 @@
 namespace Core {
 class CoverCache;
 class Player;
+class SourceRegistry;
 }  // namespace Core
 
 namespace Integrations {
@@ -22,7 +23,13 @@ public:
         std::function<void()> quit;
     };
 
-    MediaControls(Core::Player* player, Core::CoverCache* covers, Hooks hooks, QObject* parent = nullptr);
+    MediaControls(
+        Core::Player* player,
+        const Core::SourceRegistry* sources,
+        Core::CoverCache* covers,
+        Hooks hooks,
+        QObject* parent = nullptr
+    );
 
     Core::Player* player() const { return corePlayer; }
     const Hooks& hooks() const { return hookFunctions; }
@@ -40,6 +47,7 @@ public:
     Status status() const;
     QUrl artUrl() const;
     QUrl remoteArtUrl() const;
+    QUrl webPage() const;
 
 Q_SIGNALS:
     void trackChanged();
@@ -51,6 +59,7 @@ Q_SIGNALS:
 
 private:
     Core::Player* corePlayer;
+    const Core::SourceRegistry* trackSources;
     Core::CoverCache* coverCache;
     Hooks hookFunctions;
 };

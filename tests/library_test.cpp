@@ -1,5 +1,7 @@
 #include "audio/audio_engine.h"
 #include "core/player.h"
+#include "core/track.h"
+#include "sources/yandex/tracks.h"
 #include "support/mock_http_server.h"
 #include "support/spec_fixtures.h"
 #include "support/yandex_json.h"
@@ -480,13 +482,10 @@ private Q_SLOTS:
         );
         server.json("GET", "/dl", J("{'host':'127.0.0.1:1','path':'/p','ts':'1','s':'s'}"));
         server.fixture("POST", "/play-audio", "play-audio/ok");
-        QList<Yandex::Track> tracks;
-        for (int i = 1; i <= 2; ++i) {
-            tracks << Yandex::ApiClient::ParseTrack(QJsonDocument::fromJson(TrackJson(i, "t")).object());
-        }
+        const QList<Core::Track> tracks = NumberedTracks({1, 2});
         QStringList log;
-        const auto record = [&](Core::Player::TrackEvent event, const Yandex::Track& track, double) {
-            log << QStringLiteral("%1:%2").arg(static_cast<int>(event)).arg(track.id);
+        const auto record = [&](Core::Player::TrackEvent event, const Core::Track& track, double) {
+            log << QStringLiteral("%1:%2").arg(static_cast<int>(event)).arg(track.key.id);
         };
         player.setQueue(tracks, "W", false, {}, record);
         player.playIndex(0);
@@ -531,12 +530,12 @@ private:
         QFile file(QStringLiteral(QIYAA_TEST_DATA "/sine440_3s_heaac.m4a"));
         return file.open(QIODevice::ReadOnly) ? file.readAll() : QByteArray();
     }
-    static QList<Yandex::Track> NumberedTracks(const QList<int>& ids) {
+    static QList<Core::Track> NumberedTracks(const QList<int>& ids) {
         QList<Yandex::Track> tracks;
         for (int id : ids) {
             tracks << Yandex::ApiClient::ParseTrack(QJsonDocument::fromJson(TrackJson(id, "t")).object());
         }
-        return tracks;
+        return YandexSource::TracksOf(tracks);
     }
 
 private Q_SLOTS:
@@ -551,8 +550,8 @@ private Q_SLOTS:
             "A",
             false,
             {},
-            [&](Core::Player::TrackEvent event, const Yandex::Track& track, double) {
-                log << QStringLiteral("%1:%2").arg(static_cast<int>(event)).arg(track.id);
+            [&](Core::Player::TrackEvent event, const Core::Track& track, double) {
+                log << QStringLiteral("%1:%2").arg(static_cast<int>(event)).arg(track.key.id);
             }
         );
         QSignalSpy advanced(&playback.engine, &Audio::AudioEngine::trackAdvanced);
@@ -599,7 +598,7 @@ private Q_SLOTS:
         QSignalSpy advanced(&playback.engine, &Audio::AudioEngine::trackAdvanced);
         QVERIFY(playback.player.seekTo(2.4));
         QVERIFY(advanced.wait(4000));
-        QCOMPARE(playback.player.currentTrack()->id, QStringLiteral("23"));
+        QCOMPARE(playback.player.currentTrack()->key.id, QStringLiteral("23"));
         playback.player.stop();
     }
 
@@ -713,7 +712,7 @@ private Q_SLOTS:
         QSignalSpy advanced(&playback.engine, &Audio::AudioEngine::trackAdvanced);
         QVERIFY(playback.player.seekTo(2.4));
         QVERIFY(advanced.wait(4000));
-        QCOMPARE(playback.player.currentTrack()->id, QStringLiteral("52"));
+        QCOMPARE(playback.player.currentTrack()->key.id, QStringLiteral("52"));
         QCOMPARE(playback.player.currentBitrate(), 64);
         playback.player.stop();
     }
@@ -721,15 +720,18 @@ private Q_SLOTS:
     void playerAsksEndlessSourceForMore() {
         Audio::AudioEngine engine;  // not initialised: nothing actually plays
         Core::Player player(&library, &engine);
-        QList<Yandex::Track> batch;
-        for (int i = 0; i < 3; ++i) {
-            batch << Yandex::ApiClient::ParseTrack(QJsonDocument::fromJson(TrackJson(i + 1, "t")).object());
-        }
         int asked = 0;
-        player.setQueue(batch, "Wave", false, [&](std::function<void(const QList<Yandex::Track>&)> done) {
-            ++asked;
-            done({Yandex::ApiClient::ParseTrack(QJsonDocument::fromJson(TrackJson(99, "more")).object())});
-        });
+        player.setQueue(
+            NumberedTracks({1, 2, 3}),
+            "Wave",
+            false,
+            [&](std::function<void(const QList<Core::Track>&)> done) {
+                ++asked;
+                done(YandexSource::TracksOf(
+                    {Yandex::ApiClient::ParseTrack(QJsonDocument::fromJson(TrackJson(99, "more")).object())}
+                ));
+            }
+        );
         QCOMPARE(player.playlist().size(), 3);
         player.playIndex(1);  // 2 tracks left -> ask for more
         QCOMPARE(asked, 1);
@@ -764,7 +766,7 @@ private Q_SLOTS:
         }
         playback.player.setRepeat(true);
         playback.player.setQueue(
-            NumberedTracks({21}), "Wave", false, [](std::function<void(const QList<Yandex::Track>&)>) {}
+            NumberedTracks({21}), "Wave", false, [](std::function<void(const QList<Core::Track>&)>) {}
         );
         QSignalSpy finished(&playback.engine, &Audio::AudioEngine::trackFinished);
         playback.player.playIndex(0);
@@ -799,7 +801,7 @@ private Q_SLOTS:
         QCOMPARE(changed.count(), 0);
         QVERIFY(!player.trackInProgress());
         for (int index = 0; index < 6; ++index) {
-            QCOMPARE(player.playlist()[index].id, QString::number(index + 1));
+            QCOMPARE(player.playlist()[index].key.id, QString::number(index + 1));
         }
     }
 
@@ -858,12 +860,12 @@ private Q_SLOTS:
             player.removeTracks({2});
         }
         if (operation != "remove current") {
-            QCOMPARE(player.currentTrack()->id, QStringLiteral("3"));
+            QCOMPARE(player.currentTrack()->key.id, QStringLiteral("3"));
         }
         QSet<QString> visited;
         const int size = static_cast<int>(player.playlist().size());
         for (int count = 0; count < size; ++count) {
-            const QString id = player.currentTrack()->id;
+            const QString id = player.currentTrack()->key.id;
             QVERIFY(!visited.contains(id));
             visited.insert(id);
             if (count + 1 < size) {
@@ -980,7 +982,7 @@ private Q_SLOTS:
             ids << i;
         }
         int asked = 0;
-        player.setQueue(NumberedTracks(ids), "Wave", false, [&](std::function<void(const QList<Yandex::Track>&)>) {
+        player.setQueue(NumberedTracks(ids), "Wave", false, [&](std::function<void(const QList<Core::Track>&)>) {
             ++asked;
         });
         QCOMPARE(shuffleMessages(), 1);

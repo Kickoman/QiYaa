@@ -2,7 +2,8 @@
 
 #include "jam/host_session.h"
 #include "skins/skin.h"
-#include "yandex/library.h"
+#include "sources/yandex/catalog.h"
+#include "yandex/api_client.h"
 
 #include <QClipboard>
 #include <QColor>
@@ -163,10 +164,10 @@ public:
     QList<Control> controls;
 };
 
-JamWindow::JamWindow(Jam::HostSession* host, Yandex::Library* library, const Skins::Skin* skin, QWidget* parent)
+JamWindow::JamWindow(Jam::HostSession* host, YandexSource::Catalog* catalog, const Skins::Skin* skin, QWidget* parent)
     : GenWindow(skin, QStringLiteral("JAM"), parent)
     , jamHost(host)
-    , yandexLibrary(library) {
+    , yandexCatalog(catalog) {
     retranslate();
     setFocusPolicy(Qt::StrongFocus);
     endTimer.setSingleShot(true);
@@ -464,7 +465,7 @@ void JamWindow::renderSearch(Canvas& canvas) {
     const QString add = tr("To the jam");
     const QString next = tr("Next");
     for (int i = listScroll; i < foundTracks.size() && i < listScroll + listRows; ++i) {
-        const Yandex::Track track = foundTracks[i];
+        const Core::Track track = foundTracks[i];
         const int nextX = canvas.right - canvas.buttonWidth(next);
         const int addX = nextX - kGap - canvas.buttonWidth(add);
         QString title = track.title;
@@ -587,7 +588,7 @@ void JamWindow::search(const QString& text) {
     listScroll = 0;
     const int request = ++searchRequest;
     QPointer<JamWindow> self(this);
-    auto showResults = [self, request](const QList<Yandex::Track>& tracks, const Yandex::RequestError& error) {
+    auto showResults = [self, request](const QList<Core::Track>& tracks, const Yandex::RequestError& error) {
         if (!self || request != self->searchRequest) {
             return;
         }
@@ -597,7 +598,7 @@ void JamWindow::search(const QString& text) {
             self->searchProblem = error.text;
         } else {
             self->results = Results::Found;
-            for (const Yandex::Track& track : tracks) {
+            for (const Core::Track& track : tracks) {
                 if (track.available && self->foundTracks.size() < Jam::kMaxSearchResults) {
                     self->foundTracks << track;
                 }
@@ -605,7 +606,7 @@ void JamWindow::search(const QString& text) {
         }
         self->update();
     };
-    yandexLibrary->searchTracks(query, showResults);
+    yandexCatalog->searchTracks(query, showResults);
     update();
 }
 

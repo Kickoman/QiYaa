@@ -69,30 +69,25 @@ private:
         stack->api.setBaseUrl(server.baseUrl());
         stack->player.setNetworkRetryDelays(50, 200);
         QStringList good;
-        QList<Yandex::Track> tracks;
+        QList<Core::Track> tracks;
         for (int id : ids) {
-            Yandex::Track track;
-            track.id = QString::number(id);
+            Core::Track track;
+            track.key = {QStringLiteral("yandex"), QString::number(id)};
             track.title = QStringLiteral("t%1").arg(id);
             track.durationMs = 3000;
             tracks << track;
             if (broken.contains(id)) {
                 server.fixture("GET", QStringLiteral("/tracks/%1/download-info").arg(id), brokenFixture);
             } else {
-                good << track.id;
+                good << track.key.id;
             }
         }
         server.audioTracks(good, mp3);
         Stack* raw = stack.get();
-        stack->player.setQueue(
-            tracks,
-            "Q",
-            false,
-            {},
-            [raw](Core::Player::TrackEvent event, const Yandex::Track& track, double) {
-                raw->events << QStringLiteral("%1:%2").arg(static_cast<int>(event)).arg(track.id);
-            }
-        );
+        stack->player
+            .setQueue(tracks, "Q", false, {}, [raw](Core::Player::TrackEvent event, const Core::Track& track, double) {
+                raw->events << QStringLiteral("%1:%2").arg(static_cast<int>(event)).arg(track.key.id);
+            });
         return stack;
     }
 

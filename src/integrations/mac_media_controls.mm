@@ -3,7 +3,6 @@
 #include "audio/audio_engine.h"
 #include "core/player.h"
 #include "integrations/media_controls.h"
-#include "yandex/api_client.h"
 
 #import <Foundation/Foundation.h>
 #import <MediaPlayer/MediaPlayer.h>

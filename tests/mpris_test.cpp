@@ -1,13 +1,17 @@
 #include "audio/audio_engine.h"
 #include "core/cover_cache.h"
 #include "core/player.h"
+#include "core/track_source.h"
 #include "integrations/media_controls.h"
 #include "integrations/mpris.h"
+#include "sources/yandex/source.h"
+#include "sources/yandex/tracks.h"
 #include "yandex/api_client.h"
 #include "yandex/library.h"
 
 #include <QDBusConnection>
 #include <QDBusInterface>
+#include <QDBusObjectPath>
 #include <QDBusReply>
 #include <QList>
 #include <QNetworkAccessManager>
@@ -60,6 +64,8 @@ private:
     std::unique_ptr<Audio::AudioEngine> engine;
     std::unique_ptr<Core::Player> player;
     std::unique_ptr<Core::CoverCache> covers;
+    YandexSource::Source yandexSource;
+    Core::SourceRegistry sources;
     std::unique_ptr<Integrations::MediaControls> controls;
     std::unique_ptr<Integrations::Mpris> mpris;
     int volume = 50;
@@ -100,11 +106,12 @@ private Q_SLOTS:
             Q_EMIT controls->volumeChanged();
         };
         hooks.raise = [this] { ++raised; };
-        controls = std::make_unique<Integrations::MediaControls>(player.get(), covers.get(), hooks);
+        sources.add(YandexSource::kSourceName, &yandexSource);
+        controls = std::make_unique<Integrations::MediaControls>(player.get(), &sources, covers.get(), hooks);
         mpris = std::make_unique<Integrations::Mpris>(controls.get(), QStringLiteral("qiyaatest"));
         QVERIFY(mpris->isRegistered());
         QCOMPARE(mpris->serviceName(), kService);
-        player->setQueue(MakeTracks(3), QStringLiteral("T"), false);
+        player->setQueue(YandexSource::TracksOf(MakeTracks(3)), QStringLiteral("T"), false);
     }
 
     void rootInterfaceNamesTheAppAndRaisesIt() {
@@ -125,6 +132,12 @@ private Q_SLOTS:
         QCOMPARE(metadata.value("xesam:title").toString(), QStringLiteral("Песня 1"));
         QCOMPARE(metadata.value("xesam:artist").toStringList(), QStringList{QStringLiteral("Кино")});
         QCOMPARE(metadata.value("mpris:length").toLongLong(), 200'000'000LL);
+        QCOMPARE(metadata.value("xesam:album").toString(), QStringLiteral("Альбом"));
+        QCOMPARE(metadata.value("xesam:url").toString(), QStringLiteral("https://music.yandex.ru/album/7/track/100"));
+        QCOMPARE(
+            metadata.value("mpris:trackid").value<QDBusObjectPath>().path(),
+            QStringLiteral("/io/github/kickoman/qiyaa/track/yandex/100_3a7")
+        );
         QCOMPARE(playerInterface.property("PlaybackStatus").toString(), QStringLiteral("Stopped"));
     }
 

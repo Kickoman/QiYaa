@@ -126,7 +126,7 @@ private Q_SLOTS:
         const QImage off = shuffleButton();
         QVERIFY(on != off);
         player->setShuffle(true);
-        player->setQueue({}, "Wave", false, [](std::function<void(const QList<Yandex::Track>&)>) {});
+        player->setQueue({}, "Wave", false, [](std::function<void(const QList<Core::Track>&)>) {});
         QCOMPARE(shuffleButton(), off);
         player->setQueue({}, "Plain", false);
         QCOMPARE(shuffleButton(), on);

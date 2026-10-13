@@ -137,7 +137,7 @@ void Smtc::updateMetadata() {
     try {
         auto updater = implementation->controls.DisplayUpdater();
         updater.ClearAll();
-        const Yandex::Track* track = mediaControls->player()->currentTrack();
+        const Core::Track* track = mediaControls->player()->currentTrack();
         if (!track) {
             updater.Update();
             return;
@@ -146,7 +146,7 @@ void Smtc::updateMetadata() {
         auto music = updater.MusicProperties();
         music.Title(ToHstring(track->title));
         music.Artist(ToHstring(track->artists.join(QStringLiteral(", "))));
-        music.AlbumTitle(ToHstring(track->albumTitle));
+        music.AlbumTitle(ToHstring(track->album));
         // https, not artUrl(): SMTC fetches the thumbnail itself and refuses file:// URIs.
         const QUrl coverUrl = mediaControls->remoteArtUrl();
         if (!coverUrl.isEmpty()) {

@@ -19,9 +19,9 @@ integration is on, build the hooks or pick the backend ([src/app](../app/README.
 
 ## Dependencies
 
-`qiyaa_integrations` links PUBLIC `Qt6::Gui` and PRIVATE `qiyaa_audio`, `qiyaa_core` and
-`qiyaa_yandex` (the sources include `audio/audio_engine.h` and `yandex/api_client.h` besides the
-`core` headers). In the module order it sits beside `ui`, above `core`
+`qiyaa_integrations` links PUBLIC `Qt6::Gui` and PRIVATE `qiyaa_audio` and `qiyaa_core` (the
+sources include `audio/audio_engine.h` besides the `core` headers). It knows no music source: a
+track is a `Core::Track`, and its cover and web page come from `Core::SourceRegistry`. In the module order it sits beside `ui`, above `core`
 and below `app`. The top-level `CMakeLists.txt` adds at most one backend:
 
 | Backend | Built when | Adds |
@@ -43,6 +43,7 @@ SMTC alone, for `QWidget::winId()`. The headers include no project header (they 
 grep -n '#include "\(app\|ui\|vis\|skins\)/' src/integrations/*.h src/integrations/*.cpp   # must print nothing
 grep -n '#include "' src/integrations/*.h                                                  # must print nothing
 grep -ln 'QDBus\|winrt\|QWidget' src/integrations/media_controls.*                         # must print nothing
+grep -n '#include "\(yandex\|sources\)/' src/integrations/*.h src/integrations/*.cpp src/integrations/*.mm   # must print nothing
 ```
 
 ## `MediaControls` (`media_controls.h`)
@@ -57,7 +58,13 @@ public:
         std::function<void()> quit;
     };
 
-    MediaControls(Core::Player* player, Core::CoverCache* covers, Hooks hooks, QObject* parent = nullptr);
+    MediaControls(
+        Core::Player* player,
+        const Core::SourceRegistry* sources,   // the cover and the web page of a track
+        Core::CoverCache* covers,              // may be null: no file:// covers
+        Hooks hooks,
+        QObject* parent = nullptr
+    );
 
     Core::Player* player() const;
     const Hooks& hooks() const;
@@ -75,6 +82,7 @@ public:
     Status status() const;
     QUrl artUrl() const;          // cached cover as file://, else the https URL, else empty
     QUrl remoteArtUrl() const;    // always the https URL (or empty)
+    QUrl webPage() const;         // the current track's web page; empty without one
 
 Q_SIGNALS:
     void trackChanged();
@@ -97,7 +105,7 @@ Q_SIGNALS:
   `seekTo(seconds)` returns false when the duration is 0, otherwise the result of
   `Player::seekTo`, which clamps the target to the track and fails when the engine can't seek
   there yet.
-- **Covers** are the 400×400 px variant (`kCoverPixels`, via `Yandex::Track::coverUrl(400)`). On
+- **Covers** are the 400×400 px variant (`kCoverPixels`, via `SourceRegistry::coverUrl(track, 400)`). On
   every `Player::currentTrackChanged` it calls `CoverCache::get` for that URL *before* emitting
   `trackChanged`: a cover already on disk is therefore a `file://` URL in `artUrl()` when the
   listeners run, and a missing one starts downloading. When `CoverCache::ready` reports the current
@@ -205,12 +213,12 @@ the project's camelCase rule for methods. Their READ/WRITE accessors (`playbackS
 
 | Key | D-Bus type | Value |
 |---|---|---|
-| `mpris:trackid` | `o` | `/io/github/kickoman/qiyaa/track/<id>`, every character of `Track::id` outside ASCII letters and digits replaced by `_` (`none` for an empty id). Without a current track: `/org/mpris/MediaPlayer2/TrackList/NoTrack`, and it is the only key |
+| `mpris:trackid` | `o` | `/io/github/kickoman/qiyaa/track/<source>/<id>` from `Track::key`. Each of the two elements is encoded like `sd_bus_path_encode`: every byte of its UTF-8 outside ASCII letters and digits becomes `_` and two lowercase hex digits, and an empty element is `_`; so the path is unique per key and can be read back. A Yandex track `100` of album `7` is `…/track/yandex/100_3a7`. Without a current track: `/org/mpris/MediaPlayer2/TrackList/NoTrack`, and it is the only key |
 | `mpris:length` | `x` | `durationMs * 1000` (µs) |
 | `xesam:title` | `s` | `Track::title` |
 | `xesam:artist` | `as` | `Track::artists` |
-| `xesam:url` | `s` | `Track::webUrl()` (the track's page on music.yandex.ru) |
-| `xesam:album` | `s` | `Track::albumTitle`, only when not empty |
+| `xesam:url` | `s` | `MediaControls::webPage()`, the track's web page (on music.yandex.ru for a Yandex track), only when it has one |
+| `xesam:album` | `s` | `Track::album`, only when not empty |
 | `mpris:artUrl` | `s` | `MediaControls::artUrl()`, only when not empty |
 
 **Change notifications.** Qt D-Bus serves `Properties.Get`, `GetAll` and `Set` from the
@@ -245,6 +253,12 @@ reaching clients, `Seek` being ignored while not seekable, and the `.instance` n
 copy. It skips itself without a session bus, and skips the `gdbus` cases without `gdbus`.
 
 **Traps:**
+- `xesam:url` is meant to be the address of the track's own file; QiYaa gives the web page because
+  a Yandex track has no file of its own. A local track ([#30](https://github.com/Kickoman/QiYaa/issues/30))
+  wants `file://` there, which a port with only `webPage` cannot give
+  ([#27](https://github.com/Kickoman/QiYaa/issues/27)).
+- The track path changed with #26 from `…/track/<id>` to `…/track/<source>/<id>`. It is opaque to
+  clients, but a client that stored one finds no match.
 - Renaming an adaptor property, slot or signal renames the D-Bus member and breaks every client.
   The naming rule of the code style does not apply there.
 - Adding a property that can change is not enough: also announce it in one of the `connect`
@@ -369,5 +383,6 @@ The module defines no exception type and lets none out of its API; there is no
 - What play, pause, next, previous, shuffle, repeat and seeking actually do, and the cover cache
   (`Core::CoverCache`, its directory and download rules): [src/core](../core/README.md).
 - Engine states and seeking within the downloaded part: [src/audio](../audio/README.md).
-- Track fields, `Track::coverUrl()` and `Track::webUrl()`: [src/yandex](../yandex/README.md).
+- `Core::Track` and `Core::SourceRegistry`: [src/core](../core/README.md); a Yandex track's cover
+  and page: [src/sources/yandex](../sources/yandex/README.md#sourceh-source).
 - The volume slider: [src/ui](../ui/README.md).

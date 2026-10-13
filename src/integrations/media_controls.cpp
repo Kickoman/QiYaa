@@ -3,6 +3,7 @@
 #include "audio/audio_engine.h"
 #include "core/cover_cache.h"
 #include "core/player.h"
+#include "core/track_source.h"
 
 #include <QString>
 
@@ -14,14 +15,21 @@ namespace {
 constexpr int kCoverPixels = 400;
 }  // namespace
 
-MediaControls::MediaControls(Core::Player* player, Core::CoverCache* covers, Hooks hooks, QObject* parent)
+MediaControls::MediaControls(
+    Core::Player* player,
+    const Core::SourceRegistry* sources,
+    Core::CoverCache* covers,
+    Hooks hooks,
+    QObject* parent
+)
     : QObject(parent)
     , corePlayer(player)
+    , trackSources(sources)
     , coverCache(covers)
     , hookFunctions(std::move(hooks)) {
     connect(corePlayer, &Core::Player::currentTrackChanged, this, [this] {
         if (const auto* track = corePlayer->currentTrack(); track && coverCache) {
-            coverCache->get(track->coverUrl(kCoverPixels));
+            coverCache->get(trackSources->coverUrl(*track, kCoverPixels));
         }
         Q_EMIT trackChanged();
     });
@@ -30,7 +38,7 @@ MediaControls::MediaControls(Core::Player* player, Core::CoverCache* covers, Hoo
     connect(corePlayer, &Core::Player::seeked, this, &MediaControls::seeked);
     if (coverCache) {
         connect(coverCache, &Core::CoverCache::ready, this, [this](const QUrl& url) {
-            if (const auto* track = corePlayer->currentTrack(); track && track->coverUrl(kCoverPixels) == url) {
+            if (remoteArtUrl() == url) {
                 Q_EMIT artChanged();
             }
         });
@@ -84,7 +92,12 @@ bool MediaControls::seekTo(double seconds) {
 
 QUrl MediaControls::remoteArtUrl() const {
     const auto* track = corePlayer->currentTrack();
-    return track ? track->coverUrl(kCoverPixels) : QUrl();
+    return track ? trackSources->coverUrl(*track, kCoverPixels) : QUrl();
+}
+
+QUrl MediaControls::webPage() const {
+    const auto* track = corePlayer->currentTrack();
+    return track ? trackSources->webPage(*track) : QUrl();
 }
 
 QUrl MediaControls::artUrl() const {

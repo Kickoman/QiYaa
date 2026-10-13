@@ -2,6 +2,7 @@
 
 #include "audio/audio_engine.h"
 #include "core/failure_policy.h"
+#include "core/track.h"
 #include "core/track_navigator.h"
 #include "yandex/api_client.h"
 #include "yandex/library.h"
@@ -37,9 +38,9 @@ struct QueueRules {
 class Player : public QObject {
     Q_OBJECT
 public:
-    using TLoadMoreCallback = std::function<void(std::function<void(const QList<Yandex::Track>&)> done)>;
+    using TLoadMoreCallback = std::function<void(std::function<void(const QList<Track>&)> done)>;
     enum class TrackEvent { Started, Finished, Skipped };
-    using TEventCallback = std::function<void(TrackEvent event, const Yandex::Track& track, double playedSeconds)>;
+    using TEventCallback = std::function<void(TrackEvent event, const Track& track, double playedSeconds)>;
 
     Player(Yandex::Library* library, Audio::AudioEngine* engine, QObject* parent = nullptr);
 
@@ -47,14 +48,14 @@ public:
     bool isLatestSourceRequest(quint64 ticket) const { return ticket == sourceRequest; }
 
     void setQueue(
-        const QList<Yandex::Track>& tracks,
+        const QList<Track>& tracks,
         const QString& title,
         bool autoplay,
         TLoadMoreCallback more = {},
         TEventCallback events = {}
     );
-    void appendTracks(const QList<Yandex::Track>& tracks);
-    void insertTracks(int index, const QList<Yandex::Track>& tracks);
+    void appendTracks(const QList<Track>& tracks);
+    void insertTracks(int index, const QList<Track>& tracks);
     void removeTracks(QList<int> indices);
     void clearQueue();
     // Keeps the queue and the current track playing; replaces the source behind them.
@@ -92,10 +93,10 @@ public:
     // The file of the preloaded next track, once its link resolved; empty without a preload.
     QUrl nextLink() const { return preload ? preload->link : QUrl(); }
 
-    const QList<Yandex::Track>& playlist() const { return queuedTracks; }
+    const QList<Track>& playlist() const { return queuedTracks; }
     const QString& queueTitle() const { return titleText; }
     int currentIndex() const { return playingIndex; }
-    const Yandex::Track* currentTrack() const;
+    const Track* currentTrack() const;
     int currentBitrate() const { return bitrateKbps; }
     double durationSeconds() const;
     Audio::AudioEngine* engine() const { return audioEngine; }
@@ -124,7 +125,7 @@ private:
     using TStreamId = Audio::AudioEngine::TStreamId;
     struct Preload {
         int index = -1;
-        QString trackId;
+        TrackKey key;
         quint64 generation = 0;
         TStreamId stream = 0;
         int bitrate = 0;
@@ -147,7 +148,7 @@ private:
     void retryAfterNetwork();
     void cancelNetworkWait();
     void abortDownload();
-    void trackStarted(const Yandex::Track& track, int bitrate);
+    void trackStarted(const Track& track, int bitrate);
     int pickNext() const;
     void resetNavigator();
     void maybePreload();
@@ -159,14 +160,14 @@ private:
 
     Yandex::Library* yandexLibrary;
     Audio::AudioEngine* audioEngine;
-    QList<Yandex::Track> queuedTracks;
+    QList<Track> queuedTracks;
     std::unique_ptr<TrackNavigator> navigator = MakeTrackNavigator(std::nullopt);
     ShuffleAlgorithm preferredShuffleAlgorithm = ShuffleAlgorithm::WithoutRepeats;
     QString titleText;
     TLoadMoreCallback loadMore;
     TEventCallback reportEvent;
     QueueRules queueRules;
-    std::optional<Yandex::Track> openTrack;
+    std::optional<Track> openTrack;
     TEventCallback openTrackEvents;
     double playedSeconds = 0;
     double lastPosition = 0;

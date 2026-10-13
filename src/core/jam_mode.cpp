@@ -11,8 +11,6 @@
 
 namespace Core {
 
-using Yandex::Track;
-
 namespace {
 
 QList<Track> Playable(const QList<Track>& tracks) {

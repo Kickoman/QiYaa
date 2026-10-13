@@ -4,8 +4,11 @@
 #include "audio/audio_engine.h"
 #include "core/jam_mode.h"
 #include "core/player.h"
+#include "core/track.h"
+#include "core/track_source.h"
 #include "skins/skin.h"
 #include "sources/yandex/catalog.h"
+#include "sources/yandex/source.h"
 #include "yandex/api_client.h"
 #include "yandex/library.h"
 
@@ -118,7 +121,7 @@ public:
 private:
     void layoutWindows();
     void installShortcuts(QWidget* widget);
-    void showMainMenu(QPoint globalPosition, const Yandex::Track* track);
+    void showMainMenu(QPoint globalPosition, const Core::Track* track);
     void showSourcesMenu(QPoint globalPosition);
     void fillWindowActions(QMenu* menu);
     void transportKey(int key);
@@ -151,6 +154,8 @@ private:
     Yandex::Library yandexLibrary;
     Audio::AudioEngine audioEngine;
     Core::Player corePlayer;
+    YandexSource::Source yandexSource;
+    Core::SourceRegistry trackSources;
     YandexSource::Catalog catalog;
     Core::JamMode jamMode;
     std::unique_ptr<Jam::HostSession> jamHostSession;

@@ -1,6 +1,6 @@
 #pragma once
 
-#include "yandex/api_client.h"
+#include "core/track.h"
 
 #include <QList>
 #include <QString>
@@ -13,6 +13,6 @@ namespace App {
 
 void StreamLocalFile(Audio::AudioEngine* engine, const QString& path);
 
-QList<Yandex::Track> DemoTracks();
+QList<Core::Track> DemoTracks();
 
 }  // namespace App

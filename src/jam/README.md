@@ -10,7 +10,8 @@ session file's path.
 
 The module is optional: it is built only with Qt WebSockets (`QIYAA_HAVE_JAM`, see
 [docs/building.md](../../docs/building.md#параметры-cmake)). It links Qt Core, Qt WebSockets,
-`qiyaa_core` and `qiyaa_yandex`; only `host_session.*` uses the last two.
+`qiyaa_core` and `qiyaa_yandex`, and PRIVATE `qiyaa_sources_yandex`; only `host_session.*` uses
+the last three.
 
 ```bash
 grep -rln 'include "\(ui\|app\|audio\|skins\|vis\|integrations\)/' src/jam/   # must print nothing
@@ -23,7 +24,7 @@ grep -ln 'include "\(core\|yandex\|sources\)/' src/jam/* | grep -vx 'src/jam/hos
 | `codec.h/.cpp` | `Encode`, `DecodeServer`, `DecodeClient`, `Decoded<T>`, `IsKnownReason`, `TypeOf` |
 | `client.h/.cpp` | `Client`, `ClientOptions`, `Status` — one connection to the server at a time |
 | `session_store.h/.cpp` | `Session`, `SessionStore`, `EncodeSession`, `DecodeSession` |
-| `host_session.h/.cpp` | `HostSession`, `HostOptions`, `HostConfig`, `HostPhase`, `HostEnd`, `JamTrackOf`, `YandexTrackOf` |
+| `host_session.h/.cpp` | `HostSession`, `HostOptions`, `HostConfig`, `HostPhase`, `HostEnd`, `JamTrackOf`, `CoreTrackOf` |
 
 ## `protocol.h`
 
@@ -147,14 +148,15 @@ struct HostOptions { ClientOptions client; std::function<HostConfig()> config; Q
 enum class HostPhase { None, Creating, Active };
 enum class HostEnd { ByHost, ByServer, Expired, Gone };
 std::optional<Track> JamTrackOf(const Yandex::Track& track);   // nullopt: the protocol cannot carry it
-Yandex::Track YandexTrackOf(const Track& track);
+std::optional<Track> JamTrackOf(const Core::Track& track);     // nullopt also for another source's track
+Core::Track CoreTrackOf(const Track& track);                   // a Yandex track: {"yandex", "<id>:<albumId>"}
 class HostSession : public QObject {
     HostSession(Core::JamMode*, Yandex::Library*, SessionStore, HostOptions, QObject* parent = nullptr);
     HostPhase phase() const;  Status connection() const;  bool isConnected() const;
     const std::optional<Room>& room() const;  QString joinUrl() const;  bool hasStoredSession() const;
     bool create(const QString& hostName, const std::optional<SettingsPatch>& settings = {});
     void cancelCreate();  void continueStored();  void discardStored();  void end();
-    bool add(const Yandex::Track&);  bool playNext(const Yandex::Track&);  bool pin(const QString& itemId);
+    bool add(const Core::Track&);  bool playNext(const Core::Track&);  bool pin(const QString& itemId);
     bool remove(const QString& itemId);  bool kick(const QString& publicId);
     bool changeSettings(const SettingsPatch&);  bool rotateLink();
     void networkBack();
@@ -209,6 +211,13 @@ server, `Core::JamMode` for the queue, `Yandex::Library` for the guests' search 
 spaces, the title cut to 150 characters (nullopt when empty), up to 10 non-empty artists of 64
 characters, the duration within 0 … 24 h, and the cover only as a template with `%%`, no scheme
 and no spaces, 300 characters at most. Cutting never splits a surrogate pair.
+
+The jam carries only Yandex tracks. `JamTrackOf(Core::Track)` goes through
+`YandexSource::YandexTrackOf`, so another source's track is nullopt and `add` and `playNext`
+refuse it. `CoreTrackOf` is how a room's items reach `Core::JamMode`: the key from
+`YandexSource::KeyOf(id, albumId)`, the title, artists, duration and cover, `available`. `playNext`
+looks for the track in the room by its catalog id (`YandexSource::CatalogId`), since a room's items
+carry the track id alone.
 
 **Traps:**
 - The search's and the check's callbacks may come after the session is gone or the connection

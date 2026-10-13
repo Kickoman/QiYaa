@@ -191,10 +191,9 @@ private Q_SLOTS:
         }
         QCOMPARE(Tests::Json(Tests::TracksJson(tracks)), Tests::Expected(name));
     }
-    void trackDisplayTitleAndCoverLink() {
+    void trackCoverLink() {
         const Yandex::Track live =
             Yandex::ApiClient::ParseTrack(ResultOf("tracks/version-and-artists").toArray().first());
-        QCOMPARE(live.displayTitle(), QStringLiteral("A, B - Song (Live)"));
         QVERIFY(live.coverUrl().isEmpty());
         const Yandex::Track fromAlbum =
             Yandex::ApiClient::ParseTrack(ResultOf("tracks/cover-from-album").toArray().first());

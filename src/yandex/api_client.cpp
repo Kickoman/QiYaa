@@ -30,10 +30,6 @@ QNetworkRequest MakeRequest(const QUrl& url, const QString& token) {
 }
 }  // namespace
 
-QString Track::displayTitle() const {
-    return artists.isEmpty() ? title : artists.join(QStringLiteral(", ")) + QStringLiteral(" - ") + title;
-}
-
 QUrl Track::coverUrl(int size) const {
     if (coverUri.isEmpty()) {
         return {};
@@ -358,18 +354,19 @@ void ApiClient::resolveStandardUrl(const QString& id, TUrlCallback callback) {
     );
 }
 
-void ApiClient::reportPlayStarted(const Account& account, const Track& track, const QString& playId) {
+void ApiClient::
+    reportPlayStarted(const Account& account, const QString& trackId, qint64 durationMs, const QString& playId) {
     const QString now = QDateTime::currentDateTimeUtc().toString(Qt::ISODateWithMs);
     postForm(
         QStringLiteral("/play-audio"),
-        {{QStringLiteral("track-id"), track.id},
-         {QStringLiteral("album-id"), track.albumId},
+        {{QStringLiteral("track-id"), trackId.section(u':', 0, 0)},
+         {QStringLiteral("album-id"), trackId.section(u':', 1)},
          {QStringLiteral("from"), QStringLiteral("web-own_tracks-track-track-main")},
          {QStringLiteral("play-id"), playId},
          {QStringLiteral("uid"), account.uid},
          {QStringLiteral("timestamp"), now},
          {QStringLiteral("client-now"), now},
-         {QStringLiteral("track-length-seconds"), QString::number(track.durationMs / 1000.0)},
+         {QStringLiteral("track-length-seconds"), QString::number(durationMs / 1000.0)},
          {QStringLiteral("total-played-seconds"), QStringLiteral("0")},
          {QStringLiteral("end-position-seconds"), QStringLiteral("0")}},
         [](const QJsonValue&, const QString& error) {

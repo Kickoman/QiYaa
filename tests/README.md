@@ -36,7 +36,7 @@ is formatting (the clang-format check in `.github/workflows/ci.yml`).
 | `windows_test.cpp` | The whole `App::Application` window set: docking, detaching, scaling, playlist selection/scroll/resize, track menu targets (including multiple selection, keyboard invocation and queue changes), dislike skipping only the current track, EQ sliders, shade modes, login dialog layout, Milkdrop and Now Playing windows, `snapshot()`; the Quality menu and its setting (QUAL-06) |
 | `screenshots_test.cpp` | Golden screenshots of the main window and the equalizer (see **Golden screenshots**) |
 | `jam_test.cpp` | `Jam::` (only with Qt WebSockets): every example of `spec/jam/protocol/examples` through the codec (valid ones pass, `invalid-*` fail) and client examples through encode and decode; the client against a `QWebSocketServer` on localhost — hello with a version the server takes and the clock offset, reconnects after the delays and at once on `networkBack`, the outbox, `ended` stopping it for good, refusing to send what the server would refuse, invalid and unknown-reason messages; the stored session across a restart and broken, foreign or oversized files |
-| `jam_host_test.cpp` | `Jam::HostSession` against `spec/jam/host.md` by ID, with `JamStubServer`, a real `Core::JamMode` with `YandexSource::JamWaves` on a player without a sound card and the MockHttpServer as Yandex: create and its refusal, states and their versions, started in the stored outbox offline and resume, the stored snapshot and link, "Continue the jam?" yes and no, a resume refused for a gone room or another reason, the guests' search and checks, the skip command, the end by the host and by the server, the host's add and play next, and `JamTrackOf` |
+| `jam_host_test.cpp` | `Jam::HostSession` against `spec/jam/host.md` by ID, with `JamStubServer`, a real `Core::JamMode` with `YandexSource::JamWaves` on a player without a sound card and the MockHttpServer as Yandex: create and its refusal, states and their versions, started in the stored outbox offline and resume, the stored snapshot and link, "Continue the jam?" yes and no, a resume refused for a gone room or another reason, the guests' search and checks, the skip command, the end by the host and by the server, the host's add and play next, `JamTrackOf`, and that only a Yandex track crosses into the jam (`CoreTrackOf`) |
 | `jam_window_test.cpp` | `Ui::JamWindow` against `spec/jam/host.md` (HOST-20, HOST-25, HOST-35), its controls found by label and clicked like a mouse, driving a `HostSession` on `JamStubServer`: the start with the name given or typed (and typing that does not trigger the app's shortcuts), the settings, kick and new link, copying the link, the end asked twice, what stays enabled without a connection, the search with "To the jam" and "Next"; its pictures, in Belarusian, on every built-in skin and of the start, search and offline pages |
 | `telemetry_test.cpp` | `Telemetry::Reporter` against the mock server (TEL-02 to TEL-08): the start event has the fields of `spec/telemetry/examples/start.json`, what each answer keeps or drops, batches of at most 50, a run that did not close reported with its queue, a running instance left alone, the error cap, forgetting; crash reports of `crash_probe` (SIGSEGV, an uncaught exception, abort) sent by the next run; and a real `App::Application` sending `start` and switched off and on. Built only with telemetry |
 | `crash_probe.cpp` | The child `telemetry_test` crashes: installs the crash handler and fails as its arguments say |
@@ -91,7 +91,7 @@ QT_QPA_PLATFORM=offscreen QIYAA_AUDIO_BACKEND=null build/tests/audio_test queued
 | `mp4_aac_test` | audio (+ `qiyaa_miniaudio`) | plain; `QIYAA_TEST_DATA`; `QIYAA_MP4_SAMPLE` adds a file of your own |
 | `audio_test` | audio core | plain; `QIYAA_TEST_DATA` |
 | `main_window_test` | audio core skins ui yandex | plain |
-| `library_test` | audio core yandex (+ `qiyaa_test_yandex`) | plain; `QIYAA_TEST_DATA` |
+| `library_test` | audio core sources_yandex yandex (+ `qiyaa_test_yandex`) | plain; `QIYAA_TEST_DATA` |
 | `sources_test` | audio core sources_yandex yandex (+ `qiyaa_test_yandex`) | plain; `QIYAA_TEST_DATA` |
 | `jam_mode_test` | audio core sources_yandex yandex | plain; `QIYAA_TEST_DATA` |
 | `failures_test` | audio core yandex | plain; `QIYAA_TEST_DATA` |
@@ -103,7 +103,7 @@ QT_QPA_PLATFORM=offscreen QIYAA_AUDIO_BACKEND=null build/tests/audio_test queued
 | `jam_host_test` | audio core jam sources_yandex yandex (+ `qiyaa_test_jam`) | only with `QIYAA_HAVE_JAM`; `QIYAA_TEST_DATA` |
 | `jam_window_test` | audio core jam skins ui yandex (+ `qiyaa_test_jam`) | only with `QIYAA_HAVE_JAM`; `QIYAA_TEST_DATA` |
 | `jam_e2e_test` | app audio core jam ui yandex | only with `QIYAA_HAVE_JAM`; `QIYAA_TEST_DATA`; skips without `QIYAA_JAM_TEST_SERVER` |
-| `mpris_test` | core integrations, Qt6::DBus | only with `QIYAA_HAVE_MPRIS`; under `dbus-run-session` |
+| `mpris_test` | core integrations sources_yandex, Qt6::DBus | only with `QIYAA_HAVE_MPRIS`; under `dbus-run-session` |
 | `milkdrop_test` | audio skins ui vis | only with `QIYAA_HAVE_MILKDROP`; offscreen, so the GL functions skip |
 | `milkdrop_gl_test` | the `milkdrop_test` binary | only with `xvfb-run` and Qt's xcb plugin; three GL functions |
 
@@ -577,7 +577,8 @@ events go through `QCoreApplication::sendEvent`, which is synchronous.
 
 - an `ApiClient` aimed at `http://127.0.0.1:9`, where nothing listens, so link requests fail
   fast;
-- a Player with three tracks ("Песня 1…3" by "Кино", 200 s each);
+- a Player with three Yandex tracks ("Песня 1…3" by "Кино", 200 s each, ids `100`…`102` of album
+  `7`), and a `Core::SourceRegistry` with the Yandex source for the covers and web pages;
 - a `CoverCache` in a temporary directory;
 - `MediaControls` hooks: a volume of 0..100 that starts at 50, a `setVolume` that emits
   `volumeChanged` only on a change (as `MainWindow::setVolume` does, which the app wires to
@@ -587,6 +588,8 @@ The service is `org.mpris.MediaPlayer2.qiyaatest` at `/org/mpris/MediaPlayer2`. 
 collects `org.freedesktop.DBus.Properties.PropertiesChanged`.
 
 - `mpris:length` is in microseconds: 200,000 ms gives 200,000,000.
+- `mpris:trackid` of track `100` of album `7` is `/io/github/kickoman/qiyaa/track/yandex/100_3a7`
+  (`:` is `_3a`), and `xesam:url` its music.yandex.ru page.
 - D-Bus `Volume` 0.3 arrives at the hook as 30.
 - While stopped, `CanSeek` is false and `Seek` must not act as "past the end = next".
 - `appSideChangesAreAnnounced`: changes made in the app, not over D-Bus, must reach clients too.

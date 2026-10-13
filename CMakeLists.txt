@@ -157,7 +157,7 @@ if(QIYAA_WITH_JAM)
             src/jam/host_session.cpp    src/jam/host_session.h
             src/jam/protocol.h
             src/jam/session_store.cpp   src/jam/session_store.h)
-        target_link_libraries(qiyaa_jam PUBLIC qiyaa_core qiyaa_yandex Qt6::Core Qt6::WebSockets)
+        target_link_libraries(qiyaa_jam PUBLIC qiyaa_core qiyaa_yandex Qt6::Core Qt6::WebSockets PRIVATE qiyaa_sources_yandex)
         target_compile_definitions(qiyaa_jam PUBLIC QIYAA_HAVE_JAM)
         set(QIYAA_HAVE_JAM ON)
         message(STATUS "Jam: enabled (default server ${QIYAA_JAM_URL})")
@@ -196,7 +196,7 @@ endif()
 
 qiyaa_add_module(integrations
     src/integrations/media_controls.cpp src/integrations/media_controls.h)
-target_link_libraries(qiyaa_integrations PUBLIC Qt6::Gui PRIVATE qiyaa_audio qiyaa_core qiyaa_yandex)
+target_link_libraries(qiyaa_integrations PUBLIC Qt6::Gui PRIVATE qiyaa_audio qiyaa_core)
 
 # System media integration: MPRIS, macOS MediaPlayer, or Windows SMTC.
 if(APPLE)
