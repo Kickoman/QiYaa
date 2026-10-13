@@ -14,6 +14,7 @@
 #include <QJsonObject>
 #include <QList>
 #include <QObject>
+#include <QRegularExpression>
 #include <QSignalSpy>
 #include <QString>
 #include <QStringList>
@@ -267,6 +268,21 @@ private Q_SLOTS:
             seedsOf(requestsTo(QStringLiteral("/rotor/session/new"), before).first()),
             QJsonArray{QStringLiteral("track:11")}
         );
+    }
+
+    void aReplyOfThePreviousJamsWaveStaysOutOfTheNextJam() {
+        Stack stack(&library);
+        server.fixture("POST", "/rotor/session/new", "rotor-session-new/ok", 300);
+        const qsizetype before = server.requests().size();
+        stack.jam.start(QStringLiteral("Джем"), false);
+        stack.jam.setQueue({Item("i1", "11")}, {QStringLiteral("track:11")}, 1);
+        QTRY_COMPARE(requestsTo(QStringLiteral("/rotor/session/new"), before).size(), 1);
+        stack.jam.end();
+        stack.jam.start(QStringLiteral("Джем"), false);
+        QTest::failOnWarning(QRegularExpression(QStringLiteral("^jam: the queue has")));
+        QTest::qWait(600);
+        QCOMPARE(Ids(stack.player), QStringList{QStringLiteral("11")});
+        QCOMPARE(stack.jam.queueSlots().size(), 1);
     }
 
     void noPlayReportsAndFeedbackOnlyToTheJamWave() {  // HOST-15, HOST-16

@@ -200,8 +200,9 @@ void JamMode::reportPlayback() {
 
 void JamMode::loadWave(JamWave::TDone done) {
     QPointer<JamMode> self(this);
-    auto deliver = [self, done](const QList<Track>& tracks) {
-        if (!self || !self->active) {
+    const std::shared_ptr<JamWave> state = wave;
+    auto deliver = [self, state, done](const QList<Track>& tracks) {
+        if (!self || !self->active || self->wave != state) {
             return done({});
         }
         self->appendWave(tracks, done);
