@@ -79,10 +79,13 @@ endfunction()
 
 qiyaa_add_module(audio
     src/audio/audio_engine.cpp  src/audio/audio_engine.h
+    src/audio/blocks.h
+    src/audio/decoder.cpp       src/audio/decoder.h
     src/audio/error.h
     src/audio/eq_presets.cpp    src/audio/eq_presets.h
     src/audio/equalizer.cpp     src/audio/equalizer.h
     src/audio/mp4_aac_backend.cpp src/audio/mp4_aac_backend.h
+    src/audio/stream_buffer.cpp src/audio/stream_buffer.h
     src/audio/vis_tap.cpp       src/audio/vis_tap.h)
 target_link_libraries(qiyaa_audio PUBLIC Qt6::Core
     PRIVATE qiyaa_miniaudio qiyaa_minimp4 qiyaa_fdk_aac)

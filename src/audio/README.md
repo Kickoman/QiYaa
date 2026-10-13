@@ -42,23 +42,26 @@ equalizer window ([src/ui](../ui/README.md)). Namespace `Audio`, library `qiyaa_
   [docs/architecture.md](../../docs/architecture.md#modules).
 - miniaudio stays private to the module: `audio_engine.h` and every header another module may
   include leave out `miniaudio.h`. `AudioEngine` holds everything miniaudio-typed through
-  `std::unique_ptr<Implementation>` and a forward-declared `StreamBuffer`. Only the module's own
-  `mp4_aac_backend.h` includes it (miniaudio's vtable types are anonymous structs that cannot be
-  forward-declared); `audio_engine.cpp` and `tests/mp4_aac_test.cpp` include that header. minimp4
-  and fdk-aac appear only in `mp4_aac_backend.cpp`.
-- Inside the module: `audio_engine.h` and `eq_presets.h` include `equalizer.h`,
-  `audio_engine.cpp` includes `equalizer.h`, `mp4_aac_backend.h` and `vis_tap.h`,
-  `eq_presets.cpp` includes `error.h`.
-  `equalizer.h`, `vis_tap.h` and `error.h` include no file of the module.
+  `std::unique_ptr<Implementation>` and a forward-declared `StreamBuffer`; `decoder.h` keeps its
+  `ma_decoder`s in a `Source` defined in `decoder.cpp`. Only the module's own `mp4_aac_backend.h`
+  includes it (miniaudio's vtable types are anonymous structs that cannot be forward-declared);
+  `decoder.cpp` and `tests/mp4_aac_test.cpp` include that header. minimp4 and fdk-aac appear only
+  in `mp4_aac_backend.cpp`. miniaudio itself: `audio_engine.cpp` (the device), `decoder.cpp` (the
+  decoders), `mp4_aac_backend.*` and `miniaudio_impl.c`.
+- Inside the module: `audio_engine.h` and `eq_presets.h` include `equalizer.h`; `decoder.h`
+  includes `blocks.h` and `stream_buffer.h`; `audio_engine.cpp` includes `blocks.h`, `decoder.h`,
+  `equalizer.h`, `stream_buffer.h` and `vis_tap.h`; `decoder.cpp` includes `mp4_aac_backend.h`;
+  `eq_presets.cpp` includes `error.h`. `blocks.h`, `stream_buffer.h`, `equalizer.h`, `vis_tap.h`
+  and `error.h` include no file of the module.
 
 ```bash
 grep -rnE '#include "(app|core|integrations|skins|ui|vis|yandex)/' src/audio/ --include='*.h' --include='*.cpp'   # must print nothing
 grep -rlE '#include [<"]miniaudio' src/ --include='*.h' --include='*.cpp' --include='*.c' \
-    | grep -vxE 'src/audio/(audio_engine\.cpp|miniaudio_impl\.c|mp4_aac_backend\.(h|cpp))'          # must print nothing
+    | grep -vxE 'src/audio/(audio_engine\.cpp|decoder\.cpp|miniaudio_impl\.c|mp4_aac_backend\.(h|cpp))'  # must print nothing
 grep -rlE '#include [<"](minimp4|aacdecoder_lib)' src/ --include='*.h' --include='*.cpp' --include='*.c' \
     | grep -vxE 'src/audio/(mp4_aac_backend\.cpp|minimp4_impl\.c)'                                  # must print nothing
 grep -rl '"audio/mp4_aac_backend.h"' src/ --include='*.h' --include='*.cpp' \
-    | grep -vxE 'src/audio/(audio_engine|mp4_aac_backend)\.cpp'                                      # must print nothing
+    | grep -vxE 'src/audio/(decoder|mp4_aac_backend)\.cpp'                                           # must print nothing
 grep -rnE '#include <Q' src/audio/ --include='*.h' --include='*.cpp' \
     | grep -vE '<Q(ByteArray|Hash|List|Object|String|StringConverter|StringDecoder|StringList)>'                              # must print nothing
 grep -rnw 'throw' src/audio/ --include='*.h' --include='*.cpp' | grep -v '^src/audio/eq_presets.cpp:'   # must print nothing

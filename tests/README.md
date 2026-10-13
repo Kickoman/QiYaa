@@ -24,7 +24,7 @@ is formatting (the clang-format check in `.github/workflows/ci.yml`).
 | `region_test.cpp` | `Skins::ParseRegionTxt` and `RegionFromPolygons`: sections, several polygons, degenerate and missing points, empty input |
 | `yandex_test.cpp` | Track-link signing (`BuildTrackUrl`), download variants and the best full mp3, `ParseDownloadInfo` and the signed link, `ApiClient::ParseTrack` and the cover URL, all on spec fixtures; `get-file-info` replies parsed or falling back, the signature and the encoded query of the spec's example, `IsUsable`, the quality names; `NormalizeToken` on five input shapes; with `QIYAA_YANDEX_TOKEN=<token>` it also gets an economy link from the real API, which fails once Yandex stops accepting the signing key |
 | `skin_test.cpp` | The built-in base skin, loading every bundled `:/skins/*.wsz`, and the `Skins::Error` messages |
-| `audio_test.cpp` | `Audio::AudioEngine` on the test mp3: streaming in chunks, pause, the decode-error message, seeks during download and into the downloaded part of a stalled download (TR-09), the `Core::Player` polling timer, and gapless chaining of a queued stream; the test m4a playing with half of it downloaded |
+| `audio_test.cpp` | `Audio::AudioEngine` on the test mp3: streaming in chunks, pause, the decode-error message, seeks during download and into the downloaded part of a stalled download (TR-09), the position during a series of seeks (TR-08), a seek while paused and one before the first byte, the `Core::Player` polling timer, gapless chaining of a queued stream and clearing it before and after the callback went into it, and random calls that must not hang; the test m4a playing with half of it downloaded |
 | `mp4_aac_test.cpp` | `Audio::Mp4AacBackend` through an `ma_decoder` over memory: `IsMp4`, the rate, length, level and 440 Hz of the test m4a, seeking to the same samples as playing through, the end, a file cut short, an MP4 without its index; with `QIYAA_MP4_SAMPLE=<path>` it also decodes that file (a Yandex economy file kept outside the repository) |
 | `dsp_test.cpp` | EQ response and processing, the 17 built-in EQ presets, `.eqf` read/write, `EqualizerWindow::GraphCurve`, the FFT analyzer, spectrum and oscilloscope rendering; the reference vectors of `spec/dsp` (checks them, and writes them with `QIYAA_WRITE_DSP_VECTORS=1`) |
 | `library_test.cpp` | `Yandex::Library`/`ApiClient` against the mock server serving spec fixtures: request shapes and parsing for every source the menu offers, likes, waves, search with each kind of best result, errors, device login and wave feedback. Also `Core::Player` track events, preloading, endless sources, shuffle not applying in a wave, and repeat not replaying the only track of a wave (WAVE-12); the economy quality (QUAL-02 to QUAL-05): the request and its signature, the fallbacks, the network wait, the preload fetched again |
@@ -190,6 +190,12 @@ TSAN_OPTIONS="halt_on_error=1 suppressions=$PWD/tests/tsan.supp" \
 Qt is not instrumented, so the synchronisation inside it is invisible and its threads look racy;
 `tsan.supp` ignores what Qt's and GLib's libraries do themselves (`called_from_lib`). An entry
 that would hide an access from QiYaa's own code does not go there: such a report is a bug.
+
+GCC 11's TSan runtime (Ubuntu 22.04) does not intercept `pthread_cond_clockwait`, which
+libstdc++'s `condition_variable::wait_for` calls: it then reports a "double lock of a mutex" in the
+audio decoder and races that are not there. CI's GCC 13 has it. With GCC 11, link GCC 12's runtime
+(package `libtsan2`) instead of its own:
+`-DCMAKE_EXE_LINKER_FLAGS="-fno-sanitize=thread -Wl,--no-as-needed /usr/lib/x86_64-linux-gnu/libtsan.so.2"`.
 
 ## Dependencies
 
@@ -397,8 +403,14 @@ seen, position, state, current and queued stream ids.
 - `seekingIntoTheDownloadedPartPlaysAtOnceWhileTheDownloadStalls` (TR-09) feeds half of a 12 s
   stream and no more. While more may come, the mp3 decoder keeps 16 KB in reserve (2 s of this
   file), so about 4 s can be decoded: once 2.5 s have played, the decoder waits for bytes. A seek
-  back to 1 s must then play from there. The engine before #24 fails it (its decoder serves a seek
-  only after the next bytes arrive), so it is marked `QEXPECT_FAIL` until the rework.
+  back to 1 s must then play from there.
+- `positionShowsTheTargetThroughASeriesOfSeeks` (TR-08): for 300 ms after each of five seeks the
+  position never falls below what it showed last (the target, at first) and never runs ahead of the
+  target plus the time since the seek and one device period; by then audio from the target plays.
+- `seekingWhilePausedPlaysAtOnceOnResume`: on pause, a seek shows the target and keeps it. The
+  decoder fills the queue meanwhile, so `resume()` goes straight to `Playing` (one `stateChanged`).
+- `seekBeforeTheStreamOpensIsKept`: `seek()` before the first byte returns true, and the audio
+  starts at the target.
 - `rapidSeeksWhileDownloadingLandOnTheLastTarget` feeds 64 KB of a 39 s stream, then 16 KB after each of 24 seeks
   (3 rounds of 8 targets, some past what has been downloaded). A final seek to 12 s must play from [12, 14) s.
 - `playerPollsTheEngine`: nobody calls `engine.poll()`, so the `Core::Player`'s own timer must
@@ -424,6 +436,16 @@ The chaining tests start with two helpers. `startNearEnd(at)` plays the file and
 - `stopReturnsPromptlyWhileQueuedDataIsMissing` and `clearingAChainedStreamThenRestartingDoesNotHang`:
   `stop()` and `beginStream()` must return within 1 s. The decoder never waits forever for a
   queued stream's data.
+- `clearingAQueuedStreamBeforeItChains`: the track ends with `trackFinished`; data for the cleared
+  id is ignored.
+- `clearingAStreamTheCallbackAlreadyPlays` waits 800 ms without `poll()`, so the callback goes on
+  into the queued stream unnoticed. After `clearQueued()` the track ends with `trackFinished`, not
+  `trackAdvanced`, and from the next device period on `visCursor()` and the position stand still.
+- `randomCallsNeitherHangNorReportUnknownStreams`: 250 random calls for each of three seeds, the
+  data in random chunks, a tenth of the streams garbage. Every call returns within 200 ms; after
+  `trackAdvanced` the current stream is the one queued before that `poll()`; `streamUndecodable`
+  names the stream that was current; the position is never negative. A failure names the seed and
+  the step.
 
 **dsp_test.**
 

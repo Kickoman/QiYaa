@@ -5,10 +5,12 @@
 
 #include <QElapsedTimer>
 #include <QFile>
+#include <QHash>
 #include <QIODevice>
 #include <QLatin1String>
 #include <QMetaEnum>
 #include <QObject>
+#include <QRandomGenerator>
 #include <QSignalSpy>
 #include <QString>
 #include <QTest>
@@ -242,11 +244,70 @@ private Q_SLOTS:
         pumpFor(300);
         const double later = engine.positionSeconds();
         engine.stop();
-        QEXPECT_FAIL("", "#24: the decoder serves the seek only after the next bytes arrive", Abort);
         QVERIFY2(
             later > early + 0.15 && later < 2.0,
             qPrintable(QStringLiteral("%1 s, then %2 s").arg(early, 0, 'f', 2).arg(later, 0, 'f', 2))
         );
+    }
+
+    void positionShowsTheTargetThroughASeriesOfSeeks() {  // TR-08
+        engine.beginStream();
+        engine.appendData(repeatedMp3(4));
+        engine.finishData();
+        pumpUntil([&] { return engine.state() == Audio::AudioEngine::State::Playing; }, 3000);
+        QElapsedTimer sinceSeek;
+        for (const double target : {8.0, 2.0, 10.5, 0.5, 6.0}) {
+            QVERIFY(engine.seek(target));
+            sinceSeek.start();
+            double shown = target;
+            while (sinceSeek.elapsed() < 300) {
+                // At most what has played since the seek, plus one device period handed out at once.
+                const double position = engine.positionSeconds();
+                const double latest = target + static_cast<double>(sinceSeek.elapsed()) / 1000 + 0.3;
+                QVERIFY2(
+                    position >= shown && position <= latest,
+                    qPrintable(QStringLiteral("seek to %1 s: %2 s after %3 s").arg(target).arg(position).arg(shown))
+                );
+                shown = position;
+                engine.poll();
+                QTest::qWait(5);
+            }
+            QVERIFY2(shown > target, qPrintable(QStringLiteral("seek to %1 s: no audio after it").arg(target)));
+        }
+        engine.stop();
+    }
+
+    void seekingWhilePausedPlaysAtOnceOnResume() {
+        engine.beginStream();
+        engine.appendData(repeatedMp3(2));
+        engine.finishData();
+        pumpUntil([&] { return engine.state() == Audio::AudioEngine::State::Playing; }, 3000);
+        engine.pause();
+        QVERIFY(engine.seek(4.0));
+        QCOMPARE(engine.positionSeconds(), 4.0);
+        pumpFor(300);  // the decoder fills the queue from the target meanwhile
+        QCOMPARE(engine.positionSeconds(), 4.0);
+        QSignalSpy states(&engine, &Audio::AudioEngine::stateChanged);
+        engine.resume();
+        QCOMPARE(engine.state(), Audio::AudioEngine::State::Playing);
+        pumpFor(300);
+        QCOMPARE(states.count(), 1);
+        const double position = engine.positionSeconds();
+        QVERIFY2(position > 4.1 && position < 4.8, qPrintable(QString::number(position)));
+        engine.stop();
+    }
+
+    void seekBeforeTheStreamOpensIsKept() {
+        engine.beginStream();
+        QVERIFY(engine.seek(1.5));  // nothing has arrived yet
+        QCOMPARE(engine.positionSeconds(), 1.5);
+        engine.appendData(mp3);
+        engine.finishData();
+        pumpUntil([&] { return engine.state() == Audio::AudioEngine::State::Playing; }, 3000);
+        pumpFor(200);
+        const double position = engine.positionSeconds();
+        QVERIFY2(position >= 1.5 && position < 2.3, qPrintable(QString::number(position)));
+        engine.stop();
     }
 
     void playerPollsTheEngine() {
@@ -328,6 +389,41 @@ private Q_SLOTS:
         pumpUntil([&] { return finished.count() > 0 || advanced.count() > 0; }, 3000);
         QCOMPARE(finished.count(), 1);
         QCOMPARE(advanced.count(), 0);
+        engine.stop();
+    }
+
+    void clearingAQueuedStreamBeforeItChains() {
+        QSignalSpy finished(&engine, &Audio::AudioEngine::trackFinished);
+        QSignalSpy advanced(&engine, &Audio::AudioEngine::trackAdvanced);
+        startNearEnd(2.0);
+        const auto nextStream = engine.queueStream();
+        engine.appendData(nextStream, mp3.left(4000));
+        engine.clearQueued();
+        engine.appendData(nextStream, mp3.mid(4000));  // a stream the engine has dropped: ignored
+        engine.finishData(nextStream);
+        pumpUntil([&] { return finished.count() > 0 || advanced.count() > 0; }, 3000);
+        QCOMPARE(finished.count(), 1);
+        QCOMPARE(advanced.count(), 0);
+        QCOMPARE(engine.queuedStream(), static_cast<Audio::AudioEngine::TStreamId>(0));
+        engine.stop();
+    }
+
+    void clearingAStreamTheCallbackAlreadyPlays() {
+        QSignalSpy finished(&engine, &Audio::AudioEngine::trackFinished);
+        QSignalSpy advanced(&engine, &Audio::AudioEngine::trackAdvanced);
+        startNearEnd(2.6);
+        queueWhole(mp3);
+        QTest::qWait(800);  // no poll(): the callback goes on into the queued stream unnoticed
+        engine.clearQueued();
+        pumpUntil([&] { return finished.count() > 0 || advanced.count() > 0; }, 3000);
+        QCOMPARE(finished.count(), 1);
+        QCOMPARE(advanced.count(), 0);
+        pumpFor(150);  // a device period already handed out may still play
+        const uint32_t cursor = engine.visCursor();
+        const double position = engine.positionSeconds();
+        pumpFor(300);
+        QCOMPARE(engine.visCursor(), cursor);  // nothing more of the cleared stream
+        QCOMPARE(engine.positionSeconds(), position);
         engine.stop();
     }
 
@@ -414,6 +510,75 @@ private Q_SLOTS:
         engine.stop();
         QVERIFY(timer.elapsed() < 1000);
         QCOMPARE(engine.state(), Audio::AudioEngine::State::Stopped);
+    }
+
+    void randomCallsNeitherHangNorReportUnknownStreams() {
+        using TStreamId = Audio::AudioEngine::TStreamId;
+        const QByteArray garbage(30'000, 'x');
+        for (const quint32 seed : {1u, 2u, 3u}) {
+            QRandomGenerator random(seed);
+            QHash<TStreamId, qsizetype> fed;  // per stream: bytes appended so far
+            QHash<TStreamId, bool> broken;
+            auto feed = [&](TStreamId stream) {
+                if (!stream) {
+                    return;
+                }
+                const QByteArray& file = broken.value(stream) ? garbage : mp3;
+                const qsizetype offset = fed.value(stream);
+                const qsizetype size = 2000 + random.bounded(8000);
+                engine.appendData(stream, file.mid(offset, size));
+                fed[stream] = offset + size;
+                if (offset + size >= file.size()) {
+                    engine.finishData(stream);
+                }
+            };
+            auto start = [&](TStreamId stream) {
+                fed[stream] = 0;
+                broken[stream] = random.bounded(10) == 0;
+            };
+            for (int step = 0; step < 250; ++step) {
+                const QString where = QStringLiteral("seed %1, step %2").arg(seed).arg(step);
+                QElapsedTimer timer;
+                timer.start();
+                switch (random.bounded(12)) {
+                    case 0: start(engine.beginStream(random.bounded(2.0))); break;
+                    case 1:
+                        if (const TStreamId stream = engine.queueStream()) {
+                            start(stream);
+                        }
+                        break;
+                    case 2: engine.clearQueued(); break;
+                    case 3: engine.playQueuedNow(); break;
+                    case 4:
+                    case 5: feed(engine.currentStream()); break;
+                    case 6: feed(engine.queuedStream()); break;
+                    case 7: engine.seek(random.bounded(3.2)); break;
+                    case 8: engine.pause(); break;
+                    case 9: engine.resume(); break;
+                    case 10:
+                        if (random.bounded(4) == 0) {
+                            engine.stop();
+                        }
+                        break;
+                    default: QTest::qWait(random.bounded(40)); break;
+                }
+                QVERIFY2(timer.elapsed() < 200, qPrintable(where));
+
+                const TStreamId current = engine.currentStream();
+                const TStreamId queued = engine.queuedStream();
+                QSignalSpy advanced(&engine, &Audio::AudioEngine::trackAdvanced);
+                QSignalSpy undecodable(&engine, &Audio::AudioEngine::streamUndecodable);
+                engine.poll();
+                if (!advanced.isEmpty()) {
+                    QVERIFY2(queued && engine.currentStream() == queued, qPrintable(where));
+                }
+                if (!undecodable.isEmpty()) {
+                    QVERIFY2(current && undecodable.first().first().toULongLong() == current, qPrintable(where));
+                }
+                QVERIFY2(engine.positionSeconds() >= 0, qPrintable(where));
+            }
+            engine.stop();
+        }
     }
 };
 

@@ -8,7 +8,6 @@
 #include <QObject>
 #include <QString>
 
-#include <atomic>
 #include <cstdint>
 #include <memory>
 #include <span>
@@ -57,11 +56,10 @@ public:
     bool seek(double seconds);
 
     State state() const { return currentState; }
-    // Whether the current stream's decoder has opened it, i.e. audio could come out.
-    bool decoderStarted() const;
     double positionSeconds() const;
-    int sourceSampleRate() const { return sourceRate.load(); }
-    int sourceChannels() const { return sourceChannelCount.load(); }
+    // The current stream's own format, once the decoder has opened it; 0 before.
+    int sourceSampleRate() const { return sourceRate; }
+    int sourceChannels() const { return sourceChannelCount; }
 
     void setVolume(int percent);
     void setEqualizer(const EqSettings& settings);
@@ -86,8 +84,8 @@ private:
     struct Implementation;
     void setState(State state);
     void updateGains();
-    void startDecoder(double startSeconds);
-    void dropStreams();
+    void newGeneration(int64_t frame);
+    void startDevice();
 
     QHash<TStreamId, std::shared_ptr<StreamBuffer>> streams;
     TStreamId lastId = 0;
@@ -98,8 +96,8 @@ private:
     State currentState = State::Stopped;
     int volumePercent = 75;
     int balancePercent = 0;
-    std::atomic<int> sourceRate{0};
-    std::atomic<int> sourceChannelCount{0};
+    int sourceRate = 0;
+    int sourceChannelCount = 0;
 };
 
 }  // namespace Audio
