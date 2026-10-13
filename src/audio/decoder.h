@@ -16,18 +16,15 @@
 
 namespace Audio {
 
-// The decoder thread, one per engine. It alone owns the ma_decoders and decides what audio follows
-// what; the UI thread talks to it only through commands and events, and the device callback only
-// through the block queue.
 class Decoder {
 public:
     struct Command {
         enum class Kind { Start, Queue, ClearQueued, Seek, Advanced, Stop };
         Kind kind = Kind::Stop;
         uint64_t stream = 0;
-        std::shared_ptr<ByteSource> source;  // Start, Queue
-        uint32_t generation = 0;  // Start, Seek
-        int64_t frame = 0;  // Start, Seek: where to begin, in device frames
+        std::shared_ptr<ByteSource> source;
+        uint32_t generation = 0;
+        int64_t frame = 0;
 
         static Command Start(uint64_t stream, std::shared_ptr<ByteSource> source, uint32_t generation, int64_t frame) {
             return {Kind::Start, stream, std::move(source), generation, frame};
@@ -46,21 +43,17 @@ public:
         enum class Kind { Opened, OpenFailed };
         Kind kind = Kind::Opened;
         uint64_t stream = 0;
-        int rate = 0;  // Opened: the source's own format
+        int rate = 0;
         int channels = 0;
     };
 
-    // `endWaitFrames`: how little audio may be left in the queue before a track whose successor
-    // has not fully arrived ends.
     Decoder(BlockQueue& queue, uint32_t deviceRate, uint32_t endWait);
     ~Decoder();
     Decoder(const Decoder&) = delete;
     Decoder& operator=(const Decoder&) = delete;
 
-    // UI thread.
     void send(Command command);
     std::vector<Event> takeEvents();
-    // Any thread: a source got bytes or completed.
     void wake();
 
 private:
@@ -83,7 +76,6 @@ private:
     bool writeMarker();
     void post(Event event);
     void idle(std::optional<std::chrono::milliseconds> limit);
-    // Decoder thread: waits until `ready()` or a command it must give way to; false for the latter.
     template <typename Ready>
     bool waitFor(Source& source, Ready ready);
 
@@ -91,22 +83,19 @@ private:
     const uint32_t outputRate;
     const uint32_t endWaitFrames;
 
-    // Shared with the UI thread, under `mutex`. Byte sources are read outside it.
     std::mutex mutex;
     std::condition_variable wakeUp;
     std::deque<Command> commands;
-    bool urgent = false;  // a command that a waiting read must give way to
+    bool urgent = false;
     bool shutDown = false;
     std::vector<Event> events;
 
-    // The decoder thread's own.
     uint32_t generation = 0;
     std::unique_ptr<Source> current;
-    std::unique_ptr<Source> previous;  // the one `current` was chained to, until the UI moves on
+    std::unique_ptr<Source> chainedFrom;
     Pending queued;
-    bool chainClosed = false;  // a chained stream was cleared: nothing more chains in this generation
     std::optional<Marker> marker;
-    bool ended = false;  // the end marker is written: nothing more in this generation
+    bool ended = false;
 
     std::thread thread;
 };

@@ -281,10 +281,11 @@ stream gets `OpenFailed`, and `poll()` stops the engine and reports the error.
 
 Reads and byte seeks wait for bytes on the decoder's condition variable. A command that seeks or
 drops the source being read (`Start`, `Seek`, `Stop`, shutting down) makes them return
-`MA_CANCELLED` at once. Such a source is opened again before it reads on (dr_mp3 takes the empty
+`MA_CANCELLED` at once; `Queue` and `ClearQueued` never do, since a queued stream is read only once
+it is complete. Such a source is opened again before it reads on (dr_mp3 takes the empty
 read for the end of the file, and a seek forwards would then end the track), and an open cut short
-that way is tried again, not reported. So a seek into the downloaded part plays at once
-while the download is stalled (TR-09). Commands are handled between blocks. While the queue is full
+that way is tried again, not reported. So while the download is stalled, a seek to at least 3 s
+before the end of the downloaded part plays at once (TR-09). Commands are handled between blocks. While the queue is full
 or it waits for a successor, the decoder looks again every 10 ms (the callback wakes no one). It
 decodes ahead of playback by at most the queue, 2 s.
 
@@ -443,6 +444,8 @@ thread, then uninitialises the context.
   `failData()`: a failed queued download is chained and plays up to its last byte.
 - While more may come, the mp3 decoder keeps 16 KB in reserve: of a stalled download the last
   16 KB that arrived (0.7 s at 192 kbps) cannot be decoded, and a seek into them waits for bytes.
+  TR-09 promises a seek at once only from 3 s before the end of the downloaded part: 16 KB is 2 s
+  at 64 kbps.
 - An mp3 that starts with a LAME "Info" or "Xing" frame ends at the length that frame states, even
   when more frames follow.
 - After `seek()` or `stop()`, the audio already handed to the device plays out: one period, up to

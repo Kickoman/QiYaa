@@ -13,8 +13,6 @@ namespace {
 
 constexpr auto kRecheck = std::chrono::milliseconds(10);
 
-// A command a waiting read gives way to: one that seeks or drops the source being read. A cleared
-// or queued stream is never the one being read while it waits: chaining takes only complete ones.
 bool IsUrgent(Decoder::Command::Kind kind) {
     switch (kind) {
         case Decoder::Command::Kind::Start:
@@ -29,7 +27,6 @@ bool IsUrgent(Decoder::Command::Kind kind) {
 
 }  // namespace
 
-// Heap-allocated: ma_decoder must not move.
 struct Decoder::Source {
     Source(Decoder& parent, uint64_t id, std::shared_ptr<ByteSource> source)
         : owner(parent)
@@ -43,16 +40,13 @@ struct Decoder::Source {
     const uint64_t stream;
     const std::shared_ptr<ByteSource> bytes;
     uint64_t offset = 0;
-    // A read gave way to a command. What miniaudio's decoder holds then is unknown (dr_mp3 takes the
-    // empty read for the end of the file, and only a seek backwards clears that), so the source is
-    // opened again before it reads on.
     bool interrupted = false;
     ma_decoder decoder{};
     bool opened = false;
     int rate = 0;
     int channels = 0;
-    std::optional<int64_t> seekTo;  // where to go before decoding on, in device frames
-    int64_t nextFrame = 0;  // of the next block
+    std::optional<int64_t> seekTo;
+    int64_t nextFrame = 0;
     bool atEnd = false;
 
     static ma_result OnRead(ma_decoder* decoder, void* destination, size_t bytesToRead, size_t* bytesRead) {
@@ -74,8 +68,6 @@ struct Decoder::Source {
             case ma_seek_origin_start: target = delta; break;
             case ma_seek_origin_current: target = static_cast<ma_int64>(source.offset) + delta; break;
             case ma_seek_origin_end:
-                // The size is unknown until the download completes; waiting for it would stall
-                // streaming.
                 if (!source.bytes->complete()) {
                     return MA_BAD_SEEK;
                 }
@@ -151,8 +143,6 @@ std::vector<Decoder::Event> Decoder::takeEvents() {
 }
 
 void Decoder::wake() {
-    // Taking the lock orders this after a waiter's check of its condition, so the wake-up cannot
-    // fall between the check and the wait.
     { std::lock_guard lock(mutex); }
     wakeUp.notify_all();
 }
@@ -205,11 +195,10 @@ void Decoder::apply(Command command) {
     switch (command.kind) {
         case Command::Kind::Start:
             generation = command.generation;
-            previous.reset();
+            chainedFrom.reset();
             queued = {};
             marker.reset();
             ended = false;
-            chainClosed = false;
             current = std::make_unique<Source>(*this, command.stream, std::move(command.source));
             current->nextFrame = command.frame;
             if (command.frame > 0) {
@@ -220,42 +209,36 @@ void Decoder::apply(Command command) {
         case Command::Kind::ClearQueued:
             if (queued.stream == command.stream) {
                 queued = {};
-            } else if (current && previous && current->stream == command.stream) {
-                // Chained already: the callback ends the track at this stream's first block, or
-                // at the marker if none was written.
+            } else if (current && chainedFrom && current->stream == command.stream) {
                 marker = Marker{command.stream, 0};
-                current = std::move(previous);
-                chainClosed = true;
+                current = std::move(chainedFrom);
             }
             return;
         case Command::Kind::Seek:
             if (!current) {
                 return;
             }
-            if (previous && previous->stream == command.stream) {
-                // The UI has not moved on to the chained stream: undo the chain. That stream waits to
-                // be chained again, from its start.
+            if (chainedFrom && chainedFrom->stream == command.stream) {
                 queued = {current->stream, current->bytes};
-                current = std::move(previous);
+                current = std::move(chainedFrom);
             } else if (current->stream != command.stream) {
-                return;  // a stream the UI has left
+                return;
             }
-            previous.reset();
+            chainedFrom.reset();
             generation = command.generation;
             current->seekTo = command.frame;
             current->atEnd = false;
             marker.reset();
             ended = false;
-            chainClosed = false;
             return;
         case Command::Kind::Advanced:
             if (current && current->stream == command.stream) {
-                previous.reset();
+                chainedFrom.reset();
             }
             return;
         case Command::Kind::Stop:
             current.reset();
-            previous.reset();
+            chainedFrom.reset();
             queued = {};
             marker.reset();
             ended = false;
@@ -287,7 +270,7 @@ void Decoder::step() {
     }
     if (source.interrupted) {
         if (!source.seekTo) {
-            source.seekTo = source.nextFrame;  // the command that interrupted it did not move it
+            source.seekTo = source.nextFrame;
         }
         source.close();
         return;
@@ -300,7 +283,7 @@ void Decoder::step() {
         }
         source.seekTo.reset();
         source.nextFrame = target;
-        source.atEnd = result != MA_SUCCESS;  // past the end of the file
+        source.atEnd = result != MA_SUCCESS;
         return;
     }
     if (!source.atEnd) {
@@ -312,7 +295,7 @@ void Decoder::step() {
 bool Decoder::open(Source& source) {
     source.interrupted = false;
     source.offset = 0;
-    source.decoder.pUserData = &source;  // for startsAsMp4(), before ma_decoder_init sets it
+    source.decoder.pUserData = &source;
     ma_decoder_config config = ma_decoder_config_init(ma_format_f32, kBlockChannels, outputRate);
     ma_result result = MA_NO_BACKEND;
     if (source.startsAsMp4()) {
@@ -335,7 +318,7 @@ bool Decoder::open(Source& source) {
         }
     }
     if (result == MA_SUCCESS && source.interrupted) {
-        ma_decoder_uninit(&source.decoder);  // opened on bytes cut short: open again
+        ma_decoder_uninit(&source.decoder);
         result = MA_CANCELLED;
     }
     if (result != MA_SUCCESS) {
@@ -361,7 +344,7 @@ void Decoder::decodeBlock(Source& source) {
     const ma_result result =
         ma_decoder_read_pcm_frames(&source.decoder, block->samples.data(), kBlockFrames, &framesRead);
     if (source.interrupted) {
-        return;  // not pushed: the source is opened again first
+        return;
     }
     if (framesRead > 0) {
         block->generation = generation;
@@ -378,22 +361,22 @@ void Decoder::decodeBlock(Source& source) {
 }
 
 void Decoder::endOrChain() {
-    if (!chainClosed && !previous && queued.source && queued.source->complete()) {
+    if (!chainedFrom && queued.source && queued.source->complete()) {
         auto next = std::make_unique<Source>(*this, queued.stream, std::move(queued.source));
         queued = {};
         if (open(*next)) {
             post({.kind = Event::Kind::Opened, .stream = next->stream, .rate = next->rate, .channels = next->channels});
-            previous = std::move(current);
+            chainedFrom = std::move(current);
             current = std::move(next);
         } else if (next->interrupted) {
-            queued = {next->stream, next->bytes};  // the command decides; it may still chain
+            queued = {next->stream, next->bytes};
         } else {
             post({.kind = Event::Kind::OpenFailed, .stream = next->stream});
         }
         return;
     }
     if (blocks.size() * kBlockFrames > endWaitFrames) {
-        return idle(kRecheck);  // its successor may still arrive in time
+        return idle(kRecheck);
     }
     marker = Marker{current->stream, current->nextFrame};
 }

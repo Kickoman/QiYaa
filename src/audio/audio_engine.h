@@ -57,7 +57,6 @@ public:
 
     State state() const { return currentState; }
     double positionSeconds() const;
-    // The current stream's own format, once the decoder has opened it; 0 before.
     int sourceSampleRate() const { return sourceRate; }
     int sourceChannels() const { return sourceChannelCount; }
 

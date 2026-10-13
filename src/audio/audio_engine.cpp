@@ -24,8 +24,6 @@ namespace {
 constexpr ma_uint32 kChannels = kBlockChannels;
 constexpr uint32_t kQueueSeconds = 2;
 
-// The device callback must never block, so every atomic it touches has to be lock-free on every
-// platform we build for, not just usually.
 static_assert(
     std::atomic<uint32_t>::is_always_lock_free && std::atomic<uint64_t>::is_always_lock_free
     && std::atomic<float>::is_always_lock_free
@@ -47,23 +45,20 @@ struct AudioEngine::Implementation {
 
     std::unique_ptr<BlockQueue> blocks;
     std::unique_ptr<Decoder> decoder;
-    PlaybackState playback;  // written by the callback
+    PlaybackState playback;
 
-    // Written by the UI thread, read by the callback.
     std::atomic<uint32_t> generation{0};
-    std::atomic<uint64_t> allowedNext{0};  // the stream the callback may go on to without a gap
+    std::atomic<uint64_t> allowedNext{0};
     std::atomic<float> gainLeft{1.0f};
     std::atomic<float> gainRight{1.0f};
     EqualizerDsp eq;
     VisTap visTap;
 
-    // The callback's own.
     uint64_t frontIndex = ~uint64_t{0};
-    uint32_t frontOffset = 0;  // frames of the front block already played
+    uint32_t frontOffset = 0;
     PlaybackSnapshot playing;
 
-    // The UI thread's own.
-    int64_t shownFrame = 0;  // the current track's position as last seen, or the generation's target
+    int64_t shownFrame = 0;
     bool finishReported = false;
     std::optional<Format> queuedFormat;
 
@@ -78,7 +73,7 @@ struct AudioEngine::Implementation {
         while (written < frameCount) {
             const Block* block = blocks->front();
             if (!block) {
-                break;  // an underrun: silence, and the position stands
+                break;
             }
             if (const uint64_t index = blocks->frontIndex(); index != frontIndex) {
                 frontIndex = index;
@@ -91,9 +86,8 @@ struct AudioEngine::Implementation {
             if (block->generation != playing.generation) {
                 playing = {block->generation, block->stream, block->frame, false};
             } else if (playing.ended) {
-                break;  // nothing more in this generation
+                break;
             } else if (block->stream != playing.stream) {
-                // Loaded only now: a stream cleared before the decoder wrote this block is not allowed.
                 if (block->stream != allowedNext.load(std::memory_order_acquire)) {
                     playing.ended = true;
                     break;
@@ -135,7 +129,6 @@ struct AudioEngine::Implementation {
 
     bool deviceRunning() { return deviceReady && ma_device_is_started(&device); }
 
-    // UI thread, only while the device is stopped: the queue's one reader is then this thread.
     void dropStaleBlocks() {
         const uint32_t current = generation.load(std::memory_order_relaxed);
         while (const Block* block = blocks ? blocks->front() : nullptr) {
@@ -146,7 +139,6 @@ struct AudioEngine::Implementation {
         }
     }
 
-    // UI thread, only while the device is stopped.
     bool currentBlockReady() const {
         const Block* block = blocks ? blocks->front() : nullptr;
         return block && block->generation == generation.load(std::memory_order_relaxed);
@@ -230,8 +222,6 @@ AudioEngine::InitResult AudioEngine::init() {
     implementation->sampleRate = rate;
     implementation->eq.setSampleRate(rate);
     implementation->blocks = std::make_unique<BlockQueue>((kQueueSeconds * rate + kBlockFrames - 1) / kBlockFrames);
-    // A track whose successor has not fully arrived ends when less than this is left: enough for the
-    // callback to go on playing while the decoder writes the end, with periods of up to 100 ms.
     const uint32_t endWaitFrames = std::max(rate / 10, 2 * implementation->device.playback.internalPeriodSizeInFrames);
     implementation->decoder = std::make_unique<Decoder>(*implementation->blocks, rate, endWaitFrames);
     return {true, {}};
@@ -247,7 +237,7 @@ QString AudioEngine::backendName() const {
 void AudioEngine::newGeneration(int64_t frame) {
     uint32_t next = implementation->generation.load(std::memory_order_relaxed) + 1;
     if (next == 0) {
-        next = 1;  // 0 is "nothing played yet"
+        next = 1;
     }
     implementation->generation.store(next, std::memory_order_release);
     implementation->shownFrame = frame;
@@ -346,7 +336,7 @@ void AudioEngine::finishData(TStreamId stream) {
 }
 
 void AudioEngine::failData(TStreamId stream) {
-    finishData(stream);  // what arrived plays; the end of the track then tells the caller
+    finishData(stream);
 }
 
 void AudioEngine::pause() {
@@ -398,14 +388,12 @@ bool AudioEngine::seek(double seconds) {
     newGeneration(frame);
     implementation->decoder->send(Decoder::Command::Seek(currentId, implementation->generation.load(), frame));
     if (!implementation->deviceRunning()) {
-        implementation->dropStaleBlocks();  // so that the decoder can fill the queue before resume()
+        implementation->dropStaleBlocks();
     }
     return true;
 }
 
 double AudioEngine::positionSeconds() const {
-    // Remembers what it sees (the UI thread's own field), so the position does not step back while
-    // the callback has already gone on to the queued stream and poll() has not yet moved over.
     const PlaybackSnapshot snapshot = implementation->playback.read();
     if (currentId && snapshot.generation == implementation->generation.load(std::memory_order_relaxed)
         && snapshot.stream == currentId) {
@@ -456,8 +444,6 @@ void AudioEngine::poll() {
     if (!implementation->decoder) {
         return;
     }
-    // The snapshot first: an event the decoder sent before the blocks the callback has played is
-    // then already among the events read below.
     const PlaybackSnapshot snapshot = implementation->playback.read();
     for (const Decoder::Event& event : implementation->decoder->takeEvents()) {
         if (event.kind == Decoder::Event::Kind::Opened) {
@@ -480,7 +466,6 @@ void AudioEngine::poll() {
             Q_EMIT streamUndecodable(failedId);
             return;
         } else if (event.stream == queuedId) {
-            // The decoder ends the current track instead of chaining this one.
             streams.remove(queuedId);
             queuedId = 0;
             implementation->allowedNext.store(0, std::memory_order_release);
@@ -514,8 +499,6 @@ void AudioEngine::poll() {
         Q_EMIT trackAdvanced();
         return;
     }
-    // The callback went on to a stream that clearQueued() dropped meanwhile: the current track has
-    // ended, and a new generation makes the callback drop the rest of that stream at once.
     if (!implementation->finishReported) {
         newGeneration(implementation->shownFrame);
         implementation->finishReported = true;

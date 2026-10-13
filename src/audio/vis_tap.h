@@ -27,8 +27,6 @@ public:
 private:
     static_assert(std::atomic<float>::is_always_lock_free && std::atomic<uint32_t>::is_always_lock_free);
 
-    // Atomic so that a sample the reader copies while the writer overwrites it is a torn picture, not
-    // undefined behaviour; relaxed accesses cost what plain ones do.
     std::array<std::atomic<float>, kSize> leftSamples{};
     std::array<std::atomic<float>, kSize> rightSamples{};
     std::atomic<uint32_t> writePosition{0};

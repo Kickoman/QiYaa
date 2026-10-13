@@ -404,7 +404,7 @@ seen, position, state, current and queued stream ids.
 - `seekingIntoTheDownloadedPartPlaysAtOnceWhileTheDownloadStalls` (TR-09) feeds half of a 12 s
   stream and no more. While more may come, the mp3 decoder keeps 16 KB in reserve (2 s of this
   file), so about 4 s can be decoded: once 2.5 s have played, the decoder waits for bytes. A seek
-  back to 1 s must then play from there.
+  to 3 s, TR-09's 3 s before the end of the downloaded part, must then play from there.
 - `positionShowsTheTargetThroughASeriesOfSeeks` (TR-08): after each of five seeks, for 300 ms and
   then until audio from the target has played (3 s at most, for slow CI machines), the position
   never falls below what it showed last (the target, at first) and never runs ahead of the target

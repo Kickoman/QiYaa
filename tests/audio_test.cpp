@@ -22,8 +22,6 @@ using Audio::AudioEngine;
 
 namespace {
 
-// The test mp3 without its ID3 tag and its LAME "Info" frame: copies of what is left join into one
-// longer stream. With the Info frame first, the mp3 decoder stops after the length it states (3 s).
 QByteArray BareMp3Frames(const QByteArray& file) {
     const auto byte = [&](qsizetype index) { return static_cast<uchar>(file.at(index)); };
     qsizetype offset = 0;
@@ -88,7 +86,6 @@ private:
         return stream;
     }
 
-    // One stream of `times` × 3 s.
     QByteArray repeatedMp3(int times) const {
         const QByteArray frames = BareMp3Frames(mp3);
         QByteArray stream;
@@ -197,7 +194,7 @@ private Q_SLOTS:
     }
 
     void rapidSeeksWhileDownloadingLandOnTheLastTarget() {
-        const QByteArray longMp3 = repeatedMp3(13);  // 39 s
+        const QByteArray longMp3 = repeatedMp3(13);
         engine.beginStream();
         qsizetype fed = 0;
         auto feed = [&](qsizetype byteCount) {
@@ -230,22 +227,19 @@ private Q_SLOTS:
     void seekingIntoTheDownloadedPartPlaysAtOnceWhileTheDownloadStalls() {  // TR-09
         const QByteArray longMp3 = repeatedMp3(4);
         engine.beginStream();
-        // 6 s of a 12 s stream, and then the download stalls. While more may come, the mp3 decoder
-        // keeps 16 KB in reserve (2 s of this 64 kbps file), so about 4 s can be decoded: by 2.5 s the
-        // decoder has used them all and waits for bytes.
         engine.appendData(longMp3.left(longMp3.size() / 2));
         pumpUntil([&] { return engine.state() == Audio::AudioEngine::State::Playing; }, 3000);
         QCOMPARE(engine.state(), Audio::AudioEngine::State::Playing);
         pumpUntil([&] { return engine.positionSeconds() >= 2.5; }, 4000);
         QVERIFY2(engine.positionSeconds() >= 2.5, qPrintable(QString::number(engine.positionSeconds())));
-        QVERIFY(engine.seek(1.0));
+        QVERIFY(engine.seek(3.0));
         pumpFor(300);
         const double early = engine.positionSeconds();
         pumpFor(300);
         const double later = engine.positionSeconds();
         engine.stop();
         QVERIFY2(
-            later > early + 0.15 && later < 2.0,
+            later > early + 0.15 && later < 4.0,
             qPrintable(QStringLiteral("%1 s, then %2 s").arg(early, 0, 'f', 2).arg(later, 0, 'f', 2))
         );
     }
@@ -260,9 +254,7 @@ private Q_SLOTS:
             QVERIFY(engine.seek(target));
             sinceSeek.start();
             double shown = target;
-            // At least 300 ms, and on a slow machine until audio from the target has played.
             while (sinceSeek.elapsed() < 300 || (shown <= target && sinceSeek.elapsed() < 3000)) {
-                // At most what has played since the seek, plus one device period handed out at once.
                 const double position = engine.positionSeconds();
                 const double latest = target + static_cast<double>(sinceSeek.elapsed()) / 1000 + 0.3;
                 QVERIFY2(
@@ -286,7 +278,7 @@ private Q_SLOTS:
         engine.pause();
         QVERIFY(engine.seek(4.0));
         QCOMPARE(engine.positionSeconds(), 4.0);
-        pumpFor(300);  // the decoder fills the queue from the target meanwhile
+        pumpFor(300);
         QCOMPARE(engine.positionSeconds(), 4.0);
         QSignalSpy states(&engine, &Audio::AudioEngine::stateChanged);
         engine.resume();
@@ -302,11 +294,9 @@ private Q_SLOTS:
         QSignalSpy finished(&engine, &Audio::AudioEngine::trackFinished);
         const QByteArray longMp3 = repeatedMp3(4);
         engine.beginStream();
-        engine.appendData(longMp3.left(longMp3.size() / 4));  // 3 s: the decoder soon waits for more
+        engine.appendData(longMp3.left(longMp3.size() / 4));
         pumpUntil([&] { return engine.state() == Audio::AudioEngine::State::Playing; }, 3000);
         pumpFor(300);
-        // Past what has arrived, twice: the second seek interrupts the first while it waits for bytes,
-        // and what that leaves in the mp3 decoder must not end the track.
         QVERIFY(engine.seek(7.0));
         pumpFor(300);
         QVERIFY(engine.seek(8.0));
@@ -322,7 +312,7 @@ private Q_SLOTS:
 
     void seekBeforeTheStreamOpensIsKept() {
         engine.beginStream();
-        QVERIFY(engine.seek(1.5));  // nothing has arrived yet
+        QVERIFY(engine.seek(1.5));
         QCOMPARE(engine.positionSeconds(), 1.5);
         engine.appendData(mp3);
         engine.finishData();
@@ -422,7 +412,7 @@ private Q_SLOTS:
         const auto nextStream = engine.queueStream();
         engine.appendData(nextStream, mp3.left(4000));
         engine.clearQueued();
-        engine.appendData(nextStream, mp3.mid(4000));  // a stream the engine has dropped: ignored
+        engine.appendData(nextStream, mp3.mid(4000));
         engine.finishData(nextStream);
         pumpUntil([&] { return finished.count() > 0 || advanced.count() > 0; }, 3000);
         QCOMPARE(finished.count(), 1);
@@ -436,16 +426,16 @@ private Q_SLOTS:
         QSignalSpy advanced(&engine, &Audio::AudioEngine::trackAdvanced);
         startNearEnd(2.6);
         queueWhole(mp3);
-        QTest::qWait(800);  // no poll(): the callback goes on into the queued stream unnoticed
+        QTest::qWait(800);
         engine.clearQueued();
         pumpUntil([&] { return finished.count() > 0 || advanced.count() > 0; }, 3000);
         QCOMPARE(finished.count(), 1);
         QCOMPARE(advanced.count(), 0);
-        pumpFor(150);  // a device period already handed out may still play
+        pumpFor(150);
         const uint32_t cursor = engine.visCursor();
         const double position = engine.positionSeconds();
         pumpFor(300);
-        QCOMPARE(engine.visCursor(), cursor);  // nothing more of the cleared stream
+        QCOMPARE(engine.visCursor(), cursor);
         QCOMPARE(engine.positionSeconds(), position);
         engine.stop();
     }
@@ -540,7 +530,7 @@ private Q_SLOTS:
         const QByteArray garbage(30'000, 'x');
         for (const quint32 seed : {1u, 2u, 3u}) {
             QRandomGenerator random(seed);
-            QHash<TStreamId, qsizetype> fed;  // per stream: bytes appended so far
+            QHash<TStreamId, qsizetype> fed;
             QHash<TStreamId, bool> broken;
             auto feed = [&](TStreamId stream) {
                 if (!stream) {
