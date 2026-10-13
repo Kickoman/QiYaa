@@ -155,8 +155,8 @@ report the file's own format, for display.
   `trackFinished` as usual. Telling the user is the caller's job.
 - `queueStream()` replaces the queued stream (it calls `clearQueued()` first) and returns 0 unless
   a decoder thread exists, i.e. between `beginStream()`/`playQueuedNow()` and `stop()`.
-- `playQueuedNow()` stops the decoder thread, drops the current stream, rewinds the queued one to
-  byte 0 and starts it as the current stream (`Buffering`, no `trackAdvanced`).
+- `playQueuedNow()` stops the decoder thread, drops the current stream and starts the queued one as
+  the current stream from byte 0 (`Buffering`, no `trackAdvanced`).
 - `stop()` drops every stream, stops the device (no callbacks run while stopped), resets the
   position to 0 and sets `Stopped`.
 - Streams are held whole in memory: the current and the queued file. After a gapless advance the
@@ -273,11 +273,11 @@ The mutex also makes two check-then-act sequences atomic. `tryChain` checks `fin
 before it takes the queued stream and again before it commits the chain; `poll()` checks
 `decoderEpoch > uiEpoch` before it sets `finishedReported`. Either the chain commits first (then
 `poll()` does not report the end, and the advance comes at a later poll) or the end is reported
-first (then `tryChain` does not commit and puts the stream back into `queued`, rewound, for
+first (then `tryChain` does not commit and puts the stream back into `queued` for
 `playQueuedNow()`). And `clearQueued()` finds the queued stream in exactly one of its three places.
 
-Lock order: `queueMutex`, then a `StreamBuffer`'s mutex (`finished()` and the hand-back
-`rewind()` in `tryChain`, `interrupt()` in `clearQueued()`, `rewind()` in the undo).
+Lock order: `queueMutex`, then a `StreamBuffer`'s mutex (`finished()` in `tryChain`, `interrupt()`
+in `clearQueued()`).
 `StreamBuffer` never takes `queueMutex`. The decoder thread never holds `queueMutex` across a
 read, a decode or a seek: `tryChain` opens the new source between two lock scopes.
 
@@ -398,8 +398,8 @@ because the first frame of the new track follows the last frame of the old one i
 signal comes up to one poll interval later.
 
 **Undo.** A seek requested before the advance targets the old track (`seekEpoch < epoch`). The
-decoder then, under `queueMutex`, rewinds the chained stream and puts it back into `queued` (unless
-it was cancelled), clears `chainedId` and `haltAtBoundary`, makes the tail current again and
+decoder then, under `queueMutex`, puts the chained stream back into `queued` (unless it was
+cancelled), clears `chainedId` and `haltAtBoundary`, makes the tail current again and
 decrements the epoch. The queued stream chains again later from its beginning
 (`seekingBackUndoesTheChain`).
 
@@ -440,17 +440,18 @@ public:
     void finish(bool failed);
     void interrupt();                                        // until resume()
     void resume();
-    void rewind();                                           // read cursor back to byte 0
     size_t size() const;
     bool finished() const;                                   // the download ended, either way
-    ma_result read(void* destination, size_t bytesToRead, size_t* bytesRead);        // blocks
-    ma_result seek(ma_int64 offset, ma_seek_origin origin);  // blocks
+    // Both block; the reader keeps its own offset, so several decoders can read one buffer.
+    ma_result read(size_t offset, void* destination, size_t bytesToRead, size_t* bytesRead);
+    ma_result seek(size_t offset, ma_int64 delta, ma_seek_origin origin, size_t* newOffset);
 };
 ```
 
 - The whole file in one growing `std::vector<char>`, with one mutex and one condition variable.
-  No size limit.
-- `read()` waits until the buffer is interrupted, finished, or has bytes past the cursor. It
+  No size limit. The read position belongs to each decoder source, not to the buffer: a source
+  opened again (chained again after an undo, `playQueuedNow()`) starts at byte 0 on its own.
+- `read()` waits until the buffer is interrupted, finished, or has bytes past `offset`. It
   returns `MA_CANCELLED` when interrupted, `MA_AT_END` at the end of a finished stream, and
   otherwise copies what is there, up to `bytesToRead` bytes (a short read does not wait for more).
 - `seek()` refuses a negative target and a seek from the end before the download finished
@@ -461,8 +462,7 @@ public:
   `MA_CANCELLED` at once.
 - `finish(true)` stores `endedWithError`, which nothing reads.
 - Threads: `append`, `finish`, `interrupt`, `resume` and `size` from the UI thread; `read`, `seek`
-  and `finished` from the decoder thread; `rewind` from the decoder thread under `queueMutex`, or
-  from the UI thread in `playQueuedNow()` after the join.
+  and `finished` from the decoder thread.
 
 ### Output device and `QIYAA_AUDIO_BACKEND`
 

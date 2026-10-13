@@ -63,10 +63,6 @@ public:
         std::lock_guard lock(mutex);
         interrupted = false;
     }
-    void rewind() {
-        std::lock_guard lock(mutex);
-        readOffset = 0;
-    }
     size_t size() const {
         std::lock_guard lock(mutex);
         return bytes.size();
@@ -76,36 +72,38 @@ public:
         return isFinished;
     }
 
-    ma_result read(void* destination, size_t bytesToRead, size_t* bytesRead) {
+    // Waits for bytes at `offset`, the end of the download or interrupt().
+    ma_result read(size_t offset, void* destination, size_t bytesToRead, size_t* bytesRead) {
         std::unique_lock lock(mutex);
-        wakeUp.wait(lock, [&] { return interrupted || isFinished || bytes.size() > readOffset; });
+        wakeUp.wait(lock, [&] { return interrupted || isFinished || bytes.size() > offset; });
         *bytesRead = 0;
         if (interrupted) {
             return MA_CANCELLED;
         }
-        const size_t available = bytes.size() - std::min(readOffset, bytes.size());
+        const size_t available = bytes.size() - std::min(offset, bytes.size());
         const size_t bytesToCopy = std::min(bytesToRead, available);
         if (bytesToCopy == 0) {
             return MA_AT_END;
         }
-        std::memcpy(destination, bytes.data() + readOffset, bytesToCopy);
-        readOffset += bytesToCopy;
+        std::memcpy(destination, bytes.data() + offset, bytesToCopy);
         *bytesRead = bytesToCopy;
         return MA_SUCCESS;
     }
 
-    ma_result seek(ma_int64 offset, ma_seek_origin origin) {
+    // Where a reader at `offset` may go. Waits until `target` has arrived, the download ends or
+    // interrupt().
+    ma_result seek(size_t offset, ma_int64 delta, ma_seek_origin origin, size_t* newOffset) {
         std::unique_lock lock(mutex);
         ma_int64 target = 0;
         switch (origin) {
-            case ma_seek_origin_start: target = offset; break;
-            case ma_seek_origin_current: target = static_cast<ma_int64>(readOffset) + offset; break;
+            case ma_seek_origin_start: target = delta; break;
+            case ma_seek_origin_current: target = static_cast<ma_int64>(offset) + delta; break;
             case ma_seek_origin_end:
                 // Size is unknown until the download completes; don't stall streaming for it.
                 if (!isFinished) {
                     return MA_BAD_SEEK;
                 }
-                target = static_cast<ma_int64>(bytes.size()) + offset;
+                target = static_cast<ma_int64>(bytes.size()) + delta;
                 break;
         }
         if (target < 0) {
@@ -118,7 +116,7 @@ public:
         if (target > static_cast<ma_int64>(bytes.size())) {
             return MA_BAD_SEEK;
         }
-        readOffset = static_cast<size_t>(target);
+        *newOffset = static_cast<size_t>(target);
         return MA_SUCCESS;
     }
 
@@ -126,7 +124,6 @@ private:
     mutable std::mutex mutex;
     std::condition_variable wakeUp;
     std::vector<char> bytes;
-    size_t readOffset = 0;
     bool isFinished = false;
     bool endedWithError = false;
     bool interrupted = false;
@@ -217,16 +214,29 @@ struct AudioEngine::Implementation {
         }
     }
 
+    // One decoder's position in a buffer; several readers can share a buffer.
+    struct Reader {
+        std::shared_ptr<StreamBuffer> buffer;
+        size_t offset = 0;
+
+        ma_result read(void* destination, size_t bytesToRead, size_t* bytesRead) {
+            const ma_result result = buffer->read(offset, destination, bytesToRead, bytesRead);
+            offset += *bytesRead;
+            return result;
+        }
+        ma_result seek(ma_int64 delta, ma_seek_origin origin) { return buffer->seek(offset, delta, origin, &offset); }
+    };
+
     static ma_result OnRead(ma_decoder* decoder, void* destination, size_t bytesToRead, size_t* bytesRead) {
-        return static_cast<StreamBuffer*>(decoder->pUserData)->read(destination, bytesToRead, bytesRead);
+        return static_cast<Reader*>(decoder->pUserData)->read(destination, bytesToRead, bytesRead);
     }
     static ma_result OnSeek(ma_decoder* decoder, ma_int64 offset, ma_seek_origin origin) {
-        return static_cast<StreamBuffer*>(decoder->pUserData)->seek(offset, origin);
+        return static_cast<Reader*>(decoder->pUserData)->seek(offset, origin);
     }
 
     // Heap-allocated: ma_decoder must not move.
     struct Source {
-        std::shared_ptr<StreamBuffer> buffer;
+        Reader reader;
         ma_decoder decoder{};
         int rate = 0;
         int channels = 0;
@@ -242,31 +252,31 @@ struct AudioEngine::Implementation {
         }
     };
 
-    static bool StartsAsMp4(StreamBuffer& buffer) {
+    static bool StartsAsMp4(Reader& reader) {
         char head[8];
         size_t filled = 0;
         while (filled < sizeof(head)) {
             size_t bytesRead = 0;
-            if (buffer.read(head + filled, sizeof(head) - filled, &bytesRead) != MA_SUCCESS) {
+            if (reader.read(head + filled, sizeof(head) - filled, &bytesRead) != MA_SUCCESS) {
                 break;
             }
             filled += bytesRead;
         }
-        buffer.seek(0, ma_seek_origin_start);
+        reader.offset = 0;
         return IsMp4(head, filled);
     }
 
     std::unique_ptr<Source> openSource(std::shared_ptr<StreamBuffer> buffer) {
         auto source = std::make_unique<Source>();
-        source->buffer = std::move(buffer);
+        source->reader.buffer = std::move(buffer);
         ma_decoder_config decoderConfig = ma_decoder_config_init(ma_format_f32, kChannels, sampleRate);
         ma_decoding_backend_vtable* mp4Backends[] = {Mp4AacBackend()};
         ma_result result = MA_NO_BACKEND;
-        if (StartsAsMp4(*source->buffer)) {
+        if (StartsAsMp4(source->reader)) {
             decoderConfig.ppCustomBackendVTables = mp4Backends;
             decoderConfig.customBackendCount = 1;
             result = ma_decoder_init(
-                &Implementation::OnRead, &Implementation::OnSeek, source->buffer.get(), &decoderConfig, &source->decoder
+                &Implementation::OnRead, &Implementation::OnSeek, &source->reader, &decoderConfig, &source->decoder
             );
             // The mp3 decoder would find "frames" in an MP4 file it does not understand.
             if (result == MA_SUCCESS && source->decoder.pBackendVTable != Mp4AacBackend()) {
@@ -276,17 +286,13 @@ struct AudioEngine::Implementation {
         } else {
             decoderConfig.encodingFormat = ma_encoding_format_mp3;
             result = ma_decoder_init(
-                &Implementation::OnRead, &Implementation::OnSeek, source->buffer.get(), &decoderConfig, &source->decoder
+                &Implementation::OnRead, &Implementation::OnSeek, &source->reader, &decoderConfig, &source->decoder
             );
             if (result != MA_SUCCESS && !stopDecoder) {
-                source->buffer->seek(0, ma_seek_origin_start);
+                source->reader.offset = 0;
                 decoderConfig.encodingFormat = ma_encoding_format_unknown;
                 result = ma_decoder_init(
-                    &Implementation::OnRead,
-                    &Implementation::OnSeek,
-                    source->buffer.get(),
-                    &decoderConfig,
-                    &source->decoder
+                    &Implementation::OnRead, &Implementation::OnSeek, &source->reader, &decoderConfig, &source->decoder
                 );
             }
         }
@@ -328,10 +334,10 @@ struct AudioEngine::Implementation {
         auto publishHeld = [&] {
             decoderHeld.clear();
             if (current) {
-                decoderHeld.push_back(current->buffer);
+                decoderHeld.push_back(current->reader.buffer);
             }
             if (tail) {
-                decoderHeld.push_back(tail->buffer);
+                decoderHeld.push_back(tail->reader.buffer);
             }
         };
         {
@@ -361,7 +367,6 @@ struct AudioEngine::Implementation {
                     failedQueuedId = id;
                 } else if (next && finishedReported && !dropChaining && !stopDecoder) {
                     // Already reported finished: hand it back for playQueuedNow().
-                    buffer->rewind();
                     queued = buffer;
                     queuedId = id;
                 }
@@ -388,8 +393,7 @@ struct AudioEngine::Implementation {
                 if (tail && seekEpoch.load(std::memory_order_acquire) < epoch) {
                     std::lock_guard lock(queueMutex);
                     if (!haltAtBoundary) {
-                        current->buffer->rewind();
-                        queued = current->buffer;
+                        queued = current->reader.buffer;  // chained again later, from its start
                         queuedId = chainedId;
                     }
                     chainedId = 0;
@@ -695,7 +699,6 @@ AudioEngine::TStreamId AudioEngine::playQueuedNow() {
     implementation->outputEnabled.store(false, std::memory_order_release);
     implementation->stopDecoderThread(streams);
     streams.clear();
-    buffer->rewind();
     streams.insert(id, buffer);
     currentId = id;
     queuedId = 0;
