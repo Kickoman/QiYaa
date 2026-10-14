@@ -860,6 +860,9 @@ no exception may cross the event loop, so they must not throw.
   likes without `autoplay` after login when the queue is empty, and calling `shutDown()` on quit
   before waiting for the last POSTs: [src/app](../app/README.md).
 - Tests:
+  - `tests/player_test.cpp`: the `Player` on a fake source; every check of a late answer
+    (`generation`, `preloadGeneration`, `queueGeneration`) and the rules taken when a track
+    starts.
   - `tests/library_test.cpp`: track events, the preload and the gapless advance, re-preloading
     after a queue change, the endless source, and a slow load against a newer choice.
   - `tests/audio_test.cpp`: `playerPollsTheEngine`.

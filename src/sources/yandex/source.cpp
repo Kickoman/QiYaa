@@ -13,9 +13,9 @@ namespace YandexSource {
 namespace {
 class FileDownload : public Core::TrackDownload {
 public:
-    FileDownload(Yandex::ApiClient* api, QUrl link)
-        : api(api)
-        , link(std::move(link)) { }
+    FileDownload(Yandex::ApiClient* client, QUrl file)
+        : api(client)
+        , link(std::move(file)) { }
 
     void start() override {
         if (download) {

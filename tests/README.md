@@ -15,10 +15,11 @@ is formatting (the clang-format check in `.github/workflows/ci.yml`).
 
 | File | Contains |
 |---|---|
-| `CMakeLists.txt` | `qiyaa_test_support`, `qiyaa_test_yandex`, the `qiyaa_add_test` helper, one CTest entry per suite, and `milkdrop_gl_test`; stops the configuration when `spec/` is not checked out |
+| `CMakeLists.txt` | `qiyaa_test_support`, `qiyaa_test_yandex`, `qiyaa_test_core`, the `qiyaa_add_test` helper, one CTest entry per suite, and `milkdrop_gl_test`; stops the configuration when `spec/` is not checked out |
 | `support/mock_http_server.h/.cpp` | `Tests::MockRequest`, `Tests::MockResponse`, `Tests::MockHttpServer` |
 | `support/spec_fixtures.h/.cpp` | `Tests::Fixture`, `FixtureStatus`, `Expected`, `ExpectedObject`, `Json`: reading `spec/fixtures/yandex` and `spec/expected/yandex`; `SpecObject` and `SpecPath` for any file of `spec/` |
 | `support/jam_stub_server.h/.cpp` | `Tests::JamStubServer`: the server's end of the jam protocol on localhost for `jam_test` and `jam_host_test` (built only with the jam) |
+| `support/fake_source.h/.cpp` | `Tests::FakeSource` and `Tests::FakeDownload`: a `Core::TrackSource` the test answers by hand (see below) |
 | `support/yandex_sources.h` | `Tests::YandexSources`: a `Core::SourceRegistry` with a `YandexSource::Source` under `"yandex"`, as the application wires them; header only, for suites that link `sources_yandex` |
 | `support/yandex_json.h/.cpp` | `Tests::ToJson` and friends: the `Yandex::` models in the neutral JSON of `spec/expected/yandex`; `CheckError` |
 | `snap_test.cpp` | `Ui::SnapToOthers`, `SnapWithin`, `ClampInside`, `PickScreen`, `ResolveDragPosition`, and `StackBelow` (which windows follow a shade change of window 0). Pure `QRect` arithmetic, no windows |
@@ -28,6 +29,7 @@ is formatting (the clang-format check in `.github/workflows/ci.yml`).
 | `audio_test.cpp` | `Audio::AudioEngine` on the test mp3: streaming in chunks, pause, the decode-error message, seeks during download and into the downloaded part of a stalled download (TR-09), the position during a series of seeks (TR-08), a seek while paused and one before the first byte, the `Core::Player` polling timer, gapless chaining of a queued stream and clearing it before and after the callback went into it, and random calls that must not hang; the test m4a playing with half of it downloaded |
 | `mp4_aac_test.cpp` | `Audio::Mp4AacBackend` through an `ma_decoder` over memory: `IsMp4`, the rate, length, level and 440 Hz of the test m4a, seeking to the same samples as playing through, the end, a file cut short, an MP4 without its index; with `QIYAA_MP4_SAMPLE=<path>` it also decodes that file (a Yandex economy file kept outside the repository) |
 | `dsp_test.cpp` | EQ response and processing, the 17 built-in EQ presets, `.eqf` read/write, `EqualizerWindow::GraphCurve`, the FFT analyzer, spectrum and oscilloscope rendering; the reference vectors of `spec/dsp` (checks them, and writes them with `QIYAA_WRITE_DSP_VECTORS=1`) |
+| `player_test.cpp` | `Core::Player` on `Tests::FakeSource` and the Null output. Late answers are dropped: the link of a track left behind, a link after Stop, a retry after the network wait (and none follows a Stop), the link of a cancelled preload, a load for a replaced queue; a dropped answer's download never starts. Another source's `filesChanged` leaves the preload alone; a track starts under the rules of its start (HOST-15); the source hears its tracks' events |
 | `library_test.cpp` | `Yandex::Library`/`ApiClient` against the mock server serving spec fixtures: request shapes and parsing for every source the menu offers, likes, waves, search with each kind of best result, errors, device login and wave feedback. Also `Core::Player` track events, preloading, endless sources, shuffle not applying in a wave, and repeat not replaying the only track of a wave (WAVE-12); the economy quality (QUAL-02 to QUAL-05): the request and its signature, the fallbacks, the network wait, the preload fetched again |
 | `yandex_source_test.cpp` | `src/sources/yandex`'s tracks: the key with and without an album, every spec track back whole, another source's track, the cover and web page through `Core::SourceRegistry` against the client's, `Core::Track::displayTitle`; its `Source` against the mock server: an opened track downloads only once started, the failure kinds, a play report on `Started` only, `filesChanged` on another quality; a track of no source fails after `open` returns |
 | `sources_test.cpp` | `YandexSource::Catalog` against the `spec/player` scenarios on spec fixtures, one function per scenario group: the last pick wins, stale failures, search as one pick, a failed source keeps the queue, likes with their count, an empty source keeping the queue, search's best result, and a wave played on the Null output (radio start, load more with the last ids, batch ids on the events, dislike and skip) |
@@ -92,6 +94,7 @@ QT_QPA_PLATFORM=offscreen QIYAA_AUDIO_BACKEND=null build/tests/audio_test queued
 | `mp4_aac_test` | audio (+ `qiyaa_miniaudio`) | plain; `QIYAA_TEST_DATA`; `QIYAA_MP4_SAMPLE` adds a file of your own |
 | `audio_test` | audio core | plain; `QIYAA_TEST_DATA` |
 | `main_window_test` | audio core skins ui | plain |
+| `player_test` | audio core (+ `qiyaa_test_core`) | plain; `QIYAA_TEST_DATA` |
 | `library_test` | audio core sources_yandex yandex (+ `qiyaa_test_yandex`) | plain; `QIYAA_TEST_DATA` |
 | `sources_test` | audio core sources_yandex yandex (+ `qiyaa_test_yandex`) | plain; `QIYAA_TEST_DATA` |
 | `jam_mode_test` | audio core sources_yandex yandex | plain; `QIYAA_TEST_DATA` |
@@ -212,8 +215,12 @@ audio decoder and races that are not there. CI's GCC 13 has it. With GCC 11, lin
 - `qiyaa_test_yandex`: `support/yandex_json.cpp`. It PUBLIC-links `qiyaa_test_support` and
   `qiyaa_yandex`. Only `library_test`, `sources_test`, `yandex_test` and `yandex_source_test` link
   it.
+- `qiyaa_test_core`: `support/fake_source.cpp`. It PUBLIC-links `qiyaa_test_support` and
+  `qiyaa_core`. Only `player_test` links it.
+- `support/yandex_sources.h` is a header with no library: a suite that includes it links
+  `qiyaa_sources_yandex` itself.
 - Each suite links the modules in the table above, plus what those modules link PUBLIC. For
-  example, `audio_test` reaches `Yandex::ApiClient` through `qiyaa_core`'s PUBLIC link to
+  example, `windows_test` reaches `Yandex::Library` through `qiyaa_app`'s PUBLIC link to
   `qiyaa_yandex`.
 - Deliberately not linked: the executable `qiyaa` (`src/app/main.cpp`). `windows_test`
   constructs `App::Application` from `qiyaa_app` instead. No suite links projectM directly;
@@ -316,6 +323,42 @@ public:
   `/play-audio`.
 - It is a `QObject` without `Q_OBJECT`, so it has no signals. Wait on the client's signals or
   callbacks instead.
+
+## `support/fake_source.h` — `Tests::FakeSource`
+
+```cpp
+namespace Tests {
+class FakeDownload : public Core::TrackDownload {
+public:
+    void start() override;                    // recorded in the source's started()
+    void feed(const QByteArray& bytes);       // emits received
+    void finish(const std::optional<Core::TrackFailure>& failure = std::nullopt);   // emits finished
+};
+
+class FakeSource : public Core::TrackSource {
+public:
+    struct Event { Core::TrackEvent event; QString id; };
+    qsizetype pending() const;                // opens not answered yet
+    const QStringList& asked() const;         // the key id of every open, in order
+    const QStringList& started() const;       // the key id of every download started, in order
+    const QList<Event>& events() const;       // what trackEvent heard
+    QStringList eventLog() const;             // events() as "started:<id>", "finished:<id>", "skipped:<id>"
+    QPointer<FakeDownload> complete(qsizetype request, int bitrateKbps = 320);
+    void fail(qsizetype request, Core::FailureKind kind, const QString& text = "broken");
+    void changeFiles();                       // emits filesChanged
+    static QUrl LinkOf(const QString& id);    // https://fake.example/<id>
+};
+}
+```
+
+- `open` only records the request. The test answers request `i` (its place in `asked()`) with
+  `complete(i)` or `fail(i, kind)`, each once, synchronously; never inside `open`, as the port
+  wants.
+- `complete` answers with a `FakeDownload` whose link is `LinkOf(id)` and whose codec is `mp3`.
+  The returned `QPointer` is null at once when the `Player` dropped the answer, because the
+  download dies with it.
+- A download sends nothing by itself: the test feeds it bytes and finishes it.
+- Covers and web pages are empty.
 
 ## Golden screenshots
 
