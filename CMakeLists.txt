@@ -133,6 +133,7 @@ qiyaa_add_module(core
     src/core/player.cpp         src/core/player.h
     src/core/queue.cpp          src/core/queue.h
     src/core/queue_source.h
+    src/core/source_notice.h
     src/core/track.cpp          src/core/track.h
     src/core/track_navigator.cpp src/core/track_navigator.h
     src/core/track_source.cpp   src/core/track_source.h)
@@ -185,6 +186,7 @@ qiyaa_add_module(ui
     src/ui/player_notices.cpp   src/ui/player_notices.h
     src/ui/playlist_window.cpp  src/ui/playlist_window.h
     src/ui/skinned_window.cpp   src/ui/skinned_window.h
+    src/ui/source_notices.cpp   src/ui/source_notices.h
     src/ui/snap.cpp             src/ui/snap.h)
 target_link_libraries(qiyaa_ui
     PUBLIC qiyaa_audio qiyaa_vis Qt6::Widgets

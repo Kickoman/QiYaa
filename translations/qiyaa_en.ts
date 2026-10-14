@@ -12,12 +12,12 @@
     </message>
 </context>
 <context>
-    <name>YandexSource::Catalog</name>
+    <name>Ui::SourceNotices</name>
     <message numerus="yes">
-        <source>Liked: %n track(s)</source>
+        <source>%1: %n track(s)</source>
         <translation>
-            <numerusform>Liked: %n track</numerusform>
-            <numerusform>Liked: %n tracks</numerusform>
+            <numerusform>%1: %n track</numerusform>
+            <numerusform>%1: %n tracks</numerusform>
         </translation>
     </message>
 </context>

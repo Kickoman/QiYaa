@@ -7,18 +7,17 @@
 #include "yandex/api_client.h"
 #include "yandex/library.h"
 
-#include <QCoreApplication>
 #include <QList>
 #include <QPointer>
 
 #include <algorithm>
 #include <functional>
 #include <memory>
-#include <optional>
 
 namespace YandexSource {
 
 using Core::Player;
+using Core::SourceNoticeCode;
 using Yandex::Track;
 
 namespace {
@@ -27,28 +26,8 @@ bool HasAvailable(const QList<Track>& tracks) {
     return std::any_of(tracks.cbegin(), tracks.cend(), [](const Track& track) { return track.available; });
 }
 
-void ShowStatus(Player* player, const QString& text) {
-    Q_EMIT player->statusMessage(text);
-}
-
-auto QueueLoader(Player* player, const QString& title, quint64 ticket) {
-    QPointer<Player> guardedPlayer(player);
-    return [guardedPlayer, title, ticket](const QList<Track>& tracks, const QString& error) {
-        if (!guardedPlayer || !guardedPlayer->isLatestSourceRequest(ticket)) {
-            return;
-        }
-        if (!error.isEmpty()) {
-            return ShowStatus(
-                guardedPlayer, QCoreApplication::translate("YandexSource::Catalog", "Error: %1").arg(error)
-            );
-        }
-        if (!HasAvailable(tracks)) {  // SRC-07, SRC-08
-            return ShowStatus(
-                guardedPlayer, QCoreApplication::translate("YandexSource::Catalog", "%1: empty").arg(title)
-            );
-        }
-        guardedPlayer->setSource(Core::QueueSource{.title = title, .head = TracksOf(tracks)}, true);
-    };
+Core::SourceNotice NoticeOf(SourceNoticeCode code, const QString& subject = {}, const QString& detail = {}) {
+    return Core::SourceNotice{.code = code, .subject = subject, .detail = detail};
 }
 
 }  // namespace
@@ -60,78 +39,92 @@ Catalog::Catalog(Player* player, Yandex::Library* library, QObject* parent)
     connect(library, &Yandex::Library::likesChanged, this, &Catalog::likesChanged);
 }
 
-void Catalog::showStatus(const QString& text) {
-    ShowStatus(corePlayer, text);
-}
-
-void Catalog::playLikes(bool autoplay) {
-    showStatus(tr("Liked: loading…"));
-    QPointer<Player> guardedPlayer(corePlayer);
-    const quint64 ticket = corePlayer->newSourceRequest();
-    yandexLibrary->likedTracks([guardedPlayer, autoplay, ticket](const QList<Track>& tracks, const QString& error) {
-        if (!guardedPlayer || !guardedPlayer->isLatestSourceRequest(ticket)) {
+Catalog::TTracksDone Catalog::queueLoader(const QString& title, quint64 ticket) {
+    QPointer<Catalog> self(this);
+    return [self, title, ticket](const QList<Track>& tracks, const QString& error) {
+        if (!self || !self->corePlayer->isLatestSourceRequest(ticket)) {
             return;
         }
         if (!error.isEmpty()) {
-            return ShowStatus(guardedPlayer, tr("Error: %1").arg(error));
+            return self->notify(NoticeOf(SourceNoticeCode::Failed, title, error));
         }
         if (!HasAvailable(tracks)) {  // SRC-07, SRC-08
-            return ShowStatus(guardedPlayer, tr("Liked: empty"));
+            return self->notify(NoticeOf(SourceNoticeCode::Empty, title));
+        }
+        self->corePlayer->setSource(Core::QueueSource{.title = title, .head = TracksOf(tracks)}, true);
+    };
+}
+
+void Catalog::notify(const Core::SourceNotice& notice) {
+    Q_EMIT noticed(notice);
+}
+
+void Catalog::playLikes(bool autoplay) {
+    const QString title = tr("Liked");
+    notify(NoticeOf(SourceNoticeCode::Loading, title));
+    QPointer<Catalog> self(this);
+    const quint64 ticket = corePlayer->newSourceRequest();
+    yandexLibrary->likedTracks([self, title, autoplay, ticket](const QList<Track>& tracks, const QString& error) {
+        if (!self || !self->corePlayer->isLatestSourceRequest(ticket)) {
+            return;
+        }
+        if (!error.isEmpty()) {
+            return self->notify(NoticeOf(SourceNoticeCode::Failed, title, error));
+        }
+        if (!HasAvailable(tracks)) {  // SRC-07, SRC-08
+            return self->notify(NoticeOf(SourceNoticeCode::Empty, title));
         }
         const QList<Core::Track> head = TracksOf(tracks);
-        guardedPlayer->setSource(Core::QueueSource{.title = tr("Liked"), .head = head}, autoplay);
+        self->corePlayer->setSource(Core::QueueSource{.title = title, .head = head}, autoplay);
         const auto available = std::count_if(head.cbegin(), head.cend(), [](const Core::Track& track) {
             return track.available;
         });
-        ShowStatus(guardedPlayer, tr("Liked: %n track(s)", nullptr, static_cast<int>(available)));
+        self->notify(
+            Core::SourceNotice{.code = SourceNoticeCode::Loaded, .subject = title, .count = static_cast<int>(available)}
+        );
     });
 }
 
 void Catalog::playPlaylist(const Yandex::PlaylistReference& playlist) {
-    yandexLibrary->playlistTracks(playlist, QueueLoader(corePlayer, playlist.title, corePlayer->newSourceRequest()));
+    yandexLibrary->playlistTracks(playlist, queueLoader(playlist.title, corePlayer->newSourceRequest()));
 }
 
 void Catalog::playRecommendations(const Yandex::PlaylistReference& playlist) {
     yandexLibrary->playlistRecommendations(
-        playlist, QueueLoader(corePlayer, tr("%1: similar").arg(playlist.title), corePlayer->newSourceRequest())
+        playlist, queueLoader(tr("%1: similar").arg(playlist.title), corePlayer->newSourceRequest())
     );
 }
 
 void Catalog::playArtist(const QString& artistId, const QString& name) {
-    yandexLibrary->artistTopTracks(artistId, QueueLoader(corePlayer, name, corePlayer->newSourceRequest()));
+    yandexLibrary->artistTopTracks(artistId, queueLoader(name, corePlayer->newSourceRequest()));
 }
 
 void Catalog::playAlbum(const QString& albumId, const QString& title) {
-    yandexLibrary->albumTracks(albumId, QueueLoader(corePlayer, title, corePlayer->newSourceRequest()));
+    yandexLibrary->albumTracks(albumId, queueLoader(title, corePlayer->newSourceRequest()));
 }
 
 void Catalog::playWave(const QStringList& seeds, const QString& title) {
     Yandex::Library* library = yandexLibrary;
-    showStatus(tr("%1: loading…").arg(title));
-    QPointer<Player> guardedPlayer(corePlayer);
+    notify(NoticeOf(SourceNoticeCode::Loading, title));
     QPointer<Catalog> self(this);
     const quint64 ticket = corePlayer->newSourceRequest();
-    library->startWave(
-        seeds,
-        [self, guardedPlayer, library, title, ticket, seeds](const Yandex::WaveBatch& batch, const QString& error) {
-            if (!guardedPlayer || !guardedPlayer->isLatestSourceRequest(ticket)) {
+    library
+        ->startWave(seeds, [self, library, title, ticket, seeds](const Yandex::WaveBatch& batch, const QString& error) {
+            if (!self || !self->corePlayer->isLatestSourceRequest(ticket)) {
                 return;
             }
             if (!error.isEmpty()) {
-                return ShowStatus(guardedPlayer, tr("Vibe error: %1").arg(error));
+                return self->notify(NoticeOf(SourceNoticeCode::VibeFailed, title, error));
             }
             if (!HasAvailable(batch.tracks)) {  // WAVE-03
-                return ShowStatus(guardedPlayer, tr("%1: empty").arg(title));
+                return self->notify(NoticeOf(SourceNoticeCode::Empty, title));
             }
-            if (self) {
-                self->waveSeeds = seeds;
-            }
+            self->waveSeeds = seeds;
             const auto vibe = std::make_shared<Vibe>(library, batch, seeds.value(0));
-            guardedPlayer->setSource(
+            self->corePlayer->setSource(
                 Core::QueueSource{.title = title, .continuation = vibe, .given = TracksOf(batch.tracks)}, true
             );
-        }
-    );
+        });
 }
 
 void Catalog::playMyWave() {
@@ -141,30 +134,27 @@ void Catalog::playMyWave() {
 void Catalog::search(const QString& text) {
     Yandex::Library* library = yandexLibrary;
     const QString title = tr("Search: %1").arg(text);
-    showStatus(title + QStringLiteral("…"));
-    QPointer<Player> guardedPlayer(corePlayer);
+    notify(NoticeOf(SourceNoticeCode::Searching, text));
+    QPointer<Catalog> self(this);
     const quint64 ticket = corePlayer->newSourceRequest();
-    library->search(
-        text,
-        [guardedPlayer, library, title, ticket](const Yandex::SearchResult& result, const QString& error) {
-            if (!guardedPlayer || !guardedPlayer->isLatestSourceRequest(ticket)) {
-                return;
-            }
-            if (!error.isEmpty()) {
-                return ShowStatus(guardedPlayer, tr("Search error: %1").arg(error));
-            }
-            if (result.bestKind == Yandex::SearchResult::Kind::Artist && !result.bestId.isEmpty()) {
-                return library->artistTopTracks(result.bestId, QueueLoader(guardedPlayer, result.bestName, ticket));
-            }
-            if (result.bestKind == Yandex::SearchResult::Kind::Album && !result.bestId.isEmpty()) {
-                return library->albumTracks(result.bestId, QueueLoader(guardedPlayer, result.bestName, ticket));
-            }
-            if (!HasAvailable(result.tracks)) {  // SRC-12
-                return ShowStatus(guardedPlayer, tr("Nothing found"));
-            }
-            guardedPlayer->setSource(Core::QueueSource{.title = title, .head = TracksOf(result.tracks)}, true);
+    library->search(text, [self, library, title, ticket](const Yandex::SearchResult& result, const QString& error) {
+        if (!self || !self->corePlayer->isLatestSourceRequest(ticket)) {
+            return;
         }
-    );
+        if (!error.isEmpty()) {
+            return self->notify(NoticeOf(SourceNoticeCode::SearchFailed, title, error));
+        }
+        if (result.bestKind == Yandex::SearchResult::Kind::Artist && !result.bestId.isEmpty()) {
+            return library->artistTopTracks(result.bestId, self->queueLoader(result.bestName, ticket));
+        }
+        if (result.bestKind == Yandex::SearchResult::Kind::Album && !result.bestId.isEmpty()) {
+            return library->albumTracks(result.bestId, self->queueLoader(result.bestName, ticket));
+        }
+        if (!HasAvailable(result.tracks)) {  // SRC-12
+            return self->notify(NoticeOf(SourceNoticeCode::NothingFound, title));
+        }
+        self->corePlayer->setSource(Core::QueueSource{.title = title, .head = TracksOf(result.tracks)}, true);
+    });
 }
 
 void Catalog::searchTracks(
@@ -190,30 +180,25 @@ bool Catalog::isCurrent(const Core::TrackKey& key) const {
 }
 
 void Catalog::setLiked(const Core::TrackKey& key, bool liked) {
-    QPointer<Player> guardedPlayer(corePlayer);
-    yandexLibrary->setLiked(CatalogId(key), liked, [guardedPlayer, liked](bool, const QString& error) {
-        if (!guardedPlayer) {
+    QPointer<Catalog> self(this);
+    yandexLibrary->setLiked(CatalogId(key), liked, [self, liked](bool, const QString& error) {
+        if (!self) {
             return;
         }
-        QString text;
         if (!error.isEmpty()) {
-            text = tr("Error: %1").arg(error);
-        } else if (liked) {
-            text = tr("Added to Liked");
-        } else {
-            text = tr("Removed from Liked");
+            return self->notify(NoticeOf(SourceNoticeCode::Failed, {}, error));
         }
-        ShowStatus(guardedPlayer, text);
+        self->notify(NoticeOf(liked ? SourceNoticeCode::AddedToLiked : SourceNoticeCode::RemovedFromLiked));
     });
 }
 
 void Catalog::dislikeAndSkip(const Core::TrackKey& key) {
-    QPointer<Player> guardedPlayer(corePlayer);
-    yandexLibrary->dislike(CatalogId(key), [guardedPlayer](bool, const QString& error) {
-        if (!guardedPlayer) {
+    QPointer<Catalog> self(this);
+    yandexLibrary->dislike(CatalogId(key), [self](bool, const QString& error) {
+        if (!self) {
             return;
         }
-        ShowStatus(guardedPlayer, error.isEmpty() ? tr("Disliked") : tr("Error: %1").arg(error));
+        self->notify(NoticeOf(error.isEmpty() ? SourceNoticeCode::Disliked : SourceNoticeCode::Failed, {}, error));
     });
     if (isCurrent(key)) {
         corePlayer->next();

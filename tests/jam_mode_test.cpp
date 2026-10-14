@@ -2,6 +2,7 @@
 #include "core/jam_mode.h"
 #include "core/player.h"
 #include "core/queue_source.h"
+#include "core/source_notice.h"
 #include "core/track_source.h"
 #include "sources/yandex/catalog.h"
 #include "sources/yandex/history_wave.h"
@@ -88,15 +89,17 @@ private:
         QSignalSpy started;
         QSignalSpy playbacks;
         QSignalSpy removals;
-        QSignalSpy status;
+        QList<Core::SourceNotice> notices;
         explicit Stack(Yandex::Library* library)
             : player(&engine, &registry)
             , sources(&player, library)
             , jam(&player)
             , started(&jam, &Core::JamMode::itemStarted)
             , playbacks(&jam, &Core::JamMode::playback)
-            , removals(&jam, &Core::JamMode::removeRequested)
-            , status(&player, &Core::Player::statusMessage) {
+            , removals(&jam, &Core::JamMode::removeRequested) {
+            QObject::connect(&sources, &YandexSource::Catalog::noticed, [this](const Core::SourceNotice& notice) {
+                notices << notice;
+            });
             files.setAnswersAtOnce(true);
             registry.add(YandexSource::kSourceName, &files);
             engine.setVolume(0);
@@ -104,9 +107,9 @@ private:
             player.setHistoryWaveFactory(YandexSource::HistoryWaves(library));
         }
         Core::JamPlayback lastPlayback() const { return playbacks.last().at(0).value<Core::JamPlayback>(); }
-        bool saw(const QString& text) const {
-            return std::any_of(status.cbegin(), status.cend(), [&text](const QList<QVariant>& arguments) {
-                return arguments.at(0).toString() == text;
+        bool saw(Core::SourceNoticeCode code, const QString& subject) const {
+            return std::any_of(notices.cbegin(), notices.cend(), [&](const Core::SourceNotice& notice) {
+                return notice.code == code && notice.subject == subject;
             });
         }
     };
@@ -451,7 +454,7 @@ private Q_SLOTS:
         stack.jam.setQueue({Item("i1", "55")}, {}, 0);
         noWave();
         stack.sources.playMyWave();
-        QTRY_VERIFY(stack.saw(QStringLiteral("My Vibe: empty")));
+        QTRY_VERIFY(stack.saw(Core::SourceNoticeCode::Empty, QStringLiteral("My Vibe")));
         QCOMPARE(Ids(stack.player), (QStringList{"11", "55", "22"}));
         QCOMPARE(stack.player.queueTitle(), QStringLiteral("Likes"));
         waveAnswers();

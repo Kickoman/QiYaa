@@ -161,20 +161,21 @@ and `QSettings` before the temporary directory that may hold its file.
    with built-in presets from `:/milkdrop` and user presets from `<ConfigDirectory>/milkdrop`
    (`<temp dir>/milkdrop` when `readOnlySettings`). Every window gets the shortcuts listed below;
    all but the main window are "secondary" (no taskbar button on Windows).
-6. In a jam build (`setUpJam()`) creates the `Jam::HostSession`: the server and the wave feedback
-   from the `jam/*` settings at each use, the app's version for `hello`, and the
-   session file `jam-session.json` next to the settings file (so `readOnlySettings` and a test's
+6. Connects `YandexSource::Catalog::noticed` to the main window's marquee, worded by
+   `Ui::SourceNoticeText`. In a jam build (`setUpJam()`) creates the `Jam::HostSession`: the server
+   and the wave feedback from the `jam/*` settings at each use, the app's version for `hello`, and
+   the session file `jam-session.json` next to the settings file (so `readOnlySettings` and a test's
    `settingsFile` keep it in their own folder). Its signals go to the marquee: a refusal by its
-   reason (below), the end of the jam (`The jam is over`, `The jam was ended`, `The jam closed while you
-   were away`, `The jam is over: the server no longer knows it`), and, while the jam is on, a lost
-   connection (`No connection to the jam server · trying again by itself`) and its return (`The jam is connected`). Then
-   the jam window (`Ui::JamWindow`, steps `jamWindow/steps`, the server's host from `jam/server`;
-   its `statusText` to the marquee, its "Server settings…" to `showJamServerDialog()`), and the
-   jam's part in the other windows (HOST-34, HOST-36): the playlist's rows and the marquee get
-   `Ui::JamTrackNote` of their entry, and `HostSession::offline` (jam items removed without a
-   connection) says `No connection to the jam server`. A pick during a jam replaces the jam's base
-   (HOST-21), and the playlist's remove and clear go to the `Player` as ever. It is done here,
-   before the loops below over `windows()`, which take the jam window in.
+   reason (below), the end of the jam (`The jam is over`, `The jam was ended`, `The jam closed while
+   you were away`, `The jam is over: the server no longer knows it`), and, while the jam is on, a
+   lost connection (`No connection to the jam server · trying again by itself`) and its return (`The
+   jam is connected`). Then the jam window (`Ui::JamWindow`, steps `jamWindow/steps`, the server's
+   host from `jam/server`; its `statusText` to the marquee, its "Server settings…" to
+   `showJamServerDialog()`), and the jam's part in the other windows (HOST-34, HOST-36): the
+   playlist's rows and the marquee get `Ui::JamTrackNote` of their entry, and `HostSession::offline`
+   (jam items removed without a connection) says `No connection to the jam server`. A pick during a
+   jam replaces the jam's base (HOST-21), and the playlist's remove and clear go to the `Player` as
+   ever. It is done here, before the loops below over `windows()`, which take the jam window in.
 7. Restores the settings listed in [Settings](#settings) and connects the windows:
    - the equalizer's shade mode shows and sets the main window's volume and balance (`setMixer`,
      `volumeRequested`, `balanceRequested`);

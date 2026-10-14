@@ -22,6 +22,7 @@
 #include "ui/now_playing_window.h"
 #include "ui/playlist_window.h"
 #include "ui/snap.h"
+#include "ui/source_notices.h"
 #include "yandex/file_info.h"
 #include "yandex/token.h"
 #ifdef QIYAA_HAVE_MPRIS
@@ -336,6 +337,9 @@ Application::Application(const Options& options, QObject* parent)
     }
 #endif
 
+    connect(&catalog, &YandexSource::Catalog::noticed, this, [this](const Core::SourceNotice& notice) {
+        mainWindowInstance->setStatusText(Ui::SourceNoticeText(notice));
+    });
     // Before the loops over windows() below, which take in the jam window.
     setUpJam();
 

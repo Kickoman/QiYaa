@@ -1,5 +1,6 @@
 #include "audio/audio_engine.h"
 #include "core/player.h"
+#include "core/source_notice.h"
 #include "sources/yandex/catalog.h"
 #include "sources/yandex/history_wave.h"
 #include "sources/yandex/tracks.h"
@@ -17,12 +18,11 @@
 #include <QJsonValue>
 #include <QList>
 #include <QObject>
-#include <QSignalSpy>
 #include <QString>
 #include <QStringList>
 #include <QTest>
-#include <QVariant>
 
+#include <algorithm>
 #include <optional>
 
 // YandexSource::Catalog against the spec/player scenarios, on the spec API fixtures. Each test names
@@ -72,27 +72,19 @@ private:
         Tests::YandexSources ports;
         Core::Player player;
         YandexSource::Catalog sources;
-        QSignalSpy status;
+        QList<Core::SourceNotice> notices;
         explicit Stack(Yandex::Library* library)
             : ports(library)
             , player(&engine, &ports.registry)
-            , sources(&player, library)
-            , status(&player, &Core::Player::statusMessage) { }
-        bool saw(const QString& text) const {
-            for (const QList<QVariant>& arguments : status) {
-                if (arguments.at(0).toString() == text) {
-                    return true;
-                }
-            }
-            return false;
+            , sources(&player, library) {
+            QObject::connect(&sources, &YandexSource::Catalog::noticed, [this](const Core::SourceNotice& notice) {
+                notices << notice;
+            });
         }
-        bool sawPrefix(const QString& prefix) const {
-            for (const QList<QVariant>& arguments : status) {
-                if (arguments.at(0).toString().startsWith(prefix)) {
-                    return true;
-                }
-            }
-            return false;
+        bool saw(Core::SourceNoticeCode code, const QString& subject = {}, int count = 0) const {
+            return std::any_of(notices.cbegin(), notices.cend(), [&](const Core::SourceNotice& notice) {
+                return notice.code == code && (subject.isEmpty() || notice.subject == subject) && notice.count == count;
+            });
         }
     };
 
@@ -141,7 +133,7 @@ private Q_SLOTS:
         QTest::qWait(600);  // the likes response arrives now
         QCOMPARE(stack.player.queueTitle(), QStringLiteral("My Vibe"));
         QCOMPARE(stack.player.entries().first().track.title, ExpectedTitle("rotor-session-new/ok"));
-        QVERIFY(!stack.saw(QStringLiteral("Liked: 2 track(s)")));
+        QVERIFY(!stack.saw(Core::SourceNoticeCode::Loaded, QStringLiteral("Liked"), 2));
     }
 
     void staleFailureIsSilent() {  // SRC-02
@@ -152,7 +144,7 @@ private Q_SLOTS:
         stack.sources.playMyWave();
         QVERIFY(QTest::qWaitFor([&] { return stack.player.queueTitle() == QStringLiteral("My Vibe"); }, 3000));
         QTest::qWait(600);
-        QVERIFY(!stack.sawPrefix(QStringLiteral("Error")));
+        QVERIFY(!stack.saw(Core::SourceNoticeCode::Failed));
     }
 
     void searchIsOnePickAcrossItsRequests() {  // SRC-03
@@ -185,7 +177,9 @@ private Q_SLOTS:
         stack.player.setSource(Core::QueueSource{.title = QStringLiteral("Kept"), .head = {KeptTrack()}}, false);
         server.fixture("GET", "/albums/4053/with-tracks", "account-status/500-empty");
         stack.sources.playAlbum(QStringLiteral("4053"), QStringLiteral("Звезда"));
-        QVERIFY(QTest::qWaitFor([&] { return stack.sawPrefix(QStringLiteral("Error: ")); }, 3000));
+        QVERIFY(
+            QTest::qWaitFor([&] { return stack.saw(Core::SourceNoticeCode::Failed, QStringLiteral("Звезда")); }, 3000)
+        );
         QCOMPARE(stack.player.queueTitle(), QStringLiteral("Kept"));
     }
 
@@ -194,7 +188,9 @@ private Q_SLOTS:
         server.fixture("GET", "/users/42/likes/tracks", "users-likes-tracks/string-ids");
         server.fixture("POST", "/tracks/", "tracks/two-tracks");
         stack.sources.playLikes(false);
-        QVERIFY(QTest::qWaitFor([&] { return stack.saw(QStringLiteral("Liked: 2 track(s)")); }, 3000));
+        QVERIFY(
+            QTest::qWaitFor([&] { return stack.saw(Core::SourceNoticeCode::Loaded, QStringLiteral("Liked"), 2); }, 3000)
+        );
         QCOMPARE(stack.player.queueTitle(), QStringLiteral("Liked"));
         QCOMPARE(stack.player.entries().size(), 2);
         QCOMPARE(stack.player.entries().first().track.title, ExpectedTitle("tracks/two-tracks"));
@@ -215,14 +211,16 @@ private Q_SLOTS:
         server.fixture("GET", "/users/42/likes/tracks", likes);
         server.fixture("POST", "/tracks/", tracks);
         stack.sources.playLikes(true);
-        QVERIFY(QTest::qWaitFor([&] { return stack.saw(QStringLiteral("Liked: empty")); }, 3000));
+        QVERIFY(QTest::qWaitFor([&] { return stack.saw(Core::SourceNoticeCode::Empty, QStringLiteral("Liked")); }, 3000)
+        );
         QCOMPARE(stack.player.queueTitle(), QStringLiteral("Kept"));
 
         server.fixture("GET", "/artists/9/track-ids-by-rating", "artists-track-ids-by-rating/ok");
         stack.sources.playArtist(QStringLiteral("9"), QStringLiteral("Кино"));
         QVERIFY(QTest::qWaitFor(
             [&] {
-                return stack.saw(QStringLiteral("Кино: empty")) || stack.player.queueTitle() == QStringLiteral("Кино");
+                return stack.saw(Core::SourceNoticeCode::Empty, QStringLiteral("Кино"))
+                    || stack.player.queueTitle() == QStringLiteral("Кино");
             },
             3000
         ));
@@ -238,7 +236,9 @@ private Q_SLOTS:
         server.fixture("POST", "/rotor/session/new", "rotor-session-new/all-unavailable");
         const auto before = server.requests().size();
         stack.sources.playMyWave();
-        QVERIFY(QTest::qWaitFor([&] { return stack.saw(QStringLiteral("My Vibe: empty")); }, 3000));
+        QVERIFY(
+            QTest::qWaitFor([&] { return stack.saw(Core::SourceNoticeCode::Empty, QStringLiteral("My Vibe")); }, 3000)
+        );
         QTest::qWait(100);
         QCOMPARE(stack.player.queueTitle(), QStringLiteral("Kept"));
         QVERIFY(feedbackEvents(before).isEmpty());  // no radioStarted for a wave that never starts
@@ -266,7 +266,7 @@ private Q_SLOTS:
         server.fixture("GET", "/albums/4053/with-tracks", "albums-with-tracks/two-volumes");
         stack.sources.search(QStringLiteral("кино"));
         if (title.isEmpty()) {
-            QVERIFY(QTest::qWaitFor([&] { return stack.saw(QStringLiteral("Nothing found")); }, 3000));
+            QVERIFY(QTest::qWaitFor([&] { return stack.saw(Core::SourceNoticeCode::NothingFound); }, 3000));
             QCOMPARE(stack.player.queueTitle(), QStringLiteral("Kept"));
             return;
         }

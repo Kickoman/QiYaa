@@ -22,6 +22,7 @@ to Yandex ([src/yandex](../yandex/README.md)), or create, lay out, connect and s
 | `milkdrop_window.h/.cpp` | `MilkdropWindow` — projectM view in a GEN frame: preset switching, black-preset skipping, full screen. Built only with Milkdrop |
 | `library_menu.h/.cpp` | `AddLibraryActions`: the Yandex menu items, which call `YandexSource::Catalog` |
 | `player_notices.h/.cpp` | `NoticeText`: what a `Core::PlayerNotice` says, in the user's language |
+| `source_notices.h/.cpp` | `SourceNoticeText`: what a `Core::SourceNotice` of a source's catalogue says, in the user's language |
 | `login_dialog.h/.cpp` | `LoginDialog` — Yandex login by device code or by a pasted token |
 | `input_dialogs.h/.cpp` | `AskText`, `AskItem`: `QInputDialog` questions with the app's own OK and Cancel |
 | `jam_window.h/.cpp` | `JamWindow` — the host's jam in a GEN frame: start, QR code and link, settings, guests, end, search that adds tracks. Built only with the jam |
@@ -334,8 +335,8 @@ come from the `Player` (`state()`, `positionSeconds()`, `stateChanged`; the look
 [src/core](../core/README.md#phases-and-state)). The engine gives only what is the sound's own:
 volume and balance, the visualization samples, the source's rate and channels.
 `setVolume`/`setBalance` push the value to the `AudioEngine` every time, the signals fire only on a
-change. `Player::noticed`, worded by `NoticeText`, and `Player::statusMessage` (the catalogue's) are
-connected to `setStatusText`.
+change. `Player::noticed`, worded by `NoticeText`, is connected to `setStatusText`; so is the
+catalogue's `noticed`, worded by `SourceNoticeText`, by `src/app`.
 
 The timer runs only while something on screen changes (first matching row wins):
 
@@ -827,6 +828,20 @@ did not play", "No network — waiting for it…", "Vibe error: %1". `%1` is the
 `detail`. All but the last are the texts the `Player` itself sent until #23 (test
 `theNoticesReadAsTheStatusLineDidBefore`).
 
+## Source notices — `source_notices.h/.cpp`
+
+```cpp
+QString SourceNoticeText(const Core::SourceNotice& notice);
+```
+
+The words for each `Core::SourceNoticeCode`
+([src/core](../core/README.md#source_noticeh-sourcenotice)), in the context `Ui::SourceNotices`: "%1: loading…" and "%1: empty" with the subject, "Search: %1…"
+with the search's text, "Error: %1" and "Search error: %1" with the detail, "Nothing found",
+"%1: %n track(s)", "Added to Liked", "Removed from Liked", "Disliked". `VibeFailed` takes
+`NoticeText`'s "Vibe error: %1", so the two say it in one translation. They are the texts the
+catalogue itself sent until #28, with "Liked: %n track(s)" now "%1: %n track(s)" (test
+`theCatalogsNoticesReadAsItsStatusesDid`).
+
 ## Library menu — `library_menu.h/.cpp`
 
 ```cpp
@@ -912,7 +927,7 @@ Everything else is data:
 | Failure | Reported as |
 |---|---|
 | `.eqf` cannot be opened, is above 1 MiB, cannot be saved | `EqualizerWindow::statusText`: `EQ: <file>: <reason>`, `EQ: <file> is <n> KB, and presets are 1024 KB at most`, `EQ: <file> не сохранён: <reason>` |
-| Yandex request fails | a source's error goes out through `YandexSource::Catalog` as `Player::statusMessage`; a submenu's list shows a disabled `Error: …` item |
+| Yandex request fails | a source's error goes out as a `Core::SourceNotice` of `YandexSource::Catalog`; a submenu's list shows a disabled `Error: …` item |
 | Device login fails, pasted text holds no token | labels in `LoginDialog` |
 | No usable OpenGL, projectM fails | `MilkdropWindow::failure()`, painted in the frame; `qWarning` |
 | A preset fails or stays black | handled by switching (see `MilkdropWindow`); `qWarning` |

@@ -114,7 +114,6 @@ public:
     void setNetworkRetryDelays(int firstMs, int maxMs);
 
 Q_SIGNALS:
-    void statusMessage(const QString& text);
     void noticed(const Core::PlayerNotice& notice);
     void failed(Core::FailureKind kind);
     void trackEvent(Core::TrackEvent event, const Core::Track& track, double playedSeconds);

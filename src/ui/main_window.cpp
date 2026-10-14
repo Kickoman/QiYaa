@@ -88,7 +88,6 @@ MainWindow::MainWindow(Core::Player* player, Audio::AudioEngine* engine, const S
         refreshTimer();
         update();
     });
-    connect(corePlayer, &Core::Player::statusMessage, this, &MainWindow::setStatusText);
     connect(corePlayer, &Core::Player::noticed, this, [this](const Core::PlayerNotice& notice) {
         setStatusText(NoticeText(notice));
     });

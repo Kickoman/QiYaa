@@ -75,11 +75,12 @@ The scenarios are [spec/player/sources.md](../../../spec/player/sources.md),
   A search whose best result is an artist or album asks for that one's tracks with the same
   ticket (SRC-03). Replies are dropped silently; the HTTP request is not aborted. The `Player` is
   held through `QPointer`.
-- **Statuses**, all through `Player::statusMessage` (English sources, shown translated in the
-  context `YandexSource::Catalog`; see [translations](../../../translations/README.md)):
-  `<title>: loading…` (vibes, likes), `Search: <text>…`, `Error: …`, `Vibe error: …`,
-  `Search error: …`, `<title>: empty`, `Nothing found`, `Liked: N tracks` (the available tracks of
-  the pick), `Added to Liked`, `Removed from Liked`, `Disliked`.
+- **Notices**, all through `noticed(Core::SourceNotice)`, worded by `src/ui`: `Loading` with the
+  title (vibes, likes), `Searching` with the text, `Failed`, `VibeFailed` and `SearchFailed` with
+  the request's error, `Empty` with the title, `NothingFound`, `Loaded` with the title and the
+  count of the pick's available tracks (likes), `AddedToLiked`, `RemovedFromLiked`, `Disliked`.
+  The queue titles it makes ("Liked", "My Vibe", "Search: %1", "%1: similar") are its own texts, in
+  the context `YandexSource::Catalog`.
 - **An empty pick keeps the queue** (SRC-07, SRC-08, WAVE-03): when a reply has no available
   track (none at all, or all `available: false`), the status is `<title>: empty` (search:
   `Nothing found`) and nothing else happens: no `setSource`, and for a vibe no `RadioStarted`.
@@ -92,7 +93,7 @@ The scenarios are [spec/player/sources.md](../../../spec/player/sources.md),
   each track and every like and dislike use the catalog id (`CatalogId`); the feedback's
   `trackId` is `<id>:<albumId>` as before.
 - **Likes**: `setLiked` and `dislikeAndSkip` call the `Library` with the catalog id and report in
-  the status line; another source's key is never liked (`isLiked` is false, `owns` tells the menu).
+  a notice; another source's key is never liked (`isLiked` is false, `owns` tells the menu).
   `dislikeAndSkip` calls `Player::next()` at once only when the key is the current Yandex track
   (`isCurrent`), which closes it with `Skip` (TRK-07). Disliking another track leaves playback
   alone, including when playback advances while a menu for the previous track is open.
@@ -227,7 +228,7 @@ settings and changes it from the menu.
   [src/yandex](../../yandex/README.md).
 - When the queue asks for more, the jam's layer, and when a vibe starts or goes on:
   [src/core](../../core/README.md).
-- The Yandex menu that calls `Catalog` and the status line: [src/ui](../../ui/README.md).
+- The Yandex menu that calls `Catalog`, and the words of its notices: [src/ui](../../ui/README.md).
 - Tests: `tests/yandex_source_test.cpp` (keys, the `Source`), `tests/sources_test.cpp` (the
   `Catalog`, the vibe from history), `tests/jam_mode_test.cpp` and `tests/jam_host_test.cpp` (the
   jam vibe through `Core::JamMode`).

@@ -893,6 +893,53 @@ Right click or ADD: pick what to listen to.</source>
     </message>
 </context>
 <context>
+    <name>Ui::SourceNotices</name>
+    <message>
+        <source>%1: loading…</source>
+        <translation>%1: загрузка…</translation>
+    </message>
+    <message>
+        <source>Search: %1…</source>
+        <translation>Поиск: %1…</translation>
+    </message>
+    <message>
+        <source>Error: %1</source>
+        <translation>Ошибка: %1</translation>
+    </message>
+    <message>
+        <source>Search error: %1</source>
+        <translation>Ошибка поиска: %1</translation>
+    </message>
+    <message>
+        <source>%1: empty</source>
+        <translation>%1: пусто</translation>
+    </message>
+    <message>
+        <source>Nothing found</source>
+        <translation>Ничего не найдено</translation>
+    </message>
+    <message numerus="yes">
+        <source>%1: %n track(s)</source>
+        <translation>
+            <numerusform>%1: %n трек</numerusform>
+            <numerusform>%1: %n трека</numerusform>
+            <numerusform>%1: %n треков</numerusform>
+        </translation>
+    </message>
+    <message>
+        <source>Added to Liked</source>
+        <translation>Добавлено в «Мне нравится»</translation>
+    </message>
+    <message>
+        <source>Removed from Liked</source>
+        <translation>Убрано из «Мне нравится»</translation>
+    </message>
+    <message>
+        <source>Disliked</source>
+        <translation>Дизлайк поставлен</translation>
+    </message>
+</context>
+<context>
     <name>Vis::MilkdropView</name>
     <message>
         <source>no OpenGL</source>
@@ -932,44 +979,12 @@ Right click or ADD: pick what to listen to.</source>
 <context>
     <name>YandexSource::Catalog</name>
     <message>
-        <source>Error: %1</source>
-        <translation>Ошибка: %1</translation>
-    </message>
-    <message>
-        <source>%1: empty</source>
-        <translation>%1: пусто</translation>
-    </message>
-    <message>
-        <source>Liked: loading…</source>
-        <translation>Мне нравится: загрузка…</translation>
-    </message>
-    <message>
-        <source>Liked: empty</source>
-        <translation>Мне нравится: пусто</translation>
-    </message>
-    <message>
         <source>Liked</source>
         <translation>Мне нравится</translation>
-    </message>
-    <message numerus="yes">
-        <source>Liked: %n track(s)</source>
-        <translation>
-            <numerusform>Мне нравится: %n трек</numerusform>
-            <numerusform>Мне нравится: %n трека</numerusform>
-            <numerusform>Мне нравится: %n треков</numerusform>
-        </translation>
     </message>
     <message>
         <source>%1: similar</source>
         <translation>%1: похожие</translation>
-    </message>
-    <message>
-        <source>%1: loading…</source>
-        <translation>%1: загрузка…</translation>
-    </message>
-    <message>
-        <source>Vibe error: %1</source>
-        <translation>Ошибка волны: %1</translation>
     </message>
     <message>
         <source>My Vibe</source>
@@ -978,26 +993,6 @@ Right click or ADD: pick what to listen to.</source>
     <message>
         <source>Search: %1</source>
         <translation>Поиск: %1</translation>
-    </message>
-    <message>
-        <source>Search error: %1</source>
-        <translation>Ошибка поиска: %1</translation>
-    </message>
-    <message>
-        <source>Nothing found</source>
-        <translation>Ничего не найдено</translation>
-    </message>
-    <message>
-        <source>Added to Liked</source>
-        <translation>Добавлено в «Мне нравится»</translation>
-    </message>
-    <message>
-        <source>Removed from Liked</source>
-        <translation>Убрано из «Мне нравится»</translation>
-    </message>
-    <message>
-        <source>Disliked</source>
-        <translation>Дизлайк поставлен</translation>
     </message>
 </context>
 </TS>
