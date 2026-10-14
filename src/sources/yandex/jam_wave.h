@@ -23,7 +23,6 @@ public:
     void trackEvent(Core::Player::TrackEvent event, const Core::Track& track, double playedSeconds) override;
     bool hasSession() const override { return !session.isEmpty(); }
     int seedsVersion() const override { return sessionSeedsVersion; }
-    void endSession() override;
 
 private:
     Yandex::Library* yandexLibrary;

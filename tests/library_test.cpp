@@ -585,7 +585,7 @@ private Q_SLOTS:
         );
         playback.player.playIndex(0);
         QVERIFY(QTest::qWaitFor([&] { return playback.player.preloadedIndex() == 1; }, 5000));
-        playback.player.removeTracks({1});  // the preloaded track is gone: 23 follows now
+        playback.player.removeRows({1});  // the preloaded track is gone: 23 follows now
         QVERIFY(QTest::qWaitFor(
             [&] { return playback.player.preloadedIndex() == 1 && requestsTo("/tracks/23/download-info") == 1; }, 5000
         ));
@@ -845,7 +845,7 @@ private Q_SLOTS:
 
     void shuffleRebuildsAfterQueueEdits_data() {
         QTest::addColumn<QString>("operation");
-        for (const char* operation : {"append", "insert", "remove", "remove current"}) {
+        for (const char* operation : {"remove", "remove current"}) {
             QTest::newRow(operation) << QString::fromLatin1(operation);
         }
     }
@@ -860,15 +860,7 @@ private Q_SLOTS:
         );
         player.playIndex(2);
         player.setShuffle(true);
-        if (operation == "append") {
-            player.appendTracks(NumberedTracks({5}));
-        } else if (operation == "insert") {
-            player.insertTracks(0, NumberedTracks({5}));
-        } else if (operation == "remove") {
-            player.removeTracks({0});
-        } else {
-            player.removeTracks({2});
-        }
+        player.removeRows({operation == "remove" ? 0 : 2});
         if (operation != "remove current") {
             QCOMPARE(player.currentTrack()->key.id, QStringLiteral("3"));
         }
@@ -885,7 +877,7 @@ private Q_SLOTS:
         QCOMPARE(visited.size(), size);
         player.next();
         QCOMPARE(player.state(), Core::Player::State::Stopped);
-        player.removeTracks({0, 1, 2, 3, 4});
+        player.removeRows({0, 1, 2});
         player.next();
         player.previous();
         QCOMPARE(player.currentIndex(), -1);

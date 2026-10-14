@@ -456,7 +456,7 @@ private Q_SLOTS:
     void emptyPlaylistDisablesTrackActions() {
         Tests::MockHttpServer server;
         QVERIFY(connectLibrary(server));
-        application->player()->clearQueue();
+        application->player()->clear();
         QMenu* menu = OpenContextMenu(playlist, {60, 29});
         QVERIFY(menu);
         for (const QString& text :

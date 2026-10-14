@@ -5,8 +5,10 @@
 
 #include <QList>
 #include <QString>
+#include <QStringList>
 
 #include <memory>
+#include <optional>
 
 namespace Core {
 
@@ -17,12 +19,32 @@ struct QueueSource {
     QList<Track> given{};
 };
 
-enum class EntryPart { Head, Continuation };
+enum class EntryPart { Head, Continuation, Item, Other };
 
 struct QueueEntry {
     Track track{};
     EntryPart part = EntryPart::Head;
     std::shared_ptr<Continuation> giver{};
+    std::optional<int> seedsVersion{};
+    QString itemId{};
+    QString addedBy{};
+    bool pending = false;
+};
+
+struct LayerItem {
+    QString itemId{};
+    Track track{};
+    QString addedBy{};
+};
+
+struct QueueRules {
+    bool playReports = true;
+    bool previousRestartsOnly = false;
+};
+
+struct QueueLayer {
+    QueueRules rules{};
+    std::shared_ptr<Continuation> wave{};
 };
 
 }  // namespace Core

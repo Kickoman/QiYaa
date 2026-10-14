@@ -33,6 +33,12 @@ public:
         }
         return repeat ? trackCount - 1 : 0;
     }
+    int remaining(bool repeat) const override {
+        if (trackCount == 0) {
+            return 0;
+        }
+        return repeat ? kEndlessTracks : trackCount - currentIndex - 1;
+    }
 
 protected:
     int trackCount = 0;
@@ -47,12 +53,19 @@ public:
         if (trackCount < 2) {
             return;
         }
+        if (index < 0) {
+            nextIndex = static_cast<int>(QRandomGenerator::global()->bounded(trackCount));
+            return;
+        }
         nextIndex = static_cast<int>(QRandomGenerator::global()->bounded(trackCount - 1));
         if (nextIndex >= currentIndex) {
             ++nextIndex;
         }
     }
     int next(bool repeat) const override { return trackCount < 2 ? SequentialNavigator::next(repeat) : nextIndex; }
+    int remaining(bool repeat) const override {
+        return trackCount < 2 ? SequentialNavigator::remaining(repeat) : kEndlessTracks;
+    }
 
 private:
     int nextIndex = -1;
@@ -63,18 +76,20 @@ public:
     void reset(int size, int current) override {
         order.clear();
         position = -1;
-        if (size == 0 || current < 0) {
+        if (size == 0) {
             return;
         }
         order.reserve(size);
-        order << current;
+        if (current >= 0) {
+            order << current;
+            position = 0;
+        }
         for (int index = 0; index < size; ++index) {
             if (index != current) {
                 order << index;
             }
         }
-        std::shuffle(order.begin() + 1, order.end(), *QRandomGenerator::global());
-        position = 0;
+        std::shuffle(order.begin() + position + 1, order.end(), *QRandomGenerator::global());
     }
     void select(int index) override { position = static_cast<int>(order.indexOf(index)); }
     int next(bool repeat) const override {
@@ -94,6 +109,12 @@ public:
             return order[position - 1];
         }
         return repeat ? order.back() : order.front();
+    }
+    int remaining(bool repeat) const override {
+        if (order.isEmpty()) {
+            return 0;
+        }
+        return repeat ? kEndlessTracks : static_cast<int>(order.size()) - position - 1;
     }
 
 private:

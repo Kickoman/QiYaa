@@ -78,11 +78,6 @@ void JamWave::trackEvent(Core::Player::TrackEvent event, const Core::Track& trac
     }
 }
 
-void JamWave::endSession() {
-    session.clear();
-    ++sessionNumber;
-}
-
 Core::TJamWaveFactory JamWaves(Yandex::Library* library) {
     return [library](bool feedback, Core::JamWave::TRecent recent) {
         return std::make_shared<JamWave>(library, feedback, std::move(recent));

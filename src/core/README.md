@@ -20,11 +20,11 @@ user: the `Player` says what happened as `PlayerNotice` codes, and `src/ui` word
 | File | Contains |
 |---|---|
 | `player.h/.cpp` | `Player`: the one entry to the queue, transport, shuffle and repeat, source-request tickets, the queue's source (`setSource`: a head and a continuation), track events to the track's source and to the continuation that gave the track, opening tracks through their sources, download streaming, the gapless preload, and the engine's poll timer |
-| `queue.h/.cpp` | `Queue`, private to `Player`: the tracks, the cursor, what plays next and before (the navigator, shuffle and repeat), the title, and the load-more generation |
+| `queue.h/.cpp` | `Queue`, private to `Player`: the entries, the cursor, what plays next and before (waiting items, the head through the navigator, then the continuation), shuffle and repeat, the title, the layer's seeds, and the load-more generation |
 | `track.h/.cpp` | `Track`, `TrackKey`, `CoverRef`, `TrackEvent`: a track of any source |
 | `track_source.h/.cpp` | `TrackSource`, what each music source implements; `TrackDownload`, `OpenedTrack`, `TrackFailure`, `TOpenResult`; `SourceRegistry`, the sources by name |
-| `continuation.h` | `Continuation`, what follows a queue's head: more tracks on request and the events of the tracks it gave; `ContinuationRequest`, `ContinuationReply` |
-| `queue_source.h` | `QueueSource` (a title, a head, a continuation and the tracks it already gave), `QueueEntry` and `EntryPart`: what a source puts into the queue and what each entry is |
+| `continuation.h` | `Continuation`, what follows a queue's head: more tracks on request and the events of the tracks it gave; `ContinuationRequest`, `ContinuationReply`, `SeedHint` |
+| `queue_source.h` | `QueueSource` (a title, a head, a continuation and the tracks it already gave), `QueueEntry` and `EntryPart`: what a source puts into the queue and what each entry is; `LayerItem`, `QueueRules` and `QueueLayer`: what a layer over the queue (the jam) brings |
 | `track_navigator.h/.cpp` | `TrackNavigator`, `ShuffleAlgorithm`, `MakeTrackNavigator`: sequential, random and stored shuffled traversal |
 | `failure_policy.h/.cpp` | `FailureKind`, `FailureAction`, `DecideOnFailure`: what the `Player` does about a track that cannot play |
 | `jam_mode.h/.cpp` | `JamMode`, `JamEntry`, `JamSlot`, `JamPlayback`, and `JamWave`, what `JamMode` asks of the source of its wave: the jam mode of the queue; it knows nothing of the network or the protocol |
@@ -74,12 +74,10 @@ public:
     bool isLatestSourceRequest(quint64 ticket) const;
 
     void setSource(QueueSource source, bool autoplay);   // autoplay: playIndex(0) right away
-    void appendTracks(const QList<Track>& tracks);    // at the end, as head tracks
-    void insertTracks(int index, const QList<Track>& tracks);   // at index, clamped
-    void removeTracks(QList<int> indices);            // indices before removal, any order, duplicates ok
-    void clearQueue();
-    void changeSource(const QString& title, std::shared_ptr<Continuation> continuation, QueueRules rules);
-    void requestMore();                               // the load-more check now
+    void removeRows(QList<int> rows);                 // rows before removal, any order, duplicates ok
+    void clear();
+    void setLayer(std::optional<QueueLayer> layer);   // the jam's; nullopt ends it
+    void setLayerItems(const QList<LayerItem>& items, std::optional<SeedHint> hint);   // the layer's items now
 
     void play();                                      // resume / restart while playing / start
     void pause();                                     // toggles
@@ -105,8 +103,10 @@ public:
 
     const QList<QueueEntry>& entries() const;
     const QString& queueTitle() const;
-    int currentIndex() const;                         // -1 exactly when the queue is empty
-    const Track* currentTrack() const;        // nullptr exactly when the queue is empty
+    int currentIndex() const;                         // -1: nothing is current (see the cursor)
+    const QueueEntry* currentEntry() const;           // nullptr when currentIndex() is -1
+    const Track* currentTrack() const;                // the current entry's track
+    bool hasNext() const;                             // Queue::next() has an entry
     int currentBitrate() const;                       // kbps of the current file; 0 until it opens
     double durationSeconds() const;                   // Track::durationMs / 1000; 0 without a track
     int preloadedIndex() const;                       // -1 until the preload has an engine stream
@@ -148,24 +148,17 @@ Q_SIGNALS:
   continuation already gave (`QueueSource::given`, a vibe's first batch) after them as
   `Continuation` entries, each with that continuation as its giver. Every way into the queue keeps
   only tracks with `Track::available == true`; indices always refer to this filtered list.
-- `currentIndex()` is a cursor. It is -1 exactly when the queue is empty. Otherwise it is a valid
-  index, also while nothing plays. `setSource` sets it to 0 and plays only with `autoplay`.
-  `appendTracks` moves it from -1 to 0 and does not play.
-- `removeTracks` takes indices of the queue before the removal. Duplicates and out-of-range indices
-  are ignored. Removing tracks before the cursor shifts the cursor down. If the current track is
-  removed, playback stops (it does not skip), and the cursor moves to the track that followed it,
-  or to the new last track.
-- `clearQueue()` takes a new ticket and calls `setSource({}, false)`. This also drops the
-  continuation.
-- `insertTracks(index, tracks)` puts the available tracks at `index` (clamped to the queue). An
-  index at or before the cursor shifts the cursor up by the number inserted; an empty queue gets
-  the cursor 0. Then `playlistChanged` and `refreshPreload()`, which keeps the preload when its
-  track still follows.
-- `changeSource(title, continuation, rules)` keeps the queue, the cursor and the track that plays,
-  and replaces what is behind them: the title, the continuation and the `QueueRules`. The tracks
-  already in the queue keep their givers. It ends the wait for more, starts a new load-more
-  generation (a late `done` of the old continuation is dropped), and emits `playlistChanged` and
-  `modesChanged`, then `refreshPreload()`. `setSource` resets the rules to the defaults.
+- `currentIndex()` is a cursor. It is -1 when the queue is empty, and when it holds only waiting
+  items (a layer's items that came into an empty queue; `next()` plays the first). Otherwise it is
+  a valid index, also while nothing plays. `setSource` sets it to 0 and plays only with
+  `autoplay`. A continuation's first tracks in an empty queue move it from -1 to 0 and do not
+  play.
+- `removeRows` takes rows of the queue before the removal. Duplicates and out-of-range rows are
+  ignored. Removing rows before the cursor shifts the cursor down. If the current entry is
+  removed, playback stops (it does not skip), and the cursor moves to the entry that followed it,
+  or to the new last one.
+- `clear()` takes a new ticket and calls `setSource({}, false)`. This also drops the continuation.
+- The layer is in [The layer](#the-layer).
 
 ### Phases and `State`
 
@@ -179,14 +172,14 @@ The current track's phase:
 
 | Phase | `state()` | `Started` sent | Entered by | Left by |
 |---|---|---|---|---|
-| **Empty** | Empty | — | `setSource` with no available track, `clearQueue`, removing every track | `setSource` with tracks, `appendTracks` or a continuation's tracks (to Stopped) |
+| **Empty** | Empty | — | `setSource` with no available track, `clear`, removing every row | `setSource` with tracks, a continuation's tracks or the layer's items (to Stopped) |
 | **Stopped** | Stopped | — | `stop`, `setSource` without `autoplay`, the end of a finite queue, removing the current track, a failure the policy stops on (see [Failures](#failures-during-playback)), `playIndex` without an output device | `play`, `playIndex`, `next`, `previous` |
 | **Opening** | Loading | no | `playIndex` without a usable preload: the engine stream is begun and the source asked | opened: **Open**. A `TrackFailure`: the [failure policy](#failures-during-playback). `stop`, `playIndex`, `setSource`: the answer is dropped |
 | **Open**, downloading | by the engine¹ | yes | the track opened and its download started, or the preload was taken over while still downloading | download OK: **Open, downloaded**. Download failed: the failure policy at once if no audio arrived, else **Open, failed**. End or skip: see [Inputs](#inputs-in-the-order-they-act) |
 | **Open**, downloaded | by the engine¹ | yes | the current download finished without error, or a finished preload was taken over | end or skip. Only in this phase can a new preload start |
 | **Open**, failed | by the engine¹ | yes | the current download failed after some audio arrived; the engine plays what arrived | end: a network failure **Waiting for the network**, any other failure the end reported as `Skipped`. Skip |
 | **Waiting for the network** | WaitingForNetwork | as before | a network failure (ERR-01 to ERR-03) | the track opens and its download starts: **Open** again, playing if it played before. Another failure: the policy. `stop`, `playIndex`, `setSource`: the wait ends |
-| **Waiting for more** | WaitingForMore | — | `next()` at the end of an endless queue | `done` with new tracks: `playIndex(cursor + 1)`. `done({})`: still waiting. `play`, `playIndex`, `stop` or `setSource` end the wait |
+| **Waiting for more** | WaitingForMore | — | `next()` at the end of an endless queue | `done` with new tracks: `playIndex(Queue::next())`. `done({})`: still waiting. `play`, `playIndex`, `stop` or `setSource` end the wait |
 | **Shut down** | Stopped or Empty | — | `shutDown()` | never |
 
 ¹ The engine's Playing is Playing, its Paused is Paused, Buffering (or Stopped in the moment
@@ -259,15 +252,16 @@ The load-more request: idle, or in flight. It is independent of both phases abov
   `trackEvent`, emits `currentTrackChanged` and calls `maybePreload()`.
 - **`next()`**: with an empty queue, nothing happens. If a preload exists in any phase:
   `playIndex(preload index)`. Else if `Queue::next() >= 0`: `playIndex` of it. Else, with a
-  continuation: `stop()`, mark waiting, run the load-more check, then emit the notice
-  `LoadingMore`. Else (the end of a finite queue with repeat off):
-  `stop()`, and the cursor stays on the last track.
+  continuation to ask (see [Continuations](#continuations)): `stop()`, mark waiting, run the
+  load-more check, then emit the notice `LoadingMore`. Else (the end of a finite queue with repeat
+  off): `stop()`, and the cursor stays on the last track.
 - **`previous()`** (spec TR-01, TR-02): more than
   `kPreviousRestartsAfterSeconds` (3 s) into a playing or paused track, it restarts that track
   with `seekTo(0)`. That is a seek, not a new start: no events and no play report; if the engine
-  refuses the seek, `playIndex(cursor)`. Earlier, or while stopped: `playIndex(cursor - 1)`; at
-  position 0 the last track if repeat is on, the first otherwise. With shuffle, the cursor
-  and target follow the navigator: stored order for WithoutRepeats, source order for Random.
+  refuses the seek, `playIndex(cursor)`. Earlier, or while stopped: `playIndex(Queue::previous())`.
+  On a head entry that is the navigator's previous head entry: in source order, at the first one
+  the last with repeat and itself without; with shuffle the stored order for WithoutRepeats,
+  source order for Random. On any other entry it is the row before, or the entry itself on row 0.
 - **`play()`**, by engine state: Paused resumes. Playing calls `playIndex(cursor)`, which restarts
   the track as Winamp does, with `Skipped` and then a new `Started`. Buffering does nothing.
   Stopped calls `playIndex(cursor)`, or `playIndex(0)` when the cursor is -1.
@@ -278,8 +272,8 @@ The load-more request: idle, or in flight. It is independent of both phases abov
   emits `stateChanged(Stopped)`, and that stops the timer.
 - **Engine `trackFinished`**: when the download broke on the network after audio arrived, the track
   stays open and waits for the network (ERR-03). Otherwise it gets `Finished`, or `Skipped` if its
-  download failed, with the played seconds. Then, if repeat is on and the queue has exactly one
-  track, `playIndex(cursor)`; otherwise `next()`.
+  download failed, with the played seconds. Then, if `Queue::next()` is the current entry (repeat
+  with one head track and nothing waiting), `playIndex(cursor)`; otherwise `next()`.
 - **Engine `trackAdvanced`** (the engine crossed into the queued stream with no gap): the open track
   gets `Finished` or `Skipped` as above. If there is no preload, or its stream is not the engine's
   `currentStream()`, or its index is out of range, the player resyncs:
@@ -294,11 +288,11 @@ The load-more request: idle, or in flight. It is independent of both phases abov
   - The current track's, succeeded: then `maybePreload()`.
   - The preload's: a failure cancels the preload (that track is fetched again when its turn
     comes).
-- **`appendTracks`** and a continuation's reply: append the available tracks (as head tracks, or as
-  the continuation's entries). If none were added, nothing happens and no signal is emitted.
-  Otherwise the cursor moves from -1 to 0 if needed, then `playlistChanged`, then
+- **A continuation's reply**: see [Continuations](#continuations). The available tracks become
+  that continuation's entries at the end. If none were added, no signal is emitted. Otherwise the
+  cursor moves from -1 to 0 if the queue was empty, then `playlistChanged`, then
   `refreshPreload()`.
-- **`removeTracks`**: see [the queue](#the-queue-and-the-cursor). If the current track was
+- **`removeRows`**: see [the queue](#the-queue-and-the-cursor). If the current entry was
   removed: `stop()`, then `currentTrackChanged`. Then, always, `playlistChanged` and
   `refreshPreload()`.
 - **`SourceRegistry::filesChanged(source)`** (a source's quality changed): if the preload is
@@ -324,8 +318,8 @@ Four counters, each bumped by different calls and each guarding one kind of late
 
 | Counter | Bumped by | Drops |
 |---|---|---|
-| `sourceRequest` (the ticket) | `newSourceRequest()`: callers before a source load, `clearQueue`, `shutDown` | a caller's source-load reply, when the caller checks `isLatestSourceRequest(ticket)`. `Player` never checks it itself |
-| the load-more generation (`Queue::generation`) | `setSource` (and so `clearQueue`), `changeSource` | a continuation's `done` for a queue that has been replaced (a `QPointer` also covers a destroyed `Player`) |
+| `sourceRequest` (the ticket) | `newSourceRequest()`: callers before a source load, `clear`, `shutDown` | a caller's source-load reply, when the caller checks `isLatestSourceRequest(ticket)`. `Player` never checks it itself |
+| the load-more generation (`Queue::generation`) | `setSource` (and so `clear`), the end of a layer | a continuation's `done` for a queue or a base that has been replaced, or for the wave of a layer that ended (a `QPointer` also covers a destroyed `Player`) |
 | `generation` | closing the current track (`stop`, `playIndex`, a track's end), opening it, the network wait, a preload taken over | the open answer of a track that is no longer current |
 | `preloadGeneration` | every new preload | the open answer of a preload that was cancelled or replaced |
 
@@ -335,44 +329,85 @@ next step of [#23](https://github.com/Kickoman/QiYaa/issues/23) makes the phases
 
 ### Continuations
 
-- A queue is endless when its source has a continuation (`QueueSource::continuation`, or
-  `changeSource`). At its end `Queue::next()` returns -1 even with repeat on, so it never wraps.
-  `next()` waits for more instead.
-- The load-more check (`maybeLoadMore`) asks the continuation when all of these hold: the queue has
-  one, no request is in flight for it, and `entries().size() - currentIndex() <=
-  kLoadMoreWhenLeft` (2). That means the current track is the last or the second to last.
+- The continuation the queue asks is its source's own (`QueueSource::continuation`), else the
+  layer's wave. A queue with one is endless: at its end `Queue::next()` returns -1 even with
+  repeat on, so it never wraps, and `next()` waits for more instead.
+- The load-more check (`maybeLoadMore`) asks that continuation when all of these hold: there is
+  one, no request is in flight for it, and `Queue::remaining() <= kLoadMoreWhenLeft` (2).
+  `remaining()` counts in play order: the current entry, the waiting items, what is left of the
+  head (endless while the base is in its head with repeat on, or with Random and two or more head
+  tracks) and the continuation's entries after the last one that became current.
 - The request carries `queueEnd`, the last 5 tracks of the queue, whatever gave them (WAVE-05), and
   `feedback`.
 - `more` returns `false` when it has nothing to ask with; then no `done` comes and the request is
   not in flight.
 - The check runs when a track becomes current (`playIndex` in both branches, before the link is
-  resolved, and the gapless advance) and when `next()` reaches the end. It does not run from
-  `setSource` without `autoplay`, `appendTracks`, `removeTracks` or a mode change.
+  resolved, and the gapless advance), when `next()` reaches the end, and after `setLayerItems`
+  unless the state is Empty or Stopped. It does not run from `setSource` without `autoplay`,
+  `removeRows` or a mode change.
 - `done(reply)` is ignored if the `Player` is gone or the queue has been replaced. Otherwise the
-  request is no longer in flight and the available tracks of `reply.tracks` are appended as that
-  continuation's entries. If `next()` was waiting and a track now follows the cursor,
-  `playIndex(cursor + 1)` runs, the first new track; if nothing came, the player keeps waiting
-  (`State::WaitingForMore`), and a later `next()`, or tracks inserted by the jam, go on from there.
-- `requestMore()` runs the check from outside, for a source that learns of new material between
-  track changes (the jam's new seeds).
+  request is no longer in flight. A reply with a `seedsVersion` other than the layer's
+  `SeedHint::version`, or with one when no layer is on, comes from a session that new seeds closed:
+  it is dropped and the check runs again (HOST-11). Otherwise the available tracks of
+  `reply.tracks` are appended as that continuation's entries, with the reply's `seedsVersion`. If
+  `next()` was waiting and `Queue::next()` now has an entry, `playIndex` of it runs; if nothing
+  came, the player keeps waiting (`State::WaitingForMore`), and a later `next()`, or the layer's
+  items, go on from there.
 - `done` may be called synchronously from inside `more`.
 
 ### Next, shuffle, repeat
 
-- `Queue::next()` delegates to `TrackNavigator::next`, passing Repeat only for finite queues.
-  Previous uses the navigator too, unless it must restart the current track after 3 s.
+- What `Queue::next()` gives, in this order: the first waiting item; else, while the base is in its
+  head, the navigator's next head entry (repeat wraps the head when the source has no continuation
+  of its own); else the continuation's entry after the last one that became current; else -1. A
+  head with a continuation therefore plays the head first and the continuation after it, and an
+  `Other` entry or an item that already played comes back only when picked.
+- The navigator covers the head entries only, by their order among them. Selecting a head entry
+  selects it in the navigator, selecting a continuation entry moves the continuation's mark, and
+  an item stops waiting. After every selection the waiting items move right behind the new current
+  entry (HOST-12), so the playlist shows them where they play; `select` returns the row after the
+  move.
 - Shuffle does not apply to an endless queue (spec WAVE-10, WAVE-11): a wave always uses sequential
   traversal. The shuffle button and preferred algorithm retain the user's choices for finite queues.
 - `shuffleAlgorithm()` defaults to WithoutRepeats. The application restores and saves it. Switching
   algorithms while shuffle is active rebuilds navigation and refreshes preload; while inactive it
   changes only the preference. Audio, position and pause state are preserved in either case.
-- A new queue, a source change, edits (append, insert, remove), or switching shuffle resets the
-  navigator from the current track. Queue edits start a new shuffled pass, which can include
-  tracks heard before the edit. A direct `playIndex` selects the entry in the existing order.
+- A new source, removing a head row, or switching shuffle resets the navigator from the last head
+  entry that became current (or from before the head's first, under a layer). Such a reset starts
+  a new shuffled pass, which can include tracks heard before. The layer's items, a continuation's
+  tracks and jumps keep the pass. A direct `playIndex` selects the entry in the existing order.
 - `next()` and preload read the same next entry. Looking ahead never consumes it. Explicit Next
   and gapless advance call `select` when a track becomes current.
 - Repeat with a single track replays it, including through gapless preload. An endless queue with
   one track does not replay it: it waits for more (spec WAVE-12).
+
+### The layer
+
+A layer lies over the queue's own source, the base, while it is on: the jam
+([`JamMode`](#jam_modeh-jammode)).
+- `QueueLayer::rules` are `rules()` while the layer is on, for every track that starts:
+  `playReports = false` keeps the source from hearing them (HOST-15), `previousRestartsOnly` makes
+  Previous a restart (HOST-07).
+- `setLayerItems(items, hint)` makes the waiting items match `items` with the smallest change
+  (HOST-01 to HOST-04): the longest common prefix of the waiting items and `items` stays, with its
+  preload, the rest goes, and what differs comes in right behind the current entry. The current
+  item is left out even while `items` still lists it. Items come in as `Item` entries that wait,
+  available whatever their `Track::available` says. Nothing starts; HOST-08 is the caller's.
+- `SeedHint` is the server's seeds and their version. When no item waits and the current entry is
+  not a wave track (one with a `seedsVersion`), the continuation's entries after its mark whose
+  `seedsVersion` differs from the hint's go (HOST-11), after `setLayerItems` and after every
+  selection. A head track has no version and never goes.
+- `setSource` under a layer replaces the base only. The current entry stays (an item as an item,
+  anything else as `Other`), the waiting items stay behind it, and the new head and continuation
+  follow; played rows and the old base go. Nothing stops or starts (`autoplay` is ignored), the
+  base begins before its head's first track, and its continuation gets `begin(false)` (HOST-15).
+- The layer's wave (`QueueLayer::wave`) is asked when the base has no continuation of its own.
+- `setLayer(std::nullopt)` ends the layer (HOST-32): every item loses its item id, the waiting
+  ones still play first, the wave's entries after its mark go, the rules return to the defaults,
+  a wait for more ends, and a new load-more generation drops the wave's reply in flight.
+
+`QueueLayer::wave` keeps the old jam (a base emptied at its start, its own wave) working until the
+jam moves onto the base, the next step of [#28](https://github.com/Kickoman/QiYaa/issues/28).
 
 ### Downloads
 
@@ -447,8 +482,9 @@ FailureAction DecideOnFailure(FailureKind kind, int failuresInRow, bool hasNext,
   committed to chaining it (the last seconds of the current track; see
   [src/audio](../audio/README.md)). In that case playback halts at the boundary and `trackFinished`
   follows, so `next()` picks again: the result is a gap, never the wrong track.
-- **Refreshed** by `refreshPreload()` after `appendTracks`, `removeTracks`, and any actual change of
-  shuffle or repeat. The preload is kept, and its index updated, when its track id is still what
+- **Refreshed** by `refreshPreload()` after every change of the entries outside `playIndex` (a
+  continuation's reply, `removeRows`, the layer's items, its start and end, a base under a layer)
+  and any actual change of shuffle or repeat. The preload is kept, and its index updated, when its track id is still what
   follows at `Queue::next()`, in either mode. Otherwise the preload is cancelled.
   Whenever no preload is kept, `maybePreload()` tries a new one.
 - A queued stream that the engine cannot decode is forgotten by the engine, and
@@ -471,7 +507,7 @@ FailureAction DecideOnFailure(FailureKind kind, int failuresInRow, bool hasNext,
 - `Finished` is sent when the engine reports the track's end (`trackFinished` or `trackAdvanced`)
   and its download did not fail.
 - `Skipped` is sent in every other case: `stop`; `playIndex`, `next` or `previous`; `play` while
-  playing; `setSource` or `clearQueue`; removing the track; `shutDown`; or an end after a failed
+  playing; `setSource` without a layer, or `clear`; removing the track; `shutDown`; or an end after a failed
   download, where the track only drained to where the data stopped.
 - No event is sent for a track that failed to open, because it never opened; nor without an output
   device, where no track opens. None is sent when the `Player` is destroyed with a track open
@@ -493,12 +529,12 @@ FailureAction DecideOnFailure(FailureKind kind, int failuresInRow, bool hasNext,
 | `statusMessage(text)` | never by the `Player` itself: `YandexSource::Catalog` emits it on the `Player` for picks, likes and dislikes until [#28](https://github.com/Kickoman/QiYaa/issues/28) |
 | `noticed(notice)` | see [Notices](#notices) |
 | `stateChanged(state)` | after a pass of the event loop in which `state()` changed; see [Phases and `State`](#phases-and-state) |
-| `playlistChanged` | by `setSource`; by `appendTracks` and a continuation's reply when something was added; by `removeTracks` always, even when no index was valid |
-| `queueReplaced` | by `setSource` and `clearQueue` only, before `playlistChanged` |
+| `playlistChanged` | by `setSource`; by a continuation's reply when something was added; by `removeRows` always, even when no row was valid; by `setLayer`, `setLayerItems` and `playIndex` when the entries changed (items came, went, moved or stopped waiting; stale wave tracks went) |
+| `queueReplaced` | by `setSource` and `clear` only, before `playlistChanged` |
 | `trackEvent(event, track, seconds)` | for every track's `Started` and its closing event, after its source and its giver |
-| `currentTrackChanged` | by `setSource`, even for an empty queue; by `playIndex` at once, also without an output device; again at the start, once the bitrate is known; twice on a gapless advance; by `removeTracks` when the current track was removed |
+| `currentTrackChanged` | by `setSource`, even for an empty queue (under a layer only when the cursor moved); by `playIndex` at once, also without an output device; again at the start, once the bitrate is known; twice on a gapless advance; by `removeRows` when the current entry was removed |
 | `positionTick` | after each timer tick's `poll()`, every 100 ms while the engine is Buffering, Playing or Paused |
-| `modesChanged` | by `setShuffle`, `setShuffleAlgorithm` and `setRepeat` on a change |
+| `modesChanged` | by `setShuffle`, `setShuffleAlgorithm` and `setRepeat` on a change; by `setLayer`, and `setSource` under a layer |
 | `seeked(target)` | after a successful `seekTo` or `seekFraction`, with the clamped target |
 
 ### Notices
@@ -537,7 +573,7 @@ status and path, an engine message). Codes for the engine's errors are a later s
   keys has to check the state first, as `src/integrations` does.
 - `setSource` ignores tickets. An asynchronous source load must take `newSourceRequest()` before
   the request and drop the reply unless `isLatestSourceRequest(ticket)`. A direct `setSource` does
-  not invalidate loads in flight; only a new ticket does. That is why `clearQueue` and `shutDown`
+  not invalidate loads in flight; only a new ticket does. That is why `clear` and `shutDown`
   call `newSourceRequest()` and throw the ticket away. Do not remove those calls.
 - A continuation that returned `true` from `more` must call `done` exactly once, on the `Player`'s
   thread, with no tracks on failure. Until it does, that queue never asks again. After an empty
@@ -553,14 +589,15 @@ status and path, an engine message). Codes for the engine's errors are a later s
   stretch.
 - `durationSeconds()` is `static_cast<double>(durationMs) / 1000.0`, using the metadata duration,
   not the decoded length. `seekTo` clamps to it.
-- Removing a track before the current one changes `currentIndex()` without
-  `currentTrackChanged`. The same is true when `appendTracks` moves the cursor from -1 to 0. UI
-  that depends on the index must also listen to `playlistChanged`.
+- Removing a row before the current one changes `currentIndex()` without
+  `currentTrackChanged`. The same is true when a continuation's first tracks move the cursor from
+  -1 to 0, and when a jump moves waiting items from before the new current entry. UI that depends
+  on the index must also listen to `playlistChanged`.
 - Without an output device no track opens: Play only moves the cursor and gives
   `NoOutputDevice`. Nothing reaches the source or the continuation, and the load-more check still
   runs.
-- `shutDown()` blocks playback only. `setSource`, `appendTracks` and `removeTracks` still change
-  the list, and `next()` at the end of an endless queue still asks the continuation.
+- `shutDown()` blocks playback only. `setSource`, `removeRows` and the layer still change the
+  list, and `next()` at the end of an endless queue still asks the continuation.
 - `Started` means "the download began", not "audio is audible".
 - `stateChanged` comes a pass after the change. Code that acts right after a call reads `state()`,
   which is current at once; a listener gets one signal per settled state, not one per engine
@@ -573,33 +610,39 @@ status and path, an engine message). Codes for the engine's errors are a later s
 ```cpp
 class Queue {                                         // owned by Player; no QObject, no engine
 public:
-    const QList<Track>& tracks() const;               // the available tracks, in source order
+    const QList<QueueEntry>& entries() const;
     const QString& title() const;
-    int cursor() const;                               // -1 exactly when there are no tracks
-    const Track* currentTrack() const;
-    void replace(const QList<Track>& tracks, const QString& title);   // a new generation
-    bool append(const QList<Track>& tracks);          // false: none available
-    bool insert(int index, const QList<Track>& tracks);
-    bool remove(QList<int> indices);                  // true: the current track went
-    void setEndless(bool on);                         // a load-more hook is set
-    void select(int index);                           // the cursor, in the navigator too
+    int cursor() const;                               // -1: nothing is current
+    const QueueEntry* currentEntry() const;
+    const std::shared_ptr<Continuation>& continuation() const;   // the source's own
+    quint64 revision() const;                         // changes with every change of the entries
+    void replace(QueueSource source);                 // a new queue and generation
+    void replaceBase(QueueSource source);             // under a layer: the current entry and waiting items stay
+    bool appendContinuation(const QList<Track>& tracks, const std::shared_ptr<Continuation>& giver,
+                            std::optional<int> seedsVersion);   // false: none available
+    bool remove(QList<int> indices);                  // true: the current entry went
+    void setItems(const QList<LayerItem>& items, std::optional<SeedHint> hint);
+    void endLayer();
+    bool isStale(int seedsVersion) const;             // not the hint's version, or no hint
+    int select(int index);                            // the row it is on after waiting items moved
     int next() const;                                 // -1: nothing follows
     int previous() const;
+    int remaining() const;                            // in play order; kEndlessTracks
     // shuffle, its algorithm, repeat; the load-more generation and whether a load is in flight
 };
 ```
 
 - What plays next and before is the `Queue`'s; playing it is the `Player`'s. The `Player` calls
   the `Queue` synchronously in the middle of its own transitions, so the two never signal each
-  other.
-- The cursor rules are those of [The queue and the cursor](#the-queue-and-the-cursor): only
-  available tracks are kept; an insert at or before the cursor shifts it up; removing the current
-  track leaves the cursor on the track that followed, or on the new last one.
-- Every change of the tracks or of shuffle rebuilds the navigator from the cursor (SHUF-04).
-  `next()` passes repeat only to a finite queue; `shuffleActive()` is false in an endless one
-  (WAVE-10 to WAVE-12).
-- `replace` and `renew` start a new load-more generation, which drops a late answer of the
-  previous source's hook.
+  other. The `Player` emits `playlistChanged` when `revision()` moved.
+- The order is that of [Next, shuffle, repeat](#next-shuffle-repeat), the layer's part that of
+  [The layer](#the-layer), the cursor rules those of
+  [The queue and the cursor](#the-queue-and-the-cursor).
+- The base's place is two marks: the last head entry and the last continuation entry that became
+  current, by their order among their part's entries, and whether the base is in its head. A
+  removal before a mark moves it back, so what followed still follows.
+- `replace`, `replaceBase`, `endLayer` and `renew` start a new load-more generation, which drops a
+  late answer of a continuation asked before.
 - Tests: `tests/queue_test.cpp`.
 
 ## `track.h`: `Track`, `TrackKey`, `CoverRef`
@@ -700,8 +743,9 @@ Q_SIGNALS:
 ## `continuation.h`: `Continuation`
 
 ```cpp
+struct SeedHint { QStringList seeds; int version = 0; };   // the jam server's seeds
 struct ContinuationRequest { QList<Track> queueEnd; bool feedback = true; };
-struct ContinuationReply { QList<Track> tracks; QString failure; };
+struct ContinuationReply { QList<Track> tracks; QString failure; std::optional<int> seedsVersion; };
 class Continuation {
 public:
     using TDone = std::function<void(const ContinuationReply& reply)>;
@@ -719,6 +763,8 @@ What a queue goes on with after its head ([spec/player/continuation.md](../../sp
   failed); or it returns `false` and never calls `done`.
 - `trackEvent` hears the events of the tracks it gave, and only those, also after the queue moved
   on to another source.
+- `seedsVersion` in a reply says that the tracks come from a session started on the jam server's
+  seeds of that version; see [The layer](#the-layer).
 - A source makes the continuation for its own tracks: Yandex's vibe is
   [`YandexSource::Vibe`](../sources/yandex/README.md). The jam's own wave is wrapped in one inside
   `jam_mode.cpp` until [#28](https://github.com/Kickoman/QiYaa/issues/28) removes it.
@@ -732,32 +778,47 @@ struct QueueSource {
     std::shared_ptr<Continuation> continuation;   // may be null
     QList<Track> given;                       // the continuation's tracks so far (a vibe's first batch)
 };
-enum class EntryPart { Head, Continuation };
-struct QueueEntry { Track track; EntryPart part; std::shared_ptr<Continuation> giver; };
+enum class EntryPart { Head, Continuation, Item, Other };
+struct QueueEntry {
+    Track track;
+    EntryPart part;
+    std::shared_ptr<Continuation> giver;      // a Continuation entry's
+    std::optional<int> seedsVersion;          // a wave track's, from ContinuationReply
+    QString itemId, addedBy;                  // an Item's while its layer is on
+    bool pending;                             // an Item that has not been current yet
+};
+struct LayerItem { QString itemId; Track track; QString addedBy; };
+struct QueueRules { bool playReports = true; bool previousRestartsOnly = false; };
+struct QueueLayer { QueueRules rules; std::shared_ptr<Continuation> wave; };
 ```
 
-`Player::entries()` lists the queue as entries: a head track, or a continuation's track with the
-continuation that gave it. The members have default initializers, so a source is written with
-designated initializers (`QueueSource{.title = …, .head = …}`).
+`Player::entries()` lists the queue as entries: a head track; a continuation's track with the
+continuation that gave it; a layer's item; or `Other`, a track kept from an earlier base that plays
+only when picked. The members have default initializers, so a source is written with designated
+initializers (`QueueSource{.title = …, .head = …}`).
 
 ## `track_navigator.h`: `TrackNavigator`
 
 ```cpp
 enum class ShuffleAlgorithm { Random, WithoutRepeats };
+inline constexpr int kEndlessTracks = std::numeric_limits<int>::max();
 class TrackNavigator {
     virtual void reset(int size, int current) = 0;
     virtual void select(int index) = 0;
     virtual int next(bool repeat) const = 0;
     virtual int previous(bool repeat) const = 0;
+    virtual int remaining(bool repeat) const = 0;     // still to come after the current; kEndlessTracks
 };
 std::unique_ptr<TrackNavigator> MakeTrackNavigator(std::optional<ShuffleAlgorithm> algorithm);
 ```
 
 No algorithm means sequential traversal. The three implementations are private to the `.cpp`;
 Player knows only the interface. Navigation is independent of audio, networking, settings and UI.
-`reset` takes a queue size and its valid current index (or -1 for an empty queue). `select` takes
-an existing queue index. `next` and `previous` return queue indices, or -1 when no entry follows.
-Repeated lookahead returns the same candidate and does not advance. Empty queues return -1.
+`reset` takes a queue size and its valid current index, or -1 for before the first entry: then
+`next` gives the first one to play. `select` takes an existing queue index. `next` and `previous`
+return queue indices, or -1 when no entry follows. Repeated lookahead returns the same candidate
+and does not advance. Empty queues return -1. `remaining` is endless with repeat, and for Random
+with two or more entries.
 
 - `SequentialNavigator`: follows source order. Repeat wraps at boundaries; Previous without
   Repeat on the first entry returns that entry. O(1) space and operations.
@@ -776,20 +837,22 @@ Tests cover the interface without an audio engine, plus Player's real preload an
 ## `jam_mode.h`: `JamMode`
 
 ```cpp
-struct JamEntry { QString itemId; Track track; QString addedBy; };
+using JamEntry = LayerItem;
 struct JamSlot { enum class Kind { Item, Wave, Other }; Kind kind; QString itemId; QString addedBy; };
 struct JamPlayback { enum class Kind { Item, Wave, Idle }; Kind kind; QString itemId;
                      std::optional<Track> track; qint64 positionMs; bool paused; QUrl link, nextLink; };
 inline constexpr int kJamPlayingReportMs = 10'000;
 inline constexpr int kJamWaveHistory = 5;
 
-class JamWave : public Continuation {                // one jam's wave; a source makes it
+class JamWave {                                      // one jam's wave; a source makes it
 public:
+    using TDone = std::function<void(const QList<Track>& tracks)>;
     using TRecent = std::function<QList<Track>()>;
     virtual bool start(const QStringList& seeds, int seedsVersion, const Track* current, TDone done) = 0;
+    virtual void more(TDone done) = 0;
+    virtual void trackEvent(TrackEvent event, const Track& track, double playedSeconds) = 0;
     virtual bool hasSession() const = 0;
     virtual int seedsVersion() const = 0;
-    virtual void endSession() = 0;
 };
 using TJamWaveFactory = std::function<std::shared_ptr<JamWave>(bool feedback, JamWave::TRecent recent)>;
 
@@ -797,7 +860,8 @@ class JamMode : public QObject {
 public:
     JamMode(Player* player, TJamWaveFactory makeWave, QObject* parent = nullptr);
     bool isActive() const;
-    const QList<JamSlot>& queueSlots() const;         // one per entry of Player::entries()
+    JamSlot slotAt(int row) const;                    // what entry `row` of Player::entries() is
+    QList<JamSlot> queueSlots() const;                // one per entry; empty while not active
     JamSlot currentSlot() const;
     void start(const QString& title, bool waveFeedback);
     void setQueue(const QList<JamEntry>& entries, const QStringList& seeds, int seedsVersion);  // each state
@@ -816,41 +880,37 @@ The scenarios are [spec/jam/host.md](../../spec/jam/host.md) with Desktop = Kick
 the host session's (Kickoman/QiYaa#14); `JamMode` gets the queue as `JamEntry`s and reports through
 its two signals.
 
-- **The queue** is the current track, then the **jam part** (the mirror of the server's queue), then
-  the **jam wave**. `queueSlots()` says which each entry of `Player::entries()` is: `Item` (with
-  its item id and who added it), `Wave`, or `Other` (the track that played when the jam started).
-  Every change of the queue during the jam goes through `JamMode`, which changes its slots first
-  and the `Player` second; a size that differs afterwards (someone else edited the queue) is
-  logged and the slots are cut or padded.
-- **Start** (HOST-14): every track but the current one is removed, and `Player::changeSource`
-  makes the queue endless, with the jam wave wrapped as its continuation and
-  `QueueRules{playReports = false, previousRestartsOnly = true}` (HOST-15, HOST-07). `itemStarted`
-  and the reports follow `Player::trackEvent`. The track that plays goes on and is reported as a wave track. An endless
-  queue already turns shuffle off (WAVE-10) and repeat does not wrap or replay it (WAVE-12), so the
-  user's modes need no change.
-- **The jam part** (HOST-01 to HOST-04): `setQueue` keeps the longest common prefix of the jam part
-  and the server's queue, removes the rest of the jam part and inserts what differs, so a next
-  track that did not change keeps its preload. The current item is left out even while the state
-  still lists it. Into an empty queue, the first item plays at once; a new item after the cursor
-  plays at once when the player waits for more, or is Stopped or Empty with nothing after the
-  cursor (HOST-08).
+- **The queue** is the current track, then the **jam part** (the layer's waiting items, the mirror
+  of the server's queue), then the **jam wave**. `slotAt(row)` reads from `Player::entries()`
+  which each entry is: `Item` (an item with its id and who added it), `Wave` (a track of this
+  jam's wave), or `Other`.
+- **Start** (HOST-14): `Player::setLayer` with `QueueRules{playReports = false,
+  previousRestartsOnly = true}` (HOST-15, HOST-07) and the jam wave wrapped as the layer's wave,
+  then `Player::setSource(QueueSource{title})` under it: the track that plays stays, as `Other`,
+  and goes on; the rest goes. The base is empty, so the wave is what the queue asks, and shuffle
+  and repeat have no head to act on. `itemStarted` and the reports follow `Player::trackEvent`;
+  the track that plays is reported as a wave track.
+- **The jam part** (HOST-01 to HOST-04): `setQueue` hands the state to `Player::setLayerItems`
+  ([The layer](#the-layer)). When nothing played before it (Empty, waiting for more, or Stopped
+  with nothing next), `Player::next()` then starts the first item (HOST-08).
 - **The jam wave** (HOST-10 to HOST-13) is the `Player`'s load-more. `start` makes one `JamWave` for
   the jam with the factory (`feedback` = `waveFeedback`; `recent` gives the last 5 wave tracks of
   the queue, `kJamWaveHistory`). When at most 2 tracks are left, `JamMode` asks `JamWave::more`
   while the wave has a session started under the last state's `seedsVersion`, and otherwise
   `JamWave::start` with the last state's seeds and the current track. `start` returning false (no
-  seeds and nothing played) means no wave and `playing{idle}`. When the jam part becomes empty again
-  under new seeds (the current track is not a wave track, no item follows), the old session's
-  deferred tracks are removed, `endSession()` is called, and the next load starts a new session.
+  seeds and nothing played) means no wave and `playing{idle}`. A reply carries the version it was
+  asked under; the queue drops the old session's deferred tracks when the jam part is empty again
+  under new seeds, and the next load starts a new session (HOST-11).
   What the wave asks of its service:
   [src/sources/yandex](../sources/yandex/README.md#jam_waveh-jamwave-jamwaves).
 - **What `JamMode` expects of a `JamWave`**: `start` and `more` call `done` once, later, with the
   tracks (empty when there are none); `start` returns false, without calling `done`, when it has
-  nothing to start from. `trackEvent` is called for every event of a wave slot's track, and after
-  the jam ended for any track; the wave ignores tracks it did not give.
+  nothing to start from. `trackEvent` is called for every event of a track it gave, also after the
+  jam ended.
 - **Late replies.** A reply for the wave of an earlier jam (one that ended, with a new one started
-  before the reply came) is dropped. So is a `more` reply for a session that new seeds closed while
-  it was asked for (HOST-11): `JamMode` then asks again at once, which starts the new session.
+  before the reply came) is dropped by the layer's end. So is a reply for a session that new seeds
+  closed while it was asked for (HOST-11): the `Player` then asks again at once, which starts the
+  new session.
 - **Not learning** (HOST-15, HOST-16): no play reports; rotor feedback (radioStarted, trackStarted,
   trackFinished, skip) only for the jam wave's tracks, to the session each came from, and only when
   `start` got `waveFeedback`.
@@ -863,9 +923,9 @@ its two signals.
   (HOST-05, HOST-06). `Idle` when nothing plays (empty queue, or waiting at the end); the rest by
   the table in [Phases and `State`](#phases-and-state).
 - **Skip** (HOST-18, HOST-19): `skip(itemId)` is `Player::next()` only when that item is current.
-- **End** (HOST-32, HOST-33): the wave tracks after the cursor are removed, the jam items stay as
-  ordinary tracks, the current track plays on, and `changeSource` with the default rules brings the
-  play reports and a finite queue back.
+- **End** (HOST-32, HOST-33): `Player::setLayer(std::nullopt)`. The wave's tracks that have not
+  played go, the jam items stay as ordinary tracks, the current track plays on, and the default
+  rules and a finite queue come back with the play reports.
 - `YandexSource::Catalog::setJamMode(jam)` refuses every pick while the jam is on (HOST-21).
 
 **Traps:**
@@ -975,7 +1035,7 @@ loaders that throw (the project's error policy is in
 | audio engine | the notice `AudioError` with the engine's message; an undecodable current stream also goes to the failure policy (`AudioEngine::streamUndecodable`) |
 | continuation | a failed load is a reply with no tracks; a waiting `next()` stays stopped |
 | seek | `seekTo` and `seekFraction` return `false` |
-| index out of range | `playIndex` does nothing; `removeTracks` skips it |
+| index out of range | `playIndex` does nothing; `removeRows` skips it |
 | cover | a null `QImage` from `get`, an empty `QString` from `localFile`, and no `ready` |
 
 A continuation's calls, its `done` and the `trackEvent` signal's slots run inside Qt slots. Per `CLAUDE.md`,

@@ -622,11 +622,7 @@ void Application::setUpJam() {
 
     // HOST-34: who added each jam item, and the jam wave, in the playlist and the marquee.
     const auto note = [this](int row) -> QString {
-        const QList<Core::JamSlot>& slots = jamMode.queueSlots();
-        if (!jamMode.isActive() || row < 0 || row >= slots.size()) {
-            return {};
-        }
-        const Core::JamSlot& slot = slots[row];
+        const Core::JamSlot slot = jamMode.slotAt(row);
         if (slot.kind == Core::JamSlot::Kind::Wave) {
             return tr("jam vibe");
         }
@@ -651,9 +647,8 @@ void Application::setUpJam() {
         }
         QStringList items;
         for (int row : rows) {
-            if (row >= 0 && row < jamMode.queueSlots().size()
-                && jamMode.queueSlots()[row].kind == Core::JamSlot::Kind::Item) {
-                items << jamMode.queueSlots()[row].itemId;
+            if (const Core::JamSlot slot = jamMode.slotAt(row); slot.kind == Core::JamSlot::Kind::Item) {
+                items << slot.itemId;
             }
         }
         if (items.isEmpty()) {
@@ -871,7 +866,7 @@ void Application::logout() {
         jamHostSession->end();
     }
 #endif
-    corePlayer.clearQueue();
+    corePlayer.clear();
     yandexLibrary.logout();
     Yandex::ForgetToken(TokenFile());
     mainWindowInstance->setStatusText(tr("You have logged out"));
