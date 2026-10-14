@@ -2,6 +2,7 @@
 
 #include "core/continuation.h"
 #include "core/player.h"
+#include "core/queue_source.h"
 #include "core/track.h"
 
 #include <QList>
@@ -16,11 +17,7 @@
 
 namespace Core {
 
-struct JamEntry {
-    QString itemId;
-    Track track;
-    QString addedBy;
-};
+using JamEntry = LayerItem;
 
 struct JamSlot {
     enum class Kind { Item, Wave, Other };
@@ -57,7 +54,6 @@ public:
     virtual void trackEvent(TrackEvent event, const Track& track, double playedSeconds) = 0;
     virtual bool hasSession() const = 0;
     virtual int seedsVersion() const = 0;
-    virtual void endSession() = 0;
 };
 
 using TJamWaveFactory = std::function<std::shared_ptr<JamWave>(bool feedback, JamWave::TRecent recent)>;
@@ -71,8 +67,9 @@ public:
     ~JamMode() override;
 
     bool isActive() const { return active; }
-    const QList<JamSlot>& queueSlots() const { return trackSlots; }
-    JamSlot currentSlot() const;
+    JamSlot slotAt(int row) const;
+    QList<JamSlot> queueSlots() const;
+    JamSlot currentSlot() const { return slotAt(corePlayer->currentIndex()); }
 
     void start(const QString& title, bool waveFeedback);
     void setQueue(const QList<JamEntry>& entries, const QStringList& seeds, int seedsVersion);
@@ -86,22 +83,18 @@ Q_SIGNALS:
     void playback(const Core::JamPlayback& playback);
 
 private:
-    void loadWave(JamWave::TDone done);
-    void appendWave(const QList<Track>& tracks, JamWave::TDone done);
+    void loadWave(Continuation::TDone done);
     QList<Track> recentWaveTracks() const;
-    void dropDeferredWave();
-    void removeSlots(const QList<int>& indices);
-    void insertItems(int at, const QList<JamEntry>& entries);
-    void checkSlots();
+    bool nothingToPlay() const;
     void schedulePlaybackReport();
 
     Player* corePlayer;
     TJamWaveFactory waveFactory;
     bool active = false;
-    QList<JamSlot> trackSlots;
     QStringList lastSeeds;
     int lastSeedsVersion = -1;
     std::shared_ptr<JamWave> wave;
+    std::shared_ptr<Continuation> waveContinuation;
     QTimer reportTimer;
     bool reportPending = false;
 };

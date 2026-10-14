@@ -2,19 +2,29 @@
 
 #include <algorithm>
 #include <functional>
+#include <iterator>
 #include <utility>
 
 namespace Core {
 
 namespace {
-QList<QueueEntry> EntriesOf(const QList<Track>& tracks, EntryPart part, const std::shared_ptr<Continuation>& giver) {
+QList<QueueEntry> EntriesOf(
+    const QList<Track>& tracks,
+    EntryPart part,
+    const std::shared_ptr<Continuation>& giver,
+    std::optional<int> seedsVersion = std::nullopt
+) {
     QList<QueueEntry> entries;
     for (const Track& track : tracks) {
         if (track.available) {
-            entries << QueueEntry{.track = track, .part = part, .giver = giver};
+            entries << QueueEntry{.track = track, .part = part, .giver = giver, .seedsVersion = seedsVersion};
         }
     }
     return entries;
+}
+
+bool IsPending(const QueueEntry& entry) {
+    return entry.part == EntryPart::Item && entry.pending;
 }
 }  // namespace
 
@@ -28,38 +38,53 @@ void Queue::replace(QueueSource source) {
     queued << EntriesOf(source.given, EntryPart::Continuation, ownContinuation);
     titleText = source.title;
     playingIndex = queued.isEmpty() ? -1 : 0;
+    inHead = countOf(EntryPart::Head) > 0;
+    headMark = -1;
+    continuationMark = -1;
+    markCurrent();
     renew();
     resetNavigator();
+    ++changes;
 }
 
-bool Queue::appendContinuation(const QList<Track>& tracks, const std::shared_ptr<Continuation>& giver) {
-    const QList<QueueEntry> added = EntriesOf(tracks, EntryPart::Continuation, giver);
+void Queue::replaceBase(QueueSource source) {
+    QList<QueueEntry> kept;
+    if (const QueueEntry* entry = currentEntry()) {
+        kept << *entry;
+        if (entry->part != EntryPart::Item) {
+            kept.front().part = EntryPart::Other;
+        }
+    }
+    std::copy_if(queued.cbegin(), queued.cend(), std::back_inserter(kept), IsPending);
+    playingIndex = currentEntry() ? 0 : -1;
+    ownContinuation = std::move(source.continuation);
+    kept << EntriesOf(source.head, EntryPart::Head, nullptr);
+    kept << EntriesOf(source.given, EntryPart::Continuation, ownContinuation);
+    queued = std::move(kept);
+    titleText = source.title;
+    inHead = countOf(EntryPart::Head) > 0;
+    headMark = -1;
+    continuationMark = -1;
+    renew();
+    resetNavigator();
+    ++changes;
+}
+
+bool Queue::appendContinuation(
+    const QList<Track>& tracks,
+    const std::shared_ptr<Continuation>& giver,
+    std::optional<int> seedsVersion
+) {
+    const QList<QueueEntry> added = EntriesOf(tracks, EntryPart::Continuation, giver, seedsVersion);
     if (added.isEmpty()) {
         return false;
     }
     queued << added;
-    if (playingIndex < 0) {
+    if (playingIndex < 0 && queued.size() == added.size()) {
         playingIndex = 0;
+        markCurrent();
     }
-    resetNavigator();
-    return true;
-}
-
-bool Queue::insert(int index, const QList<Track>& tracks) {
-    const QList<QueueEntry> added = EntriesOf(tracks, EntryPart::Head, nullptr);
-    if (added.isEmpty()) {
-        return false;
-    }
-    const int at = std::clamp(index, 0, static_cast<int>(queued.size()));
-    for (qsizetype i = 0; i < added.size(); ++i) {
-        queued.insert(at + i, added[i]);
-    }
-    if (playingIndex < 0) {
-        playingIndex = 0;
-    } else if (at <= playingIndex) {
-        playingIndex += static_cast<int>(added.size());
-    }
-    resetNavigator();
+    ++changes;
     return true;
 }
 
@@ -67,44 +92,141 @@ bool Queue::remove(QList<int> indices) {
     std::sort(indices.begin(), indices.end(), std::greater<>());
     indices.erase(std::unique(indices.begin(), indices.end()), indices.end());
     bool removedCurrent = false;
+    bool headChanged = false;
     for (int index : indices) {
         if (index < 0 || index >= queued.size()) {
             continue;
         }
+        const int ordinal = ordinalOf(index);
+        if (queued[index].part == EntryPart::Head) {
+            headChanged = true;
+            headMark -= ordinal <= headMark ? 1 : 0;
+        } else if (queued[index].part == EntryPart::Continuation) {
+            continuationMark -= ordinal <= continuationMark ? 1 : 0;
+        }
         queued.removeAt(index);
+        ++changes;
         if (index == playingIndex) {
             removedCurrent = true;
         } else if (index < playingIndex) {
             --playingIndex;
         }
     }
-    if (removedCurrent) {
-        playingIndex = std::min<int>(playingIndex, static_cast<int>(queued.size()) - 1);
-    }
     if (queued.isEmpty()) {
         playingIndex = -1;
+    } else if (removedCurrent) {
+        playingIndex = std::min<int>(playingIndex, static_cast<int>(queued.size()) - 1);
+        markCurrent();
     }
-    resetNavigator();
+    if (headChanged) {
+        resetNavigator();
+    }
     return removedCurrent;
 }
 
-void Queue::setContinuation(std::shared_ptr<Continuation> continuation) {
-    ownContinuation = std::move(continuation);
-    renew();
-    resetNavigator();
+void Queue::setItems(const QList<LayerItem>& items, std::optional<SeedHint> hint) {
+    seedHint = std::move(hint);
+    const QueueEntry* current = currentEntry();
+    const bool currentIsItem = current && current->part == EntryPart::Item;
+    QList<LayerItem> wanted;
+    for (const LayerItem& item : items) {
+        if (!currentIsItem || item.itemId != current->itemId) {
+            wanted << item;  // HOST-04: the current item never goes back into the tail
+        }
+    }
+    const int start = playingIndex + 1;
+    int end = start;
+    while (end < queued.size() && IsPending(queued[end])) {
+        ++end;
+    }
+    int prefix = 0;
+    while (start + prefix < end && prefix < wanted.size() && queued[start + prefix].itemId == wanted[prefix].itemId) {
+        ++prefix;  // HOST-01, HOST-02: the common prefix stays, with its preload
+    }
+    if (start + prefix < end) {
+        queued.remove(start + prefix, end - start - prefix);
+        ++changes;
+    }
+    for (qsizetype i = prefix; i < wanted.size(); ++i) {
+        Track track = wanted[i].track;
+        track.available = true;
+        queued.insert(
+            start + i,
+            QueueEntry{
+                .track = track,
+                .part = EntryPart::Item,
+                .itemId = wanted[i].itemId,
+                .addedBy = wanted[i].addedBy,
+                .pending = true
+            }
+        );
+        ++changes;
+    }
+    dropStaleWave();
 }
 
-void Queue::select(int index) {
+void Queue::endLayer() {
+    seedHint.reset();
+    QList<int> stale;
+    for (int i = 0; i < queued.size(); ++i) {
+        QueueEntry& entry = queued[i];
+        entry.itemId.clear();
+        if (entry.part == EntryPart::Continuation && entry.seedsVersion && ordinalOf(i) > continuationMark) {
+            stale << i;
+        }
+    }
+    remove(stale);
+    renew();
+    ++changes;
+}
+
+int Queue::select(int index) {
+    if (index < 0 || index >= queued.size()) {
+        return playingIndex;
+    }
+    if (IsPending(queued[index])) {
+        ++changes;
+    }
     playingIndex = index;
-    navigator->select(index);
+    markCurrent();
+    gatherPending();
+    dropStaleWave();
+    return playingIndex;
 }
 
 int Queue::next() const {
-    return navigator->next(repeatEnabled && !ownContinuation);
+    const auto pending = std::find_if(queued.cbegin(), queued.cend(), IsPending);
+    if (pending != queued.cend()) {
+        return static_cast<int>(pending - queued.cbegin());
+    }
+    if (inHead) {
+        const int ordinal = navigator->next(repeatEnabled && !ownContinuation);
+        if (ordinal >= 0) {
+            return indexOf(EntryPart::Head, ordinal);
+        }
+    }
+    return indexOf(EntryPart::Continuation, continuationMark + 1);
 }
 
 int Queue::previous() const {
-    return navigator->previous(repeatEnabled);
+    const QueueEntry* entry = currentEntry();
+    if (entry && entry->part == EntryPart::Head) {
+        return indexOf(EntryPart::Head, navigator->previous(repeatEnabled));
+    }
+    return std::max(0, playingIndex - 1);
+}
+
+int Queue::remaining() const {
+    int count = currentEntry() ? 1 : 0;
+    count += static_cast<int>(std::count_if(queued.cbegin(), queued.cend(), IsPending));
+    if (inHead) {
+        const int head = navigator->remaining(repeatEnabled && !ownContinuation);
+        if (head == kEndlessTracks) {
+            return kEndlessTracks;
+        }
+        count += head;
+    }
+    return count + std::max(0, countOf(EntryPart::Continuation) - continuationMark - 1);
 }
 
 void Queue::setShuffle(bool on) {
@@ -124,9 +246,95 @@ void Queue::renew() {
     asking = false;
 }
 
+int Queue::ordinalOf(int index) const {
+    const EntryPart part = queued[index].part;
+    return static_cast<int>(std::count_if(queued.cbegin(), queued.cbegin() + index, [part](const QueueEntry& entry) {
+        return entry.part == part;
+    }));
+}
+
+int Queue::indexOf(EntryPart part, int ordinal) const {
+    if (ordinal < 0) {
+        return -1;
+    }
+    for (int i = 0; i < queued.size(); ++i) {
+        if (queued[i].part == part && ordinal-- == 0) {
+            return i;
+        }
+    }
+    return -1;
+}
+
+int Queue::countOf(EntryPart part) const {
+    return static_cast<int>(std::count_if(queued.cbegin(), queued.cend(), [part](const QueueEntry& entry) {
+        return entry.part == part;
+    }));
+}
+
+void Queue::markCurrent() {
+    if (!currentEntry()) {
+        return;
+    }
+    QueueEntry& entry = queued[playingIndex];
+    switch (entry.part) {
+        case EntryPart::Head:
+            inHead = true;
+            headMark = ordinalOf(playingIndex);
+            navigator->select(headMark);
+            break;
+        case EntryPart::Continuation:
+            inHead = false;
+            continuationMark = ordinalOf(playingIndex);
+            break;
+        case EntryPart::Item: entry.pending = false; break;
+        case EntryPart::Other: break;
+    }
+}
+
+void Queue::gatherPending() {
+    QList<int> pending;
+    for (int i = 0; i < queued.size(); ++i) {
+        if (IsPending(queued[i])) {
+            pending << i;
+        }
+    }
+    bool inPlace = true;
+    for (qsizetype k = 0; k < pending.size() && inPlace; ++k) {
+        inPlace = pending[k] == playingIndex + 1 + k;
+    }
+    if (inPlace) {
+        return;
+    }
+    QList<QueueEntry> moved;
+    for (qsizetype k = pending.size() - 1; k >= 0; --k) {
+        moved.prepend(queued.takeAt(pending[k]));
+        playingIndex -= pending[k] < playingIndex ? 1 : 0;
+    }
+    for (qsizetype k = 0; k < moved.size(); ++k) {
+        queued.insert(playingIndex + 1 + k, moved[k]);
+    }
+    ++changes;
+}
+
+void Queue::dropStaleWave() {
+    const QueueEntry* entry = currentEntry();
+    if (!seedHint || (entry && entry->seedsVersion) || std::any_of(queued.cbegin(), queued.cend(), IsPending)) {
+        return;
+    }
+    QList<int> stale;
+    for (int i = 0; i < queued.size(); ++i) {
+        const QueueEntry& candidate = queued[i];
+        if (candidate.part == EntryPart::Continuation && candidate.seedsVersion
+            && *candidate.seedsVersion != seedHint->version && ordinalOf(i) > continuationMark) {
+            stale << i;  // HOST-11
+        }
+    }
+    remove(stale);
+}
+
 void Queue::resetNavigator() {
     navigator = MakeTrackNavigator(shuffleActive() ? std::optional(preferredAlgorithm) : std::nullopt);
-    navigator->reset(static_cast<int>(queued.size()), playingIndex);
+    navigator->reset(countOf(EntryPart::Head), headMark);
 }
 
 }  // namespace Core

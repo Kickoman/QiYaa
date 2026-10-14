@@ -48,12 +48,6 @@ struct PlayerNotice {
     bool undecodable = false;
 };
 
-// How the queue's source wants its tracks treated; a new source (setQueue) has the defaults.
-struct QueueRules {
-    bool playReports = true;
-    bool previousRestartsOnly = false;
-};
-
 class Player : public QObject {
     Q_OBJECT
 public:
@@ -68,14 +62,10 @@ public:
     bool isLatestSourceRequest(quint64 ticket) const { return ticket == sourceRequest; }
 
     void setSource(QueueSource source, bool autoplay);
-    void appendTracks(const QList<Track>& tracks);
-    void insertTracks(int index, const QList<Track>& tracks);
-    void removeTracks(QList<int> indices);
-    void clearQueue();
-    // Keeps the queue and the current track playing; replaces the source behind them.
-    void changeSource(const QString& title, std::shared_ptr<Continuation> continuation, QueueRules rules);
-    // The load-more check now, not only when a track becomes current.
-    void requestMore() { maybeLoadMore(); }
+    void removeRows(QList<int> rows);
+    void clear();
+    void setLayer(std::optional<QueueLayer> layer);
+    void setLayerItems(const QList<LayerItem>& items, std::optional<SeedHint> hint);
 
     void play();
     void pause();
@@ -103,6 +93,8 @@ public:
     const QList<QueueEntry>& entries() const;
     const QString& queueTitle() const;
     int currentIndex() const;
+    const QueueEntry* currentEntry() const;
+    bool hasNext() const;
     const Track* currentTrack() const;
     int currentBitrate() const;
     double durationSeconds() const;
@@ -180,8 +172,10 @@ private:
     void maybePreload();
     void cancelPreload();
     void refreshPreload();
+    std::shared_ptr<Continuation> askedContinuation() const;
     void maybeLoadMore();
-    void appendContinuation(const QList<Track>& tracks, const std::shared_ptr<Continuation>& giver);
+    void continuationReplied(const std::shared_ptr<Continuation>& giver, const ContinuationReply& reply);
+    void queueEdited(quint64 revision);
     void setWaitingForMore(bool waiting);
     double accumulatePlayedSeconds();
     void noteState();
@@ -190,6 +184,7 @@ private:
     Audio::AudioEngine* audioEngine;
     SourceRegistry* trackSources;
     std::unique_ptr<Queue> queue;
+    std::optional<QueueLayer> layer;
     QueueRules queueRules;
     std::optional<CurrentTrack> current;
     std::optional<Preload> preload;

@@ -84,6 +84,26 @@ private Q_SLOTS:
         QCOMPARE(navigator->next(true), 0);
         QCOMPARE(navigator->previous(false), 0);
     }
+
+    void eachNavigatorCanStartBeforeItsFirstTrack_data() { emptyAndSingleTrackQueues_data(); }
+    void eachNavigatorCanStartBeforeItsFirstTrack() {
+        QFETCH(int, algorithm);
+        auto navigator = Core::MakeTrackNavigator(
+            algorithm < 0 ? std::nullopt : std::optional(static_cast<Core::ShuffleAlgorithm>(algorithm))
+        );
+        navigator->reset(5, -1);
+        const int first = navigator->next(false);
+        QVERIFY(first >= 0 && first < 5);
+        QCOMPARE(navigator->next(false), first);
+        const bool random = algorithm == static_cast<int>(Core::ShuffleAlgorithm::Random);
+        QCOMPARE(navigator->remaining(false), random ? Core::kEndlessTracks : 5);
+        navigator->select(first);
+        QCOMPARE(navigator->remaining(false), random ? Core::kEndlessTracks : 4);
+        QCOMPARE(navigator->remaining(true), Core::kEndlessTracks);
+        navigator->reset(1, -1);
+        QCOMPARE(navigator->next(false), 0);
+        QCOMPARE(navigator->remaining(false), 1);
+    }
 };
 
 QTEST_GUILESS_MAIN(TestTrackNavigator)

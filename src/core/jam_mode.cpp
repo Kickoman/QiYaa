@@ -3,7 +3,6 @@
 #include <QPointer>
 #include <QtGlobal>
 
-#include <algorithm>
 #include <functional>
 #include <utility>
 
@@ -11,24 +10,16 @@ namespace Core {
 
 namespace {
 
-QList<Track> Playable(const QList<Track>& tracks) {
-    QList<Track> playable;
-    std::copy_if(tracks.cbegin(), tracks.cend(), std::back_inserter(playable), [](const Track& track) {
-        return track.available;
-    });
-    return playable;
-}
-
 class JamWaveContinuation : public Continuation {
 public:
-    using TLoad = std::function<void(JamWave::TDone done)>;
+    using TLoad = std::function<void(TDone done)>;
 
     JamWaveContinuation(TLoad loader, std::shared_ptr<JamWave> jamWave)
         : load(std::move(loader))
         , wave(std::move(jamWave)) { }
 
     bool more(const ContinuationRequest&, TDone done) override {
-        load([done](const QList<Track>& tracks) { done(ContinuationReply{.tracks = tracks}); });
+        load(std::move(done));
         return true;
     }
     void trackEvent(TrackEvent event, const Track& track, double playedSeconds) override {
@@ -39,6 +30,10 @@ private:
     TLoad load;
     std::shared_ptr<JamWave> wave;
 };
+
+bool IsJamItem(const QueueEntry* entry) {
+    return entry && entry->part == EntryPart::Item && !entry->itemId.isEmpty();
+}
 
 }  // namespace
 
@@ -52,33 +47,44 @@ JamMode::JamMode(Player* player, TJamWaveFactory makeWave, QObject* parent)
             reportPlayback();
         }
     });
-    connect(corePlayer, &Player::currentTrackChanged, this, [this] {
-        if (!active) {
-            return;
-        }
-        schedulePlaybackReport();
-        QTimer::singleShot(0, this, &JamMode::dropDeferredWave);
-    });
     connect(corePlayer, &Player::trackEvent, this, [this](TrackEvent event) {
         if (!active) {
             return;
         }
-        const JamSlot slot = currentSlot();
-        if (event == TrackEvent::Started && slot.kind == JamSlot::Kind::Item) {
-            Q_EMIT itemStarted(slot.itemId);  // HOST-05
+        const QueueEntry* entry = corePlayer->currentEntry();
+        if (event == TrackEvent::Started && IsJamItem(entry)) {
+            Q_EMIT itemStarted(entry->itemId);  // HOST-05
         }
         schedulePlaybackReport();
     });
+    connect(corePlayer, &Player::currentTrackChanged, this, &JamMode::schedulePlaybackReport);
     connect(corePlayer, &Player::seeked, this, &JamMode::schedulePlaybackReport);
     connect(corePlayer, &Player::stateChanged, this, &JamMode::schedulePlaybackReport);
-    connect(corePlayer, &Player::playlistChanged, this, &JamMode::checkSlots);
 }
 
 JamMode::~JamMode() = default;
 
-JamSlot JamMode::currentSlot() const {
-    const int cursor = corePlayer->currentIndex();
-    return cursor >= 0 && cursor < trackSlots.size() ? trackSlots[cursor] : JamSlot{};
+JamSlot JamMode::slotAt(int row) const {
+    const QList<QueueEntry>& entries = corePlayer->entries();
+    if (!active || row < 0 || row >= entries.size()) {
+        return {};
+    }
+    const QueueEntry& entry = entries[row];
+    if (IsJamItem(&entry)) {
+        return JamSlot{JamSlot::Kind::Item, entry.itemId, entry.addedBy};
+    }
+    if (entry.part == EntryPart::Continuation && entry.giver == waveContinuation) {
+        return JamSlot{JamSlot::Kind::Wave, {}, {}};
+    }
+    return {};
+}
+
+QList<JamSlot> JamMode::queueSlots() const {
+    QList<JamSlot> slots;
+    for (int row = 0; active && row < corePlayer->entries().size(); ++row) {
+        slots << slotAt(row);
+    }
+    return slots;
 }
 
 void JamMode::start(const QString& title, bool waveFeedback) {
@@ -89,28 +95,19 @@ void JamMode::start(const QString& title, bool waveFeedback) {
     wave = waveFactory(waveFeedback, [self] { return self ? self->recentWaveTracks() : QList<Track>{}; });
     lastSeeds.clear();
     lastSeedsVersion = -1;
-
-    const int cursor = corePlayer->currentIndex();
-    QList<int> others;
-    for (int i = 0; i < corePlayer->entries().size(); ++i) {
-        if (i != cursor) {
-            others << i;
-        }
-    }
-    if (!others.isEmpty()) {
-        corePlayer->removeTracks(others);  // HOST-14: the playing track stays, the rest goes
-    }
-    trackSlots = corePlayer->entries().isEmpty() ? QList<JamSlot>{} : QList<JamSlot>{JamSlot{}};
-    active = true;
-
-    const auto load = [self](JamWave::TDone done) {
-        if (!self || !self->active) {
+    const auto load = [self](Continuation::TDone done) {
+        if (!self) {
             return done({});
         }
         self->loadWave(std::move(done));
     };
+    waveContinuation = std::make_shared<JamWaveContinuation>(load, wave);
+    active = true;
     // HOST-15: no play reports; HOST-07: Previous restarts the track.
-    corePlayer->changeSource(title, std::make_shared<JamWaveContinuation>(load, wave), QueueRules{false, true});
+    corePlayer->setLayer(
+        QueueLayer{.rules = {.playReports = false, .previousRestartsOnly = true}, .wave = waveContinuation}
+    );
+    corePlayer->setSource(QueueSource{.title = title}, false);  // HOST-14: the playing track stays, the rest goes
     reportTimer.start();
     reportPlayback();
 }
@@ -121,54 +118,16 @@ void JamMode::setQueue(const QList<JamEntry>& entries, const QStringList& seeds,
     }
     lastSeeds = seeds;
     lastSeedsVersion = seedsVersion;
-    if (corePlayer->entries().isEmpty()) {
-        if (!entries.isEmpty()) {  // HOST-08: nothing plays, the first item starts at once
-            insertItems(0, entries);
-            corePlayer->playIndex(0);
-        }
-        return;
+    const bool idle = nothingToPlay();
+    corePlayer->setLayerItems(entries, SeedHint{.seeds = seeds, .version = seedsVersion});
+    if (idle && corePlayer->hasNext()) {
+        corePlayer->next();  // HOST-08: nothing plays, the first item starts at once
     }
-    const int cursor = corePlayer->currentIndex();
-    const JamSlot current = currentSlot();
-    const bool tailWasEmpty = cursor + 1 >= corePlayer->entries().size();
-    QList<JamEntry> wanted;
-    for (const JamEntry& entry : entries) {
-        if (current.kind != JamSlot::Kind::Item || entry.itemId != current.itemId) {
-            wanted << entry;  // HOST-04: the current item never goes back into the tail
-        }
-    }
-    int end = cursor + 1;
-    while (end < trackSlots.size() && trackSlots[end].kind == JamSlot::Kind::Item) {
-        ++end;
-    }
-    int prefix = 0;
-    while (cursor + 1 + prefix < end && prefix < wanted.size()
-           && trackSlots[cursor + 1 + prefix].itemId == wanted[prefix].itemId) {
-        ++prefix;  // HOST-01, HOST-02: the common prefix stays, with its preload
-    }
-    QList<int> changed;
-    for (int i = cursor + 1 + prefix; i < end; ++i) {
-        changed << i;
-    }
-    if (!changed.isEmpty()) {
-        removeSlots(changed);
-    }
-    const QList<JamEntry> added = wanted.mid(prefix);
-    if (!added.isEmpty()) {
-        insertItems(cursor + 1 + prefix, added);
-        const Player::State state = corePlayer->state();
-        const bool idle = state == Player::State::Stopped || state == Player::State::Empty;
-        if (state == Player::State::WaitingForMore || (tailWasEmpty && idle)) {
-            corePlayer->playIndex(cursor + 1);  // HOST-08: nothing plays, the item starts at once
-        }
-    }
-    dropDeferredWave();
-    corePlayer->requestMore();
 }
 
 void JamMode::skip(const QString& itemId) {
-    const JamSlot slot = currentSlot();
-    if (active && slot.kind == JamSlot::Kind::Item && slot.itemId == itemId) {
+    const QueueEntry* entry = corePlayer->currentEntry();
+    if (active && IsJamItem(entry) && entry->itemId == itemId) {
         corePlayer->next();  // HOST-18; any other item: HOST-19
     }
 }
@@ -178,19 +137,9 @@ void JamMode::end() {
         return;
     }
     reportTimer.stop();
-    const int cursor = corePlayer->currentIndex();
-    QList<int> waveTracks;
-    for (int i = cursor + 1; i < trackSlots.size(); ++i) {
-        if (trackSlots[i].kind == JamSlot::Kind::Wave) {
-            waveTracks << i;
-        }
-    }
     active = false;
-    trackSlots.clear();
-    if (!waveTracks.isEmpty()) {
-        corePlayer->removeTracks(waveTracks);  // HOST-32: the jam items stay as ordinary tracks
-    }
-    corePlayer->changeSource(corePlayer->queueTitle(), nullptr, QueueRules{});  // HOST-33
+    corePlayer->setLayer(std::nullopt);  // HOST-32: the jam items stay as ordinary tracks; HOST-33
+    waveContinuation.reset();
 }
 
 void JamMode::reportPlayback() {
@@ -201,9 +150,10 @@ void JamMode::reportPlayback() {
     const Track* track = corePlayer->currentTrack();
     const Player::State state = corePlayer->state();
     if (track && state != Player::State::WaitingForMore) {
-        const JamSlot slot = currentSlot();
-        report.kind = slot.kind == JamSlot::Kind::Item ? JamPlayback::Kind::Item : JamPlayback::Kind::Wave;
-        report.itemId = slot.kind == JamSlot::Kind::Item ? slot.itemId : QString();
+        const QueueEntry* entry = corePlayer->currentEntry();
+        const bool item = IsJamItem(entry);
+        report.kind = item ? JamPlayback::Kind::Item : JamPlayback::Kind::Wave;
+        report.itemId = item ? entry->itemId : QString();
         report.track = *track;
         report.link = corePlayer->currentLink();
         report.nextLink = corePlayer->nextLink();
@@ -214,23 +164,12 @@ void JamMode::reportPlayback() {
     Q_EMIT playback(report);
 }
 
-void JamMode::loadWave(JamWave::TDone done) {
-    QPointer<JamMode> self(this);
-    const std::shared_ptr<JamWave> state = wave;
-    auto deliver = [self, state, done](const QList<Track>& tracks) {
-        if (!self || !self->active || self->wave != state) {
-            return done({});
-        }
-        self->appendWave(tracks, done);
+void JamMode::loadWave(Continuation::TDone done) {
+    const auto deliver = [done, version = lastSeedsVersion](const QList<Track>& tracks) {
+        done(ContinuationReply{.tracks = tracks, .seedsVersion = version});
     };
     if (wave->hasSession() && wave->seedsVersion() == lastSeedsVersion) {  // HOST-11
-        return wave->more([self, state, done, deliver](const QList<Track>& tracks) {
-            if (self && self->active && self->wave == state && !state->hasSession()) {
-                done({});
-                return self->corePlayer->requestMore();
-            }
-            deliver(tracks);
-        });
+        return wave->more(deliver);
     }
     if (!wave->start(lastSeeds, lastSeedsVersion, corePlayer->currentTrack(), deliver)) {  // HOST-13
         done({});
@@ -240,75 +179,26 @@ void JamMode::loadWave(JamWave::TDone done) {
 
 QList<Track> JamMode::recentWaveTracks() const {
     QList<Track> recent;
-    for (qsizetype i = trackSlots.size() - 1; i >= 0 && recent.size() < kJamWaveHistory; --i) {
-        if (trackSlots[i].kind == JamSlot::Kind::Wave && i < corePlayer->entries().size()) {
-            recent.prepend(corePlayer->entries()[i].track);
+    const QList<QueueEntry>& entries = corePlayer->entries();
+    for (qsizetype i = entries.size() - 1; i >= 0 && recent.size() < kJamWaveHistory; --i) {
+        if (waveContinuation && entries[i].giver == waveContinuation) {
+            recent.prepend(entries[i].track);
         }
     }
     return recent;
 }
 
-void JamMode::appendWave(const QList<Track>& tracks, JamWave::TDone done) {
-    const QList<Track> playable = Playable(tracks);
-    for (qsizetype i = 0; i < playable.size(); ++i) {
-        trackSlots << JamSlot{JamSlot::Kind::Wave, {}, {}};
+bool JamMode::nothingToPlay() const {
+    switch (corePlayer->state()) {
+        case Player::State::Empty:
+        case Player::State::WaitingForMore: return true;
+        case Player::State::Stopped: return !corePlayer->hasNext();
+        case Player::State::Loading:
+        case Player::State::Playing:
+        case Player::State::Paused:
+        case Player::State::WaitingForNetwork: return false;
     }
-    done(playable);
-    checkSlots();
-}
-
-void JamMode::dropDeferredWave() {
-    if (!active || !wave->hasSession() || wave->seedsVersion() == lastSeedsVersion
-        || currentSlot().kind == JamSlot::Kind::Wave) {
-        return;
-    }
-    const int cursor = corePlayer->currentIndex();
-    QList<int> deferred;
-    for (int i = cursor + 1; i < trackSlots.size(); ++i) {
-        if (trackSlots[i].kind == JamSlot::Kind::Item) {
-            return;  // the jam part is not empty yet
-        }
-        if (trackSlots[i].kind == JamSlot::Kind::Wave) {
-            deferred << i;
-        }
-    }
-    wave->endSession();  // HOST-11
-    if (!deferred.isEmpty()) {
-        removeSlots(deferred);
-    }
-    corePlayer->requestMore();
-}
-
-void JamMode::removeSlots(const QList<int>& indices) {
-    QList<int> sorted = indices;
-    std::sort(sorted.begin(), sorted.end(), std::greater<>());
-    for (int index : sorted) {
-        trackSlots.removeAt(index);
-    }
-    corePlayer->removeTracks(indices);
-}
-
-void JamMode::insertItems(int at, const QList<JamEntry>& entries) {
-    QList<Track> tracks;
-    for (qsizetype i = 0; i < entries.size(); ++i) {
-        trackSlots.insert(at + i, JamSlot{JamSlot::Kind::Item, entries[i].itemId, entries[i].addedBy});
-        Track track = entries[i].track;
-        track.available = true;
-        tracks << track;
-    }
-    corePlayer->insertTracks(at, tracks);
-}
-
-void JamMode::checkSlots() {
-    if (!active || trackSlots.size() == corePlayer->entries().size()) {
-        return;
-    }
-    qWarning(
-        "jam: the queue has %lld tracks but the jam knows %lld; the queue was changed outside it",
-        static_cast<long long>(corePlayer->entries().size()),
-        static_cast<long long>(trackSlots.size())
-    );
-    trackSlots.resize(corePlayer->entries().size());
+    return false;
 }
 
 void JamMode::schedulePlaybackReport() {

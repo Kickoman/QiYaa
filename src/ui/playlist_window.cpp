@@ -685,7 +685,7 @@ void PlaylistWindow::removeSelected() {
     QList<int> rows = selectedRows.values();
     std::sort(rows.begin(), rows.end());
     if (!queueHooks.remove || !queueHooks.remove(rows)) {
-        corePlayer->removeTracks(rows);
+        corePlayer->removeRows(rows);
     }
     selectedRows.clear();
     update();
@@ -693,7 +693,7 @@ void PlaylistWindow::removeSelected() {
 
 void PlaylistWindow::clearQueue() {
     if (!queueHooks.clear || !queueHooks.clear()) {
-        corePlayer->clearQueue();
+        corePlayer->clear();
     }
 }
 

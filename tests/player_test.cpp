@@ -182,19 +182,21 @@ private Q_SLOTS:
         vibe->answer(Tracks(3));
         QCOMPARE(stack.player.entries().size(), 2);
         const auto again = std::make_shared<Tests::FakeContinuation>();
-        stack.player.changeSource(QStringLiteral("Vibe"), again, {});
-        stack.player.requestMore();
+        stack.player.setSource(
+            Core::QueueSource{.title = QStringLiteral("Vibe"), .continuation = again, .given = Tracks(1)}, false
+        );
+        stack.player.playIndex(0);
         QCOMPARE(again->pending(), 1);
-        stack.player.changeSource(QStringLiteral("Fixed"), nullptr, {});
+        stack.player.clear();
         again->answer(Tracks(3));
-        QCOMPARE(stack.player.entries().size(), 2);
+        QVERIFY(stack.player.entries().isEmpty());
     }
 
     void aTrackStartsUnderTheRulesOfItsStart() {  // HOST-15
         Stack stack;
         QVERIFY(stack.start(2));
         stack.player.playIndex(0);
-        stack.player.changeSource(QStringLiteral("Jam"), nullptr, Core::QueueRules{.playReports = false});
+        stack.player.setLayer(Core::QueueLayer{.rules = {.playReports = false}});
         stack.source.complete(0);
         QCOMPARE(stack.events, QStringList{"started:1"});
         QVERIFY(stack.source.events().isEmpty());
@@ -230,7 +232,7 @@ private Q_SLOTS:
         stack.source.complete(1);
         stack.player.next();
         QCOMPARE(stack.player.state(), Core::Player::State::WaitingForMore);
-        stack.player.clearQueue();
+        stack.player.clear();
         QCOMPARE(stack.player.state(), Core::Player::State::Empty);
     }
 

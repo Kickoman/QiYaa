@@ -4,10 +4,17 @@
 
 #include <QList>
 #include <QString>
+#include <QStringList>
 
 #include <functional>
+#include <optional>
 
 namespace Core {
+
+struct SeedHint {
+    QStringList seeds{};
+    int version = 0;
+};
 
 struct ContinuationRequest {
     QList<Track> queueEnd{};
@@ -17,6 +24,7 @@ struct ContinuationRequest {
 struct ContinuationReply {
     QList<Track> tracks{};
     QString failure{};
+    std::optional<int> seedsVersion{};
 };
 
 class Continuation {

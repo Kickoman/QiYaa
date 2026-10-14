@@ -160,9 +160,9 @@ HOST-11, HOST-13, HOST-16):
   track's feedback goes to its own session even after a new one started (TRK-08).
 - `trackEvent`: rotor feedback (`WaveEventOf`) for a track of this vibe only (found by catalog id),
   and only when `feedback`.
-- `endSession()` forgets the session: the next load starts one. A `more` reply for a session that
-  ended while it was asked for gives `done({})` and records nothing; sessions are counted, not
-  compared by id, since the service may give a new session the old id.
+- A `more` reply for a session that a new `start` replaced while it was asked for gives `done({})`
+  and records nothing; sessions are counted, not compared by id, since the service may give a new
+  session the old id.
 - The library callbacks hold the `JamWave` (`shared_from_this`), as the `Player`'s event callback
   does: a wave track that closes after the jam ended still gets its feedback.
 
