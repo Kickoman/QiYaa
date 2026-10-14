@@ -10,7 +10,6 @@
 #include <functional>
 
 namespace Core {
-class JamMode;
 class Player;
 }  // namespace Core
 
@@ -50,19 +49,15 @@ public:
 
     const QStringList& lastWaveSeeds() const { return waveSeeds; }
 
-    void setJamMode(const Core::JamMode* jam) { jamMode = jam; }
-
 Q_SIGNALS:
     void likesChanged();
 
 private:
     void showStatus(const QString& text);
-    bool refusedForJam();
 
     Core::Player* corePlayer;
     Yandex::Library* yandexLibrary;
     QStringList waveSeeds{kMyWaveSeed};
-    const Core::JamMode* jamMode = nullptr;
 };
 
 }  // namespace YandexSource

@@ -20,6 +20,7 @@ struct SeedHint {
 struct ContinuationRequest {
     QList<Track> queueEnd{};
     QList<Track> history{};
+    std::optional<SeedHint> jamSeeds{};
     bool feedback = true;
 };
 

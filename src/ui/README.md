@@ -488,13 +488,12 @@ buttons, 9x9 each, which act on release inside.
 
 - Selection: a click selects one row, Ctrl toggles a row, Shift selects the range from the anchor
   (the anchor stays). Up, Down, PgUp, PgDn, Home and End move the keyboard row (Shift extends),
-  Enter plays it, Delete removes the selection (`Player::removeTracks`). The window takes
-  `Qt::StrongFocus`.
-- `setQueueHooks(QueueHooks)` is how a jam changes the playlist (HOST-21, HOST-34): `note(row)` is
-  drawn right-aligned before the duration, in the row's colour, and the title is elided before it;
-  Delete and REM's "remove selected" call `remove(rows)` (sorted) and REM's "clear" calls
-  `clear()` first, and the `Player` is changed only when the hook is unset or returns false. The
-  selection is cleared either way.
+  Enter plays it, Delete and REM's "remove selected" remove the selection (`Player::removeRows`,
+  sorted), and REM's "clear" is `Player::clear()`; during a jam the `Player` sends waiting jam items
+  to the server and keeps the current track and the items on "clear" (HOST-36). The selection is
+  cleared either way. The window takes `Qt::StrongFocus`.
+- `setTrackNote(note)`: `note(row)` (the jam's, HOST-34) is drawn right-aligned before the
+  duration, in the row's colour, and the title is elided before it.
 - `Player::queueReplaced` clears selection, anchor, keyboard row and scroll; `playlistChanged` drops
   selected indices past the end and re-clamps the scroll; `currentTrackChanged` scrolls the current
   row into view.
@@ -521,15 +520,6 @@ buttons, 9x9 each, which act on release inside.
 - `setScrollOffset(scrollRow)` is not a no-op: it re-clamps after the row count or the height
   changed (resize, shade, unshade, queue change).
 - Resizing does not move the windows docked below (see `SkinnedWindow`).
-
-```cpp
-struct PlaylistWindow::QueueHooks {
-    std::function<QString(int row)> note;
-    std::function<bool(const QList<int>& rows)> remove;
-    std::function<bool()> clear;
-};
-void PlaylistWindow::setQueueHooks(QueueHooks hooks);
-```
 
 ## GenWindow — `gen_window.h/.cpp`
 
@@ -604,6 +594,7 @@ the click to the window. None of the pointers is owned.
 ## JamWindow — `jam_window.h/.cpp`
 
 ```cpp
+QString JamTrackNote(const Core::QueueEntry& entry, bool jamActive, const Jam::HostSession* host);
 class JamWindow : public GenWindow {
 public:
     enum class Page { Jam, Search };
@@ -620,6 +611,11 @@ Q_SIGNALS:
     void serverSettingsRequested();
 };
 ```
+
+`JamTrackNote` is the word after a row's title while the jam is on (HOST-34): `+ <name>` for one of
+the jam's items, with the name `HostSession::participantName` gives for its `addedBy` (nothing when
+the room does not list it), and "jam vibe" (context `Ui::JamWindow`) for a track of the vibe from
+history; nothing for any other row, and nothing at all without a jam.
 
 The host's side of the jam on screen (spec/jam/host.md HOST-20, HOST-25, HOST-35), title `JAM`,
 in the PLEDIT.TXT colours and font like the "Now playing" window. What it shows follows
@@ -679,11 +675,12 @@ public:
 };
 ```
 
-"Jam server": the address (empty shows and means the default, `QIYAA_JAM_URL`), with "An
-address like https://jam.example.org is needed" and Save disabled until it is an http(s) URL with a host;
-"Teach the jam vibe" (HOST-16) with what it means; "Guests may listen" with what it
-does, that the files are the host's subscription's and that it works only at the Standard
-quality (LISTEN-13). The owner writes the settings.
+"Jam server": the address (empty shows and means the default, `QIYAA_JAM_URL`), with "An address
+like https://jam.example.org is needed" and Save disabled until it is an http(s) URL with a host;
+"Teach the jam vibe" (HOST-16) with what it means (after the guests' queue the host's own queue
+plays, and the jam vibe after it when the queue has no vibe of its own and goes on with one);
+"Guests may listen" with what it does, that the files are the host's subscription's and that it
+works only at the Standard quality (LISTEN-13). The owner writes the settings.
 
 ## MilkdropWindow — `milkdrop_window.h/.cpp`
 

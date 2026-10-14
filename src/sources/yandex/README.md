@@ -5,9 +5,8 @@ Yandex Music as one of the [music sources](../README.md). `Catalog` turns what t
 builds a vibe's load-more and feedback callbacks, and likes and dislikes tracks; it is the desktop
 counterpart of the Android app's queue manager, and `spec/player` describes both. `Source` is
 Yandex's `Core::TrackSource`: it opens a track's file in the chosen quality and reports a play.
-`JamWave` is the
-Yandex half of the jam's own vibe: the rotor session, its seeds and its feedback, behind
-`Core::JamWave`. The module does not speak HTTP or parse the API
+`Vibe` and `HistoryWave` are the queue's continuations: a vibe or station, and the vibe that goes
+on after a head (the jam vibe during a jam). The module does not speak HTTP or parse the API
 ([src/yandex](../../yandex/README.md)), does not hold the queue or decide when to ask for more
 ([src/core](../../core/README.md)), and builds no menus ([src/ui](../../ui/README.md),
 `library_menu.cpp`). Namespace `YandexSource`, library `qiyaa_sources_yandex`.
@@ -18,7 +17,6 @@ Yandex half of the jam's own vibe: the rotor session, its seeds and its feedback
 | `vibe.h/.cpp` | `Vibe`, the `Core::Continuation` of a vibe or station: `radioStarted`, load-more, the feedback on its tracks |
 | `history_wave.h/.cpp` | `HistoryWave`, the vibe that goes on after a queue's head, from the tracks that started; `HistoryWaves`, its factory for `Core::Player`; `HistorySeeds` |
 | `wave_origins.h/.cpp` | `WaveOrigins`: the session, station and batch each wave track came in, and the feedback sent to them |
-| `jam_wave.h/.cpp` | `JamWave` (a `Core::JamWave`) and `JamWaves`, the factory `Core::JamMode` takes |
 | `source.h/.cpp` | `Source`, the `Core::TrackSource` of Yandex tracks: the cover, the web page, opening the file, the play report, the quality; `FailureKindOf` |
 | `tracks.h/.cpp` | `kSourceName`, `KeyOf`, `TrackOf`, `TracksOf`, `YandexTrackOf`, `CatalogId`: `Core::Track` ↔ `Yandex::Track`; `WaveEventOf` |
 
@@ -63,7 +61,6 @@ public:
     void dislikeAndSkip(const Core::TrackKey& key);              // skip only if it is current
 
     const QStringList& lastWaveSeeds() const;                    // what the wheel of vibes matches
-    void setJamMode(const Core::JamMode* jam);                   // HOST-21
 Q_SIGNALS:
     void likesChanged();                                         // Library::likesChanged
 };
@@ -81,8 +78,8 @@ The scenarios are [spec/player/sources.md](../../../spec/player/sources.md),
 - **Statuses**, all through `Player::statusMessage` (English sources, shown translated in the
   context `YandexSource::Catalog`; see [translations](../../../translations/README.md)):
   `<title>: loading…` (vibes, likes), `Search: <text>…`, `Error: …`, `Vibe error: …`,
-  `Search error: …`, `<title>: empty`, `Nothing found`, `Liked: N tracks`, `Added to Liked`,
-  `Removed from Liked`, `Disliked`, `A jam is on: add tracks to the jam`.
+  `Search error: …`, `<title>: empty`, `Nothing found`, `Liked: N tracks` (the available tracks of
+  the pick), `Added to Liked`, `Removed from Liked`, `Disliked`.
 - **An empty pick keeps the queue** (SRC-07, SRC-08, WAVE-03): when a reply has no available
   track (none at all, or all `available: false`), the status is `<title>: empty` (search:
   `Nothing found`) and nothing else happens: no `setSource`, and for a vibe no `RadioStarted`.
@@ -99,9 +96,9 @@ The scenarios are [spec/player/sources.md](../../../spec/player/sources.md),
   `dislikeAndSkip` calls `Player::next()` at once only when the key is the current Yandex track
   (`isCurrent`), which closes it with `Skip` (TRK-07). Disliking another track leaves playback
   alone, including when playback advances while a menu for the previous track is open.
-- **During a jam** (`setJamMode`): while the jam is on, every pick (likes, playlists, artists,
-  albums, vibes, stations, search) leaves the queue alone and says
-  `A jam is on: add tracks to the jam` (HOST-21). Likes and dislikes still work (HOST-17).
+- **During a jam** a pick is the same: `Player::setSource` makes it the jam's new base, and nothing
+  starts (HOST-21, [src/core](../../core/README.md#the-layer)). Likes and dislikes work as ever
+  (HOST-17).
 
 **Traps:**
 - One Yandex track can have two keys: a guest's jam item without an album is `11`, the same track
@@ -143,54 +140,30 @@ public:
 Core::THistoryWaveFactory HistoryWaves(Yandex::Library* library);   // what Core::Player takes
 ```
 
-The vibe from history (spec/player/continuation.md, CONT-04 to CONT-08), one per queue:
-- Without a session, `more` takes the seeds from the request's `history` (`HistorySeeds`: the
-  Yandex tracks among them, `track:<catalog id>` without an album, each id once, at most 5, in the
-  order given). Without any it returns `false` and asks nothing (CONT-06). Otherwise
-  `Library::startWave(seeds)`: an error gives `done` with that `failure` and no session; a batch
-  with no available track gives `done({})` and no session either, so the next `more` starts again
-  (CONT-07). A batch with tracks opens the session (the station is the first seed), sends
-  `RadioStarted` when the request has `feedback` (TRK-03), and gives `done` the batch.
-- With a session, `more` is `Library::moreWave` with the catalog ids of `queueEnd`, as `Vibe`'s.
+The vibe from history (spec/player/continuation.md, CONT-04 to CONT-08), one per queue; during a
+jam it is the jam vibe (spec/jam/host.md, HOST-11, HOST-16, HOST-32):
+- **A session goes on** while it fits the request: without `jamSeeds`, a session on the history's
+  seeds; with `jamSeeds` that have no seeds, any session; with seeds, a session started on their
+  version. Then `more` is `Library::moreWave` with the catalog ids of `queueEnd`, as `Vibe`'s.
+- **Otherwise a new session**: on the `jamSeeds`' seeds when there are any, else on `HistorySeeds`
+  of the request's `history` (the Yandex tracks among them, `track:<catalog id>` without an album,
+  each id once, at most 5, in the order given). Without any seed it returns `false` and asks
+  nothing (CONT-06). `Library::startWave(seeds)`: an error gives `done` with that `failure`; a batch
+  with no available track gives a reply without tracks; neither opens a session, so the next
+  `more` starts again (CONT-07). A batch with tracks opens the session (the station is the first
+  seed) and sends `RadioStarted` when the request has `feedback` (TRK-03).
+- **Every reply** of a session on the jam's seeds carries their version (`seedsVersion`); the
+  `Player` decides from it what is outdated. A reply of a session that a newer start replaced is
+  empty.
+- `begin(true)` sends the `RadioStarted` that a session on the history's seeds did not send when it
+  started without feedback (during a jam); the `Player` calls it at the jam's end (HOST-33).
 - `trackEvent` sends the feedback of a track it gave, through its `WaveOrigins`; the head's tracks
-  send none (CONT-08).
+  send none (CONT-08). The `Player` gives it a track's events only when the rules let it (HOST-16).
 - The library callbacks hold the `HistoryWave` (`shared_from_this`).
 
-`WaveOrigins` (`wave_origins.h`) is the shared part of `Vibe`, `HistoryWave` and `JamWave`: for each
-track id of a batch, the session, station and batch it came in, and `send`, which posts a track's
+`WaveOrigins` (`wave_origins.h`) is the shared part of `Vibe` and `HistoryWave`: for each track id
+of a batch, the session, station and batch it came in, and `send`, which posts a track's
 feedback there and nothing for a track it does not know.
-
-## `jam_wave.h`: `JamWave`, `JamWaves`
-
-```cpp
-class JamWave : public Core::JamWave, public std::enable_shared_from_this<JamWave> {
-public:
-    JamWave(Yandex::Library* library, bool feedback, TRecent recent);
-};
-Core::TJamWaveFactory JamWaves(Yandex::Library* library);     // what Core::JamMode takes
-```
-
-What `Core::JamMode` asks of the jam's vibe is in
-[src/core](../../core/README.md#jam_modeh-jammode); this is how Yandex answers it (spec/jam/host.md,
-HOST-11, HOST-13, HOST-16):
-
-- `start(seeds, seedsVersion, current, done)`: `Library::startWave` with `seeds`; without seeds
-  `track:<catalog id of current>` when the current track is a Yandex one; without either it
-  returns false and asks nothing. A reply with an error or
-  without an available track opens no session and gives `done({})`. Otherwise the session, the
-  station (the first seed) and `seedsVersion` are kept, `RadioStarted` goes out when `feedback`,
-  and `done` gets the batch.
-- `more(done)`: `Library::moreWave` of the open session with the catalog ids of `recent()`, the
-  last wave tracks of the jam's queue. Both give `done` the batch as `Core::Track`s.
-- Every batch records, for each of its track ids, the session, station and batch it came in, so a
-  track's feedback goes to its own session even after a new one started (TRK-08).
-- `trackEvent`: rotor feedback (`WaveEventOf`) for a track of this vibe only (found by catalog id),
-  and only when `feedback`.
-- A `more` reply for a session that a new `start` replaced while it was asked for gives `done({})`
-  and records nothing; sessions are counted, not compared by id, since the service may give a new
-  session the old id.
-- The library callbacks hold the `JamWave` (`shared_from_this`), as the `Player`'s event callback
-  does: a wave track that closes after the jam ended still gets its feedback.
 
 ## `tracks.h`: `Core::Track` ↔ `Yandex::Track`
 
@@ -252,9 +225,9 @@ settings and changes it from the menu.
 
 - The rotor endpoints, the feedback's JSON and the track model:
   [src/yandex](../../yandex/README.md).
-- When the queue asks for more, the jam's slots, and when its vibe starts or goes on:
+- When the queue asks for more, the jam's layer, and when a vibe starts or goes on:
   [src/core](../../core/README.md).
 - The Yandex menu that calls `Catalog` and the status line: [src/ui](../../ui/README.md).
 - Tests: `tests/yandex_source_test.cpp` (keys, the `Source`), `tests/sources_test.cpp` (the
-  `Catalog`), `tests/jam_mode_test.cpp` and `tests/jam_host_test.cpp` (the jam's vibe through
-  `Core::JamMode`).
+  `Catalog`, the vibe from history), `tests/jam_mode_test.cpp` and `tests/jam_host_test.cpp` (the
+  jam vibe through `Core::JamMode`).

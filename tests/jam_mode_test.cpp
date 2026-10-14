@@ -1,9 +1,10 @@
 #include "audio/audio_engine.h"
 #include "core/jam_mode.h"
 #include "core/player.h"
+#include "core/queue_source.h"
 #include "core/track_source.h"
 #include "sources/yandex/catalog.h"
-#include "sources/yandex/jam_wave.h"
+#include "sources/yandex/history_wave.h"
 #include "sources/yandex/tracks.h"
 #include "support/fake_source.h"
 #include "support/mock_http_server.h"
@@ -16,11 +17,14 @@
 #include <QJsonObject>
 #include <QList>
 #include <QObject>
-#include <QRegularExpression>
 #include <QSignalSpy>
 #include <QString>
 #include <QStringList>
 #include <QTest>
+#include <QVariant>
+
+#include <algorithm>
+#include <optional>
 
 // Core::JamMode against spec/jam/host.md, by scenario ID. The player plays on the Null output from a
 // source that opens every track at once and sends no byte: a track starts, and only Next moves on.
@@ -41,6 +45,18 @@ Core::Track TrackOf(const QString& id) {
 
 Core::JamEntry Item(const QString& itemId, const QString& trackId) {
     return Core::JamEntry{itemId, TrackOf(trackId), QStringLiteral("g1")};
+}
+
+Core::QueueSource HeadOf(const QStringList& ids, const QString& title = QStringLiteral("Base")) {
+    Core::QueueSource source{.title = title};
+    for (const QString& id : ids) {
+        source.head << TrackOf(id);
+    }
+    return source;
+}
+
+QString Current(const Core::Player& player) {
+    return player.currentTrack() ? YandexSource::CatalogId(player.currentTrack()->key) : QString();
 }
 
 QStringList Ids(const Core::Player& player) {
@@ -71,21 +87,28 @@ private:
         Core::JamMode jam;
         QSignalSpy started;
         QSignalSpy playbacks;
+        QSignalSpy removals;
         QSignalSpy status;
         explicit Stack(Yandex::Library* library)
             : player(&engine, &registry)
             , sources(&player, library)
-            , jam(&player, YandexSource::JamWaves(library))
+            , jam(&player)
             , started(&jam, &Core::JamMode::itemStarted)
             , playbacks(&jam, &Core::JamMode::playback)
+            , removals(&jam, &Core::JamMode::removeRequested)
             , status(&player, &Core::Player::statusMessage) {
             files.setAnswersAtOnce(true);
             registry.add(YandexSource::kSourceName, &files);
             engine.setVolume(0);
             engine.init();
-            sources.setJamMode(&jam);
+            player.setHistoryWaveFactory(YandexSource::HistoryWaves(library));
         }
         Core::JamPlayback lastPlayback() const { return playbacks.last().at(0).value<Core::JamPlayback>(); }
+        bool saw(const QString& text) const {
+            return std::any_of(status.cbegin(), status.cend(), [&text](const QList<QVariant>& arguments) {
+                return arguments.at(0).toString() == text;
+            });
+        }
     };
 
     QList<const Tests::MockRequest*> requestsTo(const QString& path, qsizetype from = 0) const {
@@ -139,30 +162,26 @@ private Q_SLOTS:
 
     void cleanup() { QTRY_COMPARE(api.pendingPosts(), 0); }
 
-    void startKeepsThePlayingTrackAndDropsTheRest() {  // HOST-14
+    void theQueueStaysAsTheBaseAndTheItemsGoInFrontOfItsRest() {  // HOST-14, HOST-12
         Stack stack(&library);
         noWave();
-        stack.player.setSource(
-            Core::QueueSource{
-                .title = QStringLiteral("Likes"), .head = {TrackOf("11"), TrackOf("22"), TrackOf("33"), TrackOf("44")}
-            },
-            false
-        );
+        stack.player.setSource(HeadOf({"11", "22", "33", "44"}, QStringLiteral("Likes")), false);
         stack.player.playIndex(1);
-        stack.jam.start(QStringLiteral("Джем"), false);
-        QCOMPARE(Ids(stack.player), QStringList{QStringLiteral("22")});
-        QCOMPARE(stack.jam.queueSlots().size(), 1);
-        QCOMPARE(stack.jam.currentSlot().kind, Core::JamSlot::Kind::Other);
-        QCOMPARE(stack.player.queueTitle(), QStringLiteral("Джем"));
+        stack.jam.start(false);
+        QCOMPARE(Ids(stack.player), (QStringList{"11", "22", "33", "44"}));
+        QCOMPARE(stack.player.queueTitle(), QStringLiteral("Likes"));
         QVERIFY(!stack.player.rules().playReports);
-        QCOMPARE(stack.lastPlayback().kind, Core::JamPlayback::Kind::Wave);
+        QCOMPARE(stack.lastPlayback().kind, Core::JamPlayback::Kind::Base);
         QCOMPARE(YandexSource::CatalogId(stack.lastPlayback().track->key), QStringLiteral("22"));
+        stack.jam.setQueue({Item("i1", "55")}, {}, 0);
+        QCOMPARE(Ids(stack.player), (QStringList{"11", "22", "55", "33", "44"}));
+        QCOMPARE(stack.player.currentIndex(), 1);
     }
 
     void theJamPartFollowsTheStateWithTheSmallestChange() {  // HOST-01 to HOST-04
         Stack stack(&library);
         noWave();
-        stack.jam.start(QStringLiteral("Джем"), false);
+        stack.jam.start(false);
         stack.jam.setQueue({Item("i1", "11"), Item("i2", "22"), Item("i3", "33")}, {}, 0);
         QCOMPARE(Ids(stack.player), (QStringList{"11", "22", "33"}));
         QTRY_COMPARE(stack.started.size(), 1);
@@ -172,7 +191,7 @@ private Q_SLOTS:
         QCOMPARE(changes.size(), 0);
         stack.jam.setQueue({Item("i2", "22"), Item("i4", "44"), Item("i5", "55")}, {}, 0);  // HOST-01
         QCOMPARE(Ids(stack.player), (QStringList{"11", "22", "44", "55"}));
-        QCOMPARE(stack.jam.queueSlots()[1].itemId, QStringLiteral("i2"));
+        QCOMPARE(stack.player.entries()[1].itemId, QStringLiteral("i2"));
         stack.jam.setQueue({Item("i4", "44"), Item("i2", "22")}, {}, 0);  // HOST-03
         QCOMPARE(Ids(stack.player), (QStringList{"11", "44", "22"}));
         QCOMPARE(stack.player.currentIndex(), 0);
@@ -182,7 +201,7 @@ private Q_SLOTS:
         Stack stack(&library);
         noWave();
         stack.jam.setPlayingReportInterval(50);
-        stack.jam.start(QStringLiteral("Джем"), false);
+        stack.jam.start(false);
         stack.jam.setQueue({Item("i1", "11"), Item("i2", "22")}, {}, 0);
         QTRY_COMPARE(stack.started.size(), 1);
         QCOMPARE(stack.started.at(0).at(0).toString(), QStringLiteral("i1"));
@@ -196,7 +215,7 @@ private Q_SLOTS:
     void previousRestartsTheTrack() {  // HOST-07
         Stack stack(&library);
         noWave();
-        stack.jam.start(QStringLiteral("Джем"), false);
+        stack.jam.start(false);
         stack.jam.setQueue({Item("i1", "11"), Item("i2", "22")}, {}, 0);
         stack.player.next();
         QCOMPARE(stack.player.currentIndex(), 1);
@@ -207,7 +226,7 @@ private Q_SLOTS:
     void anItemArrivingWhileNothingPlaysStartsAtOnce() {  // HOST-08
         Stack stack(&library);
         noWave();
-        stack.jam.start(QStringLiteral("Джем"), false);
+        stack.jam.start(false);
         stack.jam.setQueue({Item("i1", "11")}, {}, 0);
         QTRY_COMPARE(stack.started.size(), 1);
         stack.player.next();
@@ -221,48 +240,68 @@ private Q_SLOTS:
         QCOMPARE(stack.started.at(1).at(0).toString(), QStringLiteral("i2"));
     }
 
-    void theJamWaveStartsFromTheSeedsAndWaitsBehindTheItems() {  // HOST-10, HOST-12
+    void theBasePlaysWhenTheItemsRunOut() {  // HOST-10
+        Stack stack(&library);
+        stack.player.setContinueWithVibeByDefault(false);
+        stack.player.setSource(HeadOf({"11", "22"}), false);
+        stack.player.playIndex(0);
+        stack.jam.start(false);
+        stack.jam.setQueue({Item("i1", "55")}, {}, 0);
+        QCOMPARE(Ids(stack.player), (QStringList{"11", "55", "22"}));
+        stack.player.next();
+        QTRY_COMPARE(stack.started.size(), 1);
+        stack.player.next();
+        QCOMPARE(Current(stack.player), QStringLiteral("22"));
+        QTRY_COMPARE(stack.lastPlayback().kind, Core::JamPlayback::Kind::Base);
+        QCOMPARE(YandexSource::CatalogId(stack.lastPlayback().track->key), QStringLiteral("22"));
+        QTest::qWait(50);
+        QCOMPARE(stack.started.size(), 1);
+    }
+
+    void theJamVibeTakesTheServersSeedsAndWaitsBehindTheItems() {  // HOST-11, HOST-12
         Stack stack(&library);
         waveAnswers();
         const qsizetype before = server.requests().size();
-        stack.jam.start(QStringLiteral("Джем"), false);
+        stack.jam.start(false);
         stack.jam.setQueue({Item("i1", "11")}, {QStringLiteral("track:11")}, 1);
         QTRY_COMPARE(Ids(stack.player), (QStringList{"11", kFirstWaveTrack}));
         const auto starts = requestsTo(QStringLiteral("/rotor/session/new"), before);
         QCOMPARE(starts.size(), 1);
         QCOMPARE(seedsOf(starts.first()), QJsonArray{QStringLiteral("track:11")});
-        QCOMPARE(stack.jam.queueSlots()[1].kind, Core::JamSlot::Kind::Wave);
+        QVERIFY(stack.player.entries()[1].fromHistory);
+        QCOMPARE(stack.player.entries()[1].seedsVersion, std::optional(1));
         stack.jam.setQueue({Item("i1", "11"), Item("i2", "22")}, {QStringLiteral("track:11")}, 1);
         QCOMPARE(Ids(stack.player), (QStringList{"11", "22", kFirstWaveTrack}));
     }
 
-    void newSeedsDropTheDeferredWaveWhenTheItemsRunOut() {  // HOST-11
+    void newSeedsDropTheOutdatedTailWhenTheItemsRunOut() {  // HOST-11
         Stack stack(&library);
         waveAnswers();
         const qsizetype before = server.requests().size();
-        stack.jam.start(QStringLiteral("Джем"), false);
+        stack.jam.start(false);
         stack.jam.setQueue({Item("i1", "11")}, {QStringLiteral("track:11")}, 1);
         QTRY_COMPARE(Ids(stack.player), (QStringList{"11", kFirstWaveTrack}));
         const QStringList newSeeds = {QStringLiteral("track:22"), QStringLiteral("track:11")};
         stack.jam.setQueue({Item("i1", "11"), Item("i2", "22")}, newSeeds, 2);
         QCOMPARE(Ids(stack.player), (QStringList{"11", "22", kFirstWaveTrack}));
         stack.player.next();
+        QCOMPARE(Ids(stack.player), (QStringList{"11", "22"}));
         QTRY_COMPARE(requestsTo(QStringLiteral("/rotor/session/new"), before).size(), 2);
         QCOMPARE(
             seedsOf(requestsTo(QStringLiteral("/rotor/session/new"), before).last()),
             QJsonArray::fromStringList(newSeeds)
         );
         QTRY_COMPARE(Ids(stack.player), (QStringList{"11", "22", kFirstWaveTrack}));
-        QCOMPARE(stack.jam.queueSlots()[2].kind, Core::JamSlot::Kind::Wave);
+        QCOMPARE(stack.player.entries()[2].seedsVersion, std::optional(2));
     }
 
-    void aReplyOfASessionThatNewSeedsClosedStaysOutOfTheQueue() {  // HOST-11
+    void aReplyOfAnOutdatedSessionStaysOutOfTheQueue() {  // HOST-11
         Stack stack(&library);
         waveAnswers();
         const QString moreTracks = QStringLiteral("/rotor/session/%1/tracks").arg(QStringLiteral("S1-onyourwave"));
         server.fixture("POST", moreTracks, "rotor-session-tracks/ok", 300);
         const qsizetype before = server.requests().size();
-        stack.jam.start(QStringLiteral("Джем"), false);
+        stack.jam.start(false);
         stack.jam.setQueue({Item("i1", "11"), Item("i2", "22")}, {QStringLiteral("track:11")}, 1);
         QTRY_COMPARE(Ids(stack.player), (QStringList{"11", "22", kFirstWaveTrack}));
         stack.player.next();
@@ -280,10 +319,22 @@ private Q_SLOTS:
         waveAnswers();
     }
 
-    void withoutSeedsTheWaveStartsFromTheCurrentTrack() {  // HOST-13
+    void seedsDropTheHistoryTailButNeverTheHead() {  // HOST-11
         Stack stack(&library);
         waveAnswers();
-        stack.jam.start(QStringLiteral("Джем"), false);
+        stack.player.setSource(HeadOf({"11"}), false);
+        stack.player.playIndex(0);
+        QTRY_COMPARE(Ids(stack.player), (QStringList{"11", kFirstWaveTrack}));
+        QVERIFY(!stack.player.entries()[1].seedsVersion);
+        stack.jam.start(false);
+        stack.jam.setQueue({}, {QStringLiteral("track:99")}, 1);
+        QCOMPARE(Ids(stack.player), QStringList{QStringLiteral("11")});
+    }
+
+    void withoutServerSeedsTheJamVibeTakesTheHistory() {  // HOST-11
+        Stack stack(&library);
+        waveAnswers();
+        stack.jam.start(false);
         QTRY_COMPARE(stack.lastPlayback().kind, Core::JamPlayback::Kind::Idle);
         const qsizetype before = server.requests().size();
         stack.jam.setQueue({Item("i1", "11")}, {}, 0);
@@ -294,26 +345,51 @@ private Q_SLOTS:
         );
     }
 
-    void aReplyOfThePreviousJamsWaveStaysOutOfTheNextJam() {
+    void aBaseThatRunsOutStopsAndGoesIdle() {  // HOST-13, HOST-08
         Stack stack(&library);
-        server.fixture("POST", "/rotor/session/new", "rotor-session-new/ok", 300);
-        const qsizetype before = server.requests().size();
-        stack.jam.start(QStringLiteral("Джем"), false);
-        stack.jam.setQueue({Item("i1", "11")}, {QStringLiteral("track:11")}, 1);
-        QTRY_COMPARE(requestsTo(QStringLiteral("/rotor/session/new"), before).size(), 1);
-        stack.jam.end();
-        stack.jam.start(QStringLiteral("Джем"), false);
-        QTest::failOnWarning(QRegularExpression(QStringLiteral("^jam: the queue has")));
-        QTest::qWait(600);
-        QCOMPARE(Ids(stack.player), QStringList{QStringLiteral("11")});
-        QCOMPARE(stack.jam.queueSlots().size(), 1);
+        stack.player.setContinueWithVibeByDefault(false);
+        stack.player.setSource(HeadOf({"11"}), false);
+        stack.player.playIndex(0);
+        stack.jam.start(false);
+        stack.player.next();
+        QCOMPARE(stack.player.state(), Core::Player::State::Stopped);
+        QTRY_COMPARE(stack.lastPlayback().kind, Core::JamPlayback::Kind::Idle);
+        stack.jam.setQueue({Item("i1", "22")}, {}, 0);
+        QCOMPARE(Current(stack.player), QStringLiteral("22"));
+        QTRY_COMPARE(stack.started.size(), 1);
     }
 
-    void noPlayReportsAndFeedbackOnlyToTheJamWave() {  // HOST-15, HOST-16
+    void aJamVibeThatBroughtNothingWaitsForTheNextItem() {  // HOST-08, HOST-11
+        Stack stack(&library);
+        noWave();
+        const qsizetype first = server.requests().size();
+        stack.jam.start(false);
+        stack.jam.setQueue({Item("i1", "11")}, {QStringLiteral("track:11")}, 1);
+        QTRY_COMPARE(requestsTo(QStringLiteral("/rotor/session/new"), first).size(), 1);
+        stack.player.next();
+        QTRY_COMPARE(stack.player.state(), Core::Player::State::Stopped);
+        QTRY_COMPARE(stack.lastPlayback().kind, Core::JamPlayback::Kind::Idle);
+        QTRY_COMPARE(api.pendingPosts(), 0);
+        waveAnswers();
+        const qsizetype before = server.requests().size();
+        stack.jam.setQueue({}, {QStringLiteral("track:22")}, 2);
+        QTest::qWait(100);
+        QVERIFY(requestsTo(QStringLiteral("/rotor/session/new"), before).isEmpty());
+        QCOMPARE(stack.player.state(), Core::Player::State::Stopped);
+        stack.jam.setQueue({Item("i2", "22")}, {QStringLiteral("track:22")}, 2);
+        QTRY_COMPARE(stack.started.size(), 2);
+        QTRY_COMPARE(requestsTo(QStringLiteral("/rotor/session/new"), before).size(), 1);
+        QCOMPARE(
+            seedsOf(requestsTo(QStringLiteral("/rotor/session/new"), before).first()),
+            QJsonArray{QStringLiteral("track:22")}
+        );
+    }
+
+    void noPlayReportsAndFeedbackOnlyToTheJamVibe() {  // HOST-15, HOST-16
         Stack stack(&library);
         waveAnswers();
         const qsizetype before = server.requests().size();
-        stack.jam.start(QStringLiteral("Джем"), true);
+        stack.jam.start(true);
         stack.jam.setQueue({Item("i1", "11")}, {QStringLiteral("track:11")}, 1);
         QTRY_COMPARE(Ids(stack.player).size(), 2);
         QTRY_COMPARE(stack.started.size(), 1);
@@ -327,7 +403,7 @@ private Q_SLOTS:
 
         Stack quiet(&library);
         const qsizetype quietBefore = server.requests().size();
-        quiet.jam.start(QStringLiteral("Джем"), false);
+        quiet.jam.start(false);
         quiet.jam.setQueue({Item("i1", "11")}, {QStringLiteral("track:11")}, 1);
         QTRY_COMPARE(Ids(quiet.player).size(), 2);
         quiet.player.next();
@@ -335,10 +411,31 @@ private Q_SLOTS:
         QVERIFY(feedback(quietBefore).isEmpty());
     }
 
+    void aVibeTheJamPlaysOverLearnsNothing() {  // HOST-15
+        Stack stack(&library);
+        waveAnswers();
+        stack.sources.playMyWave();
+        QTRY_COMPARE(stack.player.queueTitle(), QStringLiteral("My Vibe"));
+        QTRY_VERIFY(feedback(0).size() >= 2);
+        QTRY_COMPARE(api.pendingPosts(), 0);
+        stack.jam.start(false);
+        const qsizetype before = server.requests().size();
+        const qsizetype reports = stack.files.events().size();
+        stack.player.next();
+        QTRY_VERIFY(stack.player.state() != Core::Player::State::WaitingForMore);
+        QTest::qWait(300);
+        for (const QJsonObject& event : feedback(before)) {
+            QVERIFY(event.value("type").toString() != QStringLiteral("trackStarted"));
+        }
+        for (qsizetype i = reports; i < stack.files.events().size(); ++i) {
+            QVERIFY(stack.files.events()[i].event != Core::TrackEvent::Started);
+        }
+    }
+
     void aSkipCommandMovesOnOnlyForTheCurrentItem() {  // HOST-18, HOST-19
         Stack stack(&library);
         noWave();
-        stack.jam.start(QStringLiteral("Джем"), false);
+        stack.jam.start(false);
         stack.jam.setQueue({Item("i1", "11"), Item("i2", "22")}, {}, 0);
         stack.jam.skip(QStringLiteral("i2"));
         QCOMPARE(stack.player.currentIndex(), 0);
@@ -346,33 +443,92 @@ private Q_SLOTS:
         QCOMPARE(stack.player.currentIndex(), 1);
     }
 
-    void aPickDoesNotReplaceTheQueueDuringTheJam() {  // HOST-21
+    void aPickDuringTheJamBecomesTheBase() {  // HOST-21, HOST-15, HOST-33
         Stack stack(&library);
+        stack.player.setSource(HeadOf({"11", "22"}, QStringLiteral("Likes")), false);
+        stack.player.playIndex(0);
+        stack.jam.start(false);
+        stack.jam.setQueue({Item("i1", "55")}, {}, 0);
         noWave();
-        stack.jam.start(QStringLiteral("Джем"), false);
-        stack.jam.setQueue({Item("i1", "11")}, {}, 0);
         stack.sources.playMyWave();
-        stack.sources.search(QStringLiteral("кино"));
-        QCOMPARE(Ids(stack.player), QStringList{QStringLiteral("11")});
-        QCOMPARE(stack.status.last().at(0).toString(), QStringLiteral("A jam is on: add tracks to the jam"));
+        QTRY_VERIFY(stack.saw(QStringLiteral("My Vibe: empty")));
+        QCOMPARE(Ids(stack.player), (QStringList{"11", "55", "22"}));
+        QCOMPARE(stack.player.queueTitle(), QStringLiteral("Likes"));
+        waveAnswers();
+        const qsizetype before = server.requests().size();
+        stack.sources.playMyWave();
+        QTRY_COMPARE(stack.player.queueTitle(), QStringLiteral("My Vibe"));
+        QCOMPARE(Ids(stack.player).mid(0, 3), (QStringList{"11", "55", kFirstWaveTrack}));
+        QCOMPARE(stack.player.currentIndex(), 0);
+        QCOMPARE(stack.player.entries()[0].part, Core::EntryPart::Other);
+        QVERIFY(stack.player.hasOwnContinuation());
+        QTest::qWait(100);
+        QVERIFY(feedback(before).isEmpty());
+        stack.jam.end();
+        QTRY_VERIFY(!feedback(before).isEmpty());
+        QCOMPARE(feedback(before).first().value("type").toString(), QStringLiteral("radioStarted"));
     }
 
-    void theEndKeepsTheItemsDropsTheWaveAndReportsPlaysAgain() {  // HOST-32, HOST-33
+    void theEndPutsTheItemsFirstAndTheJamsSeedsAreOver() {  // HOST-32, HOST-33
         Stack stack(&library);
         waveAnswers();
-        stack.jam.start(QStringLiteral("Джем"), false);
-        stack.jam.setQueue({Item("i1", "11"), Item("i2", "22")}, {QStringLiteral("track:11")}, 1);
-        stack.player.next();
-        QTRY_COMPARE(Ids(stack.player), (QStringList{"11", "22", kFirstWaveTrack}));
-        stack.player.previous();
-        QCOMPARE(stack.player.currentIndex(), 1);
+        stack.jam.start(false);
+        stack.jam.setQueue({Item("i1", "33"), Item("i2", "44")}, {QStringLiteral("track:99")}, 1);
+        QTRY_COMPARE(Ids(stack.player), (QStringList{"33", "44", kFirstWaveTrack}));
+        QTRY_COMPARE(api.pendingPosts(), 0);
+        const qsizetype before = server.requests().size();
         stack.jam.end();
         QVERIFY(!stack.jam.isActive());
-        QCOMPARE(Ids(stack.player), (QStringList{"11", "22"}));
+        QCOMPARE(Ids(stack.player), (QStringList{"33", "44"}));
+        QVERIFY(stack.player.entries()[1].itemId.isEmpty());
         QVERIFY(stack.player.rules().playReports);
-        const qsizetype before = stack.files.events().size();
+        const qsizetype reports = stack.files.events().size();
+        stack.player.next();
+        QCOMPARE(Current(stack.player), QStringLiteral("44"));
+        QTRY_COMPARE(requestsTo(QStringLiteral("/rotor/session/new"), before).size(), 1);
+        QCOMPARE(
+            seedsOf(requestsTo(QStringLiteral("/rotor/session/new"), before).first()),
+            QJsonArray{QStringLiteral("track:33")}
+        );
+        QTRY_VERIFY(stack.files.eventLog().mid(reports).contains(QStringLiteral("started:44:1")));
+    }
+
+    void aReplyOfThePreviousJamsVibeStaysOutOfTheNextJam() {  // HOST-32
+        Stack stack(&library);
+        server.fixture("POST", "/rotor/session/new", "rotor-session-new/ok", 300);
+        const qsizetype before = server.requests().size();
+        stack.jam.start(false);
+        stack.jam.setQueue({Item("i1", "11")}, {QStringLiteral("track:11")}, 1);
+        QTRY_COMPARE(requestsTo(QStringLiteral("/rotor/session/new"), before).size(), 1);
+        stack.jam.end();
+        stack.player.setContinueWithVibe(false);
+        stack.jam.start(false);
+        QTest::qWait(600);
+        QCOMPARE(Ids(stack.player), QStringList{QStringLiteral("11")});
+        waveAnswers();
+    }
+
+    void theHostEditsTheBaseAndRemovesItemsThroughTheServer() {  // HOST-36
+        Stack stack(&library);
+        stack.player.setContinueWithVibeByDefault(false);
+        stack.player.setSource(HeadOf({"11", "22", "33"}), false);
         stack.player.playIndex(0);
-        QTRY_COMPARE(stack.files.eventLog().mid(before), QStringList{QStringLiteral("started:11:1")});
+        stack.jam.start(false);
+        stack.jam.setQueue({Item("i1", "55"), Item("i2", "66")}, {}, 0);
+        QCOMPARE(Ids(stack.player), (QStringList{"11", "55", "66", "22", "33"}));
+        stack.player.removeRows({1, 3});
+        QCOMPARE(stack.removals.size(), 1);
+        QCOMPARE(stack.removals.at(0).at(0).toStringList(), QStringList{QStringLiteral("i1")});
+        QCOMPARE(Ids(stack.player), (QStringList{"11", "55", "66", "33"}));
+        stack.player.setContinueWithVibeByDefault(true);
+        stack.player.clear();
+        QCOMPARE(Ids(stack.player), (QStringList{"11", "55", "66"}));
+        QCOMPARE(stack.player.currentIndex(), 0);
+        QVERIFY(stack.player.continuesWithVibe());
+        QVERIFY(stack.player.state() != Core::Player::State::Stopped);
+        stack.player.removeRows({0});
+        QCOMPARE(stack.player.state(), Core::Player::State::Stopped);
+        QCOMPARE(Ids(stack.player), (QStringList{"55", "66"}));
     }
 };
 

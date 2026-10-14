@@ -318,7 +318,7 @@ void PlaylistWindow::drawRows(QPainter& painter) const {
         painter.setPen(row == current ? style.current : style.normal);
         const QString duration = FormatTime(entries[row].track.durationMs / 1000);
         const int durationWidth = metrics.horizontalAdvance(duration) + 3;
-        const QString note = queueHooks.note ? queueHooks.note(row) : QString();
+        const QString note = trackNote ? trackNote(row) : QString();
         const int noteWidth = note.isEmpty() ? 0 : metrics.horizontalAdvance(note) + 6;
         const QRect titleRect = rowRect.adjusted(2, 0, -durationWidth - 4 - noteWidth, 0);
         if (!note.isEmpty()) {
@@ -676,25 +676,21 @@ void PlaylistWindow::keyPressEvent(QKeyEvent* event) {
     ensureRowVisible(targetRow);
 }
 
-void PlaylistWindow::setQueueHooks(QueueHooks hooks) {
-    queueHooks = std::move(hooks);
+void PlaylistWindow::setTrackNote(std::function<QString(int row)> note) {
+    trackNote = std::move(note);
     update();
 }
 
 void PlaylistWindow::removeSelected() {
     QList<int> rows = selectedRows.values();
     std::sort(rows.begin(), rows.end());
-    if (!queueHooks.remove || !queueHooks.remove(rows)) {
-        corePlayer->removeRows(rows);
-    }
+    corePlayer->removeRows(rows);  // HOST-36
     selectedRows.clear();
     update();
 }
 
 void PlaylistWindow::clearQueue() {
-    if (!queueHooks.clear || !queueHooks.clear()) {
-        corePlayer->clear();
-    }
+    corePlayer->clear();
 }
 
 void PlaylistWindow::popupAt(QMenu* menu, QPoint skinPos) {

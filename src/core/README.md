@@ -5,14 +5,13 @@ play, pause, stop, next, previous, shuffle and repeat. It asks an endless source
 tracks before the queue runs out. For each track it asks the track's source (`TrackSource`, chosen
 by `TrackKey::source`) to open it and streams the file's bytes into `Audio::AudioEngine`. It also
 preloads the following track, so the engine can go on without a gap, and it reports each track's
-start and end: to the source (Yandex's play report) and to a per-queue callback that the wave uses
-for feedback. `JamMode` is the queue while the app hosts a jam: the current track, the jam part that
-mirrors the server's queue, and the jam wave (`spec/jam/host.md`), which a source provides through
-`JamWave`. `CoverCache` downloads album covers and keeps them in memory and on disk. The folder does
-not decide what a pick plays or talk to a source's catalogue ([src/sources](../sources/README.md)).
-It does not decode or output audio or chain streams at the sample level
-([src/audio](../audio/README.md)). It speaks to no music service: links, files, cover URLs and play
-reports are a source's ([src/sources](../sources/README.md)). It builds no menus
+start and end: to the source (Yandex's play report) and to the continuation that gave the track, for
+feedback. `JamMode` is the jam over the host's own queue: the guests' items as the queue's layer,
+the host's source under them (`spec/jam/host.md`). `CoverCache` downloads album covers and keeps
+them in memory and on disk. The folder does not decide what a pick plays or talk to a source's
+catalogue ([src/sources](../sources/README.md)). It does not decode or output audio or chain streams
+at the sample level ([src/audio](../audio/README.md)). It speaks to no music service: links, files,
+cover URLs and play reports are a source's ([src/sources](../sources/README.md)). It builds no menus
 ([src/ui](../ui/README.md), `library_menu.cpp`), shows nothing on screen and holds no text for the
 user: the `Player` says what happened as `PlayerNotice` codes, and `src/ui` words them. Namespace
 `Core`, library `qiyaa_core`.
@@ -27,7 +26,7 @@ user: the `Player` says what happened as `PlayerNotice` codes, and `src/ui` word
 | `queue_source.h` | `QueueSource` (a title, a head, a continuation and the tracks it already gave), `QueueEntry` and `EntryPart`: what a source puts into the queue and what each entry is; `LayerItem`, `QueueRules` and `QueueLayer`: what a layer over the queue (the jam) brings |
 | `track_navigator.h/.cpp` | `TrackNavigator`, `ShuffleAlgorithm`, `MakeTrackNavigator`: sequential, random and stored shuffled traversal |
 | `failure_policy.h/.cpp` | `FailureKind`, `FailureAction`, `DecideOnFailure`: what the `Player` does about a track that cannot play |
-| `jam_mode.h/.cpp` | `JamMode`, `JamEntry`, `JamSlot`, `JamPlayback`, and `JamWave`, what `JamMode` asks of the source of its wave: the jam mode of the queue; it knows nothing of the network or the protocol |
+| `jam_mode.h/.cpp` | `JamMode`, `JamEntry`, `JamPlayback`, `IsJamItem`: the jam over the host's own queue, as the `Player`'s layer; it knows nothing of the network, the protocol or Yandex |
 | `cover_cache.h/.cpp` | `CoverCache`: cover images by URL, with an LRU of 30 in memory, files in a cache directory and one download per URL at a time |
 
 ## Dependencies
@@ -74,7 +73,7 @@ public:
     bool isLatestSourceRequest(quint64 ticket) const;
 
     void setSource(QueueSource source, bool autoplay);   // autoplay: playIndex(0) right away
-    void removeRows(QList<int> rows);                 // rows before removal, any order, duplicates ok
+    void removeRows(QList<int> rows);                 // rows before removal, any order, duplicates ok; HOST-36
     void clear();
     void setLayer(std::optional<QueueLayer> layer);   // the jam's; nullopt ends it
     void setLayerItems(const QList<LayerItem>& items, std::optional<SeedHint> hint);   // the layer's items now
@@ -326,7 +325,7 @@ Four counters, each bumped by different calls and each guarding one kind of late
 | Counter | Bumped by | Drops |
 |---|---|---|
 | `sourceRequest` (the ticket) | `newSourceRequest()`: callers before a source load, `clear`, `shutDown` | a caller's source-load reply, when the caller checks `isLatestSourceRequest(ticket)`. `Player` never checks it itself |
-| the load-more generation (`Queue::generation`) | `setSource` (and so `clear`), the end of a layer | a continuation's `done` for a queue or a base that has been replaced, or for the wave of a layer that ended (a `QPointer` also covers a destroyed `Player`) |
+| the load-more generation (`Queue::generation`) | `setSource` (and so `clear`) | a continuation's `done` for a queue or a base that has been replaced (a `QPointer` also covers a destroyed `Player`) |
 | `generation` | closing the current track (`stop`, `playIndex`, a track's end), opening it, the network wait, a preload taken over | the open answer of a track that is no longer current |
 | `preloadGeneration` | every new preload | the open answer of a preload that was cancelled or replaced |
 
@@ -336,12 +335,12 @@ next step of [#23](https://github.com/Kickoman/QiYaa/issues/23) makes the phases
 
 ### Continuations
 
-- The continuation the queue asks is its source's own (`QueueSource::continuation`); else the
-  layer's wave; else, while the queue's flag "continue with a vibe" is on, the **vibe from
-  history**, which `setHistoryWaveFactory`'s factory made for this queue (spec
-  [continuation.md](../../spec/player/continuation.md)). A queue with its own is endless: at its
-  end `Queue::next()` returns -1 even with repeat on, so it never wraps, and `next()` waits for
-  more instead. With the vibe from history, repeat wraps the head, and the vibe waits behind it
+- The continuation the queue asks is its source's own (`QueueSource::continuation`); else, while the
+  queue's flag "continue with a vibe" is on, the **vibe from history**, which
+  `setHistoryWaveFactory`'s factory made for this queue (spec
+  [continuation.md](../../spec/player/continuation.md)). A queue with its own is endless: at its end
+  `Queue::next()` returns -1 even with repeat on, so it never wraps, and `next()` waits for more
+  instead. With the vibe from history, repeat wraps the head, and the vibe waits behind it
   (CONT-10).
 - Each new queue, and each base under a layer, takes the flag from
   `setContinueWithVibeByDefault` (true unless set; CONT-01), forgets the tracks that started and
@@ -355,7 +354,8 @@ next step of [#23](https://github.com/Kickoman/QiYaa/issues/23) makes the phases
   tracks) and the continuation's entries after the last one that became current.
 - The request carries `queueEnd`, the last 5 tracks of the queue, whatever gave them (WAVE-05);
   `history`, the tracks of this queue that started and that no continuation gave, the latest start
-  first, each once (CONT-05); and `feedback`.
+  first, each once (CONT-05); `jamSeeds`, the layer's `SeedHint` while one is on; and `feedback`,
+  the layer's rule for that continuation (true without a layer).
 - `more` returns `false` when it has nothing to ask with; then no `done` comes and the request is
   not in flight.
 - The check runs when a track becomes current (`playIndex` in both branches, before the link is
@@ -368,9 +368,9 @@ next step of [#23](https://github.com/Kickoman/QiYaa/issues/23) makes the phases
   plays to its end and stops there. A user's `next()` at the end, switching the flag on and a new
   queue end it.
 - `done(reply)` is ignored if the `Player` is gone or the queue has been replaced. Otherwise the
-  request is no longer in flight. A reply with a `seedsVersion` other than the layer's
-  `SeedHint::version`, or with one when no layer is on, comes from a session that new seeds closed:
-  it is dropped and the check runs again (HOST-11). A `failure` gives the notice `VibeFailed`.
+  request is no longer in flight. A reply of the vibe from history that the seeds outdated is
+  dropped and the check runs again ([The layer](#the-layer)); a waiting `next()` that asks nothing
+  then stops. A `failure` gives the notice `VibeFailed`.
   The available tracks of `reply.tracks` are appended as that continuation's entries, with the
   reply's `seedsVersion`. If `next()` was waiting and `Queue::next()` now has an entry, `playIndex`
   of it runs; if nothing came, the player is Stopped at the end (WAVE-09), and only the next
@@ -409,30 +409,41 @@ next step of [#23](https://github.com/Kickoman/QiYaa/issues/23) makes the phases
 ### The layer
 
 A layer lies over the queue's own source, the base, while it is on: the jam
-([`JamMode`](#jam_modeh-jammode)).
+([`JamMode`](#jam_modeh-jammode), spec/jam/host.md "The base").
 - `QueueLayer::rules` are `rules()` while the layer is on, for every track that starts:
   `playReports = false` keeps the source from hearing them (HOST-15), `previousRestartsOnly` makes
-  Previous a restart (HOST-07).
+  Previous a restart (HOST-07), `ownContinuationFeedback = false` keeps a vibe the base has of its
+  own from hearing its tracks (HOST-15), and `historyFeedback` says whether the vibe from history,
+  which is the jam vibe then, does (HOST-16).
 - `setLayerItems(items, hint)` makes the waiting items match `items` with the smallest change
   (HOST-01 to HOST-04): the longest common prefix of the waiting items and `items` stays, with its
-  preload, the rest goes, and what differs comes in right behind the current entry. The current
-  item is left out even while `items` still lists it. Items come in as `Item` entries that wait,
-  available whatever their `Track::available` says. Nothing starts; HOST-08 is the caller's.
-- `SeedHint` is the server's seeds and their version. When no item waits and the current entry is
-  not a wave track (one with a `seedsVersion`), the continuation's entries after its mark whose
-  `seedsVersion` differs from the hint's go (HOST-11), after `setLayerItems` and after every
-  selection. A head track has no version and never goes.
-- `setSource` under a layer replaces the base only. The current entry stays (an item as an item,
-  anything else as `Other`), the waiting items stay behind it, and the new head and continuation
-  follow; played rows and the old base go. Nothing stops or starts (`autoplay` is ignored), the
-  base begins before its head's first track, and its continuation gets `begin(false)` (HOST-15).
-- The layer's wave (`QueueLayer::wave`) is asked when the base has no continuation of its own.
-- `setLayer(std::nullopt)` ends the layer (HOST-32): every item loses its item id, the waiting
-  ones still play first, the wave's entries after its mark go, the rules return to the defaults,
-  a wait for more ends, and a new load-more generation drops the wave's reply in flight.
-
-`QueueLayer::wave` keeps the old jam (a base emptied at its start, its own wave) working until the
-jam moves onto the base, the next step of [#28](https://github.com/Kickoman/QiYaa/issues/28).
+  preload, the rest goes, and what differs comes in right behind the current entry, in front of the
+  rest of the base (HOST-12). The current item is left out even while `items` still lists it. Items
+  come in as `Item` entries that wait, available whatever their `Track::available` says. Nothing
+  starts; HOST-08 is the caller's.
+- `SeedHint` is the server's seeds and their version. While the layer is on, the vibe from history
+  is asked with them (`ContinuationRequest::jamSeeds`) and replies with the version its session
+  started with. When the hint has seeds (HOST-11):
+  - a reply of the vibe from history with another version, or with none (a session on the
+    history's seeds), is dropped, and the check runs again;
+  - when no item waits and the current entry is not a track of that vibe, its entries after the
+    continuation's mark with another version go, after `setLayerItems` and after every selection;
+    a head track and the base's own vibe's never do;
+  - a hint with a new version ends the stall (CONT-07); the request goes at the next check.
+- `setSource` under a layer replaces the base only (HOST-21). The current entry stays (an item as
+  an item, anything else as `Other`), the waiting items stay behind it, and the new head and
+  continuation follow; played rows and the old base go, and the new base takes the flag of a new
+  queue. Nothing stops or starts (`autoplay` is ignored), the base begins before its head's first
+  track, and its continuation gets `begin(ownContinuationFeedback)` (HOST-15).
+- `removeRows` under a layer (HOST-36) hands the waiting items' ids to `QueueLayer::removeItems`
+  (the server removes them, and the next state takes them out) and removes the other rows at once.
+  `clear()` is `setSource({})` under it: the current entry and the waiting items stay.
+- `setLayer(std::nullopt)` ends the layer (HOST-32, HOST-33): every item loses its item id, the
+  waiting ones still play first, the entries of the vibe from history that came on the server's
+  seeds and have not played go, and the rules return to the defaults. The base's own continuation
+  and the vibe from history get `begin(true)`, so what began without feedback during the jam sends
+  `radioStarted` before the feedback of its next track. A reply in flight from the server's seeds
+  is dropped when it comes (no hint: any version is stale).
 
 ### Downloads
 
@@ -648,8 +659,9 @@ public:
                             std::optional<int> seedsVersion);   // false: none available
     bool remove(QList<int> indices);                  // true: the current entry went
     void setItems(const QList<LayerItem>& items, std::optional<SeedHint> hint);
+    const std::optional<SeedHint>& seeds() const;
     void endLayer();
-    bool isStale(int seedsVersion) const;             // not the hint's version, or no hint
+    bool isStale(std::optional<int> seedsVersion) const;   // see The layer
     // the vibe from history, whether it gave a track, the flag, the tracks that started, the stall
     int select(int index);                            // the row it is on after waiting items moved
     int next() const;                                 // -1: nothing follows
@@ -668,8 +680,8 @@ public:
 - The base's place is two marks: the last head entry and the last continuation entry that became
   current, by their order among their part's entries, and whether the base is in its head. A
   removal before a mark moves it back, so what followed still follows.
-- `replace`, `replaceBase`, `endLayer` and `renew` start a new load-more generation, which drops a
-  late answer of a continuation asked before.
+- `replace`, `replaceBase` and `renew` start a new load-more generation, which drops a late answer
+  of a continuation asked before.
 - Tests: `tests/queue_test.cpp`.
 
 ## `track.h`: `Track`, `TrackKey`, `CoverRef`
@@ -771,7 +783,8 @@ Q_SIGNALS:
 
 ```cpp
 struct SeedHint { QStringList seeds; int version = 0; };   // the jam server's seeds
-struct ContinuationRequest { QList<Track> queueEnd; QList<Track> history; bool feedback = true; };
+struct ContinuationRequest { QList<Track> queueEnd; QList<Track> history; std::optional<SeedHint> jamSeeds;
+                             bool feedback = true; };
 struct ContinuationReply { QList<Track> tracks; QString failure; std::optional<int> seedsVersion; };
 class Continuation {
 public:
@@ -792,13 +805,12 @@ What a queue goes on with after its head
   failed); or it returns `false` and never calls `done`.
 - `trackEvent` hears the events of the tracks it gave, and only those, also after the queue moved
   on to another source.
-- `seedsVersion` in a reply says that the tracks come from a session started on the jam server's
-  seeds of that version; see [The layer](#the-layer).
+- `jamSeeds` in a request are the jam server's seeds while a jam is on, and `seedsVersion` in a
+  reply says that the tracks come from a session started on those seeds of that version; see
+  [The layer](#the-layer).
 - A source makes the continuation for its own tracks: Yandex's vibe is
   [`YandexSource::Vibe`](../sources/yandex/README.md), its vibe from history
-  `YandexSource::HistoryWave` (through `THistoryWaveFactory`, one per queue). The jam's own wave is
-  wrapped in one inside `jam_mode.cpp` until [#28](https://github.com/Kickoman/QiYaa/issues/28)
-  removes it.
+  `YandexSource::HistoryWave` (through `THistoryWaveFactory`, one per queue).
 
 ## `queue_source.h`: `QueueSource`, `QueueEntry`
 
@@ -814,13 +826,15 @@ struct QueueEntry {
     Track track;
     EntryPart part;
     std::shared_ptr<Continuation> giver;      // a Continuation entry's
-    std::optional<int> seedsVersion;          // a wave track's, from ContinuationReply
+    bool fromHistory;                         // the vibe from history gave it
+    std::optional<int> seedsVersion;          // from ContinuationReply: a session on the jam's seeds
     QString itemId, addedBy;                  // an Item's while its layer is on
     bool pending;                             // an Item that has not been current yet
 };
 struct LayerItem { QString itemId; Track track; QString addedBy; };
-struct QueueRules { bool playReports = true; bool previousRestartsOnly = false; };
-struct QueueLayer { QueueRules rules; std::shared_ptr<Continuation> wave; };
+struct QueueRules { bool playReports = true; bool previousRestartsOnly = false;
+                    bool ownContinuationFeedback = true; bool historyFeedback = true; };
+struct QueueLayer { QueueRules rules; std::function<void(const QStringList& itemIds)> removeItems; };
 ```
 
 `Player::entries()` lists the queue as entries: a head track; a continuation's track with the
@@ -869,32 +883,16 @@ Tests cover the interface without an audio engine, plus Player's real preload an
 
 ```cpp
 using JamEntry = LayerItem;
-struct JamSlot { enum class Kind { Item, Wave, Other }; Kind kind; QString itemId; QString addedBy; };
-struct JamPlayback { enum class Kind { Item, Wave, Idle }; Kind kind; QString itemId;
+struct JamPlayback { enum class Kind { Item, Base, Idle }; Kind kind; QString itemId;
                      std::optional<Track> track; qint64 positionMs; bool paused; QUrl link, nextLink; };
 inline constexpr int kJamPlayingReportMs = 10'000;
-inline constexpr int kJamWaveHistory = 5;
-
-class JamWave {                                      // one jam's wave; a source makes it
-public:
-    using TDone = std::function<void(const QList<Track>& tracks)>;
-    using TRecent = std::function<QList<Track>()>;
-    virtual bool start(const QStringList& seeds, int seedsVersion, const Track* current, TDone done) = 0;
-    virtual void more(TDone done) = 0;
-    virtual void trackEvent(TrackEvent event, const Track& track, double playedSeconds) = 0;
-    virtual bool hasSession() const = 0;
-    virtual int seedsVersion() const = 0;
-};
-using TJamWaveFactory = std::function<std::shared_ptr<JamWave>(bool feedback, JamWave::TRecent recent)>;
+bool IsJamItem(const QueueEntry* entry);             // an Item with an item id: one of this jam's
 
 class JamMode : public QObject {
 public:
-    JamMode(Player* player, TJamWaveFactory makeWave, QObject* parent = nullptr);
+    explicit JamMode(Player* player, QObject* parent = nullptr);
     bool isActive() const;
-    JamSlot slotAt(int row) const;                    // what entry `row` of Player::entries() is
-    QList<JamSlot> queueSlots() const;                // one per entry; empty while not active
-    JamSlot currentSlot() const;
-    void start(const QString& title, bool waveFeedback);
+    void start(bool waveFeedback);
     void setQueue(const QList<JamEntry>& entries, const QStringList& seeds, int seedsVersion);  // each state
     void skip(const QString& itemId);                 // command{skip}
     void end();
@@ -903,69 +901,58 @@ public:
 Q_SIGNALS:
     void itemStarted(const QString& itemId);          // -> started{itemId}
     void playback(const Core::JamPlayback& playback); // -> playing
+    void removeRequested(const QStringList& itemIds); // the host removed waiting items -> remove
 };
 ```
 
-The scenarios are [spec/jam/host.md](../../spec/jam/host.md) with Desktop = Kickoman/QiYaa#13;
-`tests/jam_mode_test.cpp` checks them by ID. The network, the protocol and the server's messages are
-the host session's (Kickoman/QiYaa#14); `JamMode` gets the queue as `JamEntry`s and reports through
-its two signals.
+The scenarios are [spec/jam/host.md](../../spec/jam/host.md) with Desktop = Kickoman/QiYaa#13 and
+#28; `tests/jam_mode_test.cpp` checks them by ID. The network, the protocol and the server's
+messages are the host session's (Kickoman/QiYaa#14); `JamMode` gets the queue as `JamEntry`s and
+reports through its signals. What the queue does is the `Player`'s [layer](#the-layer).
 
 - **The queue** is the current track, then the **jam part** (the layer's waiting items, the mirror
-  of the server's queue), then the **jam wave**. `slotAt(row)` reads from `Player::entries()`
-  which each entry is: `Item` (an item with its id and who added it), `Wave` (a track of this
-  jam's wave), or `Other`.
+  of the server's queue), then the **base**: what the host's own source still has to play, the
+  rest of its head and then its continuation, with the queue's flag, shuffle and repeat. With no
+  continuation of its own and the flag on, the base goes on with the vibe from history, which is
+  the **jam vibe** while the jam is on.
 - **Start** (HOST-14): `Player::setLayer` with `QueueRules{playReports = false,
-  previousRestartsOnly = true}` (HOST-15, HOST-07) and the jam wave wrapped as the layer's wave,
-  then `Player::setSource(QueueSource{title})` under it: the track that plays stays, as `Other`,
-  and goes on; the rest goes. The base is empty, so the wave is what the queue asks, and shuffle
-  and repeat have no head to act on. `itemStarted` and the reports follow `Player::trackEvent`;
-  the track that plays is reported as a wave track.
-- **The jam part** (HOST-01 to HOST-04): `setQueue` hands the state to `Player::setLayerItems`
-  ([The layer](#the-layer)). When nothing played before it (Empty, waiting for more, or Stopped
-  with nothing next), `Player::next()` then starts the first item (HOST-08).
-- **The jam wave** (HOST-10 to HOST-13) is the `Player`'s load-more. `start` makes one `JamWave` for
-  the jam with the factory (`feedback` = `waveFeedback`; `recent` gives the last 5 wave tracks of
-  the queue, `kJamWaveHistory`). When at most 2 tracks are left, `JamMode` asks `JamWave::more`
-  while the wave has a session started under the last state's `seedsVersion`, and otherwise
-  `JamWave::start` with the last state's seeds and the current track. `start` returning false (no
-  seeds and nothing played) means no wave and `playing{idle}`. A reply carries the version it was
-  asked under; the queue drops the old session's deferred tracks when the jam part is empty again
-  under new seeds, and the next load starts a new session (HOST-11).
-  What the wave asks of its service:
-  [src/sources/yandex](../sources/yandex/README.md#jam_waveh-jamwave-jamwaves).
-- **What `JamMode` expects of a `JamWave`**: `start` and `more` call `done` once, later, with the
-  tracks (empty when there are none); `start` returns false, without calling `done`, when it has
-  nothing to start from. `trackEvent` is called for every event of a track it gave, also after the
-  jam ended.
-- **Late replies.** A reply for the wave of an earlier jam (one that ended, with a new one started
-  before the reply came) is dropped by the layer's end. So is a reply for a session that new seeds
-  closed while it was asked for (HOST-11): the `Player` then asks again at once, which starts the
-  new session.
-- **Not learning** (HOST-15, HOST-16): no play reports; rotor feedback (radioStarted, trackStarted,
-  trackFinished, skip) only for the jam wave's tracks, to the session each came from, and only when
-  `start` got `waveFeedback`.
+  previousRestartsOnly = true, ownContinuationFeedback = false, historyFeedback = waveFeedback}`
+  (HOST-15, HOST-16, HOST-07). The queue stays: the track that plays goes on and is reported as a
+  base track, and an empty queue is an empty base. `itemStarted` and the reports follow
+  `Player::trackEvent`.
+- **The jam part** (HOST-01 to HOST-04, HOST-12): `setQueue` hands the state to
+  `Player::setLayerItems` with the seeds. When nothing played before it (Empty, waiting for more,
+  or Stopped with nothing next), `Player::next()` then starts the first item (HOST-08).
+- **The base** (HOST-10 to HOST-13) plays when no item waits, by the ordinary rules; a base track
+  is reported as `Base` (the protocol's `source: wave`) and never gets `started`. The jam vibe takes
+  the last state's seeds, or the queue's history without any (HOST-11). When the base has nothing
+  more, the player stops and reports `Idle` (HOST-13), and the next item starts at once (HOST-08).
+- **A pick during the jam** (HOST-21) is `Player::setSource` under the layer: it becomes the new
+  base, and nothing starts. `YandexSource::Catalog` does nothing of its own about the jam.
+- **Editing the playlist** (HOST-36): `Player::removeRows` asks the layer to remove waiting items,
+  which `JamMode` passes on as `removeRequested`; the host session sends `remove` for each.
+- **Not learning** (HOST-15, HOST-16): no play reports; no feedback to the base's own vibe; rotor
+  feedback only for the jam vibe's tracks, and only when `start` got `waveFeedback`. The route of a
+  track's events is taken at its start, so a track that started before the jam closes as it began.
 - **Listening along** (`spec/jam/listen.md`). `JamPlayback::link` is `Player::currentLink()`: the
   file of the current track once its link resolved, including a preloaded track that took over;
   `JamPlayback::nextLink` is `Player::nextLink()`, the preloaded next file. The host session sends
   them to the jam's guests when the host allows it.
 - **Reports**: `itemStarted(itemId)` when a jam item's `Started` fires; `playback` after every
   track event, on the `Player`'s `stateChanged`, seeks, and every 10 s while `state()` is Playing
-  (HOST-05, HOST-06). `Idle` when nothing plays (empty queue, or waiting at the end); the rest by
-  the table in [Phases and `State`](#phases-and-state).
+  (HOST-05, HOST-06). `Idle` when nothing plays: Empty, waiting for more, or Stopped with nothing
+  next; otherwise the current track, as `Item` or `Base`.
 - **Skip** (HOST-18, HOST-19): `skip(itemId)` is `Player::next()` only when that item is current.
-- **End** (HOST-32, HOST-33): `Player::setLayer(std::nullopt)`. The wave's tracks that have not
-  played go, the jam items stay as ordinary tracks, the current track plays on, and the default
-  rules and a finite queue come back with the play reports.
-- `YandexSource::Catalog::setJamMode(jam)` refuses every pick while the jam is on (HOST-21).
+- **End** (HOST-32, HOST-33): `Player::setLayer(std::nullopt)`. The current track plays on, the
+  waiting items play first as ordinary tracks, the jam vibe's tracks on the server's seeds go, and
+  the vibe from history starts a new session from the queue's history when it is asked next.
 
 **Traps:**
-- The `Player`'s load-more and event callbacks hold a `QPointer<JamMode>` and the jam's
-  `std::shared_ptr<JamWave>`: a wave track that closes after `end()`, or while the app shuts down,
-  still gets its feedback.
-- HOST-09 (a broken last jam track waits for the jam wave) is the `Player`'s own ERR-07 for an
-  endless queue: `DecideOnFailure` says Next (the policy table in `tests/failures_test.cpp`), and
-  `next()` at the end waits for more. `jam_mode_test` does not repeat it.
+- The layer's `removeItems` holds a `QPointer<JamMode>`; a removal after the `JamMode` is gone
+  does nothing.
+- HOST-09 (a broken last jam track) is the `Player`'s own ERR-07: `DecideOnFailure` says Next when
+  a continuation follows (the policy table in `tests/failures_test.cpp`). `jam_mode_test` does not
+  repeat it.
 
 ## `cover_cache.h`: `CoverCache`
 

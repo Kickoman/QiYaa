@@ -7,7 +7,6 @@
 #include "jam/host_session.h"
 #include "skins/error.h"
 #include "sources/yandex/history_wave.h"
-#include "sources/yandex/jam_wave.h"
 #include "sources/yandex/tracks.h"
 #include "telemetry/machine_id.h"
 #include "telemetry/reporter.h"
@@ -216,7 +215,7 @@ Application::Application(const Options& options, QObject* parent)
     , yandexSource(&yandexLibrary)
     , corePlayer(&audioEngine, &trackSources)
     , catalog(&corePlayer, &yandexLibrary)
-    , jamMode(&corePlayer, YandexSource::JamWaves(&yandexLibrary)) {
+    , jamMode(&corePlayer) {
     trackSources.add(YandexSource::kSourceName, &yandexSource);
     firstRun = settings.allKeys().isEmpty();
     // Before any window: they take their texts from the translation.
@@ -338,7 +337,6 @@ Application::Application(const Options& options, QObject* parent)
 #endif
 
     // Before the loops over windows() below, which take in the jam window.
-    catalog.setJamMode(&jamMode);
     setUpJam();
 
     mainWindowInstance->setVolume(settings.value(QStringLiteral("volume"), 75).toInt());
@@ -604,7 +602,6 @@ void Application::setUpJam() {
             settings.value(QStringLiteral("jam/shareAudio"), false).toBool()
         };
     };
-    options.queueTitle = tr("Jam");
     // Next to the settings: a test's or a read-only run's jam stays in its own directory.
     const Jam::SessionStore store(QFileInfo(settings.fileName()).dir().filePath(QStringLiteral("jam-session.json")));
     jamHostSession = std::make_unique<Jam::HostSession>(&jamMode, &yandexLibrary, store, std::move(options));
@@ -623,55 +620,18 @@ void Application::setUpJam() {
     );
     connect(jamWindowInstance.get(), &Ui::JamWindow::serverSettingsRequested, this, &Application::showJamServerDialog);
 
-    // HOST-34: who added each jam item, and the jam wave, in the playlist and the marquee.
-    const auto note = [this](int row) -> QString {
-        const Core::JamSlot slot = jamMode.slotAt(row);
-        if (slot.kind == Core::JamSlot::Kind::Wave) {
-            return tr("jam vibe");
-        }
-        if (slot.kind != Core::JamSlot::Kind::Item || !jamHostSession->room()) {
+    const auto note = [this](int row) -> QString {  // HOST-34
+        const QList<Core::QueueEntry>& entries = corePlayer.entries();
+        if (row < 0 || row >= entries.size()) {
             return {};
         }
-        for (const Jam::Participant& participant : jamHostSession->room()->participants) {
-            if (participant.publicId == slot.addedBy) {
-                return QStringLiteral("+ ") + participant.name;
-            }
-        }
-        return {};
+        return Ui::JamTrackNote(entries[row], jamMode.isActive(), jamHostSession.get());
     };
     mainWindowInstance->setTrackNote(note);
-    Ui::PlaylistWindow::QueueHooks hooks;
-    hooks.note = note;
-    // HOST-21: during a jam the selected jam items leave the room's queue, and nothing else
-    // changes the queue.
-    hooks.remove = [this](const QList<int>& rows) {
-        if (!jamMode.isActive()) {
-            return false;
-        }
-        QStringList items;
-        for (int row : rows) {
-            if (const Core::JamSlot slot = jamMode.slotAt(row); slot.kind == Core::JamSlot::Kind::Item) {
-                items << slot.itemId;
-            }
-        }
-        if (items.isEmpty()) {
-            mainWindowInstance->setStatusText(tr("Select jam tracks to remove them"));
-            return true;
-        }
-        const auto removeItem = [this](const QString& itemId) { return jamHostSession->remove(itemId); };
-        if (!std::all_of(items.cbegin(), items.cend(), removeItem)) {
-            mainWindowInstance->setStatusText(tr("No connection to the jam server"));
-        }
-        return true;
-    };
-    hooks.clear = [this] {
-        if (!jamMode.isActive()) {
-            return false;
-        }
-        mainWindowInstance->setStatusText(tr("A jam is on: add tracks to the jam"));
-        return true;
-    };
-    playlistWindowInstance->setQueueHooks(std::move(hooks));
+    playlistWindowInstance->setTrackNote(note);
+    connect(jamHostSession.get(), &Jam::HostSession::offline, this, [this] {
+        mainWindowInstance->setStatusText(tr("No connection to the jam server"));
+    });
     connect(jamHostSession.get(), &Jam::HostSession::refused, this, [this](const QString& reason) {
         mainWindowInstance->setStatusText(JamRefusalText(reason));
         static const QRegularExpression code(QStringLiteral("^[a-z0-9-]{1,32}$"));

@@ -56,20 +56,8 @@
         <translation>Джем</translation>
     </message>
     <message>
-        <source>jam vibe</source>
-        <translation>волна джема</translation>
-    </message>
-    <message>
-        <source>Select jam tracks to remove them</source>
-        <translation>Выделите треки джема, чтобы убрать их</translation>
-    </message>
-    <message>
         <source>No connection to the jam server</source>
         <translation>Нет связи с сервером джема</translation>
-    </message>
-    <message>
-        <source>A jam is on: add tracks to the jam</source>
-        <translation>Идёт джем: добавляйте треки в джем</translation>
     </message>
     <message>
         <source>No connection to the jam server · trying again by itself</source>
@@ -341,10 +329,6 @@
         <translation>Учить волну джема</translation>
     </message>
     <message>
-        <source>When the guests&apos; queue is empty, the jam vibe plays. On: it learns from the skips during the jam, and only there. Off: no feedback at all.</source>
-        <translation>Когда очередь гостей пуста, играет волна джема. Включено: она учится на пропусках во время джема и только там. Выключено: никакого фидбека.</translation>
-    </message>
-    <message>
         <source>Cancel</source>
         <translation>Отмена</translation>
     </message>
@@ -359,6 +343,10 @@
     <message>
         <source>The jam page gets a Listen button: the guests&apos; browsers play the files you play, roughly in time with you. They are your subscription&apos;s files: Yandex Music licenses them for your own listening. Only at the Standard quality: economy files are not shared.</source>
         <translation>На странице джема появится кнопка «Слушать»: браузеры гостей играют те же файлы, что и вы, примерно одновременно с вами. Это файлы вашей подписки: Яндекс Музыка даёт их для вашего личного прослушивания. Только при стандартном качестве: файлы экономии не передаются.</translation>
+    </message>
+    <message>
+        <source>When the guests&apos; queue is empty, your own queue plays on, and after it the jam vibe if the queue has no vibe of its own and goes on with a vibe. On: the jam vibe learns from the skips during the jam, and only there. Off: no feedback at all.</source>
+        <translation>Когда очередь гостей пуста, дальше играет ваша собственная очередь, а после неё — волна джема, если у очереди нет своей волны и она продолжается волной. Включено: волна джема учится на пропусках во время джема и только там. Выключено: никакого фидбека.</translation>
     </message>
 </context>
 <context>
@@ -574,6 +562,10 @@
     <message>
         <source>QiYaa: jam</source>
         <translation>QiYaa: джем</translation>
+    </message>
+    <message>
+        <source>jam vibe</source>
+        <translation>волна джема</translation>
     </message>
 </context>
 <context>
@@ -946,10 +938,6 @@ Right click or ADD: pick what to listen to.</source>
     <message>
         <source>%1: empty</source>
         <translation>%1: пусто</translation>
-    </message>
-    <message>
-        <source>A jam is on: add tracks to the jam</source>
-        <translation>Идёт джем: добавляйте треки в джем</translation>
     </message>
     <message>
         <source>Liked: loading…</source>

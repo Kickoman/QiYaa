@@ -288,18 +288,37 @@ private Q_SLOTS:
         QCOMPARE(queue.remaining(), 5);
     }
 
-    void newSeedsDropTheStaleWaveOnlyWhenNothingWaits() {  // HOST-11
+    void newSeedsDropTheOutdatedVibeOnlyWhenNothingWaits() {  // HOST-11
         Core::Queue queue;
         queue.replace(HeadOf(Tracks(1)));
         const auto wave = std::make_shared<Tests::FakeContinuation>();
-        queue.setItems(Items({"a"}), Core::SeedHint{.version = 1});
+        queue.setHistoryWave(wave);
+        queue.setItems(Items({"a"}), Core::SeedHint{.seeds = {QStringLiteral("track:1")}, .version = 1});
         queue.appendContinuation(Tracks(2, QStringLiteral("w")), wave, 1);
-        queue.setItems(Items({"a"}), Core::SeedHint{.version = 2});
+        queue.setItems(Items({"a"}), Core::SeedHint{.seeds = {QStringLiteral("track:2")}, .version = 2});
         QCOMPARE(Ids(queue), (QStringList{"0", "a", "w0", "w1"}));
         QVERIFY(queue.isStale(1));
+        QVERIFY(queue.isStale(std::nullopt));
         QVERIFY(!queue.isStale(2));
         queue.select(1);
         QCOMPARE(Ids(queue), (QStringList{"0", "a"}));
+        queue.setItems({}, Core::SeedHint{.version = 3});
+        QVERIFY(!queue.isStale(1));
+        queue.endLayer();
+        QVERIFY(queue.isStale(1));
+        QVERIFY(!queue.isStale(std::nullopt));
+    }
+
+    void newSeedsEndTheStall() {  // HOST-11
+        Core::Queue queue;
+        queue.setItems({}, Core::SeedHint{.seeds = {QStringLiteral("track:1")}, .version = 1});
+        queue.setStalled(true);
+        queue.setItems({}, Core::SeedHint{.seeds = {QStringLiteral("track:1")}, .version = 1});
+        QVERIFY(queue.isStalled());
+        queue.setItems({}, Core::SeedHint{.version = 2});
+        QVERIFY(queue.isStalled());
+        queue.setItems({}, Core::SeedHint{.seeds = {QStringLiteral("track:2")}, .version = 3});
+        QVERIFY(!queue.isStalled());
     }
 
     void anotherBaseKeepsTheCurrentTrackAndTheWaitingItems() {
@@ -320,12 +339,10 @@ private Q_SLOTS:
         queue.replace(HeadOf(Tracks(2)));
         queue.setItems(Items({"a"}), Core::SeedHint{.version = 1});
         queue.appendContinuation(Tracks(2, QStringLiteral("w")), std::make_shared<Tests::FakeContinuation>(), 1);
-        const quint64 generation = queue.generation();
         queue.endLayer();
         QCOMPARE(Ids(queue), (QStringList{"0", "a", "1"}));
         QVERIFY(queue.entries()[1].itemId.isEmpty());
         QCOMPARE(IdAt(queue, queue.next()), QStringLiteral("a"));
-        QVERIFY(queue.generation() != generation);
     }
 
     void aNewSourceStartsANewGeneration() {

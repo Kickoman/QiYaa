@@ -2,11 +2,11 @@
 #include "audio/audio_engine.h"
 #include "core/jam_mode.h"
 #include "core/player.h"
+#include "core/queue_source.h"
 #include "jam/host_session.h"
 #include "jam/session_store.h"
 #include "skins/skin.h"
 #include "sources/yandex/catalog.h"
-#include "sources/yandex/jam_wave.h"
 #include "support/jam_stub_server.h"
 #include "support/mock_http_server.h"
 #include "support/spec_fixtures.h"
@@ -122,7 +122,7 @@ private:
             : ports(library)
             , player(&engine, &ports.registry)
             , catalog(&player, library)
-            , jam(&player, YandexSource::JamWaves(library))
+            , jam(&player)
             , host(&jam, library, Jam::SessionStore(directory.filePath(QStringLiteral("jam.json"))), options())
             , window(&host, &catalog, skin)
             , status(&window, &Ui::JamWindow::statusText) {
@@ -137,7 +137,6 @@ private:
             options.client.appVersion = QStringLiteral("test");
             options.client.reconnectDelaysMs = {50, 100, 200};
             options.config = [this] { return Jam::HostConfig{server.serverUrl(), false}; };
-            options.queueTitle = QStringLiteral("Джем");
             options.newId = [this] { return QStringLiteral("r%1").arg(++ids); };
             return options;
         }
@@ -222,6 +221,29 @@ private Q_SLOTS:
         bool done = false;
         library.connectAccount([&](const Yandex::Account&, const QString&) { done = true; });
         QVERIFY(QTest::qWaitFor([&] { return done; }, 5000));
+    }
+
+    void theNoteSaysWhoAddedAnItemAndMarksTheJamVibe() {  // HOST-34
+        Stack stack(&library, &baseSkin, pixelFont);
+        QVERIFY(stack.created());
+        const Core::QueueEntry item{
+            .part = Core::EntryPart::Item, .itemId = QStringLiteral("i1"), .addedBy = QStringLiteral("a4n8q1")
+        };
+        QCOMPARE(Ui::JamTrackNote(item, true, &stack.host), QStringLiteral("+ Аня"));
+        QCOMPARE(Ui::JamTrackNote(item, false, &stack.host), QString());
+        const Core::QueueEntry stranger{
+            .part = Core::EntryPart::Item, .itemId = QStringLiteral("i2"), .addedBy = QStringLiteral("zzz")
+        };
+        QCOMPARE(Ui::JamTrackNote(stranger, true, &stack.host), QString());
+        const Core::QueueEntry jamVibe{.part = Core::EntryPart::Continuation, .fromHistory = true};
+        QCOMPARE(
+            Ui::JamTrackNote(jamVibe, true, &stack.host), QCoreApplication::translate("Ui::JamWindow", "jam vibe")
+        );
+        QCOMPARE(Ui::JamTrackNote(jamVibe, false, &stack.host), QString());
+        for (const Core::EntryPart part :
+             {Core::EntryPart::Head, Core::EntryPart::Continuation, Core::EntryPart::Other}) {
+            QCOMPARE(Ui::JamTrackNote(Core::QueueEntry{.part = part}, true, &stack.host), QString());
+        }
     }
 
     void theStartPageStartsAJamWithTheGivenName() {

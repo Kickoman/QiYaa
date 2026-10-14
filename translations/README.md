@@ -53,7 +53,7 @@ The same thing is called the same everywhere, in the app, the jam's web page and
 | vibe | хваля | волна | any such stream: a station, a wave of the wheel |
 | Wheel of vibes | Кола хваляў | Колесо волн | the vibes that match what plays |
 | jam | джэм | джем | the shared queue |
-| jam vibe | хваля джэма | волна джема | what plays when the guests' queue is empty |
+| jam vibe | хваля джэма | волна джема | the vibe that goes on after the host's own queue during a jam, from the guests' tracks |
 | Liked | Мне падабаецца | Мне нравится | the liked tracks |
 | track | трэк | трек | |
 | playlist | плэйліст | плейлист | |

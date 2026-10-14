@@ -6,7 +6,6 @@
 #include "jam/codec.h"
 #include "jam/host_session.h"
 #include "jam/session_store.h"
-#include "sources/yandex/jam_wave.h"
 #include "sources/yandex/tracks.h"
 #include "support/fake_source.h"
 #include "support/jam_stub_server.h"
@@ -125,6 +124,14 @@ Jam::Session StoredSession(QStringList outbox = {}) {
     return Jam::Session{kRoom, kHostSecret, kJoinUrl, std::nullopt, std::move(outbox)};
 }
 
+Core::Track BaseTrack(const QString& id) {
+    Yandex::Track track;
+    track.id = id;
+    track.albumId = QStringLiteral("1");
+    track.title = QStringLiteral("T") + id;
+    return YandexSource::TrackOf(track);
+}
+
 QStringList Ids(const Core::Player& player) {
     QStringList ids;
     for (const Core::QueueEntry& entry : player.entries()) {
@@ -174,7 +181,7 @@ private:
 
         explicit Stack(Yandex::Library* library, const std::optional<Jam::Session>& stored = {})
             : player(&engine, &registry)
-            , jam(&player, YandexSource::JamWaves(library))
+            , jam(&player)
             , host(&jam, library, Stored(store, stored), options())
             , refused(&host, &Jam::HostSession::refused)
             , ended(&host, &Jam::HostSession::ended) {
@@ -196,7 +203,6 @@ private:
             options.client.appVersion = QStringLiteral("test");
             options.client.reconnectDelaysMs = {50, 100, 200};
             options.config = [this] { return Jam::HostConfig{serverUrl, false, share}; };
-            options.queueTitle = QStringLiteral("Джем");
             options.newId = [this] { return QStringLiteral("r%1").arg(++ids); };
             options.resumeRetryMs = 500;
             return options;
@@ -274,7 +280,6 @@ private Q_SLOTS:
         QCOMPARE(stack.host.phase(), Jam::HostPhase::Active);
         QCOMPARE(stack.host.joinUrl(), kJoinUrl);
         QVERIFY(stack.jam.isActive());
-        QCOMPARE(stack.player.queueTitle(), QStringLiteral("Джем"));
         QVERIFY(stack.waitSent(2));
         QCOMPARE(stack.sent().back(), Jam::ClientMessage(Jam::Playing{Jam::Source::Idle, {}, {}, 0, true}));
     }
@@ -558,20 +563,39 @@ private Q_SLOTS:
         QTRY_COMPARE(stack.player.currentIndex(), 1);
     }
 
-    void theHostEndsTheJamAndItsItemsStay() {  // HOST-32
+    void theHostEndsTheJamAndItsItemsPlayBeforeTheRestOfTheBase() {  // HOST-32
         Stack stack(&library);
+        stack.player.setSource(
+            Core::QueueSource{.title = QStringLiteral("Base"), .head = {BaseTrack("33"), BaseTrack("44")}}, false
+        );
+        stack.player.playIndex(0);
         QVERIFY(stack.created());
         stack.state(1, {Item("i1", "11"), Item("i2", "22")});
-        QTRY_COMPARE(Ids(stack.player), (QStringList{"11", "22"}));
+        QTRY_COMPARE(Ids(stack.player), (QStringList{"33", "11", "22", "44"}));
         stack.host.end();
         QTRY_VERIFY(!OfType<Jam::End>(stack.sent()).empty());
         QTRY_COMPARE(stack.server.last().state(), QAbstractSocket::UnconnectedState);
         QVERIFY(!stack.store.load());
         QVERIFY(!stack.jam.isActive());
-        QCOMPARE(Ids(stack.player), (QStringList{"11", "22"}));
+        QCOMPARE(Ids(stack.player), (QStringList{"33", "11", "22", "44"}));
         QCOMPARE(stack.ended.size(), 1);
         QCOMPARE(stack.lastEnd(), Jam::HostEnd::ByHost);
         QCOMPARE(stack.host.phase(), Jam::HostPhase::None);
+        for (const QString id : {"11", "22", "44"}) {
+            stack.player.next();
+            QCOMPARE(YandexSource::CatalogId(stack.player.currentTrack()->key), id);
+        }
+    }
+
+    void theHostKnowsTheNamesOfWhoAddedTheItems() {  // HOST-34
+        Stack stack(&library);
+        QVERIFY(stack.created());
+        stack.state(1, {Item("i1", "11"), Item("i2", "22", kHostId)});
+        QTRY_COMPARE(Ids(stack.player), (QStringList{"11", "22"}));
+        QCOMPARE(stack.player.entries()[1].addedBy, kHostId);
+        QCOMPARE(stack.host.participantName(kGuestId), QStringLiteral("Аня"));
+        QCOMPARE(stack.host.participantName(kHostId), QStringLiteral("Маша"));
+        QCOMPARE(stack.host.participantName(QStringLiteral("zzz")), QString());
     }
 
     void endedFromTheServerEndsTheJamHereWithoutAnEnd() {  // HOST-32

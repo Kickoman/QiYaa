@@ -3,44 +3,15 @@
 #include <QPointer>
 #include <QtGlobal>
 
-#include <functional>
-#include <utility>
-
 namespace Core {
-
-namespace {
-
-class JamWaveContinuation : public Continuation {
-public:
-    using TLoad = std::function<void(TDone done)>;
-
-    JamWaveContinuation(TLoad loader, std::shared_ptr<JamWave> jamWave)
-        : load(std::move(loader))
-        , wave(std::move(jamWave)) { }
-
-    bool more(const ContinuationRequest&, TDone done) override {
-        load(std::move(done));
-        return true;
-    }
-    void trackEvent(TrackEvent event, const Track& track, double playedSeconds) override {
-        wave->trackEvent(event, track, playedSeconds);  // HOST-16
-    }
-
-private:
-    TLoad load;
-    std::shared_ptr<JamWave> wave;
-};
 
 bool IsJamItem(const QueueEntry* entry) {
     return entry && entry->part == EntryPart::Item && !entry->itemId.isEmpty();
 }
 
-}  // namespace
-
-JamMode::JamMode(Player* player, TJamWaveFactory makeWave, QObject* parent)
+JamMode::JamMode(Player* player, QObject* parent)
     : QObject(parent)
-    , corePlayer(player)
-    , waveFactory(std::move(makeWave)) {
+    , corePlayer(player) {
     reportTimer.setInterval(kJamPlayingReportMs);
     connect(&reportTimer, &QTimer::timeout, this, [this] {
         if (corePlayer->state() == Player::State::Playing) {
@@ -64,50 +35,26 @@ JamMode::JamMode(Player* player, TJamWaveFactory makeWave, QObject* parent)
 
 JamMode::~JamMode() = default;
 
-JamSlot JamMode::slotAt(int row) const {
-    const QList<QueueEntry>& entries = corePlayer->entries();
-    if (!active || row < 0 || row >= entries.size()) {
-        return {};
-    }
-    const QueueEntry& entry = entries[row];
-    if (IsJamItem(&entry)) {
-        return JamSlot{JamSlot::Kind::Item, entry.itemId, entry.addedBy};
-    }
-    if (entry.part == EntryPart::Continuation && entry.giver == waveContinuation) {
-        return JamSlot{JamSlot::Kind::Wave, {}, {}};
-    }
-    return {};
-}
-
-QList<JamSlot> JamMode::queueSlots() const {
-    QList<JamSlot> slots;
-    for (int row = 0; active && row < corePlayer->entries().size(); ++row) {
-        slots << slotAt(row);
-    }
-    return slots;
-}
-
-void JamMode::start(const QString& title, bool waveFeedback) {
+void JamMode::start(bool waveFeedback) {
     if (active) {
         return;
     }
-    QPointer<JamMode> self(this);
-    wave = waveFactory(waveFeedback, [self] { return self ? self->recentWaveTracks() : QList<Track>{}; });
-    lastSeeds.clear();
-    lastSeedsVersion = -1;
-    const auto load = [self](Continuation::TDone done) {
-        if (!self) {
-            return done({});
-        }
-        self->loadWave(std::move(done));
-    };
-    waveContinuation = std::make_shared<JamWaveContinuation>(load, wave);
     active = true;
-    // HOST-15: no play reports; HOST-07: Previous restarts the track.
-    corePlayer->setLayer(
-        QueueLayer{.rules = {.playReports = false, .previousRestartsOnly = true}, .wave = waveContinuation}
-    );
-    corePlayer->setSource(QueueSource{.title = title}, false);  // HOST-14: the playing track stays, the rest goes
+    QPointer<JamMode> self(this);
+    corePlayer->setLayer(QueueLayer{
+        // HOST-15, HOST-16: no play reports, no feedback but the jam vibe's; HOST-07: Previous restarts.
+        .rules =
+            {.playReports = false,
+             .previousRestartsOnly = true,
+             .ownContinuationFeedback = false,
+             .historyFeedback = waveFeedback},
+        .removeItems =
+            [self](const QStringList& itemIds) {
+                if (self) {
+                    Q_EMIT self->removeRequested(itemIds);  // HOST-36
+                }
+            }
+    });
     reportTimer.start();
     reportPlayback();
 }
@@ -116,8 +63,6 @@ void JamMode::setQueue(const QList<JamEntry>& entries, const QStringList& seeds,
     if (!active) {
         return;
     }
-    lastSeeds = seeds;
-    lastSeedsVersion = seedsVersion;
     const bool idle = nothingToPlay();
     corePlayer->setLayerItems(entries, SeedHint{.seeds = seeds, .version = seedsVersion});
     if (idle && corePlayer->hasNext()) {
@@ -138,8 +83,7 @@ void JamMode::end() {
     }
     reportTimer.stop();
     active = false;
-    corePlayer->setLayer(std::nullopt);  // HOST-32: the jam items stay as ordinary tracks; HOST-33
-    waveContinuation.reset();
+    corePlayer->setLayer(std::nullopt);  // HOST-32, HOST-33
 }
 
 void JamMode::reportPlayback() {
@@ -152,7 +96,7 @@ void JamMode::reportPlayback() {
     if (track && !nothingToPlay()) {
         const QueueEntry* entry = corePlayer->currentEntry();
         const bool item = IsJamItem(entry);
-        report.kind = item ? JamPlayback::Kind::Item : JamPlayback::Kind::Wave;
+        report.kind = item ? JamPlayback::Kind::Item : JamPlayback::Kind::Base;
         report.itemId = item ? entry->itemId : QString();
         report.track = *track;
         report.link = corePlayer->currentLink();
@@ -162,30 +106,6 @@ void JamMode::reportPlayback() {
         report.paused = state != Player::State::Playing;
     }
     Q_EMIT playback(report);
-}
-
-void JamMode::loadWave(Continuation::TDone done) {
-    const auto deliver = [done, version = lastSeedsVersion](const QList<Track>& tracks) {
-        done(ContinuationReply{.tracks = tracks, .seedsVersion = version});
-    };
-    if (wave->hasSession() && wave->seedsVersion() == lastSeedsVersion) {  // HOST-11
-        return wave->more(deliver);
-    }
-    if (!wave->start(lastSeeds, lastSeedsVersion, corePlayer->currentTrack(), deliver)) {  // HOST-13
-        done({});
-        return reportPlayback();
-    }
-}
-
-QList<Track> JamMode::recentWaveTracks() const {
-    QList<Track> recent;
-    const QList<QueueEntry>& entries = corePlayer->entries();
-    for (qsizetype i = entries.size() - 1; i >= 0 && recent.size() < kJamWaveHistory; --i) {
-        if (waveContinuation && entries[i].giver == waveContinuation) {
-            recent.prepend(entries[i].track);
-        }
-    }
-    return recent;
 }
 
 bool JamMode::nothingToPlay() const {
