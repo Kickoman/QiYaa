@@ -132,11 +132,10 @@ Q_SIGNALS:
 
 private:
     using TStreamId = Audio::AudioEngine::TStreamId;
-    enum class DownloadState { Opening, Running, Finished };
     struct Feed {
         TStreamId stream = 0;
         std::unique_ptr<TrackDownload> download;
-        DownloadState state = DownloadState::Opening;
+        bool downloaded = false;
         std::optional<FailureKind> failure;
         bool audioArrived = false;
     };

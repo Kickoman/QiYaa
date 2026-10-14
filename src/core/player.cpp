@@ -580,7 +580,6 @@ void Player::startCurrent(int bitrate) {
 
 void Player::startFeed(Feed& feed, std::unique_ptr<TrackDownload> download) {
     feed.download = std::move(download);
-    feed.state = DownloadState::Running;
     TrackDownload* started = feed.download.get();
     const TStreamId stream = feed.stream;
     connect(started, &TrackDownload::received, this, [this, stream](const QByteArray& bytes) {
@@ -618,8 +617,8 @@ Player::Feed* Player::feedOf(TStreamId stream) {
 void Player::downloadFinished(TrackDownload* finished, const std::optional<TrackFailure>& failure) {
     if (current && current->feed.download.get() == finished) {
         current->feed.download.release()->deleteLater();
-        current->feed.state = DownloadState::Finished;
         if (!failure) {
+            current->feed.downloaded = true;
             return maybePreload();
         }
         if (!current->feed.audioArrived) {
@@ -636,7 +635,7 @@ void Player::downloadFinished(TrackDownload* finished, const std::optional<Track
         if (failure) {
             return cancelPreload();
         }
-        preload->feed.state = DownloadState::Finished;
+        preload->feed.downloaded = true;
     }
 }
 
@@ -747,8 +746,8 @@ int Player::preloadedIndex() const {
 }
 
 void Player::maybePreload() {
-    if (preload || isShutDown || !current || !current->started || current->feed.state != DownloadState::Finished
-        || current->feed.failure || audioEngine->state() == AudioEngine::State::Stopped) {
+    if (preload || isShutDown || !current || !current->started || !current->feed.downloaded
+        || audioEngine->state() == AudioEngine::State::Stopped) {
         return;
     }
     const int index = pickNext();

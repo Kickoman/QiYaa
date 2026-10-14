@@ -182,8 +182,6 @@ void JamMode::reportPlayback() {
     JamPlayback report;
     const Track* track = corePlayer->currentTrack();
     const Player::State state = corePlayer->state();
-    const bool stopped =
-        state == Player::State::Empty || state == Player::State::Stopped || state == Player::State::WaitingForMore;
     if (track && state != Player::State::WaitingForMore) {
         const JamSlot slot = currentSlot();
         report.kind = slot.kind == JamSlot::Kind::Item ? JamPlayback::Kind::Item : JamPlayback::Kind::Wave;
@@ -191,6 +189,7 @@ void JamMode::reportPlayback() {
         report.track = *track;
         report.link = corePlayer->currentLink();
         report.nextLink = corePlayer->nextLink();
+        const bool stopped = state == Player::State::Stopped;
         report.positionMs = stopped ? 0 : static_cast<qint64>(corePlayer->positionSeconds() * 1000);
         report.paused = state != Player::State::Playing;
     }

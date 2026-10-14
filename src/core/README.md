@@ -6,16 +6,16 @@ tracks before the queue runs out. For each track it asks the track's source (`Tr
 by `TrackKey::source`) to open it and streams the file's bytes into `Audio::AudioEngine`. It also
 preloads the following track, so the engine can go on without a gap, and it reports each track's
 start and end: to the source (Yandex's play report) and to a per-queue callback that the wave uses
-for feedback. `JamMode` is the queue while the app hosts a jam: the current track, the
-jam part that mirrors the server's queue, and the jam wave (`spec/jam/host.md`), which a source
-provides through `JamWave`. `CoverCache` downloads album covers and keeps them in memory and on
-disk. The folder does not decide what a pick plays or talk to a source's catalogue
-([src/sources](../sources/README.md)). It does not decode or output audio or chain streams at the
-sample level ([src/audio](../audio/README.md)). It speaks to no music service: links, files, cover
-URLs and play reports are a source's ([src/sources](../sources/README.md)). It builds no menus
+for feedback. `JamMode` is the queue while the app hosts a jam: the current track, the jam part that
+mirrors the server's queue, and the jam wave (`spec/jam/host.md`), which a source provides through
+`JamWave`. `CoverCache` downloads album covers and keeps them in memory and on disk. The folder does
+not decide what a pick plays or talk to a source's catalogue ([src/sources](../sources/README.md)).
+It does not decode or output audio or chain streams at the sample level
+([src/audio](../audio/README.md)). It speaks to no music service: links, files, cover URLs and play
+reports are a source's ([src/sources](../sources/README.md)). It builds no menus
 ([src/ui](../ui/README.md), `library_menu.cpp`), shows nothing on screen and holds no text for the
-user: the `Player` says what happened as `PlayerNotice` codes, and `src/ui` words them. Namespace `Core`,
-library `qiyaa_core`.
+user: the `Player` says what happened as `PlayerNotice` codes, and `src/ui` words them. Namespace
+`Core`, library `qiyaa_core`.
 
 | File | Contains |
 |---|---|
@@ -205,8 +205,8 @@ Stopped for any other.
 `state()` differs from the state it last carried. The engine reports its states synchronously in
 the middle of the `Player`'s transitions, and none of those leaks out: Stop gives `[Stopped]`, a
 last track that cannot play (ERR-07) `[Stopped]`, a lost network `[WaitingForNetwork]` (both when
-the track fails to open and when its audio runs out, ERR-03), Play without an output device
-`[Stopped]` (`player_test`).
+the track fails to open and when its audio runs out, ERR-03); Play without an output device gives
+none, as the state stays Stopped (`player_test`).
 
 What each state looks like:
 
@@ -603,7 +603,7 @@ struct OpenedTrack {
     std::unique_ptr<TrackDownload> download;      // not started yet
     QUrl link;                                    // what a jam's guests may fetch (about an hour)
     int bitrateKbps = 0;
-    QString codec;
+    QString codec;                                // "mp3", "he-aac-mp4"…
 };
 using TOpenResult = std::variant<OpenedTrack, TrackFailure>;
 
@@ -641,6 +641,8 @@ Q_SIGNALS:
   last; a `TrackFailure` there is the download's (a cut connection is `Network`). Deleting a
   download aborts it, and nothing is emitted after that. The `Player` never deletes one inside its
   own signal.
+- `OpenedTrack::codec` says what the file is, for showing it, as #27 asks of the port. Nothing
+  shows it yet; only `yandex_source_test` reads it.
 - `trackEvent` takes every event of a track that started with `QueueRules::playReports`; what the
   source does with it is its own (Yandex reports `Started` only).
 - `filesChanged`: the source now opens other files for the same tracks (another quality). The

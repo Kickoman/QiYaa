@@ -236,9 +236,10 @@ private Q_SLOTS:
             QSKIP("no audio output");
         }
         stack->player.playIndex(0);
-        QVERIFY(
-            QTest::qWaitFor([&] { return stack->saw(Core::NoticeCode::TrackFailed, QStringLiteral("HTTP 503")); }, 5000)
-        );
+        const auto failedWith503 = [&] {
+            return stack->saw(Core::NoticeCode::TrackFailed, QStringLiteral("HTTP 503"));
+        };
+        QVERIFY(QTest::qWaitFor(failedWith503, 5000));
         QCOMPARE(stack->player.currentIndex(), 0);
         QCOMPARE(stack->engine.state(), Audio::AudioEngine::State::Stopped);
     }
@@ -266,8 +267,7 @@ private Q_SLOTS:
         stack->api.setBaseUrl(QStringLiteral("http://127.0.0.1:1"));  // refused: no network
         stack->player.setNetworkOnline(false);
         stack->player.playIndex(0);
-        QVERIFY(QTest::qWaitFor([&] { return (stack->player.state() == Core::Player::State::WaitingForNetwork); }, 5000)
-        );
+        QVERIFY(QTest::qWaitFor([&] { return stack->player.state() == Core::Player::State::WaitingForNetwork; }, 5000));
         QVERIFY(stack->saw(Core::NoticeCode::WaitingForNetwork));
         QCOMPARE(stack->engine.state(), Audio::AudioEngine::State::Paused);
         QCOMPARE(stack->player.currentIndex(), 0);
@@ -278,7 +278,7 @@ private Q_SLOTS:
         stack->player.setNetworkOnline(true);  // back: tries at once
         QVERIFY(QTest::qWaitFor([&] { return stack->playing(); }, 5000));
         QCOMPARE(stack->player.currentIndex(), 0);
-        QVERIFY(!(stack->player.state() == Core::Player::State::WaitingForNetwork));
+        QVERIFY(stack->player.state() != Core::Player::State::WaitingForNetwork);
         QCOMPARE(requestsTo("/play-audio"), playReports + 1);  // one start, after the wait
         stack->player.stop();
     }
@@ -290,13 +290,10 @@ private Q_SLOTS:
         }
         stack->api.setBaseUrl(QStringLiteral("http://127.0.0.1:1"));
         stack->player.playIndex(0);
-        QVERIFY(QTest::qWaitFor([&] { return (stack->player.state() == Core::Player::State::WaitingForNetwork); }, 5000)
-        );
+        QVERIFY(QTest::qWaitFor([&] { return stack->player.state() == Core::Player::State::WaitingForNetwork; }, 5000));
         stack->player.pause();  // the user pauses while waiting
         stack->api.setBaseUrl(server.baseUrl());  // the retry timer finds the network back
-        QVERIFY(
-            QTest::qWaitFor([&] { return !(stack->player.state() == Core::Player::State::WaitingForNetwork); }, 5000)
-        );
+        QVERIFY(QTest::qWaitFor([&] { return stack->player.state() != Core::Player::State::WaitingForNetwork; }, 5000));
         QTest::qWait(200);
         QCOMPARE(stack->engine.state(), Audio::AudioEngine::State::Paused);
         stack->player.stop();
@@ -312,8 +309,7 @@ private Q_SLOTS:
         streamOverride.insert(QStringLiteral("181"), cut);
         const int playReports = requestsTo("/play-audio");
         stack->player.playIndex(0);
-        QVERIFY(QTest::qWaitFor([&] { return (stack->player.state() == Core::Player::State::WaitingForNetwork); }, 8000)
-        );
+        QVERIFY(QTest::qWaitFor([&] { return stack->player.state() == Core::Player::State::WaitingForNetwork; }, 8000));
         QCOMPARE(stack->player.currentIndex(), 0);
         const double kept = stack->engine.positionSeconds();
         QVERIFY2(kept > 0.5, qPrintable(QString::number(kept)));

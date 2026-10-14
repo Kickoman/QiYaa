@@ -45,10 +45,11 @@ MPRIS (`QIYAA_HAVE_MPRIS`) and SMTC (`QIYAA_HAVE_SMTC`) are optional; the macOS 
 
 `App::Application` is the composition root. It holds the settings, the skins, the network manager,
 `Yandex::ApiClient`, `Yandex::Library`, `Audio::AudioEngine`, `YandexSource::Source`,
-`Core::SourceRegistry`, `Core::Player`, `YandexSource::Catalog` and `Core::JamMode` as members, and the windows, the cover cache and the media integration through `std::unique_ptr`.
-Member order is the construction order and, reversed, the destruction order: the windows go first,
-while everything they point at still exists. Nothing below `app` creates or connects windows, reads
-`QSettings` or knows where files live. Details: [src/app](../src/app/README.md).
+`Core::SourceRegistry`, `Core::Player`, `YandexSource::Catalog` and `Core::JamMode` as members, and
+the windows, the cover cache and the media integration through `std::unique_ptr`. Member order is
+the construction order and, reversed, the destruction order: the windows go first, while everything
+they point at still exists. Nothing below `app` creates or connects windows, reads `QSettings` or
+knows where files live. Details: [src/app](../src/app/README.md).
 
 ## Playing a track
 

@@ -121,26 +121,25 @@ public:
 };
 ```
 
-**Threads and ownership.** Everything runs on the GUI thread: `Application` starts no thread,
-and every method must be called from the GUI thread (the audio engine's decoder thread and device
+**Threads and ownership.** Everything runs on the GUI thread: `Application` starts no thread, and
+every method must be called from the GUI thread (the audio engine's decoder thread and device
 callback stay inside [src/audio](../audio/README.md)). `Application` owns everything it wires:
 `QSettings`, the base and the current `Skins::Skin`, `ApiClient`, `Library`, `AudioEngine`,
 `YandexSource::Source`, `Core::SourceRegistry` (the Yandex source under `"yandex"`, added first in
 the constructor, before any window), `Player`, `YandexSource::Catalog` and `JamMode` (with
-`YandexSource::JamWaves`) as members; its own `QNetworkAccessManager` unless
-`Options::network` lends one; the `Jam::HostSession`, `CoverCache`, `MediaControls`, the `Mpris`, `MacMediaControls` or
+`YandexSource::JamWaves`) as members; its own `QNetworkAccessManager` unless `Options::network`
+lends one; the `Jam::HostSession`, `CoverCache`, `MediaControls`, the `Mpris`, `MacMediaControls` or
 `Smtc` object (held as `std::unique_ptr<QObject>`) and the windows (five, and the jam window in a
-jam build) through `std::unique_ptr`.
-The accessors return non-owning pointers, valid until the `Application` is destroyed.
+jam build) through `std::unique_ptr`. The accessors return non-owning pointers, valid until the
+`Application` is destroyed.
 
-Member order is load-bearing. Members are constructed in declaration order, and the initialiser
-list relies on it: the settings file after the temporary directory, `ApiClient` after the network
-manager, the Yandex source after the library, `Player` after the engine and the registry,
-`JamMode` after the player. The host session
-is declared after `JamMode` and destroyed before it. The windows are declared last, so they are
-destroyed first, while the player, engine and skins they point at still exist. The `Mpris`/`Smtc`/`MacMediaControls`
-object dies before the `MediaControls` it wraps, and `QSettings` before the temporary directory
-that may hold its file.
+Member order is load-bearing. Members are constructed in declaration order, and the initialiser list
+relies on it: the settings file after the temporary directory, `ApiClient` after the network
+manager, the Yandex source after the library, `Player` after the engine and the registry, `JamMode`
+after the player. The host session is declared after `JamMode` and destroyed before it. The windows
+are declared last, so they are destroyed first, while the player, engine and skins they point at
+still exist. The `Mpris`/`Smtc`/`MacMediaControls` object dies before the `MediaControls` it wraps,
+and `QSettings` before the temporary directory that may hold its file.
 
 **Construction**, in this order:
 

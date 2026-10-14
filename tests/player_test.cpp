@@ -290,16 +290,35 @@ private Q_SLOTS:
         QCOMPARE(States(states), QList{Core::Player::State::WaitingForNetwork});
     }
 
-    void withoutAnOutputDeviceATrackStaysStopped() {
+    void anUndecodableLastTrackIsOneChangeOfState() {  // ERR-04, ERR-07
         Stack stack;
+        QVERIFY(stack.start(1));
         QSignalSpy states(&stack.player, &Core::Player::stateChanged);
+        stack.player.playIndex(0);
+        QTRY_COMPARE(States(states), QList{Core::Player::State::Loading});
+        states.clear();
+        const QPointer<Tests::FakeDownload> broken = stack.source.complete(0);
+        broken->feed(QByteArray(40'000, 'x'));
+        broken->finish();
+        QTRY_COMPARE_WITH_TIMEOUT(stack.player.state(), Core::Player::State::Stopped, 5'000);
+        QTest::qWait(50);
+        QCOMPARE(States(states), QList{Core::Player::State::Stopped});
+    }
+
+    void withoutAnOutputDevicePlayStaysStopped() {
+        Stack stack;
+        stack.player.setQueue(Tracks(2), QStringLiteral("Fake"), false, {}, Recorder(stack.events));
+        QSignalSpy states(&stack.player, &Core::Player::stateChanged);
+        QTRY_COMPARE(States(states), QList{Core::Player::State::Stopped});
+        states.clear();
         QList<Core::PlayerNotice> notices;
         connect(&stack.player, &Core::Player::noticed, this, [&](const Core::PlayerNotice& notice) {
             notices << notice;
         });
-        stack.player.setQueue(Tracks(2), QStringLiteral("Fake"), true, {}, Recorder(stack.events));
+        stack.player.play();
         QTest::qWait(50);
-        QCOMPARE(States(states), QList{Core::Player::State::Stopped});
+        QVERIFY(states.isEmpty());
+        QCOMPARE(stack.player.state(), Core::Player::State::Stopped);
         QCOMPARE(stack.player.currentIndex(), 0);
         QVERIFY(stack.source.asked().isEmpty());
         QVERIFY(stack.events.isEmpty());

@@ -29,7 +29,8 @@ cover images or decide what plays next: that is [src/core](../core/README.md) (`
   at the bottom of the module order; which modules link it is in
   [docs/architecture.md](../../docs/architecture.md#modules).
 - Inside the module: `library.h` and `download.h` include `api_client.h`, `api_client.h` includes
-  `file_info.h`, and `api_client.cpp` includes `download.h` and `track_url.h`. `oauth` and `token` include only their own headers.
+  `file_info.h`, and `api_client.cpp` includes `download.h` and `track_url.h`. `oauth` and `token`
+  include only their own headers.
 
 ```bash
 grep -rn --include='*.cpp' --include='*.h' '#include "' src/yandex/ | grep -v '"yandex/'   # must print nothing
@@ -707,8 +708,8 @@ The error strings, all in English except the device-code expiry:
 
 ## Not here
 
-- Feeding a track's bytes to the engine, preloading the next track, the play queue, the endless-wave "more"
-  hook, cover images: [src/core](../core/README.md) (`Player`, `CoverCache`).
+- Feeding a track's bytes to the engine, preloading the next track, the play queue, the
+  endless-wave "more" hook, cover images: [src/core](../core/README.md) (`Player`, `CoverCache`).
 - The token file's location, the Yaamp `token.json` paths, when a token is saved, the wait for
   `postsSettled` on quit: [src/app](../app/README.md).
 - The login dialog (showing the code, the paste field, opening the browser) and the wave glue in
@@ -717,6 +718,7 @@ The error strings, all in English except the device-code expiry:
 - `Core::Track`, built from `Track` by [src/sources/yandex](../sources/yandex/README.md), and the
   MPRIS and SMTC metadata built from it: [src/integrations](../integrations/README.md).
 - Tests: `tests/yandex_test.cpp` (pure functions: signing, variant choice, tokens, track parsing;
-  and `Download` against `Tests::MockHttpServer`) and `tests/library_test.cpp` (every endpoint against `Tests::MockHttpServer` in `tests/support/`).
-  The responses they serve and what parsing must give are shared with the Android app in
-  `spec/fixtures/yandex` and `spec/expected/yandex` ([tests](../../tests/README.md#spec-fixtures)).
+  and `Download` against `Tests::MockHttpServer`) and `tests/library_test.cpp` (every endpoint
+  against `Tests::MockHttpServer` in `tests/support/`). The responses they serve and what parsing
+  must give are shared with the Android app in `spec/fixtures/yandex` and `spec/expected/yandex`
+  ([tests](../../tests/README.md#spec-fixtures)).
