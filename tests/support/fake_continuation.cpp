@@ -18,10 +18,10 @@ void FakeContinuation::begin(bool feedback) {
 }
 
 bool FakeContinuation::more(const Core::ContinuationRequest& request, TDone done) {
+    asked << request;
     if (refusing) {
         return false;
     }
-    asked << request;
     if (atOnce) {
         done(Core::ContinuationReply{.tracks = *atOnce});
         return true;

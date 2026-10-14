@@ -1,4 +1,5 @@
 #include "app/application.h"
+#include "core/continuation.h"
 #include "core/cover_cache.h"
 #include "core/jam_mode.h"
 #include "sources/yandex/tracks.h"
@@ -38,6 +39,7 @@
 #include <QTemporaryDir>
 #include <QTest>
 #include <QUrl>
+#include <QVariant>
 #include <QWidget>
 
 #include <memory>
@@ -78,6 +80,12 @@ QMenu* OpenContextMenu(QWidget* widget, QPoint local, QContextMenuEvent::Reason 
     QCoreApplication::sendEvent(widget, &event);
     return qobject_cast<QMenu*>(QApplication::activePopupWidget());
 }
+
+class NoMoreTracks : public Core::Continuation {
+public:
+    bool more(const Core::ContinuationRequest&, TDone) override { return false; }
+    void trackEvent(Core::TrackEvent, const Core::Track&, double) override { }
+};
 
 QAction* FindAction(QMenu* menu, const QString& text) {
     for (QAction* action : menu->actions()) {
@@ -238,6 +246,58 @@ private Q_SLOTS:
         saved.sync();
         App::Application fallback(options);
         QCOMPARE(fallback.yandex()->quality(), Yandex::Quality::Standard);
+    }
+
+    void theVibeItemSwitchesOnlyTheCurrentQueue() {  // CONT-01, CONT-02
+        QTemporaryDir directory;
+        QVERIFY(directory.isValid());
+        App::Application::Options options;
+        options.offline = true;
+        options.audio = false;
+        options.mediaIntegration = false;
+        options.language = App::Language::English;
+        options.settingsFile = directory.filePath(QStringLiteral("settings.ini"));
+        {
+            QSettings saved(options.settingsFile, QSettings::IniFormat);
+            saved.setValue(QStringLiteral("playback/continueWithVibe"), false);
+        }
+        App::Application configured(options);
+        Core::Player* player = configured.player();
+        const auto openItem = [&configured] {
+            configured.mainWindow()->menuRequested(QPoint(100, 100));
+            return configured.mainWindow()->findChild<QAction*>(QStringLiteral("continueWithVibe"));
+        };
+        const Core::QueueSource plain{.title = QStringLiteral("Plain"), .head = YandexSource::TracksOf(MakeTracks(2))};
+        player->setSource(plain, false);
+        QAction* item = openItem();
+        QVERIFY(item);
+        QCOMPARE(item->text(), QStringLiteral("Continue with a vibe"));
+        QVERIFY(item->isCheckable());
+        QVERIFY(item->isEnabled());
+        QVERIFY(!item->isChecked());
+        item->trigger();
+        QVERIFY(player->continuesWithVibe());
+        delete item->parent();
+        item = openItem();
+        QVERIFY(item->isChecked());
+        delete item->parent();
+        player->setSource(plain, false);
+        QVERIFY(!player->continuesWithVibe());
+        player->setSource(
+            Core::QueueSource{
+                .title = QStringLiteral("Vibe"),
+                .continuation = std::make_shared<NoMoreTracks>(),
+                .given = YandexSource::TracksOf(MakeTracks(1))
+            },
+            false
+        );
+        item = openItem();
+        QVERIFY(!item->isEnabled());
+        delete item->parent();
+        QCOMPARE(
+            QSettings(options.settingsFile, QSettings::IniFormat).value(QStringLiteral("playback/continueWithVibe")),
+            QVariant(false)
+        );
     }
 
     void defaultLayoutIsStacked() {

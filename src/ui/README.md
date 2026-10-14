@@ -826,8 +826,9 @@ The words for each `Core::NoticeCode` ([src/core](../core/README.md#notices)), i
 `Ui::PlayerNotices`: "Shuffle does not apply to a vibe", "Audio error: %1", "No audio output
 device", "Loading more tracks…", "Download failed: %1", "The track does not play: %1" (with "the
 sound could not be decoded" for `undecodable`), "Access error: %1", "Stopped: %n track(s) in a row
-did not play", "No network — waiting for it…". `%1` is the notice's English `detail`. They are the
-texts the `Player` itself sent until #23 (test `theNoticesReadAsTheStatusLineDidBefore`).
+did not play", "No network — waiting for it…", "Vibe error: %1". `%1` is the notice's English
+`detail`. All but the last are the texts the `Player` itself sent until #23 (test
+`theNoticesReadAsTheStatusLineDidBefore`).
 
 ## Library menu — `library_menu.h/.cpp`
 

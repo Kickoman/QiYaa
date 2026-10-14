@@ -78,6 +78,11 @@ public:
     void clear();
     void setLayer(std::optional<QueueLayer> layer);   // the jam's; nullopt ends it
     void setLayerItems(const QList<LayerItem>& items, std::optional<SeedHint> hint);   // the layer's items now
+    void setHistoryWaveFactory(THistoryWaveFactory factory);   // the vibe from history of each new queue
+    void setContinueWithVibeByDefault(bool on);       // the setting: each new queue's flag (CONT-01)
+    void setContinueWithVibe(bool on);                // the current queue's flag only (CONT-02)
+    bool continuesWithVibe() const;
+    bool hasOwnContinuation() const;                  // the source has one (My Vibe, a station)
 
     void play();                                      // resume / restart while playing / start
     void pause();                                     // toggles
@@ -93,7 +98,7 @@ public:
     ShuffleAlgorithm shuffleAlgorithm() const;
     void setRepeat(bool on);
     bool shuffle() const;                             // the user's choice
-    bool shuffleActive() const;                       // shuffle && the queue is not endless
+    bool shuffleActive() const;                       // shuffle && !hasOwnContinuation()
     bool repeat() const;
     const QueueRules& rules() const;                  // QueueRules{playReports, previousRestartsOnly}
     State state() const;                              // see Phases and State
@@ -179,7 +184,7 @@ The current track's phase:
 | **Open**, downloaded | by the engine¹ | yes | the current download finished without error, or a finished preload was taken over | end or skip. Only in this phase can a new preload start |
 | **Open**, failed | by the engine¹ | yes | the current download failed after some audio arrived; the engine plays what arrived | end: a network failure **Waiting for the network**, any other failure the end reported as `Skipped`. Skip |
 | **Waiting for the network** | WaitingForNetwork | as before | a network failure (ERR-01 to ERR-03) | the track opens and its download starts: **Open** again, playing if it played before. Another failure: the policy. `stop`, `playIndex`, `setSource`: the wait ends |
-| **Waiting for more** | WaitingForMore | — | `next()` at the end of an endless queue | `done` with new tracks: `playIndex(Queue::next())`. `done({})`: still waiting. `play`, `playIndex`, `stop` or `setSource` end the wait |
+| **Waiting for more** | WaitingForMore | — | `next()` at the end of an endless queue, while a request is in flight | `done` with new tracks: `playIndex(Queue::next())`. `done({})`: Stopped (WAVE-09). `play`, `playIndex`, `stop` or `setSource` end the wait |
 | **Shut down** | Stopped or Empty | — | `shutDown()` | never |
 
 ¹ The engine's Playing is Playing, its Paused is Paused, Buffering (or Stopped in the moment
@@ -251,10 +256,12 @@ The load-more request: idle, or in flight. It is independent of both phases abov
   `Started(track, 0)` to the source (with `playReports`), then to the giver, then as the signal
   `trackEvent`, emits `currentTrackChanged` and calls `maybePreload()`.
 - **`next()`**: with an empty queue, nothing happens. If a preload exists in any phase:
-  `playIndex(preload index)`. Else if `Queue::next() >= 0`: `playIndex` of it. Else, with a
-  continuation to ask (see [Continuations](#continuations)): `stop()`, mark waiting, run the
-  load-more check, then emit the notice `LoadingMore`. Else (the end of a finite queue with repeat
-  off): `stop()`, and the cursor stays on the last track.
+  `playIndex(preload index)`. Else if `Queue::next() >= 0`: `playIndex` of it. Else `stop()`, and
+  the cursor stays on the last track. Then, with a continuation to ask (see
+  [Continuations](#continuations)): the stall ends (CONT-07, WAVE-09), the player marks waiting and
+  runs the load-more check. A request in flight gives the notice `LoadingMore`; none (nothing to
+  ask with, CONT-06) ends the wait, Stopped. The automatic advance (a track's end, a failure the
+  policy skips) is the same, except that it leaves a stall alone, so it stops there (TR-04).
 - **`previous()`** (spec TR-01, TR-02): more than
   `kPreviousRestartsAfterSeconds` (3 s) into a playing or paused track, it restarts that track
   with `seekTo(0)`. That is a seek, not a new start: no events and no play report; if the engine
@@ -273,7 +280,7 @@ The load-more request: idle, or in flight. It is independent of both phases abov
 - **Engine `trackFinished`**: when the download broke on the network after audio arrived, the track
   stays open and waits for the network (ERR-03). Otherwise it gets `Finished`, or `Skipped` if its
   download failed, with the played seconds. Then, if `Queue::next()` is the current entry (repeat
-  with one head track and nothing waiting), `playIndex(cursor)`; otherwise `next()`.
+  with one head track and nothing waiting), `playIndex(cursor)`; otherwise the automatic advance.
 - **Engine `trackAdvanced`** (the engine crossed into the queued stream with no gap): the open track
   gets `Finished` or `Skipped` as above. If there is no preload, or its stream is not the engine's
   `currentStream()`, or its index is out of range, the player resyncs:
@@ -329,30 +336,45 @@ next step of [#23](https://github.com/Kickoman/QiYaa/issues/23) makes the phases
 
 ### Continuations
 
-- The continuation the queue asks is its source's own (`QueueSource::continuation`), else the
-  layer's wave. A queue with one is endless: at its end `Queue::next()` returns -1 even with
-  repeat on, so it never wraps, and `next()` waits for more instead.
+- The continuation the queue asks is its source's own (`QueueSource::continuation`); else the
+  layer's wave; else, while the queue's flag "continue with a vibe" is on, the **vibe from
+  history**, which `setHistoryWaveFactory`'s factory made for this queue (spec
+  [continuation.md](../../spec/player/continuation.md)). A queue with its own is endless: at its
+  end `Queue::next()` returns -1 even with repeat on, so it never wraps, and `next()` waits for
+  more instead. With the vibe from history, repeat wraps the head, and the vibe waits behind it
+  (CONT-10).
+- Each new queue, and each base under a layer, takes the flag from
+  `setContinueWithVibeByDefault` (true unless set; CONT-01), forgets the tracks that started and
+  the stall, and gets a new vibe from history. `setContinueWithVibe` changes the current queue's
+  flag only and emits `modesChanged`; switched on, it ends the stall and runs the check at once
+  (CONT-02, CONT-03).
 - The load-more check (`maybeLoadMore`) asks that continuation when all of these hold: there is
   one, no request is in flight for it, and `Queue::remaining() <= kLoadMoreWhenLeft` (2).
   `remaining()` counts in play order: the current entry, the waiting items, what is left of the
   head (endless while the base is in its head with repeat on, or with Random and two or more head
   tracks) and the continuation's entries after the last one that became current.
-- The request carries `queueEnd`, the last 5 tracks of the queue, whatever gave them (WAVE-05), and
-  `feedback`.
+- The request carries `queueEnd`, the last 5 tracks of the queue, whatever gave them (WAVE-05);
+  `history`, the tracks of this queue that started and that no continuation gave, the latest start
+  first, each once (CONT-05); and `feedback`.
 - `more` returns `false` when it has nothing to ask with; then no `done` comes and the request is
   not in flight.
 - The check runs when a track becomes current (`playIndex` in both branches, before the link is
-  resolved, and the gapless advance), when `next()` reaches the end, and after `setLayerItems`
-  unless the state is Empty or Stopped. It does not run from `setSource` without `autoplay`,
-  `removeRows` or a mode change.
+  resolved, and the gapless advance); when a track starts, if the vibe from history is what the
+  queue asks (a seed comes with a start, CONT-04); when `next()` reaches the end; when the flag is
+  switched on; and after `setLayerItems` unless the state is Empty or Stopped. It does not run from
+  `setSource` without `autoplay`, `removeRows` or another mode change.
+- **The stall** (CONT-07): when the vibe from history replies with no available track before it
+  ever gave one (its first request failed or brought nothing), the check stops asking: the head
+  plays to its end and stops there. A user's `next()` at the end, switching the flag on and a new
+  queue end it.
 - `done(reply)` is ignored if the `Player` is gone or the queue has been replaced. Otherwise the
   request is no longer in flight. A reply with a `seedsVersion` other than the layer's
   `SeedHint::version`, or with one when no layer is on, comes from a session that new seeds closed:
-  it is dropped and the check runs again (HOST-11). Otherwise the available tracks of
-  `reply.tracks` are appended as that continuation's entries, with the reply's `seedsVersion`. If
-  `next()` was waiting and `Queue::next()` now has an entry, `playIndex` of it runs; if nothing
-  came, the player keeps waiting (`State::WaitingForMore`), and a later `next()`, or the layer's
-  items, go on from there.
+  it is dropped and the check runs again (HOST-11). A `failure` gives the notice `VibeFailed`.
+  The available tracks of `reply.tracks` are appended as that continuation's entries, with the
+  reply's `seedsVersion`. If `next()` was waiting and `Queue::next()` now has an entry, `playIndex`
+  of it runs; if nothing came, the player is Stopped at the end (WAVE-09), and only the next
+  `next()`, or the layer's items, go on from there.
 - `done` may be called synchronously from inside `more`.
 
 ### Next, shuffle, repeat
@@ -367,8 +389,11 @@ next step of [#23](https://github.com/Kickoman/QiYaa/issues/23) makes the phases
   an item stops waiting. After every selection the waiting items move right behind the new current
   entry (HOST-12), so the playlist shows them where they play; `select` returns the row after the
   move.
-- Shuffle does not apply to an endless queue (spec WAVE-10, WAVE-11): a wave always uses sequential
-  traversal. The shuffle button and preferred algorithm retain the user's choices for finite queues.
+- Shuffle does not apply when the source has a continuation of its own (spec WAVE-10, WAVE-11): a
+  vibe always uses sequential traversal. With the vibe from history it orders the head only, and
+  the vibe's tracks follow in their order (CONT-09); Random never runs out of head tracks, so the
+  vibe from history never starts. The shuffle button and preferred algorithm retain the user's
+  choices.
 - `shuffleAlgorithm()` defaults to WithoutRepeats. The application restores and saves it. Switching
   algorithms while shuffle is active rebuilds navigation and refreshes preload; while inactive it
   changes only the preference. Audio, position and pause state are preserved in either case.
@@ -462,8 +487,8 @@ FailureAction DecideOnFailure(FailureKind kind, int failuresInRow, bool hasNext,
 
 - **Started** by `maybePreload()` when all of these hold: there is no preload; the player is not
   shut down; a track is open and its download has finished without error; the engine is not
-  `Stopped` (Paused counts); and `Queue::next() >= 0`. It is called at the end of the start, when the
-  current download finishes, and from `refreshPreload()`.
+  `Stopped` (Paused counts); and `Queue::next() >= 0`. It is called at the end of the start, when
+  the current download finishes, and from `refreshPreload()`.
 - **Open answer** (ignored if the `Player` is gone or `preloadGeneration` has moved on): the
   preload asks the engine for a queued stream. Its download then feeds that stream and
   `preloadedIndex()` becomes its index. On a `TrackFailure`, or when `queueStream()` returns 0
@@ -484,9 +509,9 @@ FailureAction DecideOnFailure(FailureKind kind, int failuresInRow, bool hasNext,
   follows, so `next()` picks again: the result is a gap, never the wrong track.
 - **Refreshed** by `refreshPreload()` after every change of the entries outside `playIndex` (a
   continuation's reply, `removeRows`, the layer's items, its start and end, a base under a layer)
-  and any actual change of shuffle or repeat. The preload is kept, and its index updated, when its track id is still what
-  follows at `Queue::next()`, in either mode. Otherwise the preload is cancelled.
-  Whenever no preload is kept, `maybePreload()` tries a new one.
+  and any actual change of shuffle or repeat. The preload is kept, and its index updated, when its
+  track id is still what follows at `Queue::next()`, in either mode. Otherwise the preload is
+  cancelled. Whenever no preload is kept, `maybePreload()` tries a new one.
 - A queued stream that the engine cannot decode is forgotten by the engine, and
   `queuedStream()` returns 0 for it. The next `playIndex` of that track then fetches it again the
   ordinary way.
@@ -507,8 +532,8 @@ FailureAction DecideOnFailure(FailureKind kind, int failuresInRow, bool hasNext,
 - `Finished` is sent when the engine reports the track's end (`trackFinished` or `trackAdvanced`)
   and its download did not fail.
 - `Skipped` is sent in every other case: `stop`; `playIndex`, `next` or `previous`; `play` while
-  playing; `setSource` without a layer, or `clear`; removing the track; `shutDown`; or an end after a failed
-  download, where the track only drained to where the data stopped.
+  playing; `setSource` without a layer, or `clear`; removing the track; `shutDown`; or an end after
+  a failed download, where the track only drained to where the data stopped.
 - No event is sent for a track that failed to open, because it never opened; nor without an output
   device, where no track opens. None is sent when the `Player` is destroyed with a track open
   either; call `shutDown()` first, as `App::Application::quit` does. An open answer that arrives
@@ -541,10 +566,10 @@ FailureAction DecideOnFailure(FailureKind kind, int failuresInRow, bool hasNext,
 
 ```cpp
 enum class NoticeCode { ShuffleOffInVibe, AudioError, NoOutputDevice, LoadingMore, DownloadFailed,
-                        TrackFailed, AccessDenied, StoppedAfterFailures, WaitingForNetwork };
+                        TrackFailed, AccessDenied, StoppedAfterFailures, WaitingForNetwork, VibeFailed };
 struct PlayerNotice {
     NoticeCode code;
-    QString detail;           // English, for AudioError, DownloadFailed, TrackFailed, AccessDenied
+    QString detail;           // English, for AudioError, DownloadFailed, TrackFailed, AccessDenied, VibeFailed
     int count = 0;            // StoppedAfterFailures: how many in a row
     bool undecodable = false; // TrackFailed: the sound could not be decoded; detail is empty
 };
@@ -560,12 +585,13 @@ status and path, an engine message). Codes for the engine's errors are a later s
 | `ShuffleOffInVibe` | shuffle switched on in an endless queue, or an endless queue set with shuffle on (WAVE-10) |
 | `AudioError` | `AudioEngine::errorOccurred` |
 | `NoOutputDevice` | `playIndex` without an output device |
-| `LoadingMore` | `next()` at the end of an endless queue |
+| `LoadingMore` | `next()` at the end of an endless queue, with a request in flight |
 | `DownloadFailed` | the current download failed after some audio arrived, not on the network |
 | `TrackFailed` | the policy skips the track or stops on it (ERR-04, ERR-07) |
 | `AccessDenied` | an Auth failure (ERR-08) |
 | `StoppedAfterFailures` | the third track in a row did not play (ERR-05) |
 | `WaitingForNetwork` | a network wait begins (ERR-01 to ERR-03) |
+| `VibeFailed` | a continuation's reply says its request failed; `detail` is its text (CONT-07) |
 
 **Traps:**
 
@@ -577,9 +603,9 @@ status and path, an engine message). Codes for the engine's errors are a later s
   call `newSourceRequest()` and throw the ticket away. Do not remove those calls.
 - A continuation that returned `true` from `more` must call `done` exactly once, on the `Player`'s
   thread, with no tracks on failure. Until it does, that queue never asks again. After an empty
-  reply, a waiting `next()` stays waiting after its `LoadingMore`; the next `next()` asks again. If
-  `done` runs synchronously inside `more`, playback has already moved on when `next()` gives that
-  notice.
+  reply, a waiting `next()` ends Stopped; the next `next()` asks again. If `done` runs
+  synchronously inside `more`, playback has already moved on, and `next()` gives no
+  `LoadingMore`.
 - A continuation's `more` and `trackEvent`, and the `trackEvent` signal's slots, run synchronously
   inside `Player` methods and the timer's handler. They must not call `playIndex`, `stop` or
   `setSource`, and they must not throw (see [Errors](#errors)).
@@ -624,6 +650,7 @@ public:
     void setItems(const QList<LayerItem>& items, std::optional<SeedHint> hint);
     void endLayer();
     bool isStale(int seedsVersion) const;             // not the hint's version, or no hint
+    // the vibe from history, whether it gave a track, the flag, the tracks that started, the stall
     int select(int index);                            // the row it is on after waiting items moved
     int next() const;                                 // -1: nothing follows
     int previous() const;
@@ -744,7 +771,7 @@ Q_SIGNALS:
 
 ```cpp
 struct SeedHint { QStringList seeds; int version = 0; };   // the jam server's seeds
-struct ContinuationRequest { QList<Track> queueEnd; bool feedback = true; };
+struct ContinuationRequest { QList<Track> queueEnd; QList<Track> history; bool feedback = true; };
 struct ContinuationReply { QList<Track> tracks; QString failure; std::optional<int> seedsVersion; };
 class Continuation {
 public:
@@ -753,9 +780,11 @@ public:
     virtual bool more(const ContinuationRequest& request, TDone done) = 0;   // false: nothing to ask with
     virtual void trackEvent(TrackEvent event, const Track& track, double playedSeconds) = 0;
 };
+using THistoryWaveFactory = std::function<std::shared_ptr<Continuation>()>;
 ```
 
-What a queue goes on with after its head ([spec/player/continuation.md](../../spec/player/README.md)):
+What a queue goes on with after its head
+([spec/player/continuation.md](../../spec/player/continuation.md)):
 - `begin(true)` comes once the queue has taken the source, before its first track starts; a vibe
   sends `radioStarted` there (TRK-03).
 - `more` is asked for the next tracks when the queue nears its end. It calls `done` once, later or
@@ -766,8 +795,10 @@ What a queue goes on with after its head ([spec/player/continuation.md](../../sp
 - `seedsVersion` in a reply says that the tracks come from a session started on the jam server's
   seeds of that version; see [The layer](#the-layer).
 - A source makes the continuation for its own tracks: Yandex's vibe is
-  [`YandexSource::Vibe`](../sources/yandex/README.md). The jam's own wave is wrapped in one inside
-  `jam_mode.cpp` until [#28](https://github.com/Kickoman/QiYaa/issues/28) removes it.
+  [`YandexSource::Vibe`](../sources/yandex/README.md), its vibe from history
+  `YandexSource::HistoryWave` (through `THistoryWaveFactory`, one per queue). The jam's own wave is
+  wrapped in one inside `jam_mode.cpp` until [#28](https://github.com/Kickoman/QiYaa/issues/28)
+  removes it.
 
 ## `queue_source.h`: `QueueSource`, `QueueEntry`
 
@@ -1033,13 +1064,13 @@ loaders that throw (the project's error policy is in
 | download, current track | the failure policy; after some audio, the notice `DownloadFailed` and `Skipped` at the end, or for the network a wait |
 | download, preload | the preload is cancelled, with no message |
 | audio engine | the notice `AudioError` with the engine's message; an undecodable current stream also goes to the failure policy (`AudioEngine::streamUndecodable`) |
-| continuation | a failed load is a reply with no tracks; a waiting `next()` stays stopped |
+| continuation | a reply with `failure`: the notice `VibeFailed`; with no tracks a waiting `next()` stops (WAVE-09), and the vibe from history's first such reply stalls it (CONT-07) |
 | seek | `seekTo` and `seekFraction` return `false` |
 | index out of range | `playIndex` does nothing; `removeRows` skips it |
 | cover | a null `QImage` from `get`, an empty `QString` from `localFile`, and no `ready` |
 
-A continuation's calls, its `done` and the `trackEvent` signal's slots run inside Qt slots. Per `CLAUDE.md`,
-no exception may cross the event loop, so they must not throw.
+A continuation's calls, its `done` and the `trackEvent` signal's slots run inside Qt slots. Per
+`CLAUDE.md`, no exception may cross the event loop, so they must not throw.
 
 ## Not here
 

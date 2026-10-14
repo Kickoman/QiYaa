@@ -38,11 +38,8 @@ void Queue::replace(QueueSource source) {
     queued << EntriesOf(source.given, EntryPart::Continuation, ownContinuation);
     titleText = source.title;
     playingIndex = queued.isEmpty() ? -1 : 0;
-    inHead = countOf(EntryPart::Head) > 0;
-    headMark = -1;
-    continuationMark = -1;
+    newBase();
     markCurrent();
-    renew();
     resetNavigator();
     ++changes;
 }
@@ -62,10 +59,7 @@ void Queue::replaceBase(QueueSource source) {
     kept << EntriesOf(source.given, EntryPart::Continuation, ownContinuation);
     queued = std::move(kept);
     titleText = source.title;
-    inHead = countOf(EntryPart::Head) > 0;
-    headMark = -1;
-    continuationMark = -1;
-    renew();
+    newBase();
     resetNavigator();
     ++changes;
 }
@@ -80,6 +74,7 @@ bool Queue::appendContinuation(
         return false;
     }
     queued << added;
+    historyGave = historyGave || (giver && giver == historyContinuation);
     if (playingIndex < 0 && queued.size() == added.size()) {
         playingIndex = 0;
         markCurrent();
@@ -241,6 +236,14 @@ void Queue::setShuffleAlgorithm(ShuffleAlgorithm algorithm) {
     }
 }
 
+void Queue::noteStarted(const QueueEntry& entry) {
+    if (entry.part == EntryPart::Continuation) {
+        return;  // CONT-05
+    }
+    startedTracks.removeIf([&entry](const Track& track) { return track.key == entry.track.key; });
+    startedTracks.prepend(entry.track);
+}
+
 void Queue::renew() {
     ++loadGeneration;
     asking = false;
@@ -330,6 +333,17 @@ void Queue::dropStaleWave() {
         }
     }
     remove(stale);
+}
+
+void Queue::newBase() {
+    inHead = countOf(EntryPart::Head) > 0;
+    headMark = -1;
+    continuationMark = -1;
+    historyContinuation.reset();
+    historyGave = false;
+    startedTracks.clear();
+    stalled = false;
+    renew();
 }
 
 void Queue::resetNavigator() {

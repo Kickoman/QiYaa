@@ -146,7 +146,9 @@ and `QSettings` before the temporary directory that may hold its file.
 1. Picks the settings file (INI format): `settings.ini` in a new `QTemporaryDir` when
    `readOnlySettings`, else `settingsFile`, else `<ConfigDirectory>/settings.ini`.
    Then installs the interface language (`Options::language`, else the `language` setting, else
-   Belarusian), before any window takes its texts.
+   Belarusian), before any window takes its texts. The `Player` gets the shuffle algorithm, the
+   `playback/continueWithVibe` setting and `YandexSource::HistoryWaves` as the vibe that goes on
+   after a queue's head (spec CONT-01, CONT-04).
 2. Loads the built-in base skin `:/skins/base-2.91.wsz` (`Skins::Skin::BuiltinBase()`). It is also
    the fallback for bitmaps other skins lack.
 3. With `audio`, calls `AudioEngine::init()`. On failure it logs `Audio: <message>` and the app
@@ -398,6 +400,10 @@ them in the interface language. The main menu, top to bottom:
 - Visualization: Spectrum, Oscilloscope, Off (exclusive; a choice calls `saveState()`);
 - Shuffle: "Random track" or "Without repeats" (exclusive); chooses the preferred algorithm
   and saves `shuffle/algorithm`. It does not toggle the shuffle button or restart audio.
+- "Continue with a vibe" (`continueWithVibe`): checkable, checked when the current queue goes on
+  with a vibe from its history (`Player::continuesWithVibe`), disabled when its source has a
+  continuation of its own (My Vibe, a station). It switches the current queue only (spec CONT-02),
+  never the `playback/continueWithVibe` setting.
 - Quality (`qualityMenu`): "Standard" or "Economy: a third of the data" (exclusive); calls
   `YandexSource::Source::setQuality` and saves `playback/quality` (spec/player/quality.md). The
   track that plays goes on; the next one is fetched in the new quality.
@@ -438,6 +444,7 @@ constructor; "setter" is the matching `set*Visible`.
 | `skin` | QString: a file path or `:/skins/<file>.wsz` | empty = built-in `base-2.91.wsz` | ctor, unless `--skin` | `loadSkin()` on success |
 | `shuffle/algorithm` | QString: `random` or `without-repeats` | `without-repeats` (anything else too) | ctor | on `Player::modesChanged` |
 | `playback/quality` | QString: `standard` or `economy` (`Yandex::QualityKey`) | `standard` (anything else too) | ctor | the Quality menu |
+| `playback/continueWithVibe` | bool: a new queue goes on with a vibe from its history (spec CONT-01) | true | ctor (`Player::setContinueWithVibeByDefault`) | never: only by hand |
 | `language` | QString: `be`, `ru` or `en` | `be` (anything else too) | ctor, unless `Options::language` | `setLanguage()` |
 | `scale` | double | 1.0 | ctor | `setScale(…, ScaleScope::Saved)` |
 | `alwaysOnTop` | bool | false | ctor | `setAlwaysOnTop()` |

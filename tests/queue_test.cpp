@@ -34,6 +34,14 @@ QList<Core::LayerItem> Items(const QStringList& ids) {
     return items;
 }
 
+QStringList Ids(const QList<Core::Track>& tracks) {
+    QStringList ids;
+    for (const Core::Track& track : tracks) {
+        ids << track.key.id;
+    }
+    return ids;
+}
+
 QStringList Ids(const Core::Queue& queue) {
     QStringList ids;
     for (const Core::QueueEntry& entry : queue.entries()) {
@@ -201,10 +209,62 @@ private Q_SLOTS:
     void theHeadThenTheContinuation() {  // CONT-11
         Core::Queue queue;
         queue.replace(HeadOf(Tracks(2)));
+        queue.appendContinuation(Tracks(3, QStringLiteral("w")), std::make_shared<Tests::FakeContinuation>(), {});
+        QCOMPARE(Ids(queue), (QStringList{"0", "1", "w0", "w1", "w2"}));
+        QCOMPARE(PlayOrder(queue), (QList<int>{0, 1, 2, 3, 4}));
+        QCOMPARE(queue.previous(), 3);
+        queue.select(2);
+        queue.setShuffle(true);
+        queue.setRepeat(true);
+        QCOMPARE(queue.next(), 3);
+    }
+
+    void shuffleOrdersTheHeadAndTheContinuationFollowsInItsOrder() {  // CONT-09
+        Core::Queue queue;
+        queue.replace(HeadOf(Tracks(4)));
+        queue.setShuffle(true);
+        QVERIFY(queue.shuffleActive());
         queue.appendContinuation(Tracks(2, QStringLiteral("w")), std::make_shared<Tests::FakeContinuation>(), {});
-        QCOMPARE(Ids(queue), (QStringList{"0", "1", "w0", "w1"}));
-        QCOMPARE(PlayOrder(queue), (QList<int>{0, 1, 2, 3}));
-        QCOMPARE(queue.previous(), 2);
+        const QList<int> order = PlayOrder(queue);
+        QCOMPARE(order.size(), 6);
+        QCOMPARE(QSet<int>(order.cbegin(), order.cbegin() + 4), (QSet<int>{0, 1, 2, 3}));
+        QCOMPARE(order.mid(4), (QList<int>{4, 5}));
+        queue.setShuffleAlgorithm(Core::ShuffleAlgorithm::Random);
+        queue.select(0);
+        QCOMPARE(queue.remaining(), Core::kEndlessTracks);
+    }
+
+    void repeatWrapsTheHeadAndTheContinuationWaitsBehindIt() {  // CONT-10
+        Core::Queue queue;
+        queue.replace(HeadOf(Tracks(2)));
+        queue.appendContinuation(Tracks(1, QStringLiteral("w")), std::make_shared<Tests::FakeContinuation>(), {});
+        queue.setRepeat(true);
+        queue.select(1);
+        QCOMPARE(queue.next(), 0);
+        QCOMPARE(queue.remaining(), Core::kEndlessTracks);
+        queue.setRepeat(false);
+        QCOMPARE(queue.next(), 2);
+        QCOMPARE(queue.remaining(), 2);
+    }
+
+    void aNewQueueForgetsTheHistoryAndTheStall() {  // CONT-01, CONT-05
+        Core::Queue queue;
+        queue.replace(HeadOf(Tracks(3)));
+        const auto wave = std::make_shared<Tests::FakeContinuation>();
+        queue.setHistoryWave(wave);
+        queue.appendContinuation(Tracks(1, QStringLiteral("w")), wave, {});
+        for (int index : {0, 2, 0, 3}) {
+            queue.select(index);
+            queue.noteStarted(queue.entries()[index]);
+        }
+        QCOMPARE(Ids(queue.history()), (QStringList{"0", "2"}));
+        QVERIFY(queue.historyWaveGave());
+        queue.setStalled(true);
+        queue.replace(HeadOf(Tracks(1)));
+        QVERIFY(queue.history().isEmpty());
+        QVERIFY(!queue.historyWave());
+        QVERIFY(!queue.historyWaveGave());
+        QVERIFY(!queue.isStalled());
     }
 
     void remainingCountsWhatIsLeftInPlayOrder() {  // WAVE-05

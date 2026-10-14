@@ -39,6 +39,7 @@ enum class NoticeCode {
     AccessDenied,
     StoppedAfterFailures,
     WaitingForNetwork,
+    VibeFailed,
 };
 
 struct PlayerNotice {
@@ -66,6 +67,11 @@ public:
     void clear();
     void setLayer(std::optional<QueueLayer> layer);
     void setLayerItems(const QList<LayerItem>& items, std::optional<SeedHint> hint);
+    void setHistoryWaveFactory(THistoryWaveFactory factory);
+    void setContinueWithVibeByDefault(bool on) { continueWithVibeByDefault = on; }
+    void setContinueWithVibe(bool on);
+    bool continuesWithVibe() const;
+    bool hasOwnContinuation() const;
 
     void play();
     void pause();
@@ -81,7 +87,7 @@ public:
     ShuffleAlgorithm shuffleAlgorithm() const;
     void setRepeat(bool on);
     bool shuffle() const;  // the user's choice
-    // Shuffle as it applies now: never in an endless queue (a wave plays in queue order).
+    // Shuffle as it applies now: never when the source has a continuation of its own (a vibe plays in queue order).
     bool shuffleActive() const;
     bool repeat() const;
     const QueueRules& rules() const { return queueRules; }
@@ -172,6 +178,8 @@ private:
     void maybePreload();
     void cancelPreload();
     void refreshPreload();
+    void advance(bool byUser);
+    void takeNewBase();
     std::shared_ptr<Continuation> askedContinuation() const;
     void maybeLoadMore();
     void continuationReplied(const std::shared_ptr<Continuation>& giver, const ContinuationReply& reply);
@@ -186,6 +194,8 @@ private:
     std::unique_ptr<Queue> queue;
     std::optional<QueueLayer> layer;
     QueueRules queueRules;
+    THistoryWaveFactory historyWaveFactory;
+    bool continueWithVibeByDefault = true;
     std::optional<CurrentTrack> current;
     std::optional<Preload> preload;
     int failuresInRow = 0;

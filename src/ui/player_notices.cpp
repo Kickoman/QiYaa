@@ -32,6 +32,8 @@ QString NoticeText(const Core::PlayerNotice& notice) {
             );
         case Core::NoticeCode::WaitingForNetwork:
             return QCoreApplication::translate("Ui::PlayerNotices", "No network — waiting for it…");
+        case Core::NoticeCode::VibeFailed:
+            return QCoreApplication::translate("Ui::PlayerNotices", "Vibe error: %1").arg(notice.detail);
     }
     return {};
 }

@@ -140,6 +140,7 @@ target_link_libraries(qiyaa_core PUBLIC qiyaa_audio Qt6::Gui Qt6::Network)
 
 qiyaa_add_module(sources_yandex
     src/sources/yandex/catalog.cpp  src/sources/yandex/catalog.h
+    src/sources/yandex/history_wave.cpp src/sources/yandex/history_wave.h
     src/sources/yandex/jam_wave.cpp src/sources/yandex/jam_wave.h
     src/sources/yandex/source.cpp   src/sources/yandex/source.h
     src/sources/yandex/tracks.cpp   src/sources/yandex/tracks.h

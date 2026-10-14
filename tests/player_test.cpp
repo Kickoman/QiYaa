@@ -22,9 +22,9 @@ namespace {
 
 const QString kFake = QStringLiteral("fake");
 
-QList<Core::Track> Tracks(int count) {
+QList<Core::Track> Tracks(int count, int first = 1) {
     QList<Core::Track> tracks;
-    for (int i = 1; i <= count; ++i) {
+    for (int i = first; i < first + count; ++i) {
         Core::Track track;
         track.key = {kFake, QString::number(i)};
         track.title = QStringLiteral("Track %1").arg(i);
@@ -60,6 +60,26 @@ struct Stack {
         return true;
     }
 };
+
+struct HistoryStack : Stack {
+    std::shared_ptr<Tests::FakeContinuation> wave;
+
+    HistoryStack() {
+        player.setHistoryWaveFactory([this] {
+            wave = std::make_shared<Tests::FakeContinuation>();
+            return wave;
+        });
+    }
+    QString current() const { return player.currentTrack() ? player.currentTrack()->key.id : QString(); }
+};
+
+QStringList Ids(const QList<Core::Track>& tracks) {
+    QStringList ids;
+    for (const Core::Track& track : tracks) {
+        ids << track.key.id;
+    }
+    return ids;
+}
 
 QList<Core::Player::State> States(const QSignalSpy& spy) {
     QList<Core::Player::State> states;
@@ -203,6 +223,158 @@ private Q_SLOTS:
         stack.player.stop();
         QCOMPARE(stack.events, (QStringList{"started:1", "skipped:1"}));
         QVERIFY(stack.source.events().isEmpty());
+    }
+
+    void eachQueueTakesTheFlagFromTheSetting() {  // CONT-01, CONT-02
+        Stack stack;
+        QVERIFY(stack.start(2));
+        QVERIFY(stack.player.continuesWithVibe());
+        stack.player.setContinueWithVibeByDefault(false);
+        stack.player.setSource(HeadOf(Tracks(2)), false);
+        QVERIFY(!stack.player.continuesWithVibe());
+        QSignalSpy modes(&stack.player, &Core::Player::modesChanged);
+        stack.player.setContinueWithVibe(true);
+        QVERIFY(stack.player.continuesWithVibe());
+        QCOMPARE(modes.size(), 1);
+        stack.player.setSource(HeadOf(Tracks(2)), false);
+        QVERIFY(!stack.player.continuesWithVibe());
+        QVERIFY(!stack.player.hasOwnContinuation());
+        stack.player.setSource(
+            Core::QueueSource{.continuation = std::make_shared<Tests::FakeContinuation>(), .given = Tracks(1)}, false
+        );
+        QVERIFY(stack.player.hasOwnContinuation());
+    }
+
+    void theHistoryVibeAsksWithTheHeadTracksThatStarted() {  // CONT-04 to CONT-06, CONT-08
+        HistoryStack stack;
+        QVERIFY(stack.start(3));
+        stack.wave->refuse(true);
+        stack.player.playIndex(1);
+        QCOMPARE(stack.wave->requests().size(), 1);
+        QVERIFY(stack.wave->requests()[0].history.isEmpty());
+        stack.source.complete(0);
+        QCOMPARE(stack.wave->requests().size(), 2);
+        QCOMPARE(Ids(stack.wave->requests()[1].history), QStringList{"2"});
+        stack.wave->refuse(false);
+        stack.player.playIndex(0);
+        stack.source.complete(1);
+        QCOMPARE(stack.wave->requests().size(), 2);
+        stack.player.playIndex(2);
+        QCOMPARE(stack.wave->requests().size(), 3);
+        QCOMPARE(Ids(stack.wave->requests()[2].history), (QStringList{"1", "2"}));
+        stack.wave->answer(Tracks(2, 11));
+        QCOMPARE(stack.player.entries().size(), 5);
+        stack.source.complete(2);
+        stack.player.next();
+        QCOMPARE(stack.current(), QStringLiteral("11"));
+        QCOMPARE(stack.wave->requests().size(), 4);
+        stack.source.complete(3);
+        stack.wave->answer(Tracks(1, 21));
+        stack.player.next();
+        QCOMPARE(stack.wave->requests().size(), 5);
+        QCOMPARE(Ids(stack.wave->requests()[4].history), (QStringList{"3", "1", "2"}));
+        QCOMPARE(stack.wave->eventLog(), (QStringList{"started:11", "skipped:11"}));
+        QCOMPARE(stack.source.eventLog().mid(6), (QStringList{"started:11", "skipped:11"}));
+    }
+
+    void switchingTheFlagOnAsksAtOnceAndOffAsksNoMore() {  // CONT-02, CONT-03
+        HistoryStack stack;
+        stack.player.setContinueWithVibeByDefault(false);
+        QVERIFY(stack.start(2));
+        stack.player.playIndex(0);
+        stack.source.complete(0);
+        QVERIFY(stack.wave->requests().isEmpty());
+        stack.player.setContinueWithVibe(true);
+        QCOMPARE(stack.wave->requests().size(), 1);
+        stack.wave->answer(Tracks(2, 11));
+        stack.player.setContinueWithVibe(false);
+        for (const QString id : {"2", "11", "12"}) {
+            stack.player.next();
+            QCOMPARE(stack.current(), id);
+        }
+        stack.player.next();
+        QCOMPARE(stack.player.state(), Core::Player::State::Stopped);
+        QCOMPARE(stack.current(), QStringLiteral("12"));
+        QCOMPARE(stack.wave->requests().size(), 1);
+        stack.player.setContinueWithVibe(true);
+        QCOMPARE(stack.wave->requests().size(), 2);
+        stack.player.next();
+        QCOMPARE(stack.player.state(), Core::Player::State::WaitingForMore);
+        stack.wave->answer(Tracks(1, 21));
+        QCOMPARE(stack.current(), QStringLiteral("21"));
+    }
+
+    void aFirstRequestThatBringsNothingLetsTheHeadEnd_data() {
+        QTest::addColumn<QString>("failure");
+        QTest::newRow("failed") << QStringLiteral("HTTP 500");
+        QTest::newRow("empty") << QString();
+    }
+
+    void aFirstRequestThatBringsNothingLetsTheHeadEnd() {  // CONT-07
+        QFETCH(QString, failure);
+        HistoryStack stack;
+        QVERIFY(stack.start(2));
+        QStringList failures;
+        connect(&stack.player, &Core::Player::noticed, this, [&](const Core::PlayerNotice& notice) {
+            if (notice.code == Core::NoticeCode::VibeFailed) {
+                failures << notice.detail;
+            }
+        });
+        stack.player.playIndex(0);
+        stack.source.complete(0);
+        QCOMPARE(stack.wave->requests().size(), 1);
+        stack.wave->answer({}, failure);
+        QCOMPARE(failures, failure.isEmpty() ? QStringList{} : QStringList{failure});
+        stack.player.next();
+        const QPointer<Tests::FakeDownload> last = stack.source.complete(1);
+        QCOMPARE(stack.wave->requests().size(), 1);
+        last->feed(mp3);
+        last->finish();
+        QTRY_COMPARE(stack.player.state(), Core::Player::State::Playing);
+        QVERIFY(stack.player.seekTo(2.8));
+        QTRY_COMPARE(stack.player.state(), Core::Player::State::Stopped);
+        QCOMPARE(stack.wave->requests().size(), 1);
+        QCOMPARE(stack.current(), QStringLiteral("2"));
+        stack.player.next();
+        QCOMPARE(stack.wave->requests().size(), 2);
+        QCOMPARE(stack.player.state(), Core::Player::State::WaitingForMore);
+    }
+
+    void aBrokenLastTrackWaitsForTheHistoryVibe() {  // ERR-07, CONT-06
+        HistoryStack stack;
+        QVERIFY(stack.start(2));
+        stack.wave->refuse(true);
+        stack.player.playIndex(1);
+        stack.source.fail(0, Core::FailureKind::Track);
+        QCOMPARE(stack.player.state(), Core::Player::State::Stopped);
+        stack.player.playIndex(0);
+        stack.source.complete(1);
+        stack.wave->refuse(false);
+        stack.player.next();
+        QCOMPARE(stack.wave->pending(), 1);
+        stack.source.fail(2, Core::FailureKind::Track);
+        QCOMPARE(stack.player.state(), Core::Player::State::WaitingForMore);
+        stack.wave->answer(Tracks(1, 11));
+        QCOMPARE(stack.current(), QStringLiteral("11"));
+    }
+
+    void anEmptyReplyAtTheEndStopsAndNextAsksAgain() {  // WAVE-09
+        Stack stack;
+        QVERIFY(stack.start(0));
+        const auto vibe = std::make_shared<Tests::FakeContinuation>();
+        stack.player.setSource(
+            Core::QueueSource{.title = QStringLiteral("Vibe"), .continuation = vibe, .given = Tracks(1)}, false
+        );
+        stack.player.playIndex(0);
+        vibe->answer({});
+        stack.player.next();
+        QCOMPARE(stack.player.state(), Core::Player::State::WaitingForMore);
+        vibe->answer({});
+        QCOMPARE(stack.player.state(), Core::Player::State::Stopped);
+        QCOMPARE(vibe->requests().size(), 2);
+        stack.player.next();
+        QCOMPARE(vibe->requests().size(), 3);
+        QCOMPARE(stack.player.state(), Core::Player::State::WaitingForMore);
     }
 
     void eachPhaseShowsItsState() {

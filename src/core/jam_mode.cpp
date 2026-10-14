@@ -149,7 +149,7 @@ void JamMode::reportPlayback() {
     JamPlayback report;
     const Track* track = corePlayer->currentTrack();
     const Player::State state = corePlayer->state();
-    if (track && state != Player::State::WaitingForMore) {
+    if (track && !nothingToPlay()) {
         const QueueEntry* entry = corePlayer->currentEntry();
         const bool item = IsJamItem(entry);
         report.kind = item ? JamPlayback::Kind::Item : JamPlayback::Kind::Wave;

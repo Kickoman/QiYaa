@@ -11,6 +11,7 @@
 
 #include <memory>
 #include <optional>
+#include <utility>
 
 namespace Core {
 
@@ -22,6 +23,16 @@ public:
     const QueueEntry* currentEntry() const;
     const std::shared_ptr<Continuation>& continuation() const { return ownContinuation; }
     quint64 revision() const { return changes; }
+
+    void setHistoryWave(std::shared_ptr<Continuation> wave) { historyContinuation = std::move(wave); }
+    const std::shared_ptr<Continuation>& historyWave() const { return historyContinuation; }
+    bool historyWaveGave() const { return historyGave; }
+    void setContinueWithVibe(bool on) { continueWithVibe = on; }
+    bool continuesWithVibe() const { return continueWithVibe; }
+    const QList<Track>& history() const { return startedTracks; }
+    void noteStarted(const QueueEntry& entry);
+    void setStalled(bool on) { stalled = on; }
+    bool isStalled() const { return stalled; }
 
     void replace(QueueSource source);
     void replaceBase(QueueSource source);
@@ -61,10 +72,16 @@ private:
     void gatherPending();
     void dropStaleWave();
     void resetNavigator();
+    void newBase();
 
     QList<QueueEntry> queued;
     QString titleText;
     std::shared_ptr<Continuation> ownContinuation;
+    std::shared_ptr<Continuation> historyContinuation;
+    bool historyGave = false;
+    bool continueWithVibe = true;
+    QList<Track> startedTracks;
+    bool stalled = false;
     int playingIndex = -1;
     bool inHead = false;
     int headMark = -1;

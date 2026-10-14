@@ -247,6 +247,10 @@
         <source>Economy: a third of the data</source>
         <translation>Эканомія: утрая менш трафіку</translation>
     </message>
+    <message>
+        <source>Continue with a vibe</source>
+        <translation>Працягваць хваляй</translation>
+    </message>
 </context>
 <context>
     <name>Ui::EqualizerWindow</name>
@@ -861,6 +865,10 @@
     <message>
         <source>No network — waiting for it…</source>
         <translation>Няма сеткі — чакаю падключэння…</translation>
+    </message>
+    <message>
+        <source>Vibe error: %1</source>
+        <translation>Памылка хвалі: %1</translation>
     </message>
 </context>
 <context>
