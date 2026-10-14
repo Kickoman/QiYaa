@@ -120,22 +120,25 @@ private Q_SLOTS:
         QCOMPARE(stack.engine.state(), Audio::AudioEngine::State::Stopped);
     }
 
-    void aRetryAfterTheNetworkWaitIsDroppedAndNoneFollowsAStop() {  // ERR-01
+    void aRetryAfterTheNetworkWaitIsDroppedAndNoneFollowsAStop() {  // ERR-01, ERR-02
         Stack stack;
         QVERIFY(stack.start(2));
-        stack.player.setNetworkRetryDelays(50, 50);
+        stack.player.setNetworkOnline(false);
         stack.player.playIndex(0);
         stack.source.fail(0, Core::FailureKind::Network);
         QCOMPARE(stack.player.state(), Core::Player::State::WaitingForNetwork);
-        QVERIFY(QTest::qWaitFor([&] { return stack.source.asked().size() == 2; }, 2'000));
+        QCOMPARE(stack.source.pending(), 0);
+        stack.player.setNetworkOnline(true);
+        QCOMPARE(stack.source.asked(), (QStringList{"1", "1"}));
         stack.player.stop();
         QCOMPARE(stack.player.state(), Core::Player::State::Stopped);
         QVERIFY(!stack.source.complete(1));
-        QVERIFY(stack.source.started().isEmpty());
-        QVERIFY(stack.events.isEmpty());
-        QTest::qWait(300);
+        stack.player.setNetworkOnline(false);
+        stack.player.setNetworkOnline(true);
         QCOMPARE(stack.source.asked().size(), 2);
         QCOMPARE(stack.source.pending(), 0);
+        QVERIFY(stack.source.started().isEmpty());
+        QVERIFY(stack.events.isEmpty());
     }
 
     void theLinkOfACancelledPreloadIsDropped() {  // QUAL-05
