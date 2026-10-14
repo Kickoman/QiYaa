@@ -19,7 +19,8 @@ user: the `Player` says what happened as `PlayerNotice` codes, and `src/ui` word
 
 | File | Contains |
 |---|---|
-| `player.h/.cpp` | `Player`: the queue and cursor, transport, shuffle and repeat, source-request tickets, the endless-source hook `TLoadMoreCallback`, track events `TEventCallback`, opening tracks through their sources, download streaming, the gapless preload, and the engine's poll timer |
+| `player.h/.cpp` | `Player`: the one entry to the queue, transport, shuffle and repeat, source-request tickets, the endless-source hook `TLoadMoreCallback`, track events `TEventCallback`, opening tracks through their sources, download streaming, the gapless preload, and the engine's poll timer |
+| `queue.h/.cpp` | `Queue`, private to `Player`: the tracks, the cursor, what plays next and before (the navigator, shuffle and repeat), the title, and the load-more generation |
 | `track.h/.cpp` | `Track`, `TrackKey`, `CoverRef`, `TrackEvent`: a track of any source |
 | `track_source.h/.cpp` | `TrackSource`, what each music source implements; `TrackDownload`, `OpenedTrack`, `TrackFailure`, `TOpenResult`; `SourceRegistry`, the sources by name |
 | `continuation.h` | `Continuation`: an endless supply of tracks and the feedback on them |
@@ -38,7 +39,9 @@ user: the `Player` says what happened as `PlayerNotice` codes, and `src/ui` word
   `vis`, `core` → `sources` → `jam` → `ui`, `integrations` → `app`. It reaches miniaudio only
   through `qiyaa_audio`, which links it PRIVATE. Which modules link `qiyaa_core` is in
   [docs/architecture.md](../../docs/architecture.md#modules).
-- `player` and `cover_cache` do not include each other.
+- `player` and `cover_cache` do not include each other. Only `player.cpp` includes `queue.h`:
+  `player.h` declares `Queue` and holds it through a `std::unique_ptr`, so nothing outside the
+  `Player` reaches the queue but through it.
 - No file includes `yandex/`. The only HTTP of `core` is `CoverCache`'s: a track's file comes
   through its source's `TrackDownload`.
 - `Player` is the only caller of `AudioEngine::poll()` in `src/`. Everything the engine reports
@@ -53,6 +56,7 @@ grep -rnE --include='*.h' --include='*.cpp' '\btr\(|translate\(' src/core/      
 grep -rn --include='*.h' --include='*.cpp' -e '->poll()' src/ | grep -v '^src/core/player.cpp:'         # must print nothing
 grep -rn --include='*.h' --include='*.cpp' '#include "yandex/' src/core/                               # must print nothing
 grep -rnE --include='*.h' --include='*.cpp' 'QNetworkRe(quest|ply)' src/core/ | grep -v '^src/core/cover_cache\.'   # must print nothing
+grep -rln --include='*.h' --include='*.cpp' '#include "core/queue.h"' src/ | grep -vx 'src/core/\(player\|queue\)\.cpp'   # must print nothing
 ```
 
 ## `player.h`: `Player`
@@ -556,6 +560,40 @@ status and path, an engine message). Codes for the engine's errors are a later s
   transition.
 - The timer starts on the engine's next `stateChanged`. An engine that is already playing when
   the `Player` is constructed is not polled until its state changes.
+
+## `queue.h`: `Queue`
+
+```cpp
+class Queue {                                         // owned by Player; no QObject, no engine
+public:
+    const QList<Track>& tracks() const;               // the available tracks, in source order
+    const QString& title() const;
+    int cursor() const;                               // -1 exactly when there are no tracks
+    const Track* currentTrack() const;
+    void replace(const QList<Track>& tracks, const QString& title);   // a new generation
+    bool append(const QList<Track>& tracks);          // false: none available
+    bool insert(int index, const QList<Track>& tracks);
+    bool remove(QList<int> indices);                  // true: the current track went
+    void setEndless(bool on);                         // a load-more hook is set
+    void select(int index);                           // the cursor, in the navigator too
+    int next() const;                                 // -1: nothing follows
+    int previous() const;
+    // shuffle, its algorithm, repeat; the load-more generation and whether a load is in flight
+};
+```
+
+- What plays next and before is the `Queue`'s; playing it is the `Player`'s. The `Player` calls
+  the `Queue` synchronously in the middle of its own transitions, so the two never signal each
+  other.
+- The cursor rules are those of [The queue and the cursor](#the-queue-and-the-cursor): only
+  available tracks are kept; an insert at or before the cursor shifts it up; removing the current
+  track leaves the cursor on the track that followed, or on the new last one.
+- Every change of the tracks or of shuffle rebuilds the navigator from the cursor (SHUF-04).
+  `next()` passes repeat only to a finite queue; `shuffleActive()` is false in an endless one
+  (WAVE-10 to WAVE-12).
+- `replace` and `renew` start a new load-more generation, which drops a late answer of the
+  previous source's hook.
+- Tests: `tests/queue_test.cpp`.
 
 ## `track.h`: `Track`, `TrackKey`, `CoverRef`
 

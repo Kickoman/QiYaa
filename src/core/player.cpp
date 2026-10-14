@@ -1,5 +1,7 @@
 #include "core/player.h"
 
+#include "core/queue.h"
+
 #include <QPointer>
 
 #include <algorithm>
@@ -26,7 +28,8 @@ PlayerNotice NoticeOf(NoticeCode code, const QString& detail = {}, int count = 0
 Player::Player(Audio::AudioEngine* engine, SourceRegistry* sources, QObject* parent)
     : QObject(parent)
     , audioEngine(engine)
-    , trackSources(sources) {
+    , trackSources(sources)
+    , queue(std::make_unique<Queue>()) {
     connect(audioEngine, &AudioEngine::trackFinished, this, &Player::engineFinished);
     connect(audioEngine, &AudioEngine::trackAdvanced, this, &Player::engineAdvanced);
     connect(audioEngine, &AudioEngine::errorOccurred, this, [this](const QString& message) {
@@ -67,6 +70,8 @@ Player::Player(Audio::AudioEngine* engine, SourceRegistry* sources, QObject* par
     });
 }
 
+Player::~Player() = default;
+
 void Player::setQueue(
     const QList<Track>& tracks,
     const QString& title,
@@ -76,115 +81,59 @@ void Player::setQueue(
 ) {
     stop();
     reportEvent = std::move(events);
-    queuedTracks.clear();
-    for (const Track& track : tracks) {
-        if (track.available) {
-            queuedTracks << track;
-        }
-    }
-    titleText = title;
     loadMore = std::move(more);
+    queue->setEndless(static_cast<bool>(loadMore));
+    queue->replace(tracks, title);
     queueRules = {};
-    loadingMore = false;
     setWaitingForMore(false);
     failuresInRow = 0;  // ERR-06
-    ++queueGeneration;
-    playingIndex = queuedTracks.isEmpty() ? -1 : 0;
-    resetNavigator();
     Q_EMIT queueReplaced();
     Q_EMIT playlistChanged();
     Q_EMIT currentTrackChanged();
-    if (loadMore && shuffleEnabled) {
+    if (loadMore && queue->shuffle()) {
         Q_EMIT noticed(NoticeOf(NoticeCode::ShuffleOffInVibe));
     }
-    if (autoplay && playingIndex >= 0) {
+    if (autoplay && queue->cursor() >= 0) {
         playIndex(0);
     }
 }
 
 void Player::appendTracks(const QList<Track>& tracks) {
-    bool added = false;
-    for (const Track& track : tracks) {
-        if (track.available) {
-            queuedTracks << track;
-            added = true;
-        }
-    }
-    if (!added) {
+    if (!queue->append(tracks)) {
         return;
     }
-    if (playingIndex < 0) {
-        playingIndex = 0;
-    }
-    resetNavigator();
     noteState();
     Q_EMIT playlistChanged();
     refreshPreload();
 }
 
 void Player::insertTracks(int index, const QList<Track>& tracks) {
-    QList<Track> added;
-    for (const Track& track : tracks) {
-        if (track.available) {
-            added << track;
-        }
-    }
-    if (added.isEmpty()) {
+    if (!queue->insert(index, tracks)) {
         return;
     }
-    const int at = std::clamp(index, 0, static_cast<int>(queuedTracks.size()));
-    for (qsizetype i = 0; i < added.size(); ++i) {
-        queuedTracks.insert(at + i, added[i]);
-    }
-    if (playingIndex < 0) {
-        playingIndex = 0;
-    } else if (at <= playingIndex) {
-        playingIndex += static_cast<int>(added.size());
-    }
-    resetNavigator();
     noteState();
     Q_EMIT playlistChanged();
     refreshPreload();
 }
 
 void Player::changeSource(const QString& title, TLoadMoreCallback more, TEventCallback events, QueueRules rules) {
-    titleText = title;
+    queue->setTitle(title);
     loadMore = std::move(more);
     reportEvent = std::move(events);
     queueRules = rules;
-    loadingMore = false;
+    queue->renew();
     setWaitingForMore(false);
-    ++queueGeneration;
-    resetNavigator();
+    queue->setEndless(static_cast<bool>(loadMore));
     Q_EMIT playlistChanged();
     Q_EMIT modesChanged();
     refreshPreload();
 }
 
 void Player::removeTracks(QList<int> indices) {
-    std::sort(indices.begin(), indices.end(), std::greater<>());
-    indices.erase(std::unique(indices.begin(), indices.end()), indices.end());
-    bool removedCurrent = false;
-    for (int index : indices) {
-        if (index < 0 || index >= queuedTracks.size()) {
-            continue;
-        }
-        queuedTracks.removeAt(index);
-        if (index == playingIndex) {
-            removedCurrent = true;
-        } else if (index < playingIndex) {
-            --playingIndex;
-        }
-    }
-    if (removedCurrent) {
+    if (queue->remove(std::move(indices))) {
         stop();
-        playingIndex = std::min<int>(playingIndex, static_cast<int>(queuedTracks.size()) - 1);
         Q_EMIT currentTrackChanged();
     }
-    if (queuedTracks.isEmpty()) {
-        playingIndex = -1;
-    }
-    resetNavigator();
     noteState();
     Q_EMIT playlistChanged();
     refreshPreload();
@@ -195,8 +144,36 @@ void Player::clearQueue() {
     setQueue({}, {}, false);
 }
 
+const QList<Track>& Player::playlist() const {
+    return queue->tracks();
+}
+
+const QString& Player::queueTitle() const {
+    return queue->title();
+}
+
+int Player::currentIndex() const {
+    return queue->cursor();
+}
+
+ShuffleAlgorithm Player::shuffleAlgorithm() const {
+    return queue->shuffleAlgorithm();
+}
+
+bool Player::shuffle() const {
+    return queue->shuffle();
+}
+
+bool Player::shuffleActive() const {
+    return queue->shuffleActive();
+}
+
+bool Player::repeat() const {
+    return queue->repeat();
+}
+
 const Track* Player::currentTrack() const {
-    return (playingIndex >= 0 && playingIndex < queuedTracks.size()) ? &queuedTracks[playingIndex] : nullptr;
+    return queue->currentTrack();
 }
 
 double Player::durationSeconds() const {
@@ -238,7 +215,7 @@ Player::State Player::state() const {
         case AudioEngine::State::Buffering: return State::Loading;
         case AudioEngine::State::Stopped: break;
     }
-    return queuedTracks.isEmpty() ? State::Empty : State::Stopped;
+    return queue->tracks().isEmpty() ? State::Empty : State::Stopped;
 }
 
 double Player::positionSeconds() const {
@@ -272,9 +249,9 @@ void Player::play() {
     }
     switch (audioEngine->state()) {
         case AudioEngine::State::Paused: audioEngine->resume(); return;
-        case AudioEngine::State::Playing: playIndex(playingIndex); return;  // Winamp: Play restarts the track
+        case AudioEngine::State::Playing: playIndex(queue->cursor()); return;  // Winamp: Play restarts the track
         case AudioEngine::State::Buffering: return;
-        case AudioEngine::State::Stopped: playIndex(playingIndex < 0 ? 0 : playingIndex); return;
+        case AudioEngine::State::Stopped: playIndex(std::max(0, queue->cursor())); return;
     }
 }
 
@@ -329,11 +306,10 @@ double Player::accumulatePlayedSeconds() {
 }
 
 void Player::setShuffle(bool on) {
-    if (on == shuffleEnabled) {
+    if (on == queue->shuffle()) {
         return;
     }
-    shuffleEnabled = on;
-    resetNavigator();
+    queue->setShuffle(on);
     Q_EMIT modesChanged();
     if (on && loadMore) {
         Q_EMIT noticed(NoticeOf(NoticeCode::ShuffleOffInVibe));
@@ -342,22 +318,21 @@ void Player::setShuffle(bool on) {
 }
 
 void Player::setShuffleAlgorithm(ShuffleAlgorithm algorithm) {
-    if (preferredShuffleAlgorithm == algorithm) {
+    if (queue->shuffleAlgorithm() == algorithm) {
         return;
     }
-    preferredShuffleAlgorithm = algorithm;
-    if (shuffleActive()) {
-        resetNavigator();
+    queue->setShuffleAlgorithm(algorithm);
+    if (queue->shuffleActive()) {
         refreshPreload();
     }
     Q_EMIT modesChanged();
 }
 
 void Player::setRepeat(bool on) {
-    if (on == repeatEnabled) {
+    if (on == queue->repeat()) {
         return;
     }
-    repeatEnabled = on;
+    queue->setRepeat(on);
     Q_EMIT modesChanged();
     refreshPreload();
 }
@@ -377,23 +352,14 @@ void Player::stop() {
     audioEngine->stop();
 }
 
-void Player::resetNavigator() {
-    navigator = MakeTrackNavigator(shuffleActive() ? std::optional(preferredShuffleAlgorithm) : std::nullopt);
-    navigator->reset(static_cast<int>(queuedTracks.size()), playingIndex);
-}
-
-int Player::pickNext() const {
-    return navigator->next(repeatEnabled && !loadMore);
-}
-
 void Player::next() {
-    if (queuedTracks.isEmpty()) {
+    if (queue->tracks().isEmpty()) {
         return;
     }
     if (preload) {
         return playIndex(preload->index);
     }
-    const int nextIndex = pickNext();
+    const int nextIndex = queue->next();
     if (nextIndex >= 0) {
         return playIndex(nextIndex);
     }
@@ -418,23 +384,22 @@ int PreviousTarget(double positionSeconds, int cursor, int size, bool repeat) {
 }
 
 void Player::previous() {
-    if (queuedTracks.isEmpty()) {
+    if (queue->tracks().isEmpty()) {
         return;
     }
     if (queueRules.previousRestartsOnly) {  // HOST-07
         if (!seekTo(0)) {
-            playIndex(playingIndex);
+            playIndex(queue->cursor());
         }
         return;
     }
     const bool active = audioEngine->state() != AudioEngine::State::Stopped;
-    const int target = active && audioEngine->positionSeconds() > kPreviousRestartsAfterSeconds
-        ? -1
-        : navigator->previous(repeatEnabled);
+    const int target =
+        active && audioEngine->positionSeconds() > kPreviousRestartsAfterSeconds ? -1 : queue->previous();
     if (target >= 0) {
         playIndex(target);
     } else if (!seekTo(0)) {
-        playIndex(playingIndex);
+        playIndex(queue->cursor());
     }
 }
 
@@ -457,23 +422,23 @@ bool Player::seekTo(double seconds) {
 }
 
 void Player::maybeLoadMore() {
-    if (!loadMore || loadingMore || queuedTracks.size() - playingIndex > kLoadMoreWhenLeft) {
+    if (!loadMore || queue->isAsking() || queue->tracks().size() - queue->cursor() > kLoadMoreWhenLeft) {
         return;
     }
-    loadingMore = true;
-    const quint64 requestGeneration = queueGeneration;
+    queue->setAsking(true);
+    const quint64 requestGeneration = queue->generation();
     QPointer<Player> self(this);
     loadMore([self, requestGeneration](const QList<Track>& tracks) {
-        if (!self || requestGeneration != self->queueGeneration) {
+        if (!self || requestGeneration != self->queue->generation()) {
             return;
         }
-        self->loadingMore = false;
+        self->queue->setAsking(false);
         const bool wasWaiting = self->waitingForMore;
         self->setWaitingForMore(false);
         self->appendTracks(tracks);
         if (wasWaiting) {
-            if (self->playingIndex + 1 < self->queuedTracks.size()) {
-                self->playIndex(self->playingIndex + 1);
+            if (self->queue->cursor() + 1 < self->queue->tracks().size()) {
+                self->playIndex(self->queue->cursor() + 1);
             } else {
                 self->setWaitingForMore(true);
             }
@@ -488,14 +453,13 @@ void Player::shutDown() {
 }
 
 void Player::playIndex(int index) {
-    if (isShutDown || index < 0 || index >= queuedTracks.size()) {
+    if (isShutDown || index < 0 || index >= queue->tracks().size()) {
         return;
     }
     setWaitingForMore(false);
     closeCurrent(TrackEvent::Skipped);
-    playingIndex = index;
-    navigator->select(index);
-    const Track& track = queuedTracks[index];
+    queue->select(index);
+    const Track& track = queue->tracks()[index];
     if (preload && preload->feed.stream && preload->key == track.key
         && preload->feed.stream == audioEngine->queuedStream()) {
         audioEngine->playQueuedNow();
@@ -521,10 +485,9 @@ void Player::adoptPreload(int index) {
     Preload upcoming = std::move(*preload);
     preload.reset();
     ++generation;
-    playingIndex = index;
-    navigator->select(index);
+    queue->select(index);
     current.emplace();
-    current->track = queuedTracks[index];
+    current->track = queue->tracks()[index];
     current->link = upcoming.link;
     current->feed = std::move(upcoming.feed);
     setWaitingForMore(false);
@@ -644,16 +607,16 @@ void Player::engineFinished() {
         return handleFailure(FailureKind::Network, {});  // ERR-03
     }
     closeCurrent(endOfCurrent());
-    if (repeatEnabled && queuedTracks.size() == 1 && !loadMore) {  // WAVE-12
-        return playIndex(playingIndex);
+    if (queue->repeat() && queue->tracks().size() == 1 && !loadMore) {  // WAVE-12
+        return playIndex(queue->cursor());
     }
     next();
 }
 
 void Player::engineAdvanced() {
     closeCurrent(endOfCurrent());
-    if (!preload || preload->feed.stream != audioEngine->currentStream() || preload->index >= queuedTracks.size()) {
-        const int nextIndex = pickNext();
+    if (!preload || preload->feed.stream != audioEngine->currentStream() || preload->index >= queue->tracks().size()) {
+        const int nextIndex = queue->next();
         nextIndex >= 0 ? playIndex(nextIndex) : stop();
         return;
     }
@@ -662,7 +625,7 @@ void Player::engineAdvanced() {
 
 void Player::handleFailure(FailureKind kind, const QString& text, bool undecodable) {
     Q_EMIT failed(kind);
-    const FailureAction action = DecideOnFailure(kind, failuresInRow, pickNext() >= 0, static_cast<bool>(loadMore));
+    const FailureAction action = DecideOnFailure(kind, failuresInRow, queue->next() >= 0, static_cast<bool>(loadMore));
     switch (action) {
         case FailureAction::WaitForNetwork: return waitForNetwork();
         case FailureAction::Next:  // ERR-04, ERR-07
@@ -750,16 +713,16 @@ void Player::maybePreload() {
         || audioEngine->state() == AudioEngine::State::Stopped) {
         return;
     }
-    const int index = pickNext();
+    const int index = queue->next();
     if (index < 0) {
         return;
     }
     preload.emplace();
     preload->index = index;
-    preload->key = queuedTracks[index].key;
+    preload->key = queue->tracks()[index].key;
     preload->generation = ++preloadGeneration;
     QPointer<Player> self(this);
-    trackSources->open(queuedTracks[index], [self, requestGeneration = preload->generation](TOpenResult result) {
+    trackSources->open(queue->tracks()[index], [self, requestGeneration = preload->generation](TOpenResult result) {
         if (!self || !self->preload || self->preload->generation != requestGeneration) {
             return;
         }
@@ -789,7 +752,7 @@ void Player::cancelPreload() {
 
 void Player::refreshPreload() {
     if (preload) {
-        if (const int nextIndex = pickNext(); nextIndex >= 0 && queuedTracks[nextIndex].key == preload->key) {
+        if (const int nextIndex = queue->next(); nextIndex >= 0 && queue->tracks()[nextIndex].key == preload->key) {
             preload->index = nextIndex;
             return;
         }
