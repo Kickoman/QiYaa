@@ -6,6 +6,7 @@
 #include "integrations/media_controls.h"
 #include "jam/host_session.h"
 #include "skins/error.h"
+#include "sources/yandex/history_wave.h"
 #include "sources/yandex/jam_wave.h"
 #include "sources/yandex/tracks.h"
 #include "telemetry/machine_id.h"
@@ -229,6 +230,8 @@ Application::Application(const Options& options, QObject* parent)
     );
     const QString storedQuality = settings.value(QStringLiteral("playback/quality")).toString();
     yandexSource.setQuality(Yandex::QualityFromKey(storedQuality).value_or(Yandex::Quality::Standard));
+    corePlayer.setContinueWithVibeByDefault(settings.value(QStringLiteral("playback/continueWithVibe"), true).toBool());
+    corePlayer.setHistoryWaveFactory(YandexSource::HistoryWaves(&yandexLibrary));
     connect(&corePlayer, &Core::Player::modesChanged, this, [this] {
         settings.setValue(
             QStringLiteral("shuffle/algorithm"),
@@ -1269,6 +1272,13 @@ void Application::fillWindowActions(QMenu* menu) {
         action->setChecked(corePlayer.shuffleAlgorithm() == algorithm);
         shuffleGroup->addAction(action);
     }
+    QAction* vibeAction = menu->addAction(tr("Continue with a vibe"), this, [this](bool on) {
+        corePlayer.setContinueWithVibe(on);  // CONT-02
+    });
+    vibeAction->setObjectName(QStringLiteral("continueWithVibe"));
+    vibeAction->setCheckable(true);
+    vibeAction->setChecked(corePlayer.continuesWithVibe());
+    vibeAction->setEnabled(!corePlayer.hasOwnContinuation());
 
     QMenu* qualityMenu = menu->addMenu(tr("Quality"));
     qualityMenu->setObjectName(QStringLiteral("qualityMenu"));

@@ -192,6 +192,7 @@ private Q_SLOTS:
         QCOMPARE(text(Code::AccessDenied, "HTTP 401"), QStringLiteral("Access error: HTTP 401"));
         QCOMPARE(text(Code::StoppedAfterFailures, {}, 3), QStringLiteral("Stopped: 3 track(s) in a row did not play"));
         QCOMPARE(text(Code::WaitingForNetwork), QStringLiteral("No network — waiting for it…"));
+        QCOMPARE(text(Code::VibeFailed, "HTTP 500"), QStringLiteral("Vibe error: HTTP 500"));
     }
 
     void cleanupTestCase() { window.reset(); }

@@ -247,6 +247,10 @@
         <source>Economy: a third of the data</source>
         <translation>Экономия: втрое меньше трафика</translation>
     </message>
+    <message>
+        <source>Continue with a vibe</source>
+        <translation>Продолжать волной</translation>
+    </message>
 </context>
 <context>
     <name>Ui::EqualizerWindow</name>
@@ -861,6 +865,10 @@
     <message>
         <source>No network — waiting for it…</source>
         <translation>Нет сети — жду подключения…</translation>
+    </message>
+    <message>
+        <source>Vibe error: %1</source>
+        <translation>Ошибка волны: %1</translation>
     </message>
 </context>
 <context>

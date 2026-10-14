@@ -77,6 +77,7 @@ void Player::setSource(QueueSource source, bool autoplay) {
     if (layer) {
         const int cursor = queue->cursor();
         queue->replaceBase(std::move(source));
+        takeNewBase();
         setWaitingForMore(false);
         Q_EMIT queueReplaced();
         Q_EMIT playlistChanged();
@@ -92,6 +93,7 @@ void Player::setSource(QueueSource source, bool autoplay) {
     }
     stop();
     queue->replace(std::move(source));
+    takeNewBase();
     setWaitingForMore(false);
     failuresInRow = 0;  // ERR-06
     Q_EMIT queueReplaced();
@@ -150,6 +152,42 @@ void Player::setLayerItems(const QList<LayerItem>& items, std::optional<SeedHint
     if (now != State::Empty && now != State::Stopped) {
         maybeLoadMore();
     }
+}
+
+void Player::takeNewBase() {
+    queue->setContinueWithVibe(continueWithVibeByDefault);  // CONT-01
+    if (!queue->continuation() && historyWaveFactory) {
+        queue->setHistoryWave(historyWaveFactory());
+    }
+}
+
+void Player::setHistoryWaveFactory(THistoryWaveFactory factory) {
+    historyWaveFactory = std::move(factory);
+    if (!queue->continuation() && !queue->historyWave() && historyWaveFactory) {
+        queue->setHistoryWave(historyWaveFactory());
+    }
+}
+
+void Player::setContinueWithVibe(bool on) {
+    if (on == queue->continuesWithVibe()) {
+        return;
+    }
+    queue->setContinueWithVibe(on);
+    if (on) {
+        queue->setStalled(false);  // CONT-02, CONT-03
+    }
+    Q_EMIT modesChanged();
+    if (on) {
+        maybeLoadMore();
+    }
+}
+
+bool Player::continuesWithVibe() const {
+    return queue->continuesWithVibe();
+}
+
+bool Player::hasOwnContinuation() const {
+    return static_cast<bool>(queue->continuation());
 }
 
 void Player::queueEdited(quint64 revision) {
@@ -380,6 +418,10 @@ void Player::stop() {
 }
 
 void Player::next() {
+    advance(true);
+}
+
+void Player::advance(bool byUser) {
     if (queue->entries().isEmpty()) {
         return;
     }
@@ -390,14 +432,20 @@ void Player::next() {
     if (nextIndex >= 0) {
         return playIndex(nextIndex);
     }
-    if (askedContinuation()) {
-        stop();
-        setWaitingForMore(true);
-        maybeLoadMore();
-        Q_EMIT noticed(NoticeOf(NoticeCode::LoadingMore));
+    stop();
+    if (!askedContinuation()) {
         return;
     }
-    stop();
+    if (byUser) {
+        queue->setStalled(false);  // CONT-07, WAVE-09: Next asks again
+    }
+    setWaitingForMore(true);
+    maybeLoadMore();
+    if (queue->isAsking()) {
+        Q_EMIT noticed(NoticeOf(NoticeCode::LoadingMore));
+    } else if (waitingForMore) {
+        setWaitingForMore(false);  // CONT-06: nothing to ask with
+    }
 }
 
 int PreviousTarget(double positionSeconds, int cursor, int size, bool repeat) {
@@ -449,19 +497,23 @@ bool Player::seekTo(double seconds) {
 }
 
 std::shared_ptr<Continuation> Player::askedContinuation() const {
-    if (queue->continuation() || !layer) {
+    if (queue->continuation()) {
         return queue->continuation();
     }
-    return layer->wave;
+    if (layer && layer->wave) {
+        return layer->wave;
+    }
+    return queue->continuesWithVibe() ? queue->historyWave() : nullptr;
 }
 
 void Player::maybeLoadMore() {
     const std::shared_ptr<Continuation> continuation = askedContinuation();
-    if (!continuation || queue->isAsking() || queue->remaining() > kLoadMoreWhenLeft) {
+    if (!continuation || queue->isAsking() || queue->isStalled() || queue->remaining() > kLoadMoreWhenLeft) {
         return;
     }
     queue->setAsking(true);
     ContinuationRequest request;
+    request.history = queue->history();
     const QList<QueueEntry>& entries = queue->entries();
     for (qsizetype i = std::max<qsizetype>(0, entries.size() - kQueueEndSize); i < entries.size(); ++i) {
         request.queueEnd << entries[i].track;
@@ -484,19 +536,21 @@ void Player::continuationReplied(const std::shared_ptr<Continuation>& giver, con
     if (reply.seedsVersion && queue->isStale(*reply.seedsVersion)) {
         return maybeLoadMore();  // HOST-11: a session that new seeds closed
     }
+    if (!reply.failure.isEmpty()) {
+        Q_EMIT noticed(NoticeOf(NoticeCode::VibeFailed, reply.failure));
+    }
+    const bool firstOfHistory = giver == queue->historyWave() && !queue->historyWaveGave();
     const bool wasWaiting = waitingForMore;
     setWaitingForMore(false);
     const quint64 revision = queue->revision();
-    queue->appendContinuation(reply.tracks, giver, reply.seedsVersion);
-    queueEdited(revision);
-    if (!wasWaiting) {
-        return;
+    if (!queue->appendContinuation(reply.tracks, giver, reply.seedsVersion) && firstOfHistory) {
+        queue->setStalled(true);  // CONT-07: the head plays to its end, and only Next asks again
     }
-    const int nextIndex = queue->next();
-    if (nextIndex >= 0) {
-        playIndex(nextIndex);
-    } else {
-        setWaitingForMore(true);
+    queueEdited(revision);
+    if (wasWaiting) {
+        if (const int nextIndex = queue->next(); nextIndex >= 0) {
+            playIndex(nextIndex);  // else stopped at the end: WAVE-09, CONT-07
+        }
     }
 }
 
@@ -592,6 +646,9 @@ void Player::startCurrent(int bitrate) {
     current->reportToSource = queueRules.playReports;
     current->playedSeconds = 0;
     current->lastPosition = 0;
+    if (entry) {
+        queue->noteStarted(*entry);
+    }
     const Track track = current->track;
     const std::shared_ptr<Continuation> giver = current->giver;
     if (current->reportToSource) {
@@ -602,6 +659,9 @@ void Player::startCurrent(int bitrate) {
     }
     Q_EMIT trackEvent(TrackEvent::Started, track, 0);
     Q_EMIT currentTrackChanged();
+    if (const std::shared_ptr<Continuation> asked = askedContinuation(); asked && asked == queue->historyWave()) {
+        maybeLoadMore();  // CONT-04: a seed comes when a track starts
+    }
     maybePreload();
 }
 
@@ -674,7 +734,7 @@ void Player::engineFinished() {
     if (queue->cursor() >= 0 && queue->next() == queue->cursor()) {  // TR-05 with one track
         return playIndex(queue->cursor());
     }
-    next();
+    advance(false);
 }
 
 void Player::engineAdvanced() {
@@ -696,7 +756,7 @@ void Player::handleFailure(FailureKind kind, const QString& text, bool undecodab
         case FailureAction::Next:  // ERR-04, ERR-07
             ++failuresInRow;
             Q_EMIT noticed(NoticeOf(NoticeCode::TrackFailed, text, 0, undecodable));
-            return next();
+            return advance(false);
         case FailureAction::Stop:
             if (kind == FailureKind::Auth) {  // ERR-08
                 Q_EMIT noticed(NoticeOf(NoticeCode::AccessDenied, text));

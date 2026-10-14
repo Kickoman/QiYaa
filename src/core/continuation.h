@@ -7,6 +7,7 @@
 #include <QStringList>
 
 #include <functional>
+#include <memory>
 #include <optional>
 
 namespace Core {
@@ -18,6 +19,7 @@ struct SeedHint {
 
 struct ContinuationRequest {
     QList<Track> queueEnd{};
+    QList<Track> history{};
     bool feedback = true;
 };
 
@@ -37,5 +39,7 @@ public:
     virtual bool more(const ContinuationRequest& request, TDone done) = 0;
     virtual void trackEvent(TrackEvent event, const Track& track, double playedSeconds) = 0;
 };
+
+using THistoryWaveFactory = std::function<std::shared_ptr<Continuation>()>;
 
 }  // namespace Core

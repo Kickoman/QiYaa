@@ -1,6 +1,7 @@
 #include "audio/audio_engine.h"
 #include "core/player.h"
 #include "sources/yandex/catalog.h"
+#include "sources/yandex/history_wave.h"
 #include "sources/yandex/tracks.h"
 #include "support/mock_http_server.h"
 #include "support/spec_fixtures.h"
@@ -37,6 +38,15 @@ QString ExpectedTitle(const QString& name, int index = 0) {
         .toObject()
         .value(QStringLiteral("title"))
         .toString();
+}
+
+Core::Track HeadTrack(const QString& id) {
+    Yandex::Track track;
+    track.id = id;
+    track.albumId = QStringLiteral("1");
+    track.title = QStringLiteral("T") + id;
+    track.durationMs = 3'000;
+    return YandexSource::TrackOf(track);
 }
 
 Core::Track KeptTrack() {
@@ -117,6 +127,8 @@ private Q_SLOTS:
         QVERIFY(QTest::qWaitFor([&] { return done; }, 5000));
         QVERIFY(library.isLoggedIn());
     }
+
+    void cleanup() { QTRY_COMPARE(api.pendingPosts(), 0); }
 
     void lastPickedSourceWins() {  // SRC-01
         Stack stack(&library);
@@ -324,6 +336,69 @@ private Q_SLOTS:
         QCOMPARE(events[3].value("batchId").toString(), more.value("batchId").toString());
         QCOMPARE(stack.player.currentIndex(), 1);
         stack.player.stop();
+    }
+
+    void theHistoryVibeFollowsTheHeadFromTheTracksThatStarted() {  // CONT-04, CONT-05, CONT-08
+        QFile file(QStringLiteral(QIYAA_TEST_DATA "/sine440_3s.mp3"));
+        QVERIFY(file.open(QIODevice::ReadOnly));
+        Stack stack(&library);
+        if (!stack.engine.init().ok) {
+            QSKIP("no audio output");
+        }
+        stack.engine.setVolume(0);
+        stack.player.setHistoryWaveFactory(YandexSource::HistoryWaves(&library));
+        const QJsonObject first = Tests::ExpectedObject("rotor-session-new/ok");
+        const QString firstWaveTrack = first.value("tracks").toArray().at(0).toObject().value("id").toString();
+        server.audioTracks({QStringLiteral("101"), QStringLiteral("102"), firstWaveTrack}, file.readAll());
+        server.fixture("POST", "/rotor/session/new", "rotor-session-new/ok");
+        const auto before = server.requests().size();
+
+        stack.player.setSource(
+            Core::QueueSource{.title = QStringLiteral("Head"), .head = {HeadTrack("101"), HeadTrack("102")}}, false
+        );
+        stack.player.playIndex(1);
+        QVERIFY(QTest::qWaitFor([&] { return stack.player.entries().size() > 2; }, 8000));
+        const QJsonObject newBody = QJsonDocument::fromJson(server.last("/rotor/session/new")->body).object();
+        QCOMPARE(newBody.value("seeds").toArray(), QJsonArray{"track:102"});
+        for (const Core::QueueEntry& entry : stack.player.entries()) {
+            QVERIFY(entry.track.available);
+        }
+        QCOMPARE(stack.player.entries()[2].part, Core::EntryPart::Continuation);
+        QCOMPARE(YandexSource::CatalogId(stack.player.entries()[2].track.key), firstWaveTrack);
+
+        stack.player.next();
+        QVERIFY(QTest::qWaitFor([&] { return feedbackEvents(before).size() >= 2; }, 8000));
+        const QList<QJsonObject> events = feedbackEvents(before);
+        QCOMPARE(events[0].value("type").toString(), QStringLiteral("radioStarted"));  // TRK-03
+        QCOMPARE(events[0].value("batchId").toString(), first.value("batchId").toString());
+        QCOMPARE(events[1].value("type").toString(), QStringLiteral("trackStarted"));
+        QVERIFY(events[1].value("trackId").toString().startsWith(firstWaveTrack));
+        stack.player.stop();
+    }
+
+    void aHistoryVibeThatFailsToStartSaysSo() {  // CONT-07
+        QFile file(QStringLiteral(QIYAA_TEST_DATA "/sine440_3s.mp3"));
+        QVERIFY(file.open(QIODevice::ReadOnly));
+        Stack stack(&library);
+        if (!stack.engine.init().ok) {
+            QSKIP("no audio output");
+        }
+        stack.engine.setVolume(0);
+        stack.player.setHistoryWaveFactory(YandexSource::HistoryWaves(&library));
+        server.audioTracks({QStringLiteral("101")}, file.readAll());
+        server.json("POST", "/rotor/session/new", "{}", 500);
+        QStringList failures;
+        connect(&stack.player, &Core::Player::noticed, this, [&](const Core::PlayerNotice& notice) {
+            if (notice.code == Core::NoticeCode::VibeFailed) {
+                failures << notice.detail;
+            }
+        });
+        stack.player.setSource(Core::QueueSource{.title = QStringLiteral("Head"), .head = {HeadTrack("101")}}, true);
+        QVERIFY(QTest::qWaitFor([&] { return !failures.isEmpty(); }, 8000));
+        QVERIFY(!failures.first().isEmpty());
+        QCOMPARE(stack.player.entries().size(), 1);
+        stack.player.stop();
+        server.fixture("POST", "/rotor/session/new", "rotor-session-new/ok");
     }
 };
 

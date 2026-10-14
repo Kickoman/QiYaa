@@ -16,6 +16,7 @@ Yandex half of the jam's own vibe: the rotor session, its seeds and its feedback
 |---|---|
 | `catalog.h/.cpp` | `Catalog`: playing a pick (likes, playlist, recommendations, artist, album, vibe or station, search) with a ticket each, like and dislike by track key |
 | `vibe.h/.cpp` | `Vibe`, the `Core::Continuation` of a vibe or station: `radioStarted`, load-more, the feedback on its tracks |
+| `history_wave.h/.cpp` | `HistoryWave`, the vibe that goes on after a queue's head, from the tracks that started; `HistoryWaves`, its factory for `Core::Player`; `HistorySeeds` |
 | `wave_origins.h/.cpp` | `WaveOrigins`: the session, station and batch each wave track came in, and the feedback sent to them |
 | `jam_wave.h/.cpp` | `JamWave` (a `Core::JamWave`) and `JamWaves`, the factory `Core::JamMode` takes |
 | `source.h/.cpp` | `Source`, the `Core::TrackSource` of Yandex tracks: the cover, the web page, opening the file, the play report, the quality; `FailureKindOf` |
@@ -130,9 +131,34 @@ A vibe or station as a queue's continuation (spec/player/wave.md, tracking.md):
 - The library callback holds the `Vibe` (`shared_from_this`): a reply for a queue that was replaced
   meanwhile reaches a live object, and the `Player` drops it.
 
-`WaveOrigins` (`wave_origins.h`) is the shared part of `Vibe` and `JamWave`: for each track id of a
-batch, the session, station and batch it came in, and `send`, which posts a track's feedback there
-and nothing for a track it does not know.
+## `history_wave.h`: `HistoryWave`, `HistoryWaves`
+
+```cpp
+inline constexpr int kHistorySeeds = 5;
+QStringList HistorySeeds(const QList<Core::Track>& history);   // track:<id>, Yandex only, each once
+class HistoryWave : public Core::Continuation, public std::enable_shared_from_this<HistoryWave> {
+public:
+    explicit HistoryWave(Yandex::Library* library);
+};
+Core::THistoryWaveFactory HistoryWaves(Yandex::Library* library);   // what Core::Player takes
+```
+
+The vibe from history (spec/player/continuation.md, CONT-04 to CONT-08), one per queue:
+- Without a session, `more` takes the seeds from the request's `history` (`HistorySeeds`: the
+  Yandex tracks among them, `track:<catalog id>` without an album, each id once, at most 5, in the
+  order given). Without any it returns `false` and asks nothing (CONT-06). Otherwise
+  `Library::startWave(seeds)`: an error gives `done` with that `failure` and no session; a batch
+  with no available track gives `done({})` and no session either, so the next `more` starts again
+  (CONT-07). A batch with tracks opens the session (the station is the first seed), sends
+  `RadioStarted` when the request has `feedback` (TRK-03), and gives `done` the batch.
+- With a session, `more` is `Library::moreWave` with the catalog ids of `queueEnd`, as `Vibe`'s.
+- `trackEvent` sends the feedback of a track it gave, through its `WaveOrigins`; the head's tracks
+  send none (CONT-08).
+- The library callbacks hold the `HistoryWave` (`shared_from_this`).
+
+`WaveOrigins` (`wave_origins.h`) is the shared part of `Vibe`, `HistoryWave` and `JamWave`: for each
+track id of a batch, the session, station and batch it came in, and `send`, which posts a track's
+feedback there and nothing for a track it does not know.
 
 ## `jam_wave.h`: `JamWave`, `JamWaves`
 

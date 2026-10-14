@@ -211,10 +211,10 @@ private Q_SLOTS:
         stack.jam.setQueue({Item("i1", "11")}, {}, 0);
         QTRY_COMPARE(stack.started.size(), 1);
         stack.player.next();
-        QTRY_COMPARE(stack.player.state(), Core::Player::State::WaitingForMore);
+        QTRY_COMPARE(stack.player.state(), Core::Player::State::Stopped);  // WAVE-09
         QTest::qWait(200);
-        QCOMPARE(stack.player.state(), Core::Player::State::WaitingForMore);
-        QCOMPARE(stack.lastPlayback().kind, Core::JamPlayback::Kind::Idle);
+        QCOMPARE(stack.player.state(), Core::Player::State::Stopped);
+        QTRY_COMPARE(stack.lastPlayback().kind, Core::JamPlayback::Kind::Idle);
         stack.jam.setQueue({Item("i2", "22")}, {}, 0);
         QCOMPARE(stack.player.currentIndex(), 1);
         QTRY_COMPARE(stack.started.size(), 2);
