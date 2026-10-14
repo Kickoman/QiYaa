@@ -19,8 +19,8 @@ integration is on, build the hooks or pick the backend ([src/app](../app/README.
 
 ## Dependencies
 
-`qiyaa_integrations` links PUBLIC `Qt6::Gui` and PRIVATE `qiyaa_audio` and `qiyaa_core` (the sources
-include `audio/audio_engine.h` besides the `core` headers). It knows no music source: a track is a
+`qiyaa_integrations` links PUBLIC `Qt6::Gui` and PRIVATE `qiyaa_core`; what plays, its state and
+its position come from `Core::Player`, never from the engine. It knows no music source: a track is a
 `Core::Track`, and its cover and web page come from `Core::SourceRegistry`. In the module order it
 sits beside `ui`, above `core` and below `app`. The top-level `CMakeLists.txt` adds at most one
 backend:
@@ -101,7 +101,8 @@ Q_SIGNALS:
   from pause or, when stopped, starts the current track (the first one if there is none).
   `pause()` calls `Player::pause` only while `Playing`. `playPause()` picks one of the two from
   `status()`. `stop()`, `next()` and `previous()` forward unchanged.
-- **Status** folds the engine's four states into three: `Buffering` counts as `Playing`.
+- **Status** folds `Player::State` into three: Loading and Playing are `Playing`; Paused and
+  WaitingForNetwork are `Paused`; Empty, Stopped and WaitingForMore are `Stopped`.
 - **Seeking.** `canSeek()` is `Player::durationSeconds() > 0 && status() != Stopped`.
   `seekTo(seconds)` returns false when the duration is 0, otherwise the result of
   `Player::seekTo`, which clamps the target to the track and fails when the engine can't seek
@@ -114,13 +115,13 @@ Q_SIGNALS:
   before it signals, unless that write fails). With `covers == nullptr`, `artUrl()` is always the
   https URL and `artChanged` never fires. A failed download leaves the https URL and emits nothing.
 - **Signals.** `trackChanged` follows `Player::currentTrackChanged`; `statusChanged` follows
-  `AudioEngine::stateChanged` of `player->engine()`; `modesChanged` follows
+  `Player::stateChanged`; `modesChanged` follows
   `Player::modesChanged`; `seeked` follows `Player::seeked` (the clamped target in seconds, after
   every successful seek, whoever asked for it). `volumeChanged` is emitted by whoever owns the
   volume: the app connects `Ui::MainWindow::volumeChanged` to it. Everything runs on the thread of
   `Core::Player`, the GUI thread.
 - **Ownership.** `player` and `covers` are raw pointers that must outlive the object; `player`
-  must not be null, and its engine is connected in the constructor. `hooks` is copied in; any of
+  must not be null. `hooks` is copied in; any of
   the four may be empty, and every caller in this folder checks before calling.
 
 **Traps:**
@@ -200,7 +201,7 @@ the project's camelCase rule for methods. Their READ/WRITE accessors (`playbackS
 | `Shuffle` (rw) | `Player::shuffle()` / `Player::setShuffle()` |
 | `Rate`, `MinimumRate`, `MaximumRate` | `1.0`; writing `Rate` is ignored |
 | `Volume` (rw) | `Hooks::volume() / 100.0` (`1.0` without the hook). A write is clamped to 0..1, rounded to a percent and passed to `Hooks::setVolume` |
-| `Position` | `static_cast<qlonglong>(positionSeconds() * 1e6)`, engine position in µs |
+| `Position` | `static_cast<qlonglong>(Player::positionSeconds() * 1e6)`, in µs |
 | `Metadata` | see below |
 | `CanGoNext`, `CanGoPrevious`, `CanPlay`, `CanPause`, `CanControl` | always `true` |
 | `CanSeek` | `MediaControls::canSeek()` |

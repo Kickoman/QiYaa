@@ -10,6 +10,7 @@
 #include <QList>
 #include <QObject>
 #include <QPointer>
+#include <QSignalSpy>
 #include <QString>
 #include <QStringList>
 #include <QTest>
@@ -67,6 +68,14 @@ struct Stack {
     }
 };
 
+QList<Core::Player::State> States(const QSignalSpy& spy) {
+    QList<Core::Player::State> states;
+    for (const QList<QVariant>& arguments : spy) {
+        states << arguments.at(0).value<Core::Player::State>();
+    }
+    return states;
+}
+
 }  // namespace
 
 class TestPlayer : public QObject {
@@ -117,10 +126,10 @@ private Q_SLOTS:
         stack.player.setNetworkRetryDelays(50, 50);
         stack.player.playIndex(0);
         stack.source.fail(0, Core::FailureKind::Network);
-        QVERIFY(stack.player.isWaitingForNetwork());
+        QCOMPARE(stack.player.state(), Core::Player::State::WaitingForNetwork);
         QVERIFY(QTest::qWaitFor([&] { return stack.source.asked().size() == 2; }, 2'000));
         stack.player.stop();
-        QVERIFY(!stack.player.isWaitingForNetwork());
+        QCOMPARE(stack.player.state(), Core::Player::State::Stopped);
         QVERIFY(!stack.source.complete(1));
         QVERIFY(stack.source.started().isEmpty());
         QVERIFY(stack.events.isEmpty());
@@ -198,6 +207,98 @@ private Q_SLOTS:
         stack.player.stop();
         QCOMPARE(jamEvents, (QStringList{"started:1", "skipped:1"}));
         QVERIFY(stack.source.events().isEmpty());
+    }
+
+    void eachPhaseShowsItsState() {
+        Stack stack;
+        QCOMPARE(stack.player.state(), Core::Player::State::Empty);
+        QVERIFY(stack.start(2));
+        QCOMPARE(stack.player.state(), Core::Player::State::Stopped);
+        stack.player.playIndex(0);
+        QCOMPARE(stack.player.state(), Core::Player::State::Loading);
+        const QPointer<Tests::FakeDownload> first = stack.source.complete(0);
+        QCOMPARE(stack.player.state(), Core::Player::State::Loading);
+        first->feed(mp3);
+        first->finish();
+        QTRY_COMPARE(stack.player.state(), Core::Player::State::Playing);
+        QCOMPARE(stack.player.currentBitrate(), 320);
+        stack.player.pause();
+        QTRY_COMPARE(stack.player.state(), Core::Player::State::Paused);
+        stack.player.stop();
+        QCOMPARE(stack.player.state(), Core::Player::State::Stopped);
+        QVERIFY(stack.player.currentLink().isEmpty());
+        QCOMPARE(stack.player.currentBitrate(), 0);
+        stack.player.setQueue(Tracks(1), QStringLiteral("Vibe"), false, [](auto) {});
+        stack.player.playIndex(0);
+        stack.source.complete(1);
+        stack.player.next();
+        QCOMPARE(stack.player.state(), Core::Player::State::WaitingForMore);
+        stack.player.clearQueue();
+        QCOMPARE(stack.player.state(), Core::Player::State::Empty);
+    }
+
+    void stopIsOneChangeOfState() {
+        Stack stack;
+        QVERIFY(stack.start(2));
+        QSignalSpy states(&stack.player, &Core::Player::stateChanged);
+        stack.player.playIndex(0);
+        const QPointer<Tests::FakeDownload> first = stack.source.complete(0);
+        first->feed(mp3);
+        first->finish();
+        QTRY_VERIFY(!states.isEmpty() && States(states).last() == Core::Player::State::Playing);
+        states.clear();
+        stack.player.stop();
+        QTest::qWait(50);
+        QCOMPARE(States(states), QList{Core::Player::State::Stopped});
+    }
+
+    void aTrackThatCannotPlayAtTheEndIsOneChangeOfState() {  // ERR-07
+        Stack stack;
+        QVERIFY(stack.start(1));
+        QSignalSpy states(&stack.player, &Core::Player::stateChanged);
+        stack.player.playIndex(0);
+        QTRY_COMPARE(States(states), QList{Core::Player::State::Loading});
+        states.clear();
+        stack.source.fail(0, Core::FailureKind::Track);
+        QTest::qWait(50);
+        QCOMPARE(States(states), QList{Core::Player::State::Stopped});
+    }
+
+    void aLostNetworkIsOneChangeOfState() {  // ERR-01, ERR-03
+        Stack stack;
+        QVERIFY(stack.start(2));
+        QSignalSpy states(&stack.player, &Core::Player::stateChanged);
+        stack.player.playIndex(0);
+        QTRY_COMPARE(States(states), QList{Core::Player::State::Loading});
+        states.clear();
+        stack.source.fail(0, Core::FailureKind::Network);
+        QTest::qWait(50);
+        QCOMPARE(States(states), QList{Core::Player::State::WaitingForNetwork});
+
+        stack.player.playIndex(1);
+        const QPointer<Tests::FakeDownload> cut = stack.source.complete(1);
+        cut->feed(mp3.left(6'000));
+        cut->finish(Core::TrackFailure{Core::FailureKind::Network, QStringLiteral("cut")});
+        QTRY_COMPARE(stack.player.state(), Core::Player::State::Playing);
+        QTRY_VERIFY(States(states).last() == Core::Player::State::Playing);
+        states.clear();
+        QTRY_COMPARE_WITH_TIMEOUT(stack.player.state(), Core::Player::State::WaitingForNetwork, 3'000);
+        QTest::qWait(50);
+        QCOMPARE(States(states), QList{Core::Player::State::WaitingForNetwork});
+    }
+
+    void withoutAnOutputDeviceATrackStaysStopped() {
+        Stack stack;
+        QSignalSpy states(&stack.player, &Core::Player::stateChanged);
+        QSignalSpy status(&stack.player, &Core::Player::statusMessage);
+        stack.player.setQueue(Tracks(2), QStringLiteral("Fake"), true, {}, Recorder(stack.events));
+        QTest::qWait(50);
+        QCOMPARE(States(states), QList{Core::Player::State::Stopped});
+        QCOMPARE(stack.player.currentIndex(), 0);
+        QVERIFY(stack.source.asked().isEmpty());
+        QVERIFY(stack.events.isEmpty());
+        QCOMPARE(status.count(), 1);
+        QCOMPARE(status.last().at(0).toString(), QStringLiteral("No audio output device"));
     }
 
     void theSourceHearsTheEventsOfItsTracks() {

@@ -37,6 +37,8 @@ public:
     using TLoadMoreCallback = std::function<void(std::function<void(const QList<Track>&)> done)>;
     using TrackEvent = Core::TrackEvent;
     using TEventCallback = std::function<void(TrackEvent event, const Track& track, double playedSeconds)>;
+    enum class State { Empty, Stopped, Loading, Playing, Paused, WaitingForNetwork, WaitingForMore };
+    Q_ENUM(State)
 
     Player(Audio::AudioEngine* engine, SourceRegistry* sources, QObject* parent = nullptr);
 
@@ -77,22 +79,17 @@ public:
     bool shuffleActive() const { return shuffleEnabled && !loadMore; }
     bool repeat() const { return repeatEnabled; }
     const QueueRules& rules() const { return queueRules; }
-    bool isWaitingForMore() const { return waitingForMore; }
-    // A track is starting, open or parked by the network: something is playing or about to.
-    bool trackInProgress() const { return openTrack || resolvingLink || networkWait; }
-    // The file of the current track once its link resolved (valid for about an hour): what a
-    // jam's guests may listen to. Empty before that.
-    const QUrl& currentLink() const { return currentLinkUrl; }
-    // The file of the preloaded next track, once its link resolved; empty without a preload.
-    QUrl nextLink() const { return preload ? preload->link : QUrl(); }
+    State state() const;
+    double positionSeconds() const;
+    QUrl currentLink() const;
+    QUrl nextLink() const;
 
     const QList<Track>& playlist() const { return queuedTracks; }
     const QString& queueTitle() const { return titleText; }
     int currentIndex() const { return playingIndex; }
     const Track* currentTrack() const;
-    int currentBitrate() const { return bitrateKbps; }
+    int currentBitrate() const;
     double durationSeconds() const;
-    Audio::AudioEngine* engine() const { return audioEngine; }
     int preloadedIndex() const;
 
     // What the system says about the network: nullopt when it cannot tell, and then only the
@@ -101,11 +98,11 @@ public:
     // The delays between tries while waiting for the network: `firstMs`, doubling up to `maxMs`
     // (2 s and 60 s unless a test sets them).
     void setNetworkRetryDelays(int firstMs, int maxMs);
-    bool isWaitingForNetwork() const { return networkWait.has_value(); }
 
 Q_SIGNALS:
     void statusMessage(const QString& text);
     void failed(Core::FailureKind kind);
+    void stateChanged(Core::Player::State state);
     void playlistChanged();
     void queueReplaced();
     void currentTrackChanged();
@@ -115,41 +112,64 @@ Q_SIGNALS:
 
 private:
     using TStreamId = Audio::AudioEngine::TStreamId;
-    struct Preload {
-        int index = -1;
-        TrackKey key;
-        quint64 generation = 0;
+    enum class DownloadState { Opening, Running, Finished };
+    struct Feed {
         TStreamId stream = 0;
-        int bitrate = 0;
         std::unique_ptr<TrackDownload> download;
-        bool downloadDone = false;
-        QUrl link;
+        DownloadState state = DownloadState::Opening;
+        std::optional<FailureKind> failure;
+        bool audioArrived = false;
     };
-    // A track parked by a network failure (spec ERR-01 to ERR-03): its stream starts again at
-    // `position`, and plays on if `resume`.
     struct NetworkWait {
         bool resume = true;
         double position = 0;
         int attempt = 0;
     };
+    struct CurrentTrack {
+        Track track;
+        bool started = false;
+        TEventCallback events;
+        bool reportToSource = false;
+        QUrl link;
+        int bitrate = 0;
+        Feed feed;
+        std::optional<NetworkWait> networkWait;
+        double playedSeconds = 0;
+        double lastPosition = 0;
+    };
+    struct Preload {
+        int index = -1;
+        TrackKey key;
+        quint64 generation = 0;
+        QUrl link;
+        int bitrate = 0;
+        Feed feed;
+    };
 
-    std::unique_ptr<TrackDownload> startDownload(std::unique_ptr<TrackDownload> opened, TStreamId stream);
-    void downloadFinished(TrackDownload* finished, TStreamId stream, const std::optional<TrackFailure>& failure);
+    void engineFinished();
+    void engineAdvanced();
+    void openCurrent();
+    void startCurrent(int bitrate);
+    void adoptPreload(int index);
+    void closeCurrent(TrackEvent event);
+    TrackEvent endOfCurrent() const;
+    void startFeed(Feed& feed, std::unique_ptr<TrackDownload> download);
+    Feed* feedOf(TStreamId stream);
+    void downloadFinished(TrackDownload* finished, const std::optional<TrackFailure>& failure);
     void sourceFilesChanged(const QString& source);
     void handleFailure(FailureKind kind, const QString& text);
     void waitForNetwork();
     void retryAfterNetwork();
-    void cancelNetworkWait();
-    void abortDownload();
-    void trackStarted(const Track& track, int bitrate);
     int pickNext() const;
     void resetNavigator();
     void maybePreload();
     void cancelPreload();
     void refreshPreload();
     void maybeLoadMore();
-    void closeOpenTrack(TrackEvent event);
+    void setWaitingForMore(bool waiting);
     double accumulatePlayedSeconds();
+    void noteState();
+    void reportState();
 
     Audio::AudioEngine* audioEngine;
     SourceRegistry* trackSources;
@@ -160,37 +180,26 @@ private:
     TLoadMoreCallback loadMore;
     TEventCallback reportEvent;
     QueueRules queueRules;
-    std::optional<Track> openTrack;
-    TEventCallback openTrackEvents;
-    bool openTrackReports = false;
-    double playedSeconds = 0;
-    double lastPosition = 0;
-    std::optional<FailureKind> streamFailure;  // the current stream's download broke
-    qint64 currentBytes = 0;  // audio bytes the current stream has received
+    std::optional<CurrentTrack> current;
+    std::optional<Preload> preload;
     int failuresInRow = 0;
-    std::optional<NetworkWait> networkWait;
     std::optional<bool> networkOnline;
     QTimer retryTimer;
     int retryFirstMs = 2'000;
     int retryMaxMs = 60'000;
     bool isShutDown = false;
-    bool resolvingLink = false;
     bool loadingMore = false;
     bool waitingForMore = false;
     quint64 sourceRequest = 0;
     QTimer pollTimer;
+    QTimer stateTimer;
+    State reportedState = State::Empty;
     quint64 queueGeneration = 0;
+    quint64 generation = 0;
+    quint64 preloadGeneration = 0;
     int playingIndex = -1;
-    int bitrateKbps = 0;
-    QUrl currentLinkUrl;
     bool shuffleEnabled = false;
     bool repeatEnabled = false;
-    quint64 generation = 0;
-    std::unique_ptr<TrackDownload> download;
-    TStreamId streamId = 0;
-    bool currentDownloaded = false;
-    std::optional<Preload> preload;
-    quint64 preloadGeneration = 0;
 };
 
 }  // namespace Core

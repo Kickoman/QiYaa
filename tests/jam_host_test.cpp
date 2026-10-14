@@ -2,19 +2,19 @@
 #include "core/jam_mode.h"
 #include "core/player.h"
 #include "core/track.h"
+#include "core/track_source.h"
 #include "jam/codec.h"
 #include "jam/host_session.h"
 #include "jam/session_store.h"
 #include "sources/yandex/jam_wave.h"
 #include "sources/yandex/tracks.h"
+#include "support/fake_source.h"
 #include "support/jam_stub_server.h"
 #include "support/mock_http_server.h"
 #include "support/spec_fixtures.h"
-#include "support/yandex_sources.h"
 #include "yandex/api_client.h"
 #include "yandex/library.h"
 
-#include <QFile>
 #include <QJsonArray>
 #include <QJsonDocument>
 #include <QJsonObject>
@@ -162,8 +162,9 @@ private:
         int ids = 0;
         int greeted = 0;
         bool share = false;
-        Audio::AudioEngine engine;  // not initialised: no sound card
-        Tests::YandexSources ports;
+        Audio::AudioEngine engine;
+        Tests::FakeSource files;
+        Core::SourceRegistry registry;
         Core::Player player;
         Core::JamMode jam;
         Jam::HostSession host;
@@ -171,12 +172,16 @@ private:
         QSignalSpy ended;
 
         explicit Stack(Yandex::Library* library, const std::optional<Jam::Session>& stored = {})
-            : ports(library)
-            , player(&engine, &ports.registry)
+            : player(&engine, &registry)
             , jam(&player, YandexSource::JamWaves(library))
             , host(&jam, library, Stored(store, stored), options())
             , refused(&host, &Jam::HostSession::refused)
-            , ended(&host, &Jam::HostSession::ended) { }
+            , ended(&host, &Jam::HostSession::ended) {
+            files.setAnswersAtOnce(true);
+            registry.add(YandexSource::kSourceName, &files);
+            engine.setVolume(0);
+            engine.init();
+        }
 
         static Jam::SessionStore Stored(const Jam::SessionStore& store, const std::optional<Jam::Session>& stored) {
             if (stored) {
@@ -249,16 +254,6 @@ private Q_SLOTS:
         api.setToken(QStringLiteral("test-token"));
         catalog.fixture("GET", "/account/status", "account-status/ok");
         catalog.fixture("POST", "/rotor/session/new", "rotor-session-new/all-unavailable");
-        QFile file(QStringLiteral(QIYAA_TEST_DATA "/sine440_3s.mp3"));
-        QVERIFY(file.open(QIODevice::ReadOnly));
-        catalog.audioTracks(
-            {QStringLiteral("11"),
-             QStringLiteral("22"),
-             QStringLiteral("33"),
-             QStringLiteral("44"),
-             QStringLiteral("55")},
-            file.readAll()
-        );
         bool done = false;
         library.connectAccount([&](const Yandex::Account&, const QString&) { done = true; });
         QVERIFY(QTest::qWaitFor([&] { return done; }, 5000));
@@ -331,8 +326,7 @@ private Q_SLOTS:
     void startedWaitsInTheStoredOutboxOfflineAndGoesWithResume() {  // HOST-05, HOST-25, HOST-26
         Stack stack(&library);
         QVERIFY(stack.created());
-        // i3 keeps the player from waiting for the jam wave after i2: with no sound card a waiting
-        // player reports idle.
+        // i3 keeps the player from waiting for the jam wave after i2: a waiting player reports idle.
         stack.state(1, {Item("i1", "11"), Item("i2", "22"), Item("i3", "33")});
         QTRY_VERIFY(OfType<Jam::Started>(stack.sent()) == std::vector{Jam::Started{"i1"}});
 

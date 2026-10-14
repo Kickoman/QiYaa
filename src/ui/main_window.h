@@ -15,6 +15,10 @@
 #include <utility>
 #include <vector>
 
+namespace Audio {
+class AudioEngine;
+}  // namespace Audio
+
 namespace Core {
 class Player;
 }  // namespace Core
@@ -26,7 +30,7 @@ class MainWindow : public SkinnedWindow {
 public:
     enum class VisMode { Spectrum, Oscilloscope, Off };
 
-    MainWindow(Core::Player* player, const Skins::Skin* skin, QWidget* parent = nullptr);
+    MainWindow(Core::Player* player, Audio::AudioEngine* engine, const Skins::Skin* skin, QWidget* parent = nullptr);
     ~MainWindow() override;
 
     void setVolume(int value);
@@ -115,6 +119,7 @@ private:
     QString miniTimeText() const;
 
     Core::Player* corePlayer;
+    Audio::AudioEngine* audioEngine;
     QTimer timer;
     QElapsedTimer blink;
     QElapsedTimer lastFullRepaint;

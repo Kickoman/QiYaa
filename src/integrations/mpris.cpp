@@ -208,7 +208,7 @@ void MprisPlayerAdaptor::setVolume(double value) {
 }
 
 qlonglong MprisPlayerAdaptor::position() const {
-    return static_cast<qlonglong>(mpris->controls()->player()->engine()->positionSeconds() * 1e6);
+    return static_cast<qlonglong>(mpris->controls()->player()->positionSeconds() * 1e6);
 }
 
 bool MprisPlayerAdaptor::canSeek() const {

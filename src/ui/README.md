@@ -39,7 +39,7 @@ the next repaint; `SkinnedWindow::changeEvent` answers `QEvent::LanguageChange` 
 includes `vis/milkdrop_presets.h`) and `Qt6::Widgets`; PRIVATE `qiyaa_core`, `qiyaa_skins`,
 `qiyaa_sources_yandex` and `qiyaa_yandex` (the headers only forward-declare `Core::Player`,
 `Core::CoverCache`, `Skins::Skin`, `YandexSource::Catalog`, `Yandex::DeviceLogin`,
-`Yandex::Library`).
+`Yandex::Library`, and `Audio::AudioEngine` in `main_window.h`).
 `milkdrop_window.*` is added to the target only when Milkdrop is built; `QIYAA_HAVE_MILKDROP` then
 comes PUBLIC from `qiyaa_vis`. `jam_window.*` and `jam_server_dialog.*` are added only when the jam
 is built: `qiyaa_ui` then links PUBLIC `qiyaa_jam` (`QIYAA_HAVE_JAM` comes with it) and PRIVATE
@@ -60,6 +60,7 @@ grep -rn --include='*.h' --include='*.cpp' 'throw' src/ui/                      
 grep -rn --include='*.h' --include='*.cpp' 'catch' src/ui/ | grep -v 'Audio::Error\|qrcodegen::data_too_long'  # must print nothing
 grep -rniE --include='*.h' --include='*.cpp' '#include <(projectM|QOpenGL)' src/ui/  # must print nothing
 grep -nE '#include <Q(Widget|Screen|GuiApplication|Window|Painter)>' src/ui/snap.*   # must print nothing
+grep -rn --include='*.h' --include='*.cpp' 'AudioEngine::State' src/ui/ src/integrations/   # must print nothing
 ```
 
 ## Window classes
@@ -292,7 +293,7 @@ class MainWindow : public SkinnedWindow {
 public:
     enum class VisMode { Spectrum, Oscilloscope, Off };
 
-    MainWindow(Core::Player* player, const Skins::Skin* skin, QWidget* parent = nullptr);
+    MainWindow(Core::Player* player, Audio::AudioEngine* engine, const Skins::Skin* skin, QWidget* parent = nullptr);
 
     void setVolume(int value);                  // clamped to 0..100
     void setBalance(int value);                 // clamped to -100..100; |value| < 8 becomes 0
@@ -324,18 +325,21 @@ Q_SIGNALS:
 };
 ```
 
-275x116 (`Skins::MainWindowSprites::kSize`), shaded 275x14. Drags its docked group. The `Player` is
-not owned and must outlive the window. `setVolume`/`setBalance` push the value to the
-`AudioEngine` every time, the signals fire only on a change. `Player::statusMessage` is connected to
-`setStatusText`.
+275x116 (`Skins::MainWindowSprites::kSize`), shaded 275x14. Drags its docked group. The `Player` and
+the `AudioEngine` are not owned and must outlive the window. What plays, where and how it looks
+come from the `Player` (`state()`, `positionSeconds()`, `stateChanged`; the looks are the table in
+[src/core](../core/README.md#phases-and-state)). The engine gives only what is the sound's own:
+volume and balance, the visualization samples, the source's rate and channels.
+`setVolume`/`setBalance` push the value to the `AudioEngine` every time, the signals fire only on a
+change. `Player::statusMessage` is connected to `setStatusText`.
 
 The timer runs only while something on screen changes (first matching row wins):
 
 | State | Interval | Repaint |
 |---|---|---|
-| playing or buffering, visualizer on, visible, not minimized, not shaded | 33 ms | visualizer rect; whole window every 100 ms |
-| playing or buffering otherwise | 100 ms | whole window |
-| paused | 250 ms | whole window (the time blinks 1 s on, 1 s off) |
+| Playing or Loading, visualizer on, visible, not minimized, not shaded | 33 ms | visualizer rect; whole window every 100 ms |
+| Playing or Loading otherwise | 100 ms | whole window |
+| Paused or WaitingForNetwork | 250 ms | whole window (the time blinks 1 s on, 1 s off) |
 | status text shown, or marquee text wider than 155 px | 220 ms | whole window |
 | anything else, or minimized | stopped | — |
 
@@ -499,7 +503,8 @@ buttons, 9x9 each, which act on release inside.
   uses the focused row, falling back to the current track. A click outside the rows emits
   `sourcesMenuRequested`.
 - Bottom bar (base = width − 150, height − 38): running time `selected/total` at base + (7, 10);
-  elapsed time at base + (66, 23), repainted alone when `Player::positionTick` crosses a second.
+  elapsed time at base + (66, 23) unless the `Player` is Empty, Stopped or WaitingForMore,
+  repainted alone when `Player::positionTick` crosses a second.
   Buttons 22x18 at y = height − 30: ADD (x 14) emits `sourcesMenuRequested` at the button, REM
   (x 43) offers "remove selected" / "clear", SEL (x 72) "select all" / "none", MISC (x 101) and LIST
   (x = width − 44) do nothing (Winamp's MISC sorts and shows file info, which has no counterpart

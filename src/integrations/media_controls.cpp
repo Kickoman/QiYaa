@@ -1,6 +1,5 @@
 #include "integrations/media_controls.h"
 
-#include "audio/audio_engine.h"
 #include "core/cover_cache.h"
 #include "core/player.h"
 #include "core/track_source.h"
@@ -33,7 +32,7 @@ MediaControls::MediaControls(
         }
         Q_EMIT trackChanged();
     });
-    connect(corePlayer->engine(), &Audio::AudioEngine::stateChanged, this, &MediaControls::statusChanged);
+    connect(corePlayer, &Core::Player::stateChanged, this, &MediaControls::statusChanged);
     connect(corePlayer, &Core::Player::modesChanged, this, &MediaControls::modesChanged);
     connect(corePlayer, &Core::Player::seeked, this, &MediaControls::seeked);
     if (coverCache) {
@@ -46,11 +45,14 @@ MediaControls::MediaControls(
 }
 
 MediaControls::Status MediaControls::status() const {
-    switch (corePlayer->engine()->state()) {
-        case Audio::AudioEngine::State::Playing:
-        case Audio::AudioEngine::State::Buffering: return Status::Playing;
-        case Audio::AudioEngine::State::Paused: return Status::Paused;
-        case Audio::AudioEngine::State::Stopped: return Status::Stopped;
+    switch (corePlayer->state()) {
+        case Core::Player::State::Loading:
+        case Core::Player::State::Playing: return Status::Playing;
+        case Core::Player::State::Paused:
+        case Core::Player::State::WaitingForNetwork: return Status::Paused;
+        case Core::Player::State::Empty:
+        case Core::Player::State::Stopped:
+        case Core::Player::State::WaitingForMore: break;
     }
     return Status::Stopped;
 }

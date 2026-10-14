@@ -62,6 +62,7 @@ public:
     using TrackEvent = Core::TrackEvent;
     using TEventCallback =
         std::function<void(TrackEvent event, const Track& track, double playedSeconds)>;
+    enum class State { Empty, Stopped, Loading, Playing, Paused, WaitingForNetwork, WaitingForMore };
 
     Player(Audio::AudioEngine* engine, SourceRegistry* sources, QObject* parent = nullptr);
 
@@ -99,25 +100,26 @@ public:
     bool shuffleActive() const;                       // shuffle && the queue is not endless
     bool repeat() const;
     const QueueRules& rules() const;                  // QueueRules{playReports, previousRestartsOnly}
-    bool isWaitingForMore() const;                    // stopped at the end of an endless queue
-    bool trackInProgress() const;                     // a track is resolving, open or parked
+    State state() const;                              // see Phases and State
+    double positionSeconds() const;                   // the engine's position
+    QUrl currentLink() const;                         // the current track's file; empty until it opens
+    QUrl nextLink() const;                            // the preloaded file; empty without a preload
 
     const QList<Track>& playlist() const;
     const QString& queueTitle() const;
     int currentIndex() const;                         // -1 exactly when the queue is empty
     const Track* currentTrack() const;        // nullptr exactly when the queue is empty
-    int currentBitrate() const;                       // kbps of the current link; 0 until it resolves
+    int currentBitrate() const;                       // kbps of the current file; 0 until it opens
     double durationSeconds() const;                   // Track::durationMs / 1000; 0 without a track
-    Audio::AudioEngine* engine() const;
     int preloadedIndex() const;                       // -1 until the preload has an engine stream
 
     void setNetworkOnline(std::optional<bool> online); // the system's view; nullopt: cannot tell
     void setNetworkRetryDelays(int firstMs, int maxMs); // 2 s doubling to 60 s by default
-    bool isWaitingForNetwork() const;
 
 Q_SIGNALS:
     void statusMessage(const QString& text);
     void failed(Core::FailureKind kind);              // every failure the policy decides on
+    void stateChanged(Core::Player::State state);     // once per pass of the event loop, on a change
     void playlistChanged();
     void queueReplaced();
     void currentTrackChanged();
@@ -165,67 +167,93 @@ Q_SIGNALS:
   `playlistChanged` and `modesChanged`, then `refreshPreload()`. `setQueue` resets the rules to
   the defaults.
 
-### State machine
+### Phases and `State`
 
-The state has three parts. The current track's phase:
+What the `Player` knows about the track that plays is one value: the track, whether its `Started`
+went out, the callback and the `QueueRules::playReports` taken at that moment, its link and
+bitrate, its feed (the engine stream, the download and how it ended, whether audio arrived), a
+network wait and the played seconds. A stop drops it whole, so nothing of a stopped track lingers:
+`currentLink()` is empty and `currentBitrate()` is 0 (`currentTrack()` is the cursor's and stays).
 
-| Phase | Engine state | Track open¹ | Entered by | Left by |
+The current track's phase:
+
+| Phase | `state()` | `Started` sent | Entered by | Left by |
 |---|---|---|---|---|
-| **Empty** | Stopped | no | `setQueue` with no available track, `clearQueue`, removing every track | `setQueue` with tracks, `appendTracks` (to Stopped) |
-| **Stopped** | Stopped | no | `stop`, `setQueue` without `autoplay`, the end of a finite queue, removing the current track, a failure the policy stops on (see [Failures](#failures-during-playback)) | `play`, `playIndex`, `next`, `previous` |
-| **Resolving** | Buffering² | no | `playIndex` without a usable preload: the engine stream is begun, and the link request is in flight | link OK: **Open**. Link error: the [failure policy](#failures-during-playback). `stop`, `playIndex` or `setQueue`: the reply is dropped by `generation` |
-| **Open**, downloading | Buffering, Playing, Paused | yes | the link resolved and the download started, or the preload was taken over while still downloading | download OK: **Open, downloaded**. Download failed: the failure policy at once if no audio arrived, else **Open, failed**. End or skip: see [Inputs](#inputs-in-the-order-they-act) |
-| **Open**, downloaded | Buffering, Playing, Paused | yes | the current download finished without error, or a finished preload was taken over | end or skip. Only in this phase can a new preload start |
-| **Open**, failed | Buffering, Playing, Paused | yes | the current download failed after some audio arrived; the engine plays what arrived | end: a network failure **Waiting for the network**, any other failure the end reported as `Skipped`. Skip |
-| **Waiting for the network** | Paused (parked) | as before | a network failure (ERR-01 to ERR-03) | the link and download work: **Open** again, playing if it played before. Another failure: the policy. `stop`, `playIndex`, `setQueue`: the wait ends |
-| **Waiting for more** | Stopped | no | `next()` at the end of an endless queue | `done` with new tracks: `playIndex(cursor + 1)`. `done({})`: stays Stopped. `play`, `playIndex`, `stop` or `setQueue` clear the wait |
-| **Shut down** | Stopped | no | `shutDown()` | never |
+| **Empty** | Empty | — | `setQueue` with no available track, `clearQueue`, removing every track | `setQueue` with tracks, `appendTracks` (to Stopped) |
+| **Stopped** | Stopped | — | `stop`, `setQueue` without `autoplay`, the end of a finite queue, removing the current track, a failure the policy stops on (see [Failures](#failures-during-playback)), `playIndex` without an output device | `play`, `playIndex`, `next`, `previous` |
+| **Opening** | Loading | no | `playIndex` without a usable preload: the engine stream is begun and the source asked | opened: **Open**. A `TrackFailure`: the [failure policy](#failures-during-playback). `stop`, `playIndex`, `setQueue`: the answer is dropped |
+| **Open**, downloading | by the engine¹ | yes | the track opened and its download started, or the preload was taken over while still downloading | download OK: **Open, downloaded**. Download failed: the failure policy at once if no audio arrived, else **Open, failed**. End or skip: see [Inputs](#inputs-in-the-order-they-act) |
+| **Open**, downloaded | by the engine¹ | yes | the current download finished without error, or a finished preload was taken over | end or skip. Only in this phase can a new preload start |
+| **Open**, failed | by the engine¹ | yes | the current download failed after some audio arrived; the engine plays what arrived | end: a network failure **Waiting for the network**, any other failure the end reported as `Skipped`. Skip |
+| **Waiting for the network** | WaitingForNetwork | as before | a network failure (ERR-01 to ERR-03) | the track opens and its download starts: **Open** again, playing if it played before. Another failure: the policy. `stop`, `playIndex`, `setQueue`: the wait ends |
+| **Waiting for more** | WaitingForMore | — | `next()` at the end of an endless queue | `done` with new tracks: `playIndex(cursor + 1)`. `done({})`: still waiting. `play`, `playIndex`, `stop` or `setQueue` end the wait |
+| **Shut down** | Stopped or Empty | — | `shutDown()` | never |
 
-¹ Its `Started` was reported, and `Finished` or `Skipped` has not been reported yet (`openTrack`).
-² Without an output device, `beginStream()` leaves the engine Stopped and returns stream 0. The
-link is still resolved, and the download runs into the ignored stream 0.
+¹ The engine's Playing is Playing, its Paused is Paused, Buffering (or Stopped in the moment
+before the `Player` handles the end) is Loading.
+
+`state()` is computed on every call, never stored: a current track that waits for the network is
+WaitingForNetwork, any other current track follows the engine as above. Without a current track:
+WaitingForMore while waiting for more; an engine that plays anyway follows the engine (only
+`--play-file`, which feeds the engine past the `Player`); otherwise Empty for an empty queue and
+Stopped for any other.
+
+`stateChanged(state)` comes at most once per pass of the event loop, after the pass, and only when
+`state()` differs from the state it last carried. The engine reports its states synchronously in
+the middle of the `Player`'s transitions, and none of those leaks out: Stop gives `[Stopped]`, a
+last track that cannot play (ERR-07) `[Stopped]`, a lost network `[WaitingForNetwork]` (both when
+the track fails to open and when its audio runs out, ERR-03), Play without an output device
+`[Stopped]` (`player_test`).
+
+What each state looks like:
+
+| `State` | Main and playlist windows | `MediaControls` | `JamMode`'s report |
+|---|---|---|---|
+| Empty, Stopped, WaitingForMore | stopped | Stopped | WaitingForMore: idle; else the track at 0, paused |
+| Loading | playing, the red light | Playing | paused |
+| Playing | playing, the green light | Playing | playing |
+| Paused, WaitingForNetwork | paused, the time blinking | Paused | paused, the position kept |
 
 The preload's phase:
 
 | Phase | `preloadedIndex()` | Meaning |
 |---|---|---|
 | none | -1 | |
-| resolving | -1 | `preload` holds the index, the track id and a fresh `preloadGeneration`, and its link request is in flight |
-| queued | its index | `AudioEngine::queueStream()` gave it a stream (`preload->stream != 0`). Its download runs, or has ended (`downloadDone`, `failed`) |
+| opening | -1 | the source was asked for the next track |
+| queued | its index | `AudioEngine::queueStream()` gave it a stream. Its download runs, or has finished |
 
-The load-more request: idle, or in flight (`loadingMore`). It is independent of both phases
-above.
+The load-more request: idle, or in flight. It is independent of both phases above.
 
 ### Inputs, in the order they act
 
 - **`setQueue(tracks, title, autoplay, more, events)`**
-  1. `stop()`: the open track gets `Skipped` from the old `TEventCallback`, and the old link
-     request, download and preload are dropped.
+  1. `stop()`: the open track gets `Skipped` through the callback it started with, and the
+     current track (its open answer, download and wait) and the preload are dropped.
   2. The queue becomes the available tracks, and the title, `TLoadMoreCallback` and `TEventCallback`
      are replaced. The load-more and waiting flags are reset, and `queueGeneration` is bumped.
   3. The cursor goes to 0, or to -1 when the queue is empty.
   4. `queueReplaced`, then `playlistChanged`, then `currentTrackChanged`.
   5. If `autoplay` is set and the queue is not empty: `playIndex(0)`.
 - **`playIndex(i)`** does nothing after `shutDown()` or when `i` is out of range. Otherwise:
-  1. The wait for more ends and the open track gets `Skipped`. `generation` is bumped. The
-     current download is disconnected and aborted, so it never reaches the finish handler. The
-     cursor moves to `i`, the bitrate becomes 0 and the download flags are cleared.
-  2. **The preload is used** when it has an engine stream, its track id equals `track.id`, and
+  1. The wait for more ends and the current track is closed: `Skipped` if its `Started` went out.
+     Its open answer, download and network wait go with it. The cursor moves to `i`.
+  2. **The preload is taken over** when it has an engine stream, its key equals the track's, and
      that stream is still `AudioEngine::queuedStream()`. `playQueuedNow()` starts it from its
-     beginning at once, reusing the bytes already downloaded. The preload's reply and download
-     flags become the current track's. Then `currentTrackChanged`, the load-more check, and
-     `trackStarted`.
-  3. **Otherwise:** `cancelPreload()`, then `AudioEngine::beginStream()`, then
-     `currentTrackChanged` (with `currentBitrate()` still 0), then the load-more check, then
-     `SourceRegistry::open` (so do the network retry and the preload). The reply is ignored if
-     `generation` has moved on, and its download is never started. On a `TrackFailure`:
-     the [failure policy](#failures-during-playback); without an output device (stream 0) only
-     `statusMessage("Cannot get the link: <text>")` and a stop. On success: the download is
-     connected to the stream begun above and started, then `trackStarted`.
-- **`trackStarted(track, bitrate)`** (private): stores the bitrate, opens the track and remembers
-  the current `TEventCallback` and `QueueRules::playReports` for its closing event. It resets the
-  played seconds, sends `Started(track, 0)` to the source (with `playReports`) and then to the
-  callback, emits `currentTrackChanged` and calls `maybePreload()`.
+     beginning at once, reusing the bytes already downloaded, and the preload's feed, link and
+     bitrate become the current track's. Then `currentTrackChanged`, the load-more check, and the
+     start.
+  3. **Otherwise:** `cancelPreload()`, then `AudioEngine::beginStream()`. Without an output device
+     (stream 0) no track opens: `currentTrackChanged`, the load-more check and
+     `statusMessage("No audio output device")`, and the state stays Stopped. Otherwise
+     `currentTrackChanged` (with `currentBitrate()` still 0), the load-more check, then
+     `SourceRegistry::open` (so do the network retry and the preload). An answer that comes after
+     `stop`, `playIndex` or `setQueue` is dropped, and its download never starts. A `TrackFailure`:
+     the failure policy. Opened: the download is connected to the stream begun above and started,
+     then the start.
+- **The start** (private): stores the bitrate, takes the current `TEventCallback` and
+  `QueueRules::playReports` for all of the track's events, resets the played seconds, sends
+  `Started(track, 0)` to the source (with `playReports`) and then to the callback, emits
+  `currentTrackChanged` and calls `maybePreload()`.
 - **`next()`**: with an empty queue, nothing happens. If a preload exists in any phase:
   `playIndex(preload index)`. Else if `pickNext() >= 0`: `playIndex` of it. Else, if the source is
   endless: `stop()`, mark waiting, run the load-more check, then emit
@@ -241,29 +269,28 @@ above.
   the track as Winamp does, with `Skipped` and then a new `Started`. Buffering does nothing.
   Stopped calls `playIndex(cursor)`, or `playIndex(0)` when the cursor is -1.
 - **`pause()`**: Paused resumes. Playing or Buffering pauses. Stopped does nothing.
-- **`stop()`**: sends `Skipped` for the open track, ends the wait for more, bumps `generation`,
-  cancels the preload, aborts the download, stops the engine and sets the stream id to 0. It keeps
-  the queue, the cursor, the `TLoadMoreCallback` and the bitrate. It emits no `Player` signal; the
-  engine emits `stateChanged(Stopped)`, and that stops the timer.
-- **Engine `trackFinished`**: the open track gets `Finished`, or `Skipped` if its download failed,
-  with the played seconds. Then, if repeat is on and the queue has exactly one track,
-  `playIndex(cursor)`; otherwise `next()`.
+- **`stop()`**: sends `Skipped` for the open track, drops the current track whole, ends the wait
+  for more, cancels the preload and stops the engine. It keeps the queue, the cursor and the
+  `TLoadMoreCallback`. Of its own signals only `stateChanged` follows, after the pass; the engine
+  emits `stateChanged(Stopped)`, and that stops the timer.
+- **Engine `trackFinished`**: when the download broke on the network after audio arrived, the track
+  stays open and waits for the network (ERR-03). Otherwise it gets `Finished`, or `Skipped` if its
+  download failed, with the played seconds. Then, if repeat is on and the queue has exactly one
+  track, `playIndex(cursor)`; otherwise `next()`.
 - **Engine `trackAdvanced`** (the engine crossed into the queued stream with no gap): the open track
   gets `Finished` or `Skipped` as above. If there is no preload, or its stream is not the engine's
   `currentStream()`, or its index is out of range, the player resyncs:
   `playIndex(pickNext())`, or `stop()` when that is -1. A cancelled preload is always cleared
-  from the engine, so this branch is not expected to run. Otherwise the preload becomes the current
-  track: `generation` is bumped, the preload's reply, stream, index and download flags are taken
-  over, the wait ends, and then `currentTrackChanged`, the load-more check and `trackStarted`.
+  from the engine, so this branch is not expected to run. Otherwise the preload is taken over as in
+  `playIndex`, without `playQueuedNow()`, at the preload's own index.
 - **Download finished**:
-  - If it is the current stream and it failed: with no audio bytes received, the failure policy
-    at once; otherwise the failure kind is kept for the track's end (a network failure then
-    waits, ERR-03; any other shows `statusMessage("Download failed: <text>")` and ends the
-    track as `Skipped`).
-  - If it is the current stream and it succeeded: `currentDownloaded`, then `maybePreload()`.
-  - If it is the preload's stream: a failure cancels the preload (that track is fetched again when
-    its turn comes); success records `downloadDone`.
-  - Anything else is ignored.
+  - The current track's, failed: when no audio arrived on its stream, the failure policy at once;
+    otherwise the failure kind is kept for the track's end (a network failure then waits, ERR-03;
+    any other shows `statusMessage("Download failed: <text>")` and ends the track as `Skipped`).
+    A preload taken over brings what arrived on its own stream.
+  - The current track's, succeeded: then `maybePreload()`.
+  - The preload's: a failure cancels the preload (that track is fetched again when its turn
+    comes).
 - **`appendTracks`**: appends the available tracks. If none were added, it returns without a
   signal. Otherwise the cursor moves from -1 to 0 if needed, then `playlistChanged`, then
   `refreshPreload()`.
@@ -295,10 +322,12 @@ Four counters, each bumped by different calls and each guarding one kind of late
 |---|---|---|
 | `sourceRequest` (the ticket) | `newSourceRequest()`: callers before a source load, `clearQueue`, `shutDown` | a caller's source-load reply, when the caller checks `isLatestSourceRequest(ticket)`. `Player` never checks it itself |
 | `queueGeneration` | `setQueue` (and so `clearQueue`) | a `TLoadMoreCallback`'s `done` for a queue that has been replaced (a `QPointer` also covers a destroyed `Player`) |
-| `generation` | `stop`, `playIndex`, gapless advance | the link reply of a track that is no longer current |
-| `preloadGeneration` | every new preload | the link reply of a preload that was cancelled or replaced |
+| `generation` | closing the current track (`stop`, `playIndex`, a track's end), opening it, the network wait, a preload taken over | the open answer of a track that is no longer current |
+| `preloadGeneration` | every new preload | the open answer of a preload that was cancelled or replaced |
 
-Tickets start at 1, so 0 never matches. `YandexSource::Catalog` takes one for every pick.
+Tickets start at 1, so 0 never matches. `YandexSource::Catalog` takes one for every pick. The
+next step of [#23](https://github.com/Kickoman/QiYaa/issues/23) makes the phases a
+`std::variant`, each answer bound to the phase that asked; the counters then go.
 
 ### Endless sources (`TLoadMoreCallback`)
 
@@ -313,8 +342,8 @@ Tickets start at 1, so 0 never matches. `YandexSource::Catalog` takes one for ev
 - `done(tracks)` is ignored if the `Player` is gone or the queue has been replaced. Otherwise the
   request is no longer in flight and `appendTracks(tracks)` runs. If `next()` was waiting and a
   track now follows the cursor, `playIndex(cursor + 1)` runs, the first new track; if nothing came,
-  the player keeps waiting (`isWaitingForMore()`), and a later `next()`, or tracks inserted by the
-  jam, go on from there.
+  the player keeps waiting (`State::WaitingForMore`), and a later `next()`, or tracks inserted by
+  the jam, go on from there.
 - `requestMore()` runs the check from outside, for a source that learns of new material between
   track changes (the jam's new seeds).
 - `done` may be called synchronously from inside the `TLoadMoreCallback`.
@@ -344,9 +373,9 @@ Tickets start at 1, so 0 never matches. `YandexSource::Catalog` takes one for ev
   captured at the start. `finished` calls `finishData(stream)`, or `failData(stream)` with a
   `TrackFailure`. The engine ignores data for streams it has dropped.
 - `Player` sets no byte limit. Every byte goes to the engine, which keeps the stream in memory.
-- At most one track download is in flight. A preload's link is requested only after the current
-  track's download has finished without error. A dropped download is deleted, which aborts it
-  without signals.
+- At most one track download is in flight. A preload is asked for only after the current track's
+  download has finished without error. A dropped download is deleted, which aborts it without
+  signals.
 - A finished download is taken out of the `Player` and deleted later, before the `Player` acts on
   its result, so it is never deleted inside its own signal.
 
@@ -387,23 +416,23 @@ FailureAction DecideOnFailure(FailureKind kind, int failuresInRow, bool hasNext,
 ### Gapless preload
 
 - **Started** by `maybePreload()` when all of these hold: there is no preload; the player is not
-  shut down; the current download has finished without error; a track is open; the engine is not
-  `Stopped` (Paused counts); and `pickNext() >= 0`. It is called at the end of `trackStarted`,
-  when the current download finishes, and from `refreshPreload()`.
-- **Link reply** (ignored if the `Player` is gone or `preloadGeneration` has moved on): the preload
-  asks the engine for a queued stream. Its download then feeds that stream and `preloadedIndex()`
-  becomes its index. On a link error, or when `queueStream()` returns 0 because the engine has
-  stopped on its own meanwhile, the preload is dropped without a message. That track then starts the
-  ordinary way when its turn comes.
+  shut down; a track is open and its download has finished without error; the engine is not
+  `Stopped` (Paused counts); and `pickNext() >= 0`. It is called at the end of the start, when the
+  current download finishes, and from `refreshPreload()`.
+- **Open answer** (ignored if the `Player` is gone or `preloadGeneration` has moved on): the
+  preload asks the engine for a queued stream. Its download then feeds that stream and
+  `preloadedIndex()` becomes its index. On a `TrackFailure`, or when `queueStream()` returns 0
+  because the engine has stopped on its own meanwhile, the preload is dropped without a message.
+  That track then starts the ordinary way when its turn comes.
 - **Taken over** in one of two ways:
-  1. The engine crosses the boundary (`trackAdvanced`), with no gap and no second link request.
+  1. The engine crosses the boundary (`trackAdvanced`), with no gap and no second open.
   2. `playIndex` of a track with the preload's key while its stream is still the engine's queued
      stream. `next()` always takes this path when the preload is queued.
 
   In both cases a download that is still running continues as the current download, and a failed
   one has already cancelled the preload.
 - **Cancelled** by `cancelPreload()`, in `stop()`, in every `playIndex` that does not take it over,
-  and in `refreshPreload()`. Cancelling disconnects and aborts its reply, and calls
+  and in `refreshPreload()`. Cancelling drops its download, which aborts it, and calls
   `AudioEngine::clearQueued()` if its stream is still the queued one. The engine may already have
   committed to chaining it (the last seconds of the current track; see
   [src/audio](../audio/README.md)). In that case playback halts at the boundary and `trackFinished`
@@ -423,8 +452,7 @@ FailureAction DecideOnFailure(FailureKind kind, int failuresInRow, bool hasNext,
   `Started`. It is always sent before the `Started` of the next track, because `playIndex` and
   both engine handlers close the open track first.
 - `Started` is sent:
-  - after the track opens and its download starts, before any audio of it is heard, and even
-    without an output device;
+  - after the track opens and its download starts, before any audio of it is heard;
   - at once, when the preload is taken over by `playIndex` or `next()`;
   - at the gapless boundary.
 - `Finished` is sent when the engine reports the track's end (`trackFinished` or `trackAdvanced`)
@@ -432,10 +460,10 @@ FailureAction DecideOnFailure(FailureKind kind, int failuresInRow, bool hasNext,
 - `Skipped` is sent in every other case: `stop`; `playIndex`, `next` or `previous`; `play` while
   playing; `setQueue` or `clearQueue`; removing the track; `shutDown`; or an end after a failed
   download, where the track only drained to where the data stopped.
-- No event is sent for a track that failed to open, because it never opened. None is sent when the
-  `Player` is destroyed with a track open either; call `shutDown()` first, as
-  `App::Application::quit` does. A link reply that arrives after the `Player` is gone is dropped
-  (every resolve callback holds a `QPointer` to it).
+- No event is sent for a track that failed to open, because it never opened; nor without an output
+  device, where no track opens. None is sent when the `Player` is destroyed with a track open
+  either; call `shutDown()` first, as `App::Application::quit` does. An open answer that arrives
+  after the `Player` is gone is dropped (every answer holds a `QPointer` to it).
 - The played seconds are the seconds actually heard. On every tick and at close, the position
   step since the previous reading is added if the engine is `Playing` and `0 < step < 1.0`.
   Normal steps are about 0.1 s. Seeks and other jumps of 1 s or more, backward moves, and paused
@@ -450,10 +478,11 @@ FailureAction DecideOnFailure(FailureKind kind, int failuresInRow, bool hasNext,
 
 | Signal | Emitted |
 |---|---|
-| `statusMessage(text)` | `"Audio error: <message>"` (from `AudioEngine::errorOccurred`), the failure statuses (`"The track does not play: …"`, `"Stopped: 3 tracks in a row did not play"`, `"Access error: …"`, `"No network — waiting for it…"`, `"Cannot get the link: …"` without an output device, `"Download failed: …"`), and `"Loading more tracks…"` (loading more tracks). `YandexSource::Catalog` also emits it on the `Player` for picks, likes and dislikes, which makes it the app's one status line |
+| `statusMessage(text)` | `"Audio error: <message>"` (from `AudioEngine::errorOccurred`), `"No audio output device"`, the failure statuses (`"The track does not play: …"`, `"Stopped: 3 tracks in a row did not play"`, `"Access error: …"`, `"No network — waiting for it…"`, `"Download failed: …"`), and `"Loading more tracks…"` (loading more tracks). `YandexSource::Catalog` also emits it on the `Player` for picks, likes and dislikes, which makes it the app's one status line |
+| `stateChanged(state)` | after a pass of the event loop in which `state()` changed; see [Phases and `State`](#phases-and-state) |
 | `playlistChanged` | by `setQueue`; by `appendTracks` when something was added; by `removeTracks` always, even when no index was valid |
 | `queueReplaced` | by `setQueue` and `clearQueue` only, before `playlistChanged` |
-| `currentTrackChanged` | by `setQueue`, even for an empty queue; by `playIndex` at once; again from `trackStarted` once the bitrate is known; twice on a gapless advance; by `removeTracks` when the current track was removed |
+| `currentTrackChanged` | by `setQueue`, even for an empty queue; by `playIndex` at once, also without an output device; again at the start, once the bitrate is known; twice on a gapless advance; by `removeTracks` when the current track was removed |
 | `positionTick` | after each timer tick's `poll()`, every 100 ms while the engine is Buffering, Playing or Paused |
 | `modesChanged` | by `setShuffle`, `setShuffleAlgorithm` and `setRepeat` on a change |
 | `seeked(target)` | after a successful `seekTo` or `seekFraction`, with the clamped target |
@@ -483,14 +512,15 @@ FailureAction DecideOnFailure(FailureKind kind, int failuresInRow, bool hasNext,
 - Removing a track before the current one changes `currentIndex()` without
   `currentTrackChanged`. The same is true when `appendTracks` moves the cursor from -1 to 0. UI
   that depends on the index must also listen to `playlistChanged`.
-- A track that cannot play is skipped, waited on or stopped on, by the
-  [failure policy](#failures-during-playback); without an output device (stream 0) a link failure
-  only stops, as nothing can be waited on or skipped to.
+- Without an output device no track opens: Play only moves the cursor and says
+  `"No audio output device"`. Nothing reaches the source or the callback, and the load-more check
+  still runs.
 - `shutDown()` blocks playback only. `setQueue`, `appendTracks` and `removeTracks` still change
   the list, and `next()` at the end of an endless queue still calls the `TLoadMoreCallback`.
-- `Started` means "the download began", not "audio is audible". Without an output device it is
-  still sent, to the source too.
-- `stop()` and `setQueue` do not reset `currentBitrate()`.
+- `Started` means "the download began", not "audio is audible".
+- `stateChanged` comes a pass after the change. Code that acts right after a call reads `state()`,
+  which is current at once; a listener gets one signal per settled state, not one per engine
+  transition.
 - The timer starts on the engine's next `stateChanged`. An engine that is already playing when
   the `Player` is constructed is not polled until its state changes.
 
@@ -695,7 +725,8 @@ its two signals.
   and the server's queue, removes the rest of the jam part and inserts what differs, so a next
   track that did not change keeps its preload. The current item is left out even while the state
   still lists it. Into an empty queue, the first item plays at once; a new item after the cursor
-  plays at once when the player waits at the end or nothing is in progress (HOST-08).
+  plays at once when the player waits for more, or is Stopped or Empty with nothing after the
+  cursor (HOST-08).
 - **The jam wave** (HOST-10 to HOST-13) is the `Player`'s load-more. `start` makes one `JamWave` for
   the jam with the factory (`feedback` = `waveFeedback`; `recent` gives the last 5 wave tracks of
   the queue, `kJamWaveHistory`). When at most 2 tracks are left, `JamMode` asks `JamWave::more`
@@ -721,8 +752,9 @@ its two signals.
   `JamPlayback::nextLink` is `Player::nextLink()`, the preloaded next file. The host session sends
   them to the jam's guests when the host allows it.
 - **Reports**: `itemStarted(itemId)` when a jam item's `Started` fires; `playback` after every
-  track event, on the engine's state changes, seeks, and every 10 s while playing (HOST-05,
-  HOST-06). `Idle` when nothing plays (empty queue, or stopped waiting at the end).
+  track event, on the `Player`'s `stateChanged`, seeks, and every 10 s while `state()` is Playing
+  (HOST-05, HOST-06). `Idle` when nothing plays (empty queue, or waiting at the end); the rest by
+  the table in [Phases and `State`](#phases-and-state).
 - **Skip** (HOST-18, HOST-19): `skip(itemId)` is `Player::next()` only when that item is current.
 - **End** (HOST-32, HOST-33): the wave tracks after the cursor are removed, the jam items stay as
   ordinary tracks, the current track plays on, and `changeSource` with the default rules brings the
@@ -827,7 +859,8 @@ loaders that throw (the project's error policy is in
 
 | Where | Failure arrives as |
 |---|---|
-| opening, current track | the failure policy, by the `TrackFailure`'s kind; without an output device `statusMessage("Cannot get the link: <text>")` and a stop |
+| no output device | `statusMessage("No audio output device")`; the track does not open |
+| opening, current track | the failure policy, by the `TrackFailure`'s kind |
 | opening, preload | nothing; the preload is dropped |
 | a track of no known source | a `TrackFailure{Track}` from `SourceRegistry::open` |
 | download, current track | the failure policy; after some audio, `statusMessage("Download failed: …")` and `Skipped` at the end, or for the network a wait |

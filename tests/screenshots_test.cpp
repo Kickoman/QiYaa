@@ -99,7 +99,7 @@ private Q_SLOTS:
     void mainWindowLooksAsRecorded() {
         QFETCH(double, scale);
         QFETCH(bool, shaded);
-        Ui::MainWindow window(player.get(), &skin);
+        Ui::MainWindow window(player.get(), engine.get(), &skin);
         window.setScale(scale);
         window.setShaded(shaded);
         window.show();

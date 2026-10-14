@@ -1,7 +1,5 @@
 #include "core/jam_mode.h"
 
-#include "audio/audio_engine.h"
-
 #include <QPointer>
 #include <QtGlobal>
 
@@ -29,7 +27,7 @@ JamMode::JamMode(Player* player, TJamWaveFactory makeWave, QObject* parent)
     , waveFactory(std::move(makeWave)) {
     reportTimer.setInterval(kJamPlayingReportMs);
     connect(&reportTimer, &QTimer::timeout, this, [this] {
-        if (corePlayer->engine()->state() == Audio::AudioEngine::State::Playing) {
+        if (corePlayer->state() == Player::State::Playing) {
             reportPlayback();
         }
     });
@@ -41,7 +39,7 @@ JamMode::JamMode(Player* player, TJamWaveFactory makeWave, QObject* parent)
         QTimer::singleShot(0, this, &JamMode::dropDeferredWave);
     });
     connect(corePlayer, &Player::seeked, this, &JamMode::schedulePlaybackReport);
-    connect(corePlayer->engine(), &Audio::AudioEngine::stateChanged, this, &JamMode::schedulePlaybackReport);
+    connect(corePlayer, &Player::stateChanged, this, &JamMode::schedulePlaybackReport);
     connect(corePlayer, &Player::playlistChanged, this, &JamMode::checkSlots);
 }
 
@@ -140,7 +138,9 @@ void JamMode::setQueue(const QList<JamEntry>& entries, const QStringList& seeds,
     const QList<JamEntry> added = wanted.mid(prefix);
     if (!added.isEmpty()) {
         insertItems(cursor + 1 + prefix, added);
-        if (corePlayer->isWaitingForMore() || (tailWasEmpty && !corePlayer->trackInProgress())) {
+        const Player::State state = corePlayer->state();
+        const bool idle = state == Player::State::Stopped || state == Player::State::Empty;
+        if (state == Player::State::WaitingForMore || (tailWasEmpty && idle)) {
             corePlayer->playIndex(cursor + 1);  // HOST-08: nothing plays, the item starts at once
         }
     }
@@ -181,17 +181,18 @@ void JamMode::reportPlayback() {
     }
     JamPlayback report;
     const Track* track = corePlayer->currentTrack();
-    const auto state = corePlayer->engine()->state();
-    const bool stopped = state == Audio::AudioEngine::State::Stopped;
-    if (track && !(stopped && corePlayer->isWaitingForMore())) {
+    const Player::State state = corePlayer->state();
+    const bool stopped =
+        state == Player::State::Empty || state == Player::State::Stopped || state == Player::State::WaitingForMore;
+    if (track && state != Player::State::WaitingForMore) {
         const JamSlot slot = currentSlot();
         report.kind = slot.kind == JamSlot::Kind::Item ? JamPlayback::Kind::Item : JamPlayback::Kind::Wave;
         report.itemId = slot.kind == JamSlot::Kind::Item ? slot.itemId : QString();
         report.track = *track;
         report.link = corePlayer->currentLink();
         report.nextLink = corePlayer->nextLink();
-        report.positionMs = stopped ? 0 : static_cast<qint64>(corePlayer->engine()->positionSeconds() * 1000);
-        report.paused = state != Audio::AudioEngine::State::Playing;
+        report.positionMs = stopped ? 0 : static_cast<qint64>(corePlayer->positionSeconds() * 1000);
+        report.paused = state != Player::State::Playing;
     }
     Q_EMIT playback(report);
 }

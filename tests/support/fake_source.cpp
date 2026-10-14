@@ -1,5 +1,7 @@
 #include "support/fake_source.h"
 
+#include <QTimer>
+
 #include <memory>
 #include <utility>
 
@@ -45,6 +47,14 @@ QUrl FakeSource::webPage(const Core::Track&) const {
 void FakeSource::open(const Core::Track& track, TOpened done) {
     askedIds << track.key.id;
     answers << std::move(done);
+    if (answersAtOnce) {
+        const qsizetype request = answers.size() - 1;
+        QTimer::singleShot(0, this, [this, request] {
+            if (answers[request]) {
+                complete(request);
+            }
+        });
+    }
 }
 
 void FakeSource::trackEvent(Core::TrackEvent event, const Core::Track& track, double) {

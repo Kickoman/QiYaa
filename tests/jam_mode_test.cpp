@@ -1,16 +1,16 @@
 #include "audio/audio_engine.h"
 #include "core/jam_mode.h"
 #include "core/player.h"
+#include "core/track_source.h"
 #include "sources/yandex/catalog.h"
 #include "sources/yandex/jam_wave.h"
 #include "sources/yandex/tracks.h"
+#include "support/fake_source.h"
 #include "support/mock_http_server.h"
 #include "support/spec_fixtures.h"
-#include "support/yandex_sources.h"
 #include "yandex/api_client.h"
 #include "yandex/library.h"
 
-#include <QFile>
 #include <QJsonArray>
 #include <QJsonDocument>
 #include <QJsonObject>
@@ -22,13 +22,12 @@
 #include <QStringList>
 #include <QTest>
 
-// Core::JamMode against spec/jam/host.md, by scenario ID. The player has no sound card: a track
-// opens once its link resolves, and only Next moves on.
+// Core::JamMode against spec/jam/host.md, by scenario ID. The player plays on the Null output from a
+// source that opens every track at once and sends no byte: a track starts, and only Next moves on.
 
 namespace {
 
 const QString kFirstWaveTrack = QStringLiteral("38634572");
-const QString kMoreWaveTrack = QStringLiteral("38634573");
 
 Core::Track TrackOf(const QString& id) {
     Yandex::Track track;
@@ -63,8 +62,9 @@ private:
     Yandex::Library library{&api};
 
     struct Stack {
-        Audio::AudioEngine engine;  // not initialised: no sound card
-        Tests::YandexSources ports;
+        Audio::AudioEngine engine;
+        Tests::FakeSource files;
+        Core::SourceRegistry registry;
         Core::Player player;
         YandexSource::Catalog sources;
         Core::JamMode jam;
@@ -72,13 +72,16 @@ private:
         QSignalSpy playbacks;
         QSignalSpy status;
         explicit Stack(Yandex::Library* library)
-            : ports(library)
-            , player(&engine, &ports.registry)
+            : player(&engine, &registry)
             , sources(&player, library)
             , jam(&player, YandexSource::JamWaves(library))
             , started(&jam, &Core::JamMode::itemStarted)
             , playbacks(&jam, &Core::JamMode::playback)
             , status(&player, &Core::Player::statusMessage) {
+            files.setAnswersAtOnce(true);
+            registry.add(YandexSource::kSourceName, &files);
+            engine.setVolume(0);
+            engine.init();
             sources.setJamMode(&jam);
         }
         Core::JamPlayback lastPlayback() const { return playbacks.last().at(0).value<Core::JamPlayback>(); }
@@ -128,23 +131,12 @@ private Q_SLOTS:
         api.setToken(QStringLiteral("test-token"));
         server.fixture("GET", "/account/status", "account-status/ok");
         server.fixture("POST", QStringLiteral("/rotor/session/S1-onyourwave/feedback"), "rotor-session-feedback/ok");
-        QFile file(QStringLiteral(QIYAA_TEST_DATA "/sine440_3s.mp3"));
-        QVERIFY(file.open(QIODevice::ReadOnly));
-        server.audioTracks(
-            {QStringLiteral("11"),
-             QStringLiteral("22"),
-             QStringLiteral("33"),
-             QStringLiteral("44"),
-             QStringLiteral("55"),
-             QStringLiteral("66"),
-             kFirstWaveTrack,
-             kMoreWaveTrack},
-            file.readAll()
-        );
         bool done = false;
         library.connectAccount([&](const Yandex::Account&, const QString&) { done = true; });
         QVERIFY(QTest::qWaitFor([&] { return done; }, 5000));
     }
+
+    void cleanup() { QTRY_COMPARE(api.pendingPosts(), 0); }
 
     void startKeepsThePlayingTrackAndDropsTheRest() {  // HOST-14
         Stack stack(&library);
@@ -215,9 +207,9 @@ private Q_SLOTS:
         stack.jam.setQueue({Item("i1", "11")}, {}, 0);
         QTRY_COMPARE(stack.started.size(), 1);
         stack.player.next();
-        QTRY_VERIFY(stack.player.isWaitingForMore() && !stack.player.trackInProgress());
+        QTRY_COMPARE(stack.player.state(), Core::Player::State::WaitingForMore);
         QTest::qWait(200);
-        QVERIFY(stack.player.isWaitingForMore());
+        QCOMPARE(stack.player.state(), Core::Player::State::WaitingForMore);
         QCOMPARE(stack.lastPlayback().kind, Core::JamPlayback::Kind::Idle);
         stack.jam.setQueue({Item("i2", "22")}, {}, 0);
         QCOMPARE(stack.player.currentIndex(), 1);
@@ -327,7 +319,7 @@ private Q_SLOTS:
         QCOMPARE(events[0].value("type").toString(), QStringLiteral("radioStarted"));
         QCOMPARE(events[1].value("type").toString(), QStringLiteral("trackStarted"));
         QVERIFY(events[1].value("trackId").toString().startsWith(kFirstWaveTrack));
-        QVERIFY(requestsTo(QStringLiteral("/play-audio"), before).isEmpty());
+        QVERIFY(stack.files.events().isEmpty());
 
         Stack quiet(&library);
         const qsizetype quietBefore = server.requests().size();
@@ -374,9 +366,9 @@ private Q_SLOTS:
         QVERIFY(!stack.jam.isActive());
         QCOMPARE(Ids(stack.player), (QStringList{"11", "22"}));
         QVERIFY(stack.player.rules().playReports);
-        const qsizetype before = server.requests().size();
+        const qsizetype before = stack.files.events().size();
         stack.player.playIndex(0);
-        QTRY_COMPARE(requestsTo(QStringLiteral("/play-audio"), before).size(), 1);
+        QTRY_COMPARE(stack.files.eventLog().mid(before), QStringList{QStringLiteral("started:11:1")});
     }
 };
 

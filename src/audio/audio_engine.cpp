@@ -251,6 +251,10 @@ void AudioEngine::startDevice() {
     }
 }
 
+bool AudioEngine::hasOutput() const {
+    return implementation->decoder != nullptr;
+}
+
 AudioEngine::TStreamId AudioEngine::beginStream(double startSeconds) {
     streams.clear();
     currentId = queuedId = 0;

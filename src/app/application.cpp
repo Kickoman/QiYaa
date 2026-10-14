@@ -256,7 +256,7 @@ Application::Application(const Options& options, QObject* parent)
         }
     }
 
-    mainWindowInstance = std::make_unique<Ui::MainWindow>(&corePlayer, currentSkin.get());
+    mainWindowInstance = std::make_unique<Ui::MainWindow>(&corePlayer, &audioEngine, currentSkin.get());
     equalizerWindowInstance = std::make_unique<Ui::EqualizerWindow>(currentSkin.get());
     playlistWindowInstance = std::make_unique<Ui::PlaylistWindow>(&corePlayer, currentSkin.get());
     coverCache = std::make_unique<Core::CoverCache>(

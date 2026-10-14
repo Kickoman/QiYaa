@@ -1,6 +1,5 @@
 #include "ui/playlist_window.h"
 
-#include "audio/audio_engine.h"
 #include "core/player.h"
 #include "skins/skin.h"
 #include "skins/sprites.h"
@@ -27,7 +26,6 @@
 
 namespace Ui {
 
-using Audio::AudioEngine;
 using TSheet = Skins::Skin::Sheet;
 using Skins::PlaylistSprites;
 
@@ -49,6 +47,19 @@ QString FormatTime(qint64 seconds) {
             .arg(seconds % 60, 2, 10, QLatin1Char('0'));
     }
     return QStringLiteral("%1:%2").arg(seconds / 60).arg(seconds % 60, 2, 10, QLatin1Char('0'));
+}
+
+bool ShowsTime(Core::Player::State state) {
+    switch (state) {
+        case Core::Player::State::Loading:
+        case Core::Player::State::Playing:
+        case Core::Player::State::Paused:
+        case Core::Player::State::WaitingForNetwork: return true;
+        case Core::Player::State::Empty:
+        case Core::Player::State::Stopped:
+        case Core::Player::State::WaitingForMore: break;
+    }
+    return false;
 }
 
 constexpr int kMiniButtonX[] = {3, 11, 20, 29, 37, 45};
@@ -95,7 +106,7 @@ PlaylistWindow::PlaylistWindow(Core::Player* player, const Skins::Skin* skin, QW
         update();
     });
     connect(corePlayer, &Core::Player::positionTick, this, [this] {
-        const int second = static_cast<int>(corePlayer->engine()->positionSeconds());
+        const int second = static_cast<int>(corePlayer->positionSeconds());
         if (second == shownSecond) {
             return;
         }
@@ -108,7 +119,7 @@ PlaylistWindow::PlaylistWindow(Core::Player* player, const Skins::Skin* skin, QW
         ensureRowVisible(corePlayer->currentIndex());
         update();
     });
-    connect(corePlayer->engine(), &Audio::AudioEngine::stateChanged, this, [this] { update(); });
+    connect(corePlayer, &Core::Player::stateChanged, this, [this] { update(); });
 }
 
 void PlaylistWindow::setSizeSteps(QSize steps) {
@@ -348,14 +359,13 @@ void PlaylistWindow::drawBottomInfo(QPainter& painter) const {
     skin().drawText(painter, base + QPoint(7, 10), FormatTime(selectedSeconds) + u'/' + FormatTime(totalSeconds));
     painter.restore();
 
-    const auto state = corePlayer->engine()->state();
-    if (state != Audio::AudioEngine::State::Stopped) {
+    if (ShowsTime(corePlayer->state())) {
         painter.save();
         painter.setClipRect(QRect(base + QPoint(66, 23), QSize(25, 6)));
         skin().drawText(
             painter,
             base + QPoint(66, 23),
-            FormatTime(static_cast<qint64>(corePlayer->engine()->positionSeconds())).rightJustified(5, u' ')
+            FormatTime(static_cast<qint64>(corePlayer->positionSeconds())).rightJustified(5, u' ')
         );
         painter.restore();
     }

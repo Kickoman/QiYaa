@@ -197,7 +197,7 @@ endif()
 
 qiyaa_add_module(integrations
     src/integrations/media_controls.cpp src/integrations/media_controls.h)
-target_link_libraries(qiyaa_integrations PUBLIC Qt6::Gui PRIVATE qiyaa_audio qiyaa_core)
+target_link_libraries(qiyaa_integrations PUBLIC Qt6::Gui PRIVATE qiyaa_core)
 
 # System media integration: MPRIS, macOS MediaPlayer, or Windows SMTC.
 if(APPLE)

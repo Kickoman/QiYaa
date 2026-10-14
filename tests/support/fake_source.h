@@ -52,6 +52,7 @@ public:
     const QList<Event>& events() const { return trackEvents; }
     QStringList eventLog() const;
 
+    void setAnswersAtOnce(bool on) { answersAtOnce = on; }
     QPointer<FakeDownload> complete(qsizetype request, int bitrateKbps = 320);
     void fail(qsizetype request, Core::FailureKind kind, const QString& text = QStringLiteral("broken"));
     void changeFiles();
@@ -60,6 +61,7 @@ public:
 private:
     friend class FakeDownload;
 
+    bool answersAtOnce = false;
     QList<TOpened> answers;
     QStringList askedIds;
     QStringList startedIds;

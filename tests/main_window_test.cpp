@@ -49,7 +49,7 @@ private Q_SLOTS:
         QVERIFY(skin.isValid());
         engine = std::make_unique<Audio::AudioEngine>();
         player = std::make_unique<Core::Player>(engine.get(), &sources);
-        window = std::make_unique<Ui::MainWindow>(player.get(), &skin);
+        window = std::make_unique<Ui::MainWindow>(player.get(), engine.get(), &skin);
         window->show();
         QVERIFY(QTest::qWaitForWindowExposed(window.get()));
         screen = QGuiApplication::primaryScreen()->availableGeometry();

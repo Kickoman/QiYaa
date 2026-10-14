@@ -30,6 +30,7 @@ public:
         QString message;
     };
     InitResult init();
+    bool hasOutput() const;
     QString backendName() const;
 
     using TStreamId = quint64;

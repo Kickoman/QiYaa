@@ -1,7 +1,9 @@
 #include "audio/audio_engine.h"
 #include "core/player.h"
 #include "core/track.h"
+#include "core/track_source.h"
 #include "sources/yandex/tracks.h"
+#include "support/fake_source.h"
 #include "support/mock_http_server.h"
 #include "support/spec_fixtures.h"
 #include "support/yandex_json.h"
@@ -34,11 +36,6 @@
 #include <functional>
 
 namespace {
-
-// JSON with single quotes (moc can't parse raw string literals).
-QByteArray J(const char* singleQuoted) {
-    return QByteArray(singleQuoted).replace('\'', '"');
-}
 
 QByteArray TrackJson(int id, const char* title, int albumId = 0) {
     QByteArray json = "{\"id\":" + QByteArray::number(id) + ",\"title\":\"" + title
@@ -468,22 +465,12 @@ private Q_SLOTS:
 
     void playerReportsTrackEvents() {
         Audio::AudioEngine engine;
-        Tests::YandexSources sources(&library);
-        Core::Player player(&engine, &sources.registry);
-        server.result(
-            "GET",
-            "/tracks/1/download-info",
-            "[{\"codec\":\"mp3\",\"bitrateInKbps\":320,\"downloadInfoUrl\":\"" + server.baseUrl().toUtf8()
-                + "/dl?x=1\"}]"
-        );
-        server.result(
-            "GET",
-            "/tracks/2/download-info",
-            "[{\"codec\":\"mp3\",\"bitrateInKbps\":320,\"downloadInfoUrl\":\"" + server.baseUrl().toUtf8()
-                + "/dl?x=2\"}]"
-        );
-        server.json("GET", "/dl", J("{'host':'127.0.0.1:1','path':'/p','ts':'1','s':'s'}"));
-        server.fixture("POST", "/play-audio", "play-audio/ok");
+        QVERIFY(engine.init().ok);
+        Tests::FakeSource source;
+        source.setAnswersAtOnce(true);
+        Core::SourceRegistry registry;
+        registry.add(YandexSource::kSourceName, &source);
+        Core::Player player(&engine, &registry);
         const QList<Core::Track> tracks = NumberedTracks({1, 2});
         QStringList log;
         const auto record = [&](Core::Player::TrackEvent event, const Core::Track& track, double) {
@@ -684,7 +671,8 @@ private Q_SLOTS:
         playback.sources.source.setQuality(Yandex::Quality::Economy);
         playback.player.setQueue(NumberedTracks({45}), "A", false);
         playback.player.playIndex(0);
-        QVERIFY(QTest::qWaitFor([&] { return playback.player.isWaitingForNetwork(); }, 3000));
+        QVERIFY(QTest::qWaitFor([&] { return playback.player.state() == Core::Player::State::WaitingForNetwork; }, 3000)
+        );
         QCOMPARE(requestsTo("/tracks/45/download-info"), 0);
 
         server.economyTracks({"45"}, EconomyFile());
@@ -778,10 +766,10 @@ private Q_SLOTS:
         QTest::qWait(300);  // the whole file has arrived
         QVERIFY(playback.player.seekTo(2.5));
         QVERIFY(finished.wait(4000));
-        QVERIFY(QTest::qWaitFor([&] { return playback.player.isWaitingForMore(); }, 2000));
+        QVERIFY(QTest::qWaitFor([&] { return playback.player.state() == Core::Player::State::WaitingForMore; }, 2000));
         QTest::qWait(300);
         QCOMPARE(playback.engine.state(), Audio::AudioEngine::State::Stopped);
-        QVERIFY(!playback.player.trackInProgress());
+        QCOMPARE(playback.player.state(), Core::Player::State::WaitingForMore);
     }
 
     void shuffleVisitsEachTrackOnceAndStops() {  // proposed spec SHUF-01 (docs/shuffle-spec.patch)
@@ -804,7 +792,7 @@ private Q_SLOTS:
         player.next();
         QCOMPARE(player.currentIndex(), last);
         QCOMPARE(changed.count(), 0);
-        QVERIFY(!player.trackInProgress());
+        QCOMPARE(player.state(), Core::Player::State::Stopped);
         for (int index = 0; index < 6; ++index) {
             QCOMPARE(player.playlist()[index].key.id, QString::number(index + 1));
         }
@@ -839,7 +827,7 @@ private Q_SLOTS:
         QCOMPARE(player.currentIndex(), order[4]);
         player.next();
         QCOMPARE(player.currentIndex(), order[4]);
-        QVERIFY(!player.trackInProgress());
+        QCOMPARE(player.state(), Core::Player::State::Stopped);
     }
 
     void shuffleRebuildsAfterQueueEdits_data() {
@@ -881,7 +869,7 @@ private Q_SLOTS:
         }
         QCOMPARE(visited.size(), size);
         player.next();
-        QVERIFY(!player.trackInProgress());
+        QCOMPARE(player.state(), Core::Player::State::Stopped);
         player.removeTracks({0, 1, 2, 3, 4});
         player.next();
         player.previous();
@@ -956,8 +944,11 @@ private Q_SLOTS:
 
     void shuffleHandlesEmptyAndSingleTrackQueues() {  // proposed spec SHUF-01, SHUF-04 (docs/shuffle-spec.patch)
         Audio::AudioEngine engine;
-        Tests::YandexSources sources(&library);
-        Core::Player player(&engine, &sources.registry);
+        QVERIFY(engine.init().ok);
+        Tests::FakeSource source;
+        Core::SourceRegistry registry;
+        registry.add(YandexSource::kSourceName, &source);
+        Core::Player player(&engine, &registry);
         player.setShuffle(true);
         player.setQueue({}, "Empty", false);
         player.next();
@@ -966,11 +957,11 @@ private Q_SLOTS:
         player.setQueue(NumberedTracks({1}), "Single", false);
         player.playIndex(0);
         player.next();
-        QVERIFY(!player.trackInProgress());
+        QCOMPARE(player.state(), Core::Player::State::Stopped);
         player.setRepeat(true);
         player.next();
         QCOMPARE(player.currentIndex(), 0);
-        QVERIFY(player.trackInProgress());
+        QCOMPARE(player.state(), Core::Player::State::Loading);
     }
 
     void shuffleDoesNotApplyInAWave() {  // spec WAVE-10, WAVE-11

@@ -1,6 +1,5 @@
 #include "integrations/mac_media_controls.h"
 
-#include "audio/audio_engine.h"
 #include "core/player.h"
 #include "integrations/media_controls.h"
 
@@ -91,7 +90,7 @@ void MacMediaControls::updateNowPlaying() {
         MPMediaItemPropertyTitle : [NSString stringWithUTF8String:title.constData()],
         MPMediaItemPropertyArtist : [NSString stringWithUTF8String:artists.constData()],
         MPMediaItemPropertyPlaybackDuration : @(player->durationSeconds()),
-        MPNowPlayingInfoPropertyElapsedPlaybackTime : @(player->engine()->positionSeconds()),
+        MPNowPlayingInfoPropertyElapsedPlaybackTime : @(player->positionSeconds()),
         MPNowPlayingInfoPropertyPlaybackRate : @(playing ? 1.0 : 0.0)
     };
     switch (mediaControls->status()) {

@@ -267,10 +267,6 @@
         <translation>Загружаю ещё треки…</translation>
     </message>
     <message>
-        <source>Cannot get the link: %1</source>
-        <translation>Не удалось получить ссылку: %1</translation>
-    </message>
-    <message>
         <source>Download failed: %1</source>
         <translation>Загрузка не удалась: %1</translation>
     </message>
@@ -293,6 +289,10 @@
     <message>
         <source>No network — waiting for it…</source>
         <translation>Нет сети — жду подключения…</translation>
+    </message>
+    <message>
+        <source>No audio output device</source>
+        <translation>Нет устройства для вывода звука</translation>
     </message>
 </context>
 <context>

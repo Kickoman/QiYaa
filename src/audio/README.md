@@ -88,6 +88,7 @@ public:
         QString message;
     };
     InitResult init();                 // opens the output device; after a success: {true, {}}
+    bool hasOutput() const;            // init() succeeded: beginStream() gives a stream
     QString backendName() const;       // miniaudio's name ("PulseAudio", "Null"...), "none" before init
 
     using TStreamId = quint64;         // 0 = none

@@ -29,17 +29,17 @@ is formatting (the clang-format check in `.github/workflows/ci.yml`).
 | `audio_test.cpp` | `Audio::AudioEngine` on the test mp3: streaming in chunks, pause, the decode-error message, seeks during download and into the downloaded part of a stalled download (TR-09), the position during a series of seeks (TR-08), a seek while paused and one before the first byte, the `Core::Player` polling timer, gapless chaining of a queued stream and clearing it before and after the callback went into it, and random calls that must not hang; the test m4a playing with half of it downloaded |
 | `mp4_aac_test.cpp` | `Audio::Mp4AacBackend` through an `ma_decoder` over memory: `IsMp4`, the rate, length, level and 440 Hz of the test m4a, seeking to the same samples as playing through, the end, a file cut short, an MP4 without its index; with `QIYAA_MP4_SAMPLE=<path>` it also decodes that file (a Yandex economy file kept outside the repository) |
 | `dsp_test.cpp` | EQ response and processing, the 17 built-in EQ presets, `.eqf` read/write, `EqualizerWindow::GraphCurve`, the FFT analyzer, spectrum and oscilloscope rendering; the reference vectors of `spec/dsp` (checks them, and writes them with `QIYAA_WRITE_DSP_VECTORS=1`) |
-| `player_test.cpp` | `Core::Player` on `Tests::FakeSource` and the Null output. Late answers are dropped: the link of a track left behind, a link after Stop, a retry after the network wait (and none follows a Stop), the link of a cancelled preload, a load for a replaced queue; a dropped answer's download never starts. Another source's `filesChanged` leaves the preload alone; a track starts under the rules of its start (HOST-15); the source hears its tracks' events |
+| `player_test.cpp` | `Core::Player` on `Tests::FakeSource` and the Null output. Late answers are dropped: the link of a track left behind, a link after Stop, a retry after the network wait (and none follows a Stop), the link of a cancelled preload, a load for a replaced queue; a dropped answer's download never starts. Another source's `filesChanged` leaves the preload alone; a track starts under the rules of its start (HOST-15); the source hears its tracks' events. `Player::State` of each phase, and `stateChanged` as one change each for a Stop, a last track that cannot play (ERR-07), a lost network (ERR-01, ERR-03) and Play without an output device |
 | `library_test.cpp` | `Yandex::Library`/`ApiClient` against the mock server serving spec fixtures: request shapes and parsing for every source the menu offers, likes, waves, search with each kind of best result, errors, device login and wave feedback. Also `Core::Player` track events, preloading, endless sources, shuffle not applying in a wave, and repeat not replaying the only track of a wave (WAVE-12); the economy quality (QUAL-02 to QUAL-05): the request and its signature, the fallbacks, the network wait, the preload fetched again |
 | `yandex_source_test.cpp` | `src/sources/yandex`'s tracks: the key with and without an album, every spec track back whole, another source's track, the cover and web page through `Core::SourceRegistry` against the client's, `Core::Track::displayTitle`; its `Source` against the mock server: an opened track downloads only once started, the failure kinds, a play report on `Started` only, `filesChanged` on another quality; a track of no source fails after `open` returns |
 | `sources_test.cpp` | `YandexSource::Catalog` against the `spec/player` scenarios on spec fixtures, one function per scenario group: the last pick wins, stale failures, search as one pick, a failed source keeps the queue, likes with their count, an empty source keeping the queue, search's best result, and a wave played on the Null output (radio start, load more with the last ids, batch ids on the events, dislike and skip) |
-| `jam_mode_test.cpp` | `Core::JamMode` with `YandexSource::JamWaves` against `spec/jam/host.md` by ID, on a player without a sound card and spec fixtures: the start keeping the playing track, the jam part following the state with the smallest change, started and playing reports, Previous restarting, an item into a waiting player, the jam wave from the seeds behind the items and a new session for new seeds, a late reply of the previous jam's wave kept out of the next jam, and of a session that new seeds closed kept out of the queue, no play reports and wave feedback only to the jam wave, skip by item, picks refused during the jam, and the end |
+| `jam_mode_test.cpp` | `Core::JamMode` with `YandexSource::JamWaves` against `spec/jam/host.md` by ID, on the Null output with a `Tests::FakeSource` that opens every track at once and spec fixtures: the start keeping the playing track, the jam part following the state with the smallest change, started and playing reports, Previous restarting, an item into a waiting player, the jam wave from the seeds behind the items and a new session for new seeds, a late reply of the previous jam's wave kept out of the next jam, and of a session that new seeds closed kept out of the queue, no events to the source and wave feedback only to the jam wave, skip by item, picks refused during the jam, and the end |
 | `failures_test.cpp` | What the `Player` does when a track cannot play (`spec/player/errors.md`): the failure policy as a table, `ClassifyReply` and `YandexSource::FailureKindOf` on real replies, and on the Null output a broken and an undecodable track skipped, three in a row stopping, the count reset by a track that plays, a broken last track, a rejected account, no network (pause, then continue the same track), and a download cut short that waits instead of moving on |
 | `main_window_test.cpp` | One `Ui::MainWindow` on the default offscreen screen: position clamping, dragging and edge snapping, shuffle click, the shuffle light off during a wave, volume slider, ×2 and fractional scale |
 | `windows_test.cpp` | The whole `App::Application` window set: docking, detaching, scaling, playlist selection/scroll/resize, track menu targets (including multiple selection, keyboard invocation and queue changes), dislike skipping only the current track, EQ sliders, shade modes, login dialog layout, Milkdrop and Now Playing windows, `snapshot()`; the Quality menu and its setting (QUAL-06) |
 | `screenshots_test.cpp` | Golden screenshots of the main window and the equalizer (see **Golden screenshots**) |
 | `jam_test.cpp` | `Jam::` (only with Qt WebSockets): every example of `spec/jam/protocol/examples` through the codec (valid ones pass, `invalid-*` fail) and client examples through encode and decode; the client against a `QWebSocketServer` on localhost — hello with a version the server takes and the clock offset, reconnects after the delays and at once on `networkBack`, the outbox, `ended` stopping it for good, refusing to send what the server would refuse, invalid and unknown-reason messages; the stored session across a restart and broken, foreign or oversized files |
-| `jam_host_test.cpp` | `Jam::HostSession` against `spec/jam/host.md` by ID, with `JamStubServer`, a real `Core::JamMode` with `YandexSource::JamWaves` on a player without a sound card and the MockHttpServer as Yandex: create and its refusal, states and their versions, started in the stored outbox offline and resume, the stored snapshot and link, "Continue the jam?" yes and no, a resume refused for a gone room or another reason, the guests' search and checks, the skip command, the end by the host and by the server, the host's add and play next, `JamTrackOf`, and that only a Yandex track crosses into the jam (`CoreTrackOf`) |
+| `jam_host_test.cpp` | `Jam::HostSession` against `spec/jam/host.md` by ID, with `JamStubServer`, a real `Core::JamMode` with `YandexSource::JamWaves` on the Null output with a `Tests::FakeSource` that opens every track at once, and the MockHttpServer as Yandex: create and its refusal, states and their versions, started in the stored outbox offline and resume, the stored snapshot and link, "Continue the jam?" yes and no, a resume refused for a gone room or another reason, the guests' search and checks, the skip command, the end by the host and by the server, the host's add and play next, `JamTrackOf`, and that only a Yandex track crosses into the jam (`CoreTrackOf`) |
 | `jam_window_test.cpp` | `Ui::JamWindow` against `spec/jam/host.md` (HOST-20, HOST-25, HOST-35), its controls found by label and clicked like a mouse, driving a `HostSession` on `JamStubServer`: the start with the name given or typed (and typing that does not trigger the app's shortcuts), the settings, kick and new link, copying the link, the end asked twice, what stays enabled without a connection, the search with "To the jam" and "Next"; its pictures, in Belarusian, on every built-in skin and of the start, search and offline pages |
 | `telemetry_test.cpp` | `Telemetry::Reporter` against the mock server (TEL-02 to TEL-08): the start event has the fields of `spec/telemetry/examples/start.json`, what each answer keeps or drops, batches of at most 50, a run that did not close reported with its queue, a running instance left alone, the error cap, forgetting; crash reports of `crash_probe` (SIGSEGV, an uncaught exception, abort) sent by the next run; and a real `App::Application` sending `start` and switched off and on. Built only with telemetry |
 | `crash_probe.cpp` | The child `telemetry_test` crashes: installs the crash handler and fails as its arguments say |
@@ -95,16 +95,16 @@ QT_QPA_PLATFORM=offscreen QIYAA_AUDIO_BACKEND=null build/tests/audio_test queued
 | `audio_test` | audio core | plain; `QIYAA_TEST_DATA` |
 | `main_window_test` | audio core skins ui | plain |
 | `player_test` | audio core (+ `qiyaa_test_core`) | plain; `QIYAA_TEST_DATA` |
-| `library_test` | audio core sources_yandex yandex (+ `qiyaa_test_yandex`) | plain; `QIYAA_TEST_DATA` |
+| `library_test` | audio core sources_yandex yandex (+ `qiyaa_test_core`, `qiyaa_test_yandex`) | plain; `QIYAA_TEST_DATA` |
 | `sources_test` | audio core sources_yandex yandex (+ `qiyaa_test_yandex`) | plain; `QIYAA_TEST_DATA` |
-| `jam_mode_test` | audio core sources_yandex yandex | plain; `QIYAA_TEST_DATA` |
+| `jam_mode_test` | audio core sources_yandex yandex (+ `qiyaa_test_core`) | plain |
 | `failures_test` | audio core sources_yandex yandex | plain; `QIYAA_TEST_DATA` |
 | `dsp_test` | audio skins ui vis | plain |
 | `windows_test` | app core ui | 2560×1440 virtual screen (not on Windows) |
 | `screenshots_test` | audio core skins ui | plain; `QIYAA_TEST_DATA` |
 | `translations_test` | app ui | plain; `QIYAA_SOURCE_DIR` (it reads `translations/*.ts`) |
 | `jam_test` | jam (+ `qiyaa_test_jam`) | only with `QIYAA_HAVE_JAM` |
-| `jam_host_test` | audio core jam sources_yandex yandex (+ `qiyaa_test_jam`) | only with `QIYAA_HAVE_JAM`; `QIYAA_TEST_DATA` |
+| `jam_host_test` | audio core jam sources_yandex yandex (+ `qiyaa_test_core`, `qiyaa_test_jam`) | only with `QIYAA_HAVE_JAM` |
 | `jam_window_test` | audio core jam skins ui yandex (+ `qiyaa_test_jam`) | only with `QIYAA_HAVE_JAM`; `QIYAA_TEST_DATA` |
 | `jam_e2e_test` | app audio core jam ui yandex | only with `QIYAA_HAVE_JAM`; `QIYAA_TEST_DATA`; skips without `QIYAA_JAM_TEST_SERVER` |
 | `mpris_test` | core integrations sources_yandex, Qt6::DBus | only with `QIYAA_HAVE_MPRIS`; under `dbus-run-session` |
@@ -216,7 +216,7 @@ audio decoder and races that are not there. CI's GCC 13 has it. With GCC 11, lin
   `qiyaa_yandex`. Only `library_test`, `sources_test`, `yandex_test` and `yandex_source_test` link
   it.
 - `qiyaa_test_core`: `support/fake_source.cpp`. It PUBLIC-links `qiyaa_test_support` and
-  `qiyaa_core`. Only `player_test` links it.
+  `qiyaa_core`. Only `player_test`, `library_test`, `jam_mode_test` and `jam_host_test` link it.
 - `support/yandex_sources.h` is a header with no library: a suite that includes it links
   `qiyaa_sources_yandex` itself.
 - Each suite links the modules in the table above, plus what those modules link PUBLIC. For
@@ -343,6 +343,7 @@ public:
     const QStringList& started() const;       // the key id of every download started, in order
     const QList<Event>& events() const;       // what trackEvent heard
     QStringList eventLog() const;             // events() as "started:<id>", "finished:<id>", "skipped:<id>"
+    void setAnswersAtOnce(bool on);           // complete() every open on the next pass of the loop
     QPointer<FakeDownload> complete(qsizetype request, int bitrateKbps = 320);
     void fail(qsizetype request, Core::FailureKind kind, const QString& text = "broken");
     void changeFiles();                       // emits filesChanged
@@ -357,7 +358,10 @@ public:
 - `complete` answers with a `FakeDownload` whose link is `LinkOf(id)` and whose codec is `mp3`.
   The returned `QPointer` is null at once when the `Player` dropped the answer, because the
   download dies with it.
-- A download sends nothing by itself: the test feeds it bytes and finishes it.
+- A download sends nothing by itself: the test feeds it bytes and finishes it. With
+  `setAnswersAtOnce(true)` a track therefore opens and stays Loading on the Null output: it has
+  started, and only Next or Stop moves on. The jam suites use it so; the tracks are Yandex's, so
+  the source is added under `"yandex"`.
 - Covers and web pages are empty.
 
 ## Golden screenshots
