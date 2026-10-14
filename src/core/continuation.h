@@ -1,6 +1,5 @@
 #pragma once
 
-#include "core/player.h"
 #include "core/track.h"
 
 #include <QList>
@@ -16,7 +15,7 @@ public:
     virtual ~Continuation() = default;
 
     virtual void more(TDone done) = 0;
-    virtual void trackEvent(Player::TrackEvent event, const Track& track, double playedSeconds) = 0;
+    virtual void trackEvent(TrackEvent event, const Track& track, double playedSeconds) = 0;
 };
 
 }  // namespace Core

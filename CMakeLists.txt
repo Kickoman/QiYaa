@@ -134,7 +134,7 @@ qiyaa_add_module(core
     src/core/track.cpp          src/core/track.h
     src/core/track_navigator.cpp src/core/track_navigator.h
     src/core/track_source.cpp   src/core/track_source.h)
-target_link_libraries(qiyaa_core PUBLIC qiyaa_audio qiyaa_yandex Qt6::Gui Qt6::Network)
+target_link_libraries(qiyaa_core PUBLIC qiyaa_audio Qt6::Gui Qt6::Network)
 
 qiyaa_add_module(sources_yandex
     src/sources/yandex/catalog.cpp  src/sources/yandex/catalog.h

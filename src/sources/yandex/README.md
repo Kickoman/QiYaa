@@ -3,7 +3,9 @@
 Yandex Music as one of the [music sources](../README.md). `Catalog` turns what the user picks
 (likes, playlists, artists, albums, vibes and stations, search) into the `Core::Player`'s queue,
 builds a vibe's load-more and feedback callbacks, and likes and dislikes tracks; it is the desktop
-counterpart of the Android app's queue manager, and `spec/player` describes both. `JamWave` is the
+counterpart of the Android app's queue manager, and `spec/player` describes both. `Source` is
+Yandex's `Core::TrackSource`: it opens a track's file in the chosen quality and reports a play.
+`JamWave` is the
 Yandex half of the jam's own vibe: the rotor session, its seeds and its feedback, behind
 `Core::JamWave`. The module does not speak HTTP or parse the API
 ([src/yandex](../../yandex/README.md)), does not hold the queue or decide when to ask for more
@@ -14,7 +16,7 @@ Yandex half of the jam's own vibe: the rotor session, its seeds and its feedback
 |---|---|
 | `catalog.h/.cpp` | `Catalog`: playing a pick (likes, playlist, recommendations, artist, album, vibe or station, search) with a ticket each, the vibe's load-more and feedback callbacks, like and dislike by track key |
 | `jam_wave.h/.cpp` | `JamWave` (a `Core::JamWave`) and `JamWaves`, the factory `Core::JamMode` takes |
-| `source.h/.cpp` | `Source`, the `Core::TrackSource` of Yandex tracks: the cover and the web page |
+| `source.h/.cpp` | `Source`, the `Core::TrackSource` of Yandex tracks: the cover, the web page, opening the file, the play report, the quality; `FailureKindOf` |
 | `tracks.h/.cpp` | `kSourceName`, `KeyOf`, `TrackOf`, `TracksOf`, `YandexTrackOf`, `CatalogId`: `Core::Track` ↔ `Yandex::Track`; `WaveEventOf` |
 
 ## Dependencies
@@ -29,6 +31,7 @@ Yandex half of the jam's own vibe: the rotor session, its seeds and its feedback
 grep -rn --include='*.cpp' --include='*.h' '#include "' src/sources/yandex/ | grep -v '"\(core\|yandex\|sources/yandex\)/'   # must print nothing
 grep -rnw --include='*.cpp' --include='*.h' 'throw\|catch' src/sources/yandex/                                           # must print nothing
 grep -rlw --include='*.h' --include='*.cpp' --include='*.mm' 'Yandex::Track' src/ | grep -v '^src/\(yandex\|sources/yandex\)/\|^src/jam/host_session\.\(h\|cpp\)$'   # must print nothing
+grep -rl --include='*.h' --include='*.cpp' --include='*.mm' 'reportPlayStarted' src/ | grep -v '^src/yandex/\|^src/sources/yandex/source\.cpp$'   # must print nothing
 ```
 
 ## `catalog.h`: `Catalog`
@@ -166,15 +169,36 @@ Yandex::WaveEvent WaveEventOf(Core::Player::TrackEvent event);   // Started, Fin
 ```cpp
 class Source : public Core::TrackSource {
 public:
+    explicit Source(Yandex::Library* library, QObject* parent = nullptr);
     QUrl coverUrl(const Core::Track& track, int pixels) const override;   // Yandex::Track::coverUrl
     QUrl webPage(const Core::Track& track) const override;                // Yandex::Track::webUrl
+    void open(const Core::Track& track, TOpened done) override;
+    void trackEvent(Core::TrackEvent event, const Core::Track& track, double playedSeconds) override;
+    void setQuality(Yandex::Quality quality);                             // filesChanged on a change
+    Yandex::Quality quality() const;                                      // Standard until set
 };
+
+Core::FailureKind FailureKindOf(const Yandex::RequestError& error);      // Network; HTTP 401/403 Auth; else Track
 ```
 
-`src/app` adds it to its `Core::SourceRegistry` under `kSourceName`. Both answers come from the
-client ([src/yandex](../../yandex/README.md)): the avatars URL with `%%` replaced by
-`<pixels>x<pixels>`, and `https://music.yandex.ru/album/<album>/track/<track>` (without an album,
-`…/track/<track>`). Another source's track gets empty URLs.
+`src/app` adds it to its `Core::SourceRegistry` under `kSourceName`, restores the quality from the
+settings and changes it from the menu.
+
+- **Cover and page** come from the client ([src/yandex](../../yandex/README.md)): the avatars URL
+  with `%%` replaced by `<pixels>x<pixels>`, and
+  `https://music.yandex.ru/album/<album>/track/<track>` (without an album, `…/track/<track>`).
+  Another source's track gets empty URLs.
+- **`open`** resolves the link of the key's file (`ApiClient::resolveTrackUrl` with the key's id,
+  in `quality()`), then answers with the link, its bitrate and codec, and a download that sends
+  its GET (`ApiClient::download`) only on `start()`. A failure is a `TrackFailure` of
+  `FailureKindOf` with the client's text; so is a failed download's.
+- **`trackEvent`**: `Started` posts `/play-audio` with the account, the key's id, the duration and
+  a new UUID as the play id. `Finished` and `Skipped` send nothing. The `Player` leaves out the
+  tracks of a jam (HOST-15).
+- **`setQuality`** applies from the next link on: the playing track goes on with its file, and
+  `filesChanged` makes the `Player` fetch its preload again (QUAL-05).
+- The `Library` must outlive the `Source` and every download it opened.
+- Tests: `tests/yandex_source_test.cpp`.
 
 ## Not here
 
@@ -183,5 +207,6 @@ client ([src/yandex](../../yandex/README.md)): the avatars URL with `%%` replace
 - When the queue asks for more, the jam's slots, and when its vibe starts or goes on:
   [src/core](../../core/README.md).
 - The Yandex menu that calls `Catalog` and the status line: [src/ui](../../ui/README.md).
-- Tests: `tests/sources_test.cpp` (the `Catalog`), `tests/jam_mode_test.cpp` and
-  `tests/jam_host_test.cpp` (the jam's vibe through `Core::JamMode`).
+- Tests: `tests/yandex_source_test.cpp` (keys, the `Source`), `tests/sources_test.cpp` (the
+  `Catalog`), `tests/jam_mode_test.cpp` and `tests/jam_host_test.cpp` (the jam's vibe through
+  `Core::JamMode`).

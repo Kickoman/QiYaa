@@ -1,7 +1,9 @@
 #include "audio/audio_engine.h"
 #include "core/failure_policy.h"
 #include "core/player.h"
+#include "sources/yandex/source.h"
 #include "support/mock_http_server.h"
+#include "support/yandex_sources.h"
 #include "yandex/api_client.h"
 #include "yandex/library.h"
 
@@ -42,7 +44,8 @@ private:
         Yandex::ApiClient api{&networkManager};
         Yandex::Library library{&api};
         Audio::AudioEngine engine;
-        Core::Player player{&library, &engine};
+        Tests::YandexSources sources{&library};
+        Core::Player player{&engine, &sources.registry};
         QSignalSpy status{&player, &Core::Player::statusMessage};
         QStringList events;
 
@@ -158,9 +161,9 @@ private Q_SLOTS:
         const Yandex::RequestError missing = classify(server.baseUrl() + "/missing");
         QCOMPARE(missing.kind, Kind::Http);
         QCOMPARE(missing.httpStatus, 404);
-        QCOMPARE(Core::KindOf(missing), FailureKind::Track);
+        QCOMPARE(YandexSource::FailureKindOf(missing), FailureKind::Track);
         server.json("GET", "/denied", "{}", 401);
-        QCOMPARE(Core::KindOf(classify(server.baseUrl() + "/denied")), FailureKind::Auth);
+        QCOMPARE(YandexSource::FailureKindOf(classify(server.baseUrl() + "/denied")), FailureKind::Auth);
         server.on("GET", "/cut", [](const Tests::MockRequest&) {
             return Tests::MockResponse{200, QByteArray(1000, 'x'), 0, 100};
         });

@@ -1,7 +1,6 @@
 #include "audio/audio_engine.h"
 #include "core/player.h"
-#include "yandex/api_client.h"
-#include "yandex/library.h"
+#include "core/track_source.h"
 
 #include <QElapsedTimer>
 #include <QFile>
@@ -324,9 +323,8 @@ private Q_SLOTS:
     }
 
     void playerPollsTheEngine() {
-        Yandex::ApiClient api(nullptr);
-        Yandex::Library library(&api);
-        Core::Player player(&library, &engine);
+        Core::SourceRegistry sources;
+        Core::Player player(&engine, &sources);
         QSignalSpy finished(&engine, &Audio::AudioEngine::trackFinished);
         engine.beginStream();
         engine.appendData(mp3);

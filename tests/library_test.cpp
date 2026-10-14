@@ -5,6 +5,7 @@
 #include "support/mock_http_server.h"
 #include "support/spec_fixtures.h"
 #include "support/yandex_json.h"
+#include "support/yandex_sources.h"
 #include "yandex/api_client.h"
 #include "yandex/file_info.h"
 #include "yandex/library.h"
@@ -467,7 +468,8 @@ private Q_SLOTS:
 
     void playerReportsTrackEvents() {
         Audio::AudioEngine engine;
-        Core::Player player(&library, &engine);
+        Tests::YandexSources sources(&library);
+        Core::Player player(&engine, &sources.registry);
         server.result(
             "GET",
             "/tracks/1/download-info",
@@ -503,7 +505,8 @@ private:
         Yandex::ApiClient api{&networkManager};
         Yandex::Library library{&api};
         Audio::AudioEngine engine;
-        Core::Player player{&library, &engine};
+        Tests::YandexSources sources{&library};
+        Core::Player player{&engine, &sources.registry};
     };
     bool setUpAudio(PlaybackStack& playback, const QList<int>& ids) {
         QFile file(QStringLiteral(QIYAA_TEST_DATA "/sine440_3s.mp3"));
@@ -608,7 +611,7 @@ private Q_SLOTS:
             QSKIP("no audio output");
         }
         server.economyTracks({"31", "32"}, EconomyFile());
-        playback.player.setQuality(Yandex::Quality::Economy);
+        playback.sources.source.setQuality(Yandex::Quality::Economy);
         playback.player.setQueue(NumberedTracks({31, 32}), "A", false);
         playback.player.playIndex(0);
         QVERIFY(QTest::qWaitFor([&] { return playback.engine.state() == Audio::AudioEngine::State::Playing; }, 3000));
@@ -658,7 +661,7 @@ private Q_SLOTS:
         server.fixture("GET", QStringLiteral("/get-file-info"), name);
         QSignalSpy failures(&playback.player, &Core::Player::failed);
         QSignalSpy statuses(&playback.player, &Core::Player::statusMessage);
-        playback.player.setQuality(Yandex::Quality::Economy);
+        playback.sources.source.setQuality(Yandex::Quality::Economy);
         playback.player.setQueue(NumberedTracks({41}), "A", false);
         playback.player.playIndex(0);
         QVERIFY(QTest::qWaitFor([&] { return playback.engine.state() == Audio::AudioEngine::State::Playing; }, 3000));
@@ -678,7 +681,7 @@ private Q_SLOTS:
             return Tests::MockResponse{200, "{}", 0, 0};  // the connection closes before the body
         });
         playback.player.setNetworkRetryDelays(60'000, 60'000);
-        playback.player.setQuality(Yandex::Quality::Economy);
+        playback.sources.source.setQuality(Yandex::Quality::Economy);
         playback.player.setQueue(NumberedTracks({45}), "A", false);
         playback.player.playIndex(0);
         QVERIFY(QTest::qWaitFor([&] { return playback.player.isWaitingForNetwork(); }, 3000));
@@ -702,7 +705,7 @@ private Q_SLOTS:
         QVERIFY(QTest::qWaitFor([&] { return playback.player.preloadedIndex() == 1; }, 5000));
         QVERIFY(playback.player.nextLink().path().endsWith(QStringLiteral("/t52")));
 
-        playback.player.setQuality(Yandex::Quality::Economy);
+        playback.sources.source.setQuality(Yandex::Quality::Economy);
         QVERIFY(QTest::qWaitFor(
             [&] { return playback.player.nextLink().path() == QStringLiteral("/music-v2/raw/52/aac64he-mp4"); }, 5000
         ));
@@ -719,7 +722,8 @@ private Q_SLOTS:
 
     void playerAsksEndlessSourceForMore() {
         Audio::AudioEngine engine;  // not initialised: nothing actually plays
-        Core::Player player(&library, &engine);
+        Tests::YandexSources sources(&library);
+        Core::Player player(&engine, &sources.registry);
         int asked = 0;
         player.setQueue(
             NumberedTracks({1, 2, 3}),
@@ -782,7 +786,8 @@ private Q_SLOTS:
 
     void shuffleVisitsEachTrackOnceAndStops() {  // proposed spec SHUF-01 (docs/shuffle-spec.patch)
         Audio::AudioEngine engine;
-        Core::Player player(&library, &engine);
+        Tests::YandexSources sources(&library);
+        Core::Player player(&engine, &sources.registry);
         player.setShuffle(true);
         player.setQueue(NumberedTracks({1, 2, 3, 4, 5, 6}), "Plain", false);
         QSet<int> visited;
@@ -807,7 +812,8 @@ private Q_SLOTS:
 
     void shufflePreviousAndRepeatFollowTheStoredOrder() {  // proposed spec SHUF-01, SHUF-02 (docs/shuffle-spec.patch)
         Audio::AudioEngine engine;
-        Core::Player player(&library, &engine);
+        Tests::YandexSources sources(&library);
+        Core::Player player(&engine, &sources.registry);
         player.setQueue(NumberedTracks({1, 2, 3, 4, 5}), "Plain", false);
         player.setShuffle(true);
         player.setRepeat(true);
@@ -846,7 +852,8 @@ private Q_SLOTS:
     void shuffleRebuildsAfterQueueEdits() {  // proposed spec SHUF-04 (docs/shuffle-spec.patch)
         QFETCH(QString, operation);
         Audio::AudioEngine engine;
-        Core::Player player(&library, &engine);
+        Tests::YandexSources sources(&library);
+        Core::Player player(&engine, &sources.registry);
         player.setQueue(NumberedTracks({1, 2, 3, 4}), "Plain", false);
         player.playIndex(2);
         player.setShuffle(true);
@@ -949,7 +956,8 @@ private Q_SLOTS:
 
     void shuffleHandlesEmptyAndSingleTrackQueues() {  // proposed spec SHUF-01, SHUF-04 (docs/shuffle-spec.patch)
         Audio::AudioEngine engine;
-        Core::Player player(&library, &engine);
+        Tests::YandexSources sources(&library);
+        Core::Player player(&engine, &sources.registry);
         player.setShuffle(true);
         player.setQueue({}, "Empty", false);
         player.next();
@@ -967,7 +975,8 @@ private Q_SLOTS:
 
     void shuffleDoesNotApplyInAWave() {  // spec WAVE-10, WAVE-11
         Audio::AudioEngine engine;  // not initialised: nothing actually plays
-        Core::Player player(&library, &engine);
+        Tests::YandexSources sources(&library);
+        Core::Player player(&engine, &sources.registry);
         QSignalSpy status(&player, &Core::Player::statusMessage);
         auto shuffleMessages = [&] {
             int count = 0;

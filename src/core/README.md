@@ -2,25 +2,25 @@
 
 This folder decides what plays. `Player` holds the queue of the current source and moves through it:
 play, pause, stop, next, previous, shuffle and repeat. It asks an endless source (a wave) for more
-tracks before the queue runs out. For each track it resolves the download link through
-`Yandex::ApiClient` and streams the file's bytes (mp3, or AAC in MP4 at the economy quality) into
-`Audio::AudioEngine`. It also preloads the following track, so the engine can go on without a gap,
-and it reports each track's start and end: a play report to Yandex and a per-queue callback that the
-wave uses for feedback. `JamMode` is the queue while the app hosts a jam: the current track, the
+tracks before the queue runs out. For each track it asks the track's source (`TrackSource`, chosen
+by `TrackKey::source`) to open it and streams the file's bytes into `Audio::AudioEngine`. It also
+preloads the following track, so the engine can go on without a gap, and it reports each track's
+start and end: to the source (Yandex's play report) and to a per-queue callback that the wave uses
+for feedback. `JamMode` is the queue while the app hosts a jam: the current track, the
 jam part that mirrors the server's queue, and the jam wave (`spec/jam/host.md`), which a source
 provides through `JamWave`. `CoverCache` downloads album covers and keeps them in memory and on
 disk. The folder does not decide what a pick plays or talk to a source's catalogue
 ([src/sources](../sources/README.md)). It does not decode or output audio or chain streams at the
-sample level ([src/audio](../audio/README.md)). It does not speak the Yandex API, sign links or
-build cover URLs itself ([src/yandex](../yandex/README.md)). It builds no menus
+sample level ([src/audio](../audio/README.md)). It speaks to no music service: links, files, cover
+URLs and play reports are a source's ([src/sources](../sources/README.md)). It builds no menus
 ([src/ui](../ui/README.md), `library_menu.cpp`) and shows nothing on screen. Namespace `Core`,
 library `qiyaa_core`.
 
 | File | Contains |
 |---|---|
-| `player.h/.cpp` | `Player`: the queue and cursor, transport, shuffle and repeat, source-request tickets, the endless-source hook `TLoadMoreCallback`, track events `TEventCallback`, link resolution, download streaming, the gapless preload, and the engine's poll timer |
-| `track.h/.cpp` | `Track`, `TrackKey`, `CoverRef`: a track of any source |
-| `track_source.h/.cpp` | `TrackSource`, what each music source implements, and `SourceRegistry`, the sources by name |
+| `player.h/.cpp` | `Player`: the queue and cursor, transport, shuffle and repeat, source-request tickets, the endless-source hook `TLoadMoreCallback`, track events `TEventCallback`, opening tracks through their sources, download streaming, the gapless preload, and the engine's poll timer |
+| `track.h/.cpp` | `Track`, `TrackKey`, `CoverRef`, `TrackEvent`: a track of any source |
+| `track_source.h/.cpp` | `TrackSource`, what each music source implements; `TrackDownload`, `OpenedTrack`, `TrackFailure`, `TOpenResult`; `SourceRegistry`, the sources by name |
 | `continuation.h` | `Continuation`: an endless supply of tracks and the feedback on them |
 | `track_navigator.h/.cpp` | `TrackNavigator`, `ShuffleAlgorithm`, `MakeTrackNavigator`: sequential, random and stored shuffled traversal |
 | `failure_policy.h/.cpp` | `FailureKind`, `FailureAction`, `DecideOnFailure`: what the `Player` does about a track that cannot play |
@@ -29,17 +29,17 @@ library `qiyaa_core`.
 
 ## Dependencies
 
-- `qiyaa_core` links PUBLIC `qiyaa_audio`, `qiyaa_yandex`, `Qt6::Gui` (`QImage` in
-  `cover_cache.h`) and `Qt6::Network` (`QNetworkAccessManager`, `QNetworkReply`). It links nothing
+- `qiyaa_core` links PUBLIC `qiyaa_audio`, `Qt6::Gui` (`QImage` in `cover_cache.h`) and
+  `Qt6::Network` (`QNetworkAccessManager`, `QNetworkReply` in `cover_cache`). It links nothing
   PRIVATE.
-- It deliberately does not link `Qt6::Widgets`, `qiyaa_skins`, `qiyaa_vis`, or anything above it in
-  the order `audio`, `yandex`, `skins` → `vis`, `core` → `sources` → `jam` → `ui`, `integrations` →
-  `app`. It reaches miniaudio only through `qiyaa_audio`, which links it PRIVATE. Which modules link
-  `qiyaa_core` is in [docs/architecture.md](../../docs/architecture.md#modules).
+- It deliberately does not link `qiyaa_yandex` (a source's business), `Qt6::Widgets`,
+  `qiyaa_skins`, `qiyaa_vis`, or anything above it in the order `audio`, `yandex`, `skins` →
+  `vis`, `core` → `sources` → `jam` → `ui`, `integrations` → `app`. It reaches miniaudio only
+  through `qiyaa_audio`, which links it PRIVATE. Which modules link `qiyaa_core` is in
+  [docs/architecture.md](../../docs/architecture.md#modules).
 - `player` and `cover_cache` do not include each other.
-- Only `player.*` and `failure_policy.h` include `yandex/`: the links, the downloads, the play
-  report and the HTTP failure kinds, which [#27](https://github.com/Kickoman/QiYaa/issues/27)
-  moves into the source. No file of `core` names `Yandex::Track`.
+- No file includes `yandex/`. The only HTTP of `core` is `CoverCache`'s: a track's file comes
+  through its source's `TrackDownload`.
 - `Player` is the only caller of `AudioEngine::poll()` in `src/`. Everything the engine reports
   asynchronously therefore arrives through `Player`'s timer (see [Threads and
   lifetime](#threads-and-lifetime)).
@@ -49,7 +49,8 @@ grep -rnE --include='*.h' --include='*.cpp' '#include "(sources|jam|ui|vis|skins
 grep -rnE --include='*.h' --include='*.cpp' '#include <(QWidget|QApplication|QDialog|QMenu|QtWidgets)' src/core/   # must print nothing
 grep -rnwE --include='*.h' --include='*.cpp' 'throw|catch' src/core/                                    # must print nothing
 grep -rn --include='*.h' --include='*.cpp' -e '->poll()' src/ | grep -v '^src/core/player.cpp:'         # must print nothing
-grep -rl --include='*.h' --include='*.cpp' '#include "yandex/' src/core/ | grep -vx 'src/core/\(player\.\(h\|cpp\)\|failure_policy\.h\)'   # must print nothing
+grep -rn --include='*.h' --include='*.cpp' '#include "yandex/' src/core/                               # must print nothing
+grep -rnE --include='*.h' --include='*.cpp' 'QNetworkRe(quest|ply)' src/core/ | grep -v '^src/core/cover_cache\.'   # must print nothing
 ```
 
 ## `player.h`: `Player`
@@ -58,11 +59,11 @@ grep -rl --include='*.h' --include='*.cpp' '#include "yandex/' src/core/ | grep 
 class Player : public QObject {
 public:
     using TLoadMoreCallback = std::function<void(std::function<void(const QList<Track>&)> done)>;
-    enum class TrackEvent { Started, Finished, Skipped };
+    using TrackEvent = Core::TrackEvent;
     using TEventCallback =
         std::function<void(TrackEvent event, const Track& track, double playedSeconds)>;
 
-    Player(Yandex::Library* library, Audio::AudioEngine* engine, QObject* parent = nullptr);
+    Player(Audio::AudioEngine* engine, SourceRegistry* sources, QObject* parent = nullptr);
 
     quint64 newSourceRequest();                       // new ticket; every older one stops being the latest
     bool isLatestSourceRequest(quint64 ticket) const;
@@ -94,8 +95,6 @@ public:
     void setShuffleAlgorithm(ShuffleAlgorithm algorithm);
     ShuffleAlgorithm shuffleAlgorithm() const;
     void setRepeat(bool on);
-    void setQuality(Yandex::Quality quality);         // from the next link on (spec QUAL-05)
-    Yandex::Quality quality() const;                  // Standard until set
     bool shuffle() const;                             // the user's choice
     bool shuffleActive() const;                       // shuffle && the queue is not endless
     bool repeat() const;
@@ -110,7 +109,6 @@ public:
     int currentBitrate() const;                       // kbps of the current link; 0 until it resolves
     double durationSeconds() const;                   // Track::durationMs / 1000; 0 without a track
     Audio::AudioEngine* engine() const;
-    Yandex::Library* library() const;
     int preloadedIndex() const;                       // -1 until the preload has an engine stream
 
     void setNetworkOnline(std::optional<bool> online); // the system's view; nullopt: cannot tell
@@ -140,8 +138,8 @@ Q_SIGNALS:
   engine state is not `Stopped` (it follows `AudioEngine::stateChanged`), so the end of a track
   is noticed with every window hidden or minimised. Each tick runs `poll()` first, together with
   any track change it triggers, then adds to the played seconds, then emits `positionTick`.
-- `Player` does not own the `Library` or the `AudioEngine`, and neither pointer is checked for
-  null. Both must outlive the `Player`.
+- `Player` does not own the `AudioEngine` or the `SourceRegistry`, and neither pointer is checked
+  for null. Both, and the sources in the registry, must outlive the `Player`.
 
 ### The queue and the cursor
 
@@ -219,15 +217,15 @@ above.
      `trackStarted`.
   3. **Otherwise:** `cancelPreload()`, then `AudioEngine::beginStream()`, then
      `currentTrackChanged` (with `currentBitrate()` still 0), then the load-more check, then
-     `ApiClient::resolveTrackUrl` in the current `quality()` (so do the network retry and the
-     preload). The reply is ignored if `generation` has moved on. On an error:
+     `SourceRegistry::open` (so do the network retry and the preload). The reply is ignored if
+     `generation` has moved on, and its download is never started. On a `TrackFailure`:
      the [failure policy](#failures-during-playback); without an output device (stream 0) only
-     `statusMessage("Cannot get link: <error>")` and a stop. On success: the download starts into
-     the stream begun above, then `trackStarted`.
-- **`trackStarted(track, bitrate)`** (private): stores the bitrate, sends
-  `ApiClient::reportPlayStarted(account, track.key.id, durationMs, <new UUID>)`, opens the track and
-  remembers the current `TEventCallback` for its closing event. It resets the played seconds, sends
-  `Started(track, 0)`, emits `currentTrackChanged` and calls `maybePreload()`.
+     `statusMessage("Cannot get the link: <text>")` and a stop. On success: the download is
+     connected to the stream begun above and started, then `trackStarted`.
+- **`trackStarted(track, bitrate)`** (private): stores the bitrate, opens the track and remembers
+  the current `TEventCallback` and `QueueRules::playReports` for its closing event. It resets the
+  played seconds, sends `Started(track, 0)` to the source (with `playReports`) and then to the
+  callback, emits `currentTrackChanged` and calls `maybePreload()`.
 - **`next()`**: with an empty queue, nothing happens. If a preload exists in any phase:
   `playIndex(preload index)`. Else if `pickNext() >= 0`: `playIndex` of it. Else, if the source is
   endless: `stop()`, mark waiting, run the load-more check, then emit
@@ -260,7 +258,7 @@ above.
 - **Download finished**:
   - If it is the current stream and it failed: with no audio bytes received, the failure policy
     at once; otherwise the failure kind is kept for the track's end (a network failure then
-    waits, ERR-03; any other shows `statusMessage("Download failed: <Qt error>")` and ends the
+    waits, ERR-03; any other shows `statusMessage("Download failed: <text>")` and ends the
     track as `Skipped`).
   - If it is the current stream and it succeeded: `currentDownloaded`, then `maybePreload()`.
   - If it is the preload's stream: a failure cancels the preload (that track is fetched again when
@@ -272,10 +270,10 @@ above.
 - **`removeTracks`**: see [the queue](#the-queue-and-the-cursor). If the current track was
   removed: `stop()`, then `currentTrackChanged`. Then, always, `playlistChanged` and
   `refreshPreload()`.
-- **`setQuality`**: nothing happens without a change. With one: `cancelPreload()`, then
-  `maybePreload()`, so a next track fetched in the old quality is fetched again (spec QUAL-05).
-  The current track goes on with its file; no signal is emitted, and saving the choice is
-  `Application`'s.
+- **`SourceRegistry::filesChanged(source)`** (a source's quality changed): if the preload is
+  another source's track, nothing. Otherwise `cancelPreload()`, then `maybePreload()`, so a next
+  track fetched in the old quality is fetched again (spec QUAL-05). The current track goes on with
+  its file; no signal is emitted.
 - **`setShuffle`, `setRepeat`**: nothing happens without a change. With a change:
   `modesChanged`, then `refreshPreload()`. Switching shuffle on while the queue is endless also
   emits `statusMessage("Shuffle does not apply to a vibe")`; `setQueue` emits the same when an
@@ -340,11 +338,11 @@ Tickets start at 1, so 0 never matches. `YandexSource::Catalog` takes one for ev
 
 ### Downloads
 
-- The file comes from `Library::api()->download(link)`: the request, the error page and how a
-  failure is classified are [`Yandex::Download`](../yandex/README.md#downloadh--download)'s.
+- The file comes from the `TrackDownload` the source opened. The `Player` connects it to its
+  stream before it calls `start()`.
 - Every `received` passes the bytes to `AudioEngine::appendData(stream, …)`, with the stream id
-  captured at the start. `finished` calls `finishData(stream)`, or `failData(stream)` on an error.
-  The engine ignores data for streams it has dropped.
+  captured at the start. `finished` calls `finishData(stream)`, or `failData(stream)` with a
+  `TrackFailure`. The engine ignores data for streams it has dropped.
 - `Player` sets no byte limit. Every byte goes to the engine, which keeps the stream in memory.
 - At most one track download is in flight. A preload's link is requested only after the current
   track's download has finished without error. A dropped download is deleted, which aborts it
@@ -362,13 +360,13 @@ the Android app's `ErrorPolicy`:
 enum class FailureKind { Network, Auth, Track };
 enum class FailureAction { WaitForNetwork, Next, Stop, StopAfterLimit };
 inline constexpr int kMaxTrackFailuresInRow = 3;
-FailureKind KindOf(const Yandex::RequestError& error);     // Network; HTTP 401/403 Auth; else Track
 FailureAction DecideOnFailure(FailureKind kind, int failuresInRow, bool hasNext, bool endless);
 ```
 
-- **Where a failure comes from:** the link (`resolveTrackUrl`'s `RequestError`), the download
-  (`ClassifyReply` of the stream's reply) and `AudioEngine::streamUndecodable` (a Track failure,
-  or a Network one if the download had already broken off).
+- **Where a failure comes from:** opening the track and its download (the source's
+  `TrackFailure`; Yandex's kinds are `YandexSource::FailureKindOf`), and
+  `AudioEngine::streamUndecodable` (a Track failure, or a Network one if the download had already
+  broken off).
 - **Track** (ERR-04, ERR-05, ERR-07): `"The track does not play: <text>"` and `next()`, which in a wave at
   its end waits for more. The third in a row stops instead, with `"Stopped: 3 tracks in a row did
   not play"`; with no next track in a finite queue it stops at once. The count goes back to 0
@@ -379,7 +377,7 @@ FailureAction DecideOnFailure(FailureKind kind, int failuresInRow, bool hasNext,
   reached and paused, so every view shows it paused there. The track stays open: no `Skipped`
   now, and no new `Started` or play report when it continues. A retry follows after 2 s, then
   4 s, 8 s … up to 60 s (`setNetworkRetryDelays`); `setNetworkOnline(true)` retries at once,
-  `setNetworkOnline(false)` holds the retries until then. A retry resolves the link again and
+  `setNetworkOnline(false)` holds the retries until then. A retry opens the track again and
   streams into the parked stream, which seeks to the kept position before any audio; it plays on
   if the track was playing and the user has not paused since (Play and Pause during the wait only
   set that). `stop`, `playIndex` and `setQueue` end the wait.
@@ -425,7 +423,7 @@ FailureAction DecideOnFailure(FailureKind kind, int failuresInRow, bool hasNext,
   `Started`. It is always sent before the `Started` of the next track, because `playIndex` and
   both engine handlers close the open track first.
 - `Started` is sent:
-  - after the link resolves and the download starts, before any audio of it is heard, and even
+  - after the track opens and its download starts, before any audio of it is heard, and even
     without an output device;
   - at once, when the preload is taken over by `playIndex` or `next()`;
   - at the gapless boundary.
@@ -434,7 +432,7 @@ FailureAction DecideOnFailure(FailureKind kind, int failuresInRow, bool hasNext,
 - `Skipped` is sent in every other case: `stop`; `playIndex`, `next` or `previous`; `play` while
   playing; `setQueue` or `clearQueue`; removing the track; `shutDown`; or an end after a failed
   download, where the track only drained to where the data stopped.
-- No event is sent for a track whose link failed, because it never opened. None is sent when the
+- No event is sent for a track that failed to open, because it never opened. None is sent when the
   `Player` is destroyed with a track open either; call `shutDown()` first, as
   `App::Application::quit` does. A link reply that arrives after the `Player` is gone is dropped
   (every resolve callback holds a `QPointer` to it).
@@ -442,9 +440,9 @@ FailureAction DecideOnFailure(FailureKind kind, int failuresInRow, bool hasNext,
   step since the previous reading is added if the engine is `Playing` and `0 < step < 1.0`.
   Normal steps are about 0.1 s. Seeks and other jumps of 1 s or more, backward moves, and paused
   or buffering time do not count. `seekTo` also moves the baseline to the target.
-- Each `Started` also sends a play report through `ApiClient::reportPlayStarted`, with a new UUID
-  as the play id, whether or not the queue has a `TEventCallback` — unless the source's
-  `QueueRules::playReports` is false (the jam, HOST-15).
+- Each event also goes to the track's source (`SourceRegistry::trackEvent`) before the
+  `TEventCallback`, whether or not the queue has one — unless `QueueRules::playReports` was false
+  when the track started (the jam, HOST-15). For a Yandex track `Started` is the play report.
 - With `QueueRules::previousRestartsOnly` (the jam, HOST-07), `previous()` always restarts the
   current track by `seekTo(0)`, or `playIndex(cursor)` when the engine refuses the seek.
 
@@ -452,7 +450,7 @@ FailureAction DecideOnFailure(FailureKind kind, int failuresInRow, bool hasNext,
 
 | Signal | Emitted |
 |---|---|
-| `statusMessage(text)` | `"Audio error: <message>"` (from `AudioEngine::errorOccurred`), the failure statuses (`"The track does not play: …"`, `"Stopped: 3 tracks in a row did not play"`, `"Access error: …"`, `"No network — waiting for it…"`, `"Cannot get link: …"` without an output device, `"Download failed: …"`), and `"Loading more tracks…"` (loading more tracks). `YandexSource::Catalog` also emits it on the `Player` for picks, likes and dislikes, which makes it the app's one status line |
+| `statusMessage(text)` | `"Audio error: <message>"` (from `AudioEngine::errorOccurred`), the failure statuses (`"The track does not play: …"`, `"Stopped: 3 tracks in a row did not play"`, `"Access error: …"`, `"No network — waiting for it…"`, `"Cannot get the link: …"` without an output device, `"Download failed: …"`), and `"Loading more tracks…"` (loading more tracks). `YandexSource::Catalog` also emits it on the `Player` for picks, likes and dislikes, which makes it the app's one status line |
 | `playlistChanged` | by `setQueue`; by `appendTracks` when something was added; by `removeTracks` always, even when no index was valid |
 | `queueReplaced` | by `setQueue` and `clearQueue` only, before `playlistChanged` |
 | `currentTrackChanged` | by `setQueue`, even for an empty queue; by `playIndex` at once; again from `trackStarted` once the bitrate is known; twice on a gapless advance; by `removeTracks` when the current track was removed |
@@ -476,10 +474,7 @@ FailureAction DecideOnFailure(FailureKind kind, int failuresInRow, bool hasNext,
 - `TLoadMoreCallback` and `TEventCallback` run synchronously inside `Player` methods and the timer's
   handler. They must not call `playIndex`, `stop` or `setQueue`, and they must not throw (see
   [Errors](#errors)).
-- The link reply in `playIndex` captures a raw `this`, unlike the preload's, which uses a
-  `QPointer`. Do not destroy a `Player` while its `ApiClient` lives on and a link request may still
-  be pending. In the app the `Player` is destroyed before the `ApiClient`, and no event loop runs
-  in between.
+- A source may answer `open` after the `Player` is gone: every reply checks a `QPointer` to it.
 - The poll timer calls `accumulatePlayedSeconds()` for its side effect; dropping the call loses
   the played time. A stall of the GUI thread longer than 1 s between two ticks also loses that
   stretch.
@@ -494,7 +489,7 @@ FailureAction DecideOnFailure(FailureKind kind, int failuresInRow, bool hasNext,
 - `shutDown()` blocks playback only. `setQueue`, `appendTracks` and `removeTracks` still change
   the list, and `next()` at the end of an endless queue still calls the `TLoadMoreCallback`.
 - `Started` means "the download began", not "audio is audible". Without an output device it is
-  still sent, together with the play report.
+  still sent, to the source too.
 - `stop()` and `setQueue` do not reset `currentBitrate()`.
 - The timer starts on the engine's next `stateChanged`. An engine that is already playing when
   the `Player` is constructed is not polled until its state changes.
@@ -502,6 +497,7 @@ FailureAction DecideOnFailure(FailureKind kind, int failuresInRow, bool hasNext,
 ## `track.h`: `Track`, `TrackKey`, `CoverRef`
 
 ```cpp
+enum class TrackEvent { Started, Finished, Skipped };
 struct TrackKey { QString source; QString id; bool operator==(const TrackKey&) const = default; };
 struct CoverRef { QString value; };
 struct Track {
@@ -522,35 +518,74 @@ struct Track {
   the callbacks and the jam all hold these. `key.source` names the source (`yandex`); `key.id` is
   the source's own and means nothing to the core. A Yandex track's is `<track id>:<album id>`, or
   the track id alone.
-- Until [#27](https://github.com/Kickoman/QiYaa/issues/27) the `Player` still resolves links and
-  sends play reports through `Yandex::ApiClient` itself, passing `key.id` as the client's track id
-  (the client takes the `<track>:<album>` form).
+- `TrackEvent` (`Started`, `Finished`, `Skipped`) is what happened to a track in the queue; the
+  `Player` reports it to the track's source and to the queue's callback.
 - `cover` is read only by the track's source, through `TrackSource::coverUrl`.
 - What only one source needs is not here: the source encodes it in `key.id` or keeps it.
 
 ## `track_source.h`: `TrackSource`, `SourceRegistry`
 
 ```cpp
-class TrackSource {
+struct TrackFailure { FailureKind kind = FailureKind::Track; QString text; };   // text: English, for the status line
+
+class TrackDownload : public QObject {
 public:
-    virtual QUrl coverUrl(const Track& track, int pixels) const = 0;   // empty: no cover
-    virtual QUrl webPage(const Track& track) const = 0;                // empty: no web page
+    virtual void start() = 0;                     // sends the request; once
+Q_SIGNALS:
+    void received(const QByteArray& bytes);       // the file's next bytes, in order
+    void finished(const std::optional<Core::TrackFailure>& failure);   // once, last
 };
 
-class SourceRegistry {                                                 // built by src/app
+struct OpenedTrack {
+    std::unique_ptr<TrackDownload> download;      // not started yet
+    QUrl link;                                    // what a jam's guests may fetch (about an hour)
+    int bitrateKbps = 0;
+    QString codec;
+};
+using TOpenResult = std::variant<OpenedTrack, TrackFailure>;
+
+class TrackSource : public QObject {
+public:
+    using TOpened = std::function<void(TOpenResult result)>;
+    virtual QUrl coverUrl(const Track& track, int pixels) const = 0;   // empty: no cover
+    virtual QUrl webPage(const Track& track) const = 0;                // empty: no web page
+    virtual void open(const Track& track, TOpened done) = 0;
+    virtual void trackEvent(TrackEvent event, const Track& track, double playedSeconds) = 0;
+Q_SIGNALS:
+    void filesChanged();                          // the same track would now open another file
+};
+
+class SourceRegistry : public QObject {           // built by src/app
 public:
     void add(const QString& source, TrackSource* port);                // does not take ownership
     TrackSource* find(const QString& source) const;                    // nullptr: unknown source
     QUrl coverUrl(const Track& track, int pixels) const;               // the track's source's; empty if unknown
     QUrl webPage(const Track& track) const;
+    void open(const Track& track, TrackSource::TOpened done);
+    void trackEvent(TrackEvent event, const Track& track, double playedSeconds);
+Q_SIGNALS:
+    void filesChanged(const QString& source);
 };
 ```
 
-- A port's `coverUrl` and `webPage` are cheap and pure: no input or output, and the same URL for
-  the same track and size. `coverUrl` runs on every `CoverCache::ready`.
-- A port answers for its own source's tracks; for another's it returns empty URLs.
-- Opening a track, its events and what a source can do (like, quality) come with
-  [#27](https://github.com/Kickoman/QiYaa/issues/27).
+- A port answers for its own source's tracks. `coverUrl` and `webPage` are cheap and pure: no
+  input or output, and the same URL for the same track and size; `coverUrl` runs on every
+  `CoverCache::ready`. For another source's track they return empty URLs.
+- `open` calls `done` exactly once, from the event loop and never inside `open` itself. A port
+  that is destroyed first may drop it. The download in an `OpenedTrack` sends nothing until
+  `start()`, so a reply that comes too late is dropped at no cost.
+- A `TrackDownload` emits nothing before `start()` and never inside it. `finished` comes once and
+  last; a `TrackFailure` there is the download's (a cut connection is `Network`). Deleting a
+  download aborts it, and nothing is emitted after that. The `Player` never deletes one inside its
+  own signal.
+- `trackEvent` takes every event of a track that started with `QueueRules::playReports`; what the
+  source does with it is its own (Yandex reports `Started` only).
+- `filesChanged`: the source now opens other files for the same tracks (another quality). The
+  registry re-emits it with the source's name.
+- The registry routes by `track.key.source`. A track of a source it does not know fails to open
+  with `TrackFailure{Track}` on the next pass of the event loop, and its events go nowhere.
+- Like, dislike and the other capabilities of a source are not in the port yet: the Yandex menu
+  asks `YandexSource::Catalog`.
 
 ## `continuation.h`: `Continuation`
 
@@ -559,7 +594,7 @@ class Continuation {
 public:
     using TDone = std::function<void(const QList<Track>& tracks)>;
     virtual void more(TDone done) = 0;                                                       // as TLoadMoreCallback
-    virtual void trackEvent(Player::TrackEvent event, const Track& track, double playedSeconds) = 0;   // as TEventCallback
+    virtual void trackEvent(TrackEvent event, const Track& track, double playedSeconds) = 0;   // as TEventCallback
 };
 ```
 
@@ -792,8 +827,9 @@ loaders that throw (the project's error policy is in
 
 | Where | Failure arrives as |
 |---|---|
-| link, current track | the failure policy, by `Yandex::RequestError` kind; without an output device `statusMessage("Cannot get link: <error>")` and a stop |
-| link, preload | nothing; the preload is dropped |
+| opening, current track | the failure policy, by the `TrackFailure`'s kind; without an output device `statusMessage("Cannot get the link: <text>")` and a stop |
+| opening, preload | nothing; the preload is dropped |
+| a track of no known source | a `TrackFailure{Track}` from `SourceRegistry::open` |
 | download, current track | the failure policy; after some audio, `statusMessage("Download failed: …")` and `Skipped` at the end, or for the network a wait |
 | download, preload | the preload is cancelled, with no message |
 | audio engine | `statusMessage("Audio error: <message>")`; an undecodable current stream also goes to the failure policy (`AudioEngine::streamUndecodable`) |
@@ -810,17 +846,19 @@ no exception may cross the event loop, so they must not throw.
 - Decoding, the blocks of audio, stream buffers, when a queued stream is chained, when
   `trackAdvanced` and `trackFinished` fire, seeking within the downloaded part, and the
   `errorOccurred` texts: [src/audio](../audio/README.md).
-- `download-info` and the signed link, `Yandex::Track` and its cover and page URLs, the
-  `/play-audio` report, and wave sessions and feedback: [src/yandex](../yandex/README.md).
-- What a pick plays, the vibe's callbacks, likes and dislikes, and the jam wave's rotor session:
+- `download-info` and the signed link, the file's HTTP, `Yandex::Track` and its cover and page
+  URLs, the `/play-audio` request, and wave sessions and feedback:
+  [src/yandex](../yandex/README.md).
+- Opening a Yandex track, its play report, the quality, what a pick plays, the vibe's callbacks,
+  likes and dislikes, and the jam wave's rotor session:
   [src/sources/yandex](../sources/yandex/README.md).
 - The Yandex menu that calls `YandexSource::Catalog`, the status line, the playlist and "Now
   playing" windows: [src/ui](../ui/README.md).
 - Media keys, MPRIS and SMTC state, and the cover `artUrl` built from `localFile()`:
   [src/integrations](../integrations/README.md).
-- Creating the `Player` and the cache and choosing the cache directory, loading the likes without
-  `autoplay` after login when the queue is empty, and calling `shutDown()` on quit before waiting
-  for the last POSTs: [src/app](../app/README.md).
+- Creating the `Player`, the registry and the cache and choosing the cache directory, loading the
+  likes without `autoplay` after login when the queue is empty, and calling `shutDown()` on quit
+  before waiting for the last POSTs: [src/app](../app/README.md).
 - Tests:
   - `tests/library_test.cpp`: track events, the preload and the gapless advance, re-preloading
     after a queue change, the endless source, and a slow load against a newer choice.

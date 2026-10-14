@@ -1,17 +1,15 @@
 #include "audio/audio_engine.h"
 #include "core/player.h"
+#include "core/track_source.h"
 #include "skins/skin.h"
 #include "ui/equalizer_window.h"
 #include "ui/main_window.h"
-#include "yandex/api_client.h"
-#include "yandex/library.h"
 
 #include <QChar>
 #include <QDir>
 #include <QImage>
 #include <QLatin1Char>
 #include <QLatin1String>
-#include <QNetworkAccessManager>
 #include <QObject>
 #include <QPoint>
 #include <QString>
@@ -60,9 +58,7 @@ class TestScreenshots : public QObject {
     Q_OBJECT
 private:
     Skins::Skin skin;
-    QNetworkAccessManager networkManager;
-    std::unique_ptr<Yandex::ApiClient> api;
-    std::unique_ptr<Yandex::Library> library;
+    Core::SourceRegistry sources;
     std::unique_ptr<Audio::AudioEngine> engine;
     std::unique_ptr<Core::Player> player;
 
@@ -87,10 +83,8 @@ private Q_SLOTS:
     void initTestCase() {
         skin = Skins::Skin::BuiltinBase();
         QVERIFY(skin.isValid());
-        api = std::make_unique<Yandex::ApiClient>(&networkManager);
-        library = std::make_unique<Yandex::Library>(api.get());
         engine = std::make_unique<Audio::AudioEngine>();
-        player = std::make_unique<Core::Player>(library.get(), engine.get());
+        player = std::make_unique<Core::Player>(engine.get(), &sources);
     }
 
     void mainWindowLooksAsRecorded_data() {

@@ -4,9 +4,7 @@
 #include "core/failure_policy.h"
 #include "core/track.h"
 #include "core/track_navigator.h"
-#include "yandex/api_client.h"
-#include "yandex/download.h"
-#include "yandex/library.h"
+#include "core/track_source.h"
 
 #include <QList>
 #include <QObject>
@@ -37,10 +35,10 @@ class Player : public QObject {
     Q_OBJECT
 public:
     using TLoadMoreCallback = std::function<void(std::function<void(const QList<Track>&)> done)>;
-    enum class TrackEvent { Started, Finished, Skipped };
+    using TrackEvent = Core::TrackEvent;
     using TEventCallback = std::function<void(TrackEvent event, const Track& track, double playedSeconds)>;
 
-    Player(Yandex::Library* library, Audio::AudioEngine* engine, QObject* parent = nullptr);
+    Player(Audio::AudioEngine* engine, SourceRegistry* sources, QObject* parent = nullptr);
 
     quint64 newSourceRequest() { return ++sourceRequest; }
     bool isLatestSourceRequest(quint64 ticket) const { return ticket == sourceRequest; }
@@ -74,9 +72,6 @@ public:
     void setShuffleAlgorithm(ShuffleAlgorithm algorithm);
     ShuffleAlgorithm shuffleAlgorithm() const { return preferredShuffleAlgorithm; }
     void setRepeat(bool on);
-    // Applies from the next link on: the playing track goes on (spec QUAL-05).
-    void setQuality(Yandex::Quality quality);
-    Yandex::Quality quality() const { return audioQuality; }
     bool shuffle() const { return shuffleEnabled; }  // the user's choice
     // Shuffle as it applies now: never in an endless queue (a wave plays in queue order).
     bool shuffleActive() const { return shuffleEnabled && !loadMore; }
@@ -98,7 +93,6 @@ public:
     int currentBitrate() const { return bitrateKbps; }
     double durationSeconds() const;
     Audio::AudioEngine* engine() const { return audioEngine; }
-    Yandex::Library* library() const { return yandexLibrary; }
     int preloadedIndex() const;
 
     // What the system says about the network: nullopt when it cannot tell, and then only the
@@ -127,7 +121,7 @@ private:
         quint64 generation = 0;
         TStreamId stream = 0;
         int bitrate = 0;
-        std::unique_ptr<Yandex::Download> reply;
+        std::unique_ptr<TrackDownload> download;
         bool downloadDone = false;
         QUrl link;
     };
@@ -139,8 +133,9 @@ private:
         int attempt = 0;
     };
 
-    std::unique_ptr<Yandex::Download> startDownload(const QUrl& url, TStreamId stream);
-    void downloadFinished(Yandex::Download* finished, TStreamId stream, const Yandex::RequestError& error);
+    std::unique_ptr<TrackDownload> startDownload(std::unique_ptr<TrackDownload> opened, TStreamId stream);
+    void downloadFinished(TrackDownload* finished, TStreamId stream, const std::optional<TrackFailure>& failure);
+    void sourceFilesChanged(const QString& source);
     void handleFailure(FailureKind kind, const QString& text);
     void waitForNetwork();
     void retryAfterNetwork();
@@ -153,11 +148,11 @@ private:
     void cancelPreload();
     void refreshPreload();
     void maybeLoadMore();
-    void closeOpenTrack();
+    void closeOpenTrack(TrackEvent event);
     double accumulatePlayedSeconds();
 
-    Yandex::Library* yandexLibrary;
     Audio::AudioEngine* audioEngine;
+    SourceRegistry* trackSources;
     QList<Track> queuedTracks;
     std::unique_ptr<TrackNavigator> navigator = MakeTrackNavigator(std::nullopt);
     ShuffleAlgorithm preferredShuffleAlgorithm = ShuffleAlgorithm::WithoutRepeats;
@@ -167,6 +162,7 @@ private:
     QueueRules queueRules;
     std::optional<Track> openTrack;
     TEventCallback openTrackEvents;
+    bool openTrackReports = false;
     double playedSeconds = 0;
     double lastPosition = 0;
     std::optional<FailureKind> streamFailure;  // the current stream's download broke
@@ -189,9 +185,8 @@ private:
     QUrl currentLinkUrl;
     bool shuffleEnabled = false;
     bool repeatEnabled = false;
-    Yandex::Quality audioQuality = Yandex::Quality::Standard;
     quint64 generation = 0;
-    std::unique_ptr<Yandex::Download> download;
+    std::unique_ptr<TrackDownload> download;
     TStreamId streamId = 0;
     bool currentDownloaded = false;
     std::optional<Preload> preload;

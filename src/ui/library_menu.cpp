@@ -1,6 +1,5 @@
 #include "ui/library_menu.h"
 
-#include "core/player.h"
 #include "core/track.h"
 #include "core/track_source.h"
 #include "sources/yandex/catalog.h"
@@ -85,14 +84,13 @@ QString StationTypeTitle(const QString& type) {
 
 void AddLibraryActions(
     QMenu* menu,
-    Core::Player* player,
+    Yandex::Library* library,
     YandexSource::Catalog* catalog,
     const Core::SourceRegistry* sources,
     const Core::Track* track,
     QWidget* dialogParent,
     std::function<void()> loginRequested
 ) {
-    Yandex::Library* library = player->library();
     if (!library->isLoggedIn()) {
         menu->addAction(
             QCoreApplication::translate("Ui::LibraryMenu", "Log in to Yandex Music…"), menu, loginRequested

@@ -212,7 +212,7 @@ private Q_SLOTS:
         options.settingsFile = directory.filePath(QStringLiteral("settings.ini"));
         {
             App::Application configured(options);
-            QCOMPARE(configured.player()->quality(), Yandex::Quality::Standard);
+            QCOMPARE(configured.yandex()->quality(), Yandex::Quality::Standard);
             configured.mainWindow()->menuRequested(QPoint(100, 100));
             auto* menu = configured.mainWindow()->findChild<QMenu*>(QStringLiteral("qualityMenu"));
             QVERIFY(menu);
@@ -220,13 +220,13 @@ private Q_SLOTS:
             QCOMPARE(menu->actions()[0]->text(), QStringLiteral("Standard"));
             QVERIFY(menu->actions()[0]->isChecked());
             menu->actions()[1]->trigger();
-            QCOMPARE(configured.player()->quality(), Yandex::Quality::Economy);
+            QCOMPARE(configured.yandex()->quality(), Yandex::Quality::Economy);
             QVERIFY(menu->actions()[1]->isChecked());
             QVERIFY(!menu->actions()[0]->isChecked());
         }
         {
             App::Application restored(options);
-            QCOMPARE(restored.player()->quality(), Yandex::Quality::Economy);
+            QCOMPARE(restored.yandex()->quality(), Yandex::Quality::Economy);
             restored.mainWindow()->menuRequested(QPoint(100, 100));
             auto* menu = restored.mainWindow()->findChild<QMenu*>(QStringLiteral("qualityMenu"));
             QVERIFY(menu);
@@ -237,7 +237,7 @@ private Q_SLOTS:
         saved.setValue(QStringLiteral("playback/quality"), QStringLiteral("lossless"));
         saved.sync();
         App::Application fallback(options);
-        QCOMPARE(fallback.player()->quality(), Yandex::Quality::Standard);
+        QCOMPARE(fallback.yandex()->quality(), Yandex::Quality::Standard);
     }
 
     void defaultLayoutIsStacked() {

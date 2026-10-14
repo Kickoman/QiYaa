@@ -1,7 +1,5 @@
 #pragma once
 
-#include "yandex/api_client.h"
-
 namespace Core {
 
 // Why a track cannot play (spec/player/errors.md): the network, the account (HTTP 401/403), or
@@ -18,8 +16,6 @@ enum class FailureAction {
 };
 
 inline constexpr int kMaxTrackFailuresInRow = 3;
-
-FailureKind KindOf(const Yandex::RequestError& error);
 
 // `failuresInRow` counts the track failures before this one. `hasNext`: a track follows in a
 // finite queue; `endless`: the queue is a wave, which waits for more instead of ending.

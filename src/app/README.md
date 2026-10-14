@@ -94,6 +94,7 @@ public:
     Audio::AudioEngine* engine();
     Yandex::ApiClient* api();
     Yandex::Library* library();
+    YandexSource::Source* yandex();                  // the Yandex source: its quality
     Core::JamMode* jam();
     Jam::HostSession* jamHost() const;                 // null without QIYAA_HAVE_JAM
 
@@ -124,8 +125,8 @@ public:
 and every method must be called from the GUI thread (the audio engine's decoder thread and device
 callback stay inside [src/audio](../audio/README.md)). `Application` owns everything it wires:
 `QSettings`, the base and the current `Skins::Skin`, `ApiClient`, `Library`, `AudioEngine`,
-`Player`, `YandexSource::Source`, `Core::SourceRegistry` (the Yandex source under `"yandex"`,
-added first in the constructor, before any window), `YandexSource::Catalog` and `JamMode` (with
+`YandexSource::Source`, `Core::SourceRegistry` (the Yandex source under `"yandex"`, added first in
+the constructor, before any window), `Player`, `YandexSource::Catalog` and `JamMode` (with
 `YandexSource::JamWaves`) as members; its own `QNetworkAccessManager` unless
 `Options::network` lends one; the `Jam::HostSession`, `CoverCache`, `MediaControls`, the `Mpris`, `MacMediaControls` or
 `Smtc` object (held as `std::unique_ptr<QObject>`) and the windows (five, and the jam window in a
@@ -134,7 +135,8 @@ The accessors return non-owning pointers, valid until the `Application` is destr
 
 Member order is load-bearing. Members are constructed in declaration order, and the initialiser
 list relies on it: the settings file after the temporary directory, `ApiClient` after the network
-manager, `Player` after the library and the engine, `JamMode` after the player. The host session
+manager, the Yandex source after the library, `Player` after the engine and the registry,
+`JamMode` after the player. The host session
 is declared after `JamMode` and destroyed before it. The windows are declared last, so they are
 destroyed first, while the player, engine and skins they point at still exist. The `Mpris`/`Smtc`/`MacMediaControls`
 object dies before the `MediaControls` it wraps, and `QSettings` before the temporary directory
@@ -398,8 +400,8 @@ them in the interface language. The main menu, top to bottom:
 - Shuffle: "Random track" or "Without repeats" (exclusive); chooses the preferred algorithm
   and saves `shuffle/algorithm`. It does not toggle the shuffle button or restart audio.
 - Quality (`qualityMenu`): "Standard" or "Economy: a third of the data" (exclusive); calls
-  `Player::setQuality` and saves `playback/quality` (spec/player/quality.md). The track that
-  plays goes on; the next one is fetched in the new quality.
+  `YandexSource::Source::setQuality` and saves `playback/quality` (spec/player/quality.md). The
+  track that plays goes on; the next one is fetched in the new quality.
 - Skins: every `*.wsz` in `:/skins`, sorted by name, shown without the extension; then "Load a
   skin…" (file dialog starting in the home directory, filter `*.wsz *.zip`);
 - Size: 100 %, 125 %, 150 %, 175 %, 200 %, 250 %, 300 % (exclusive, checked when the current

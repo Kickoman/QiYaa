@@ -212,7 +212,8 @@ Application::Application(const Options& options, QObject* parent)
     , networkManager(options.network ? options.network : ownNetworkManager.get())
     , apiClient(networkManager)
     , yandexLibrary(&apiClient)
-    , corePlayer(&yandexLibrary, &audioEngine)
+    , yandexSource(&yandexLibrary)
+    , corePlayer(&audioEngine, &trackSources)
     , catalog(&corePlayer, &yandexLibrary)
     , jamMode(&corePlayer, YandexSource::JamWaves(&yandexLibrary)) {
     trackSources.add(YandexSource::kSourceName, &yandexSource);
@@ -227,7 +228,7 @@ Application::Application(const Options& options, QObject* parent)
         randomShuffle ? Core::ShuffleAlgorithm::Random : Core::ShuffleAlgorithm::WithoutRepeats
     );
     const QString storedQuality = settings.value(QStringLiteral("playback/quality")).toString();
-    corePlayer.setQuality(Yandex::QualityFromKey(storedQuality).value_or(Yandex::Quality::Standard));
+    yandexSource.setQuality(Yandex::QualityFromKey(storedQuality).value_or(Yandex::Quality::Standard));
     connect(&corePlayer, &Core::Player::modesChanged, this, [this] {
         settings.setValue(
             QStringLiteral("shuffle/algorithm"),
@@ -1282,11 +1283,11 @@ void Application::fillWindowActions(QMenu* menu) {
     };
     for (const auto& [quality, name] : qualities) {
         QAction* action = qualityMenu->addAction(name, this, [this, quality] {
-            corePlayer.setQuality(quality);
+            yandexSource.setQuality(quality);
             settings.setValue(QStringLiteral("playback/quality"), Yandex::QualityKey(quality));
         });
         action->setCheckable(true);
-        action->setChecked(corePlayer.quality() == quality);
+        action->setChecked(yandexSource.quality() == quality);
         qualityGroup->addAction(action);
     }
 
@@ -1358,7 +1359,7 @@ void Application::showSourcesMenu(QPoint globalPosition) {
     menu->setAttribute(Qt::WA_DeleteOnClose);
     Ui::AddLibraryActions(
         menu,
-        &corePlayer,
+        &yandexLibrary,
         &catalog,
         &trackSources,
         corePlayer.currentTrack(),
@@ -1371,7 +1372,7 @@ void Application::showSourcesMenu(QPoint globalPosition) {
 void Application::showMainMenu(QPoint globalPosition, const Core::Track* track) {
     auto* menu = new QMenu(mainWindowInstance.get());
     menu->setAttribute(Qt::WA_DeleteOnClose);
-    Ui::AddLibraryActions(menu, &corePlayer, &catalog, &trackSources, track, mainWindowInstance.get(), [this] {
+    Ui::AddLibraryActions(menu, &yandexLibrary, &catalog, &trackSources, track, mainWindowInstance.get(), [this] {
         login();
     });
     menu->addSeparator();

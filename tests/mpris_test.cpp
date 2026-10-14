@@ -62,10 +62,10 @@ private:
     std::unique_ptr<Yandex::ApiClient> api;
     std::unique_ptr<Yandex::Library> library;
     std::unique_ptr<Audio::AudioEngine> engine;
+    std::unique_ptr<YandexSource::Source> yandexSource;
+    Core::SourceRegistry sources;
     std::unique_ptr<Core::Player> player;
     std::unique_ptr<Core::CoverCache> covers;
-    YandexSource::Source yandexSource;
-    Core::SourceRegistry sources;
     std::unique_ptr<Integrations::MediaControls> controls;
     std::unique_ptr<Integrations::Mpris> mpris;
     int volume = 50;
@@ -94,7 +94,9 @@ private Q_SLOTS:
         api->setBaseUrl(QStringLiteral("http://127.0.0.1:9"));  // nothing listens: link requests fail fast
         library = std::make_unique<Yandex::Library>(api.get());
         engine = std::make_unique<Audio::AudioEngine>();
-        player = std::make_unique<Core::Player>(library.get(), engine.get());
+        yandexSource = std::make_unique<YandexSource::Source>(library.get());
+        sources.add(YandexSource::kSourceName, yandexSource.get());
+        player = std::make_unique<Core::Player>(engine.get(), &sources);
         covers = std::make_unique<Core::CoverCache>(nullptr, coverDirectory.path());
         Integrations::MediaControls::Hooks hooks;
         hooks.volume = [this] { return volume; };
@@ -106,7 +108,6 @@ private Q_SLOTS:
             Q_EMIT controls->volumeChanged();
         };
         hooks.raise = [this] { ++raised; };
-        sources.add(YandexSource::kSourceName, &yandexSource);
         controls = std::make_unique<Integrations::MediaControls>(player.get(), &sources, covers.get(), hooks);
         mpris = std::make_unique<Integrations::Mpris>(controls.get(), QStringLiteral("qiyaatest"));
         QVERIFY(mpris->isRegistered());

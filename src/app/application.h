@@ -88,6 +88,7 @@ public:
     Audio::AudioEngine* engine() { return &audioEngine; }
     Yandex::ApiClient* api() { return &apiClient; }
     Yandex::Library* library() { return &yandexLibrary; }
+    YandexSource::Source* yandex() { return &yandexSource; }
     Core::JamMode* jam() { return &jamMode; }
     // Null when the app is built without the jam.
     Jam::HostSession* jamHost() const { return jamHostSession.get(); }
@@ -153,9 +154,9 @@ private:
     Yandex::ApiClient apiClient;
     Yandex::Library yandexLibrary;
     Audio::AudioEngine audioEngine;
-    Core::Player corePlayer;
     YandexSource::Source yandexSource;
     Core::SourceRegistry trackSources;
+    Core::Player corePlayer;
     YandexSource::Catalog catalog;
     Core::JamMode jamMode;
     std::unique_ptr<Jam::HostSession> jamHostSession;

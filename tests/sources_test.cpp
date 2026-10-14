@@ -4,6 +4,7 @@
 #include "sources/yandex/tracks.h"
 #include "support/mock_http_server.h"
 #include "support/spec_fixtures.h"
+#include "support/yandex_sources.h"
 #include "yandex/api_client.h"
 #include "yandex/library.h"
 
@@ -58,11 +59,13 @@ private:
     // A player without a sound card, and its sources: the queue logic only.
     struct Stack {
         Audio::AudioEngine engine;  // not initialised
+        Tests::YandexSources ports;
         Core::Player player;
         YandexSource::Catalog sources;
         QSignalSpy status;
         explicit Stack(Yandex::Library* library)
-            : player(library, &engine)
+            : ports(library)
+            , player(&engine, &ports.registry)
             , sources(&player, library)
             , status(&player, &Core::Player::statusMessage) { }
         bool saw(const QString& text) const {

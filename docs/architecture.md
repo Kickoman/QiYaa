@@ -25,8 +25,8 @@ audio, yandex, skins, telemetry  →  vis, core  →  sources/yandex  →  jam  
 | [src/skins](../src/skins/README.md) | `Skins` | Loads `.wsz` skins: sheets, `region.txt`, `pledit.txt`, `viscolor.txt`, bitmap text; sprite tables | Qt Gui | miniz |
 | [src/telemetry](../src/telemetry/README.md) | `Telemetry` | Usage statistics and crash reports ([spec/telemetry](../spec/telemetry/README.md)): the events kept on disk until the jam server takes them, the crash handler. Optional (`QIYAA_WITH_TELEMETRY`, on in the releases) | Qt Core, Network | Qt Gui; dbghelp (Windows) or dl |
 | [src/vis](../src/vis/README.md) | `Vis` | Spectrum, oscilloscope, FFT; Milkdrop through projectM in a `QOpenGLWindow` | Qt Gui (+ OpenGL) | audio, skins (+ projectM) |
-| [src/core](../src/core/README.md) | `Core` | `Track` and `TrackKey` (a track of any source), `TrackSource` and `SourceRegistry` (what a source answers about its tracks), `Player` (queue, transport, downloads, preload, track events), `JamMode` (the queue while hosting a jam) and `CoverCache` | audio, yandex, Qt Gui, Network | |
-| [src/sources/yandex](../src/sources/yandex/README.md) | `YandexSource` | Yandex Music as a source: `Yandex::Track` ↔ `Core::Track`, its `TrackSource` (cover, web page), `Catalog` (what a pick plays, wave callbacks, likes) and the jam's own vibe | core, yandex, Qt Core | |
+| [src/core](../src/core/README.md) | `Core` | `Track` and `TrackKey` (a track of any source), `TrackSource` and `SourceRegistry` (what a source answers about its tracks, and how it opens their files), `Player` (queue, transport, downloads, preload, track events), `JamMode` (the queue while hosting a jam) and `CoverCache` | audio, Qt Gui, Network | |
+| [src/sources/yandex](../src/sources/yandex/README.md) | `YandexSource` | Yandex Music as a source: `Yandex::Track` ↔ `Core::Track`, its `TrackSource` (cover, web page, the file and its quality, the play report), `Catalog` (what a pick plays, wave callbacks, likes) and the jam's own vibe | core, yandex, Qt Core | |
 | [src/jam](../src/jam/README.md) | `Jam` | The jam: protocol messages and their JSON, the WebSocket connection to a jam server, the host's stored session, and `HostSession` (create, resume, the guests' search and checks, end). Optional (Qt WebSockets) | core, yandex, Qt Core, WebSockets | sources/yandex |
 | [src/ui](../src/ui/README.md) | `Ui` | The skinned windows, snapping and docking, the Yandex menus, the login dialog, the jam window | audio, vis, Qt Widgets (+ jam) | core, skins, sources/yandex, yandex (+ qrcodegen) |
 | [src/integrations](../src/integrations/README.md) | `Integrations` | Media keys and system media panels: MPRIS (Linux), SMTC (Windows) or MediaPlayer (macOS) | Qt Gui (+ DBus) | audio, core |
@@ -44,9 +44,8 @@ MPRIS (`QIYAA_HAVE_MPRIS`) and SMTC (`QIYAA_HAVE_SMTC`) are optional; the macOS 
 ## Who owns what
 
 `App::Application` is the composition root. It holds the settings, the skins, the network manager,
-`Yandex::ApiClient`, `Yandex::Library`, `Audio::AudioEngine`, `Core::Player`,
-`YandexSource::Source`, `Core::SourceRegistry`, `YandexSource::Catalog` and `Core::JamMode` as
-members, and the windows, the cover cache and the media integration through `std::unique_ptr`.
+`Yandex::ApiClient`, `Yandex::Library`, `Audio::AudioEngine`, `YandexSource::Source`,
+`Core::SourceRegistry`, `Core::Player`, `YandexSource::Catalog` and `Core::JamMode` as members, and the windows, the cover cache and the media integration through `std::unique_ptr`.
 Member order is the construction order and, reversed, the destruction order: the windows go first,
 while everything they point at still exists. Nothing below `app` creates or connects windows, reads
 `QSettings` or knows where files live. Details: [src/app](../src/app/README.md).
@@ -54,7 +53,7 @@ while everything they point at still exists. Nothing below `app` creates or conn
 ## Playing a track
 
 ```
-Ui (menu)  ──source──▶  Core::Player  ──resolveTrackUrl──▶  Yandex::ApiClient
+Ui (menu)  ──source──▶  Core::Player  ──open──▶  Core::SourceRegistry  ──▶  YandexSource::Source  ──▶  Yandex::ApiClient
                             │  ▲
           download bytes    │  │ poll(): state, trackFinished, trackAdvanced
                             ▼  │
@@ -67,11 +66,12 @@ Ui (menu)  ──source──▶  Core::Player  ──resolveTrackUrl──▶  
    `Player::setQueue` as `Core::Track`s, keyed by source and the source's own id. An endless source
    also gives a callback that fetches more tracks; for a wave, `Catalog` also sends wave feedback
    from `Player`'s track events.
-2. `Player::playIndex` asks `ApiClient::resolveTrackUrl` for the link of the track's file in the
-   chosen quality (a signed mp3 link, or AAC in MP4 at the economy quality), starts a stream in
-   the engine and appends the download to it chunk by chunk. When the download completes, it
-   resolves and downloads the next track into a queued stream, so the engine continues without a
-   gap.
+2. `Player::playIndex` starts a stream in the engine and asks the track's source, through
+   `SourceRegistry`, to open the track. `YandexSource::Source` resolves the link of the file in the
+   chosen quality (a signed mp3 link, or AAC in MP4 at the economy quality) and hands back a
+   download that has not started yet. The `Player` starts it and appends it to the stream chunk by
+   chunk. When the download completes, it opens and downloads the next track into a queued stream,
+   so the engine continues without a gap.
 3. The engine decodes on its own thread into a queue of blocks, each saying which track, where in
    it and for which start or seek it is; miniaudio's device thread plays them, applies the
    equalizer, copies the frames into `VisTap` and applies volume and balance.
@@ -110,7 +110,7 @@ audio device that does not open — is data: an error string in a callback or a 
 |---|---|
 | a window's look or behaviour, snapping, shade mode, scaling | [src/ui](../src/ui/README.md) |
 | sprite positions, skin parsing, bitmap text | [src/skins](../src/skins/README.md) |
-| what plays next, shuffle, repeat, preload, play reports | [src/core](../src/core/README.md) |
+| what plays next, shuffle, repeat, preload, track events | [src/core](../src/core/README.md) |
 | decoding, seeking, gapless, the equalizer DSP | [src/audio](../src/audio/README.md) |
 | an API call, a new pick, login | [src/yandex](../src/yandex/README.md), then [src/sources/yandex](../src/sources/yandex/README.md) and the menu in `src/ui/library_menu.cpp` |
 | a new music source | [src/sources](../src/sources/README.md) |

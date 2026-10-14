@@ -2,11 +2,11 @@
 
 #include <QCoreApplication>
 #include <QPointer>
-#include <QUuid>
 
 #include <algorithm>
 #include <functional>
 #include <utility>
+#include <variant>
 
 namespace Core {
 
@@ -19,34 +19,24 @@ QString ShuffleOffInWaveText() {
 }
 }  // namespace
 
-Player::Player(Yandex::Library* library, Audio::AudioEngine* engine, QObject* parent)
+Player::Player(Audio::AudioEngine* engine, SourceRegistry* sources, QObject* parent)
     : QObject(parent)
-    , yandexLibrary(library)
-    , audioEngine(engine) {
+    , audioEngine(engine)
+    , trackSources(sources) {
     connect(audioEngine, &Audio::AudioEngine::trackFinished, this, [this] {
         if (streamFailure == FailureKind::Network && streamId) {
             // ERR-03: the download broke and the audio that arrived has run out. The track
             // stays open and waits for the network.
             return handleFailure(FailureKind::Network, {});
         }
-        if (openTrack && openTrackEvents) {
-            openTrackEvents(
-                streamFailure ? TrackEvent::Skipped : TrackEvent::Finished, *openTrack, accumulatePlayedSeconds()
-            );
-        }
-        openTrack.reset();
+        closeOpenTrack(streamFailure ? TrackEvent::Skipped : TrackEvent::Finished);
         if (repeatEnabled && queuedTracks.size() == 1 && !loadMore) {  // WAVE-12: a wave waits
             return playIndex(playingIndex);
         }
         next();
     });
     connect(audioEngine, &Audio::AudioEngine::trackAdvanced, this, [this] {
-        if (openTrack && openTrackEvents) {
-            openTrackEvents(
-                streamFailure ? TrackEvent::Skipped : TrackEvent::Finished, *openTrack, accumulatePlayedSeconds()
-            );
-        }
-        openTrack.reset();
+        closeOpenTrack(streamFailure ? TrackEvent::Skipped : TrackEvent::Finished);
         if (!preload || preload->stream != audioEngine->currentStream() || preload->index >= queuedTracks.size()) {
             const int nextIndex = pickNext();
             nextIndex >= 0 ? playIndex(nextIndex) : stop();
@@ -54,7 +44,7 @@ Player::Player(Yandex::Library* library, Audio::AudioEngine* engine, QObject* pa
         }
         Preload upcoming = *std::exchange(preload, std::nullopt);
         ++generation;
-        download = std::move(upcoming.reply);
+        download = std::move(upcoming.download);
         currentLinkUrl = upcoming.link;
         streamId = upcoming.stream;
         playingIndex = upcoming.index;
@@ -81,6 +71,7 @@ Player::Player(Yandex::Library* library, Audio::AudioEngine* engine, QObject* pa
             tr("the sound could not be decoded")
         );
     });
+    connect(trackSources, &SourceRegistry::filesChanged, this, &Player::sourceFilesChanged);
     retryTimer.setSingleShot(true);
     connect(&retryTimer, &QTimer::timeout, this, &Player::retryAfterNetwork);
     pollTimer.setInterval(100);
@@ -260,11 +251,18 @@ void Player::pause() {
     }
 }
 
-void Player::closeOpenTrack() {
-    if (openTrack && openTrackEvents) {
-        openTrackEvents(TrackEvent::Skipped, *openTrack, accumulatePlayedSeconds());
+void Player::closeOpenTrack(TrackEvent event) {
+    if (!openTrack) {
+        return;
     }
-    openTrack.reset();
+    const Track track = *std::exchange(openTrack, std::nullopt);
+    const double seconds = accumulatePlayedSeconds();
+    if (openTrackReports) {
+        trackSources->trackEvent(event, track, seconds);
+    }
+    if (openTrackEvents) {
+        openTrackEvents(event, track, seconds);
+    }
 }
 
 double Player::accumulatePlayedSeconds() {
@@ -312,18 +310,17 @@ void Player::setRepeat(bool on) {
     refreshPreload();
 }
 
-void Player::setQuality(Yandex::Quality quality) {
-    if (quality == audioQuality) {
+void Player::sourceFilesChanged(const QString& source) {
+    if (preload && preload->key.source != source) {
         return;
     }
-    audioQuality = quality;
     cancelPreload();
     maybePreload();
 }
 
 void Player::stop() {
     cancelNetworkWait();
-    closeOpenTrack();
+    closeOpenTrack(TrackEvent::Skipped);
     resolvingLink = false;
     waitingForMore = false;
     ++generation;
@@ -447,7 +444,7 @@ void Player::playIndex(int index) {
     }
     waitingForMore = false;
     cancelNetworkWait();
-    closeOpenTrack();
+    closeOpenTrack(TrackEvent::Skipped);
     resolvingLink = false;
     const quint64 requestGeneration = ++generation;
     abortDownload();
@@ -463,7 +460,7 @@ void Player::playIndex(int index) {
     if (preload && preload->stream && preload->key == track.key && preload->stream == audioEngine->queuedStream()) {
         Preload upcoming = *std::exchange(preload, std::nullopt);
         streamId = audioEngine->playQueuedNow();
-        download = std::move(upcoming.reply);
+        download = std::move(upcoming.download);
         currentLinkUrl = upcoming.link;
         currentDownloaded = upcoming.downloadDone;
         currentBytes = 1;  // the preload's bytes went to its own stream id
@@ -478,42 +475,36 @@ void Player::playIndex(int index) {
     Q_EMIT currentTrackChanged();
     maybeLoadMore();
 
-    yandexLibrary->api()->resolveTrackUrl(
-        track.key.id,
-        audioQuality,
-        [this, self = QPointer<Player>(this), requestGeneration, track](
-            const Yandex::ResolvedUrl& link, const Yandex::RequestError& error
-        ) {
-            if (!self || requestGeneration != generation) {
+    trackSources->open(track, [this, self = QPointer<Player>(this), requestGeneration, track](TOpenResult result) {
+        if (!self || requestGeneration != generation) {
+            return;
+        }
+        resolvingLink = false;
+        if (const auto* failure = std::get_if<TrackFailure>(&result)) {
+            if (!streamId) {  // no audio output: nothing to wait on or to skip to
+                Q_EMIT statusMessage(tr("Cannot get the link: %1").arg(failure->text));
+                audioEngine->stop();
                 return;
             }
-            resolvingLink = false;
-            if (error.isError()) {
-                if (!streamId) {  // no audio output: nothing to wait on or to skip to
-                    Q_EMIT statusMessage(tr("Cannot get the link: %1").arg(error.text));
-                    audioEngine->stop();
-                    return;
-                }
-                return handleFailure(KindOf(error), error.text);
-            }
-            currentLinkUrl = link.url;
-            download = startDownload(link.url, streamId);
-            trackStarted(track, link.bitrateKbps);
+            return handleFailure(failure->kind, failure->text);
         }
-    );
+        OpenedTrack& opened = std::get<OpenedTrack>(result);
+        currentLinkUrl = opened.link;
+        download = startDownload(std::move(opened.download), streamId);
+        trackStarted(track, opened.bitrateKbps);
+    });
 }
 
 void Player::trackStarted(const Track& track, int bitrate) {
     bitrateKbps = bitrate;
-    if (queueRules.playReports) {
-        yandexLibrary->api()->reportPlayStarted(
-            yandexLibrary->account(), track.key.id, track.durationMs, QUuid::createUuid().toString(QUuid::WithoutBraces)
-        );
-    }
     openTrack = track;
     openTrackEvents = reportEvent;
+    openTrackReports = queueRules.playReports;
     playedSeconds = 0;
     lastPosition = 0;
+    if (openTrackReports) {
+        trackSources->trackEvent(TrackEvent::Started, track, 0);
+    }
     if (reportEvent) {
         reportEvent(TrackEvent::Started, track, 0);
     }
@@ -521,51 +512,55 @@ void Player::trackStarted(const Track& track, int bitrate) {
     maybePreload();
 }
 
-std::unique_ptr<Yandex::Download> Player::startDownload(const QUrl& url, TStreamId stream) {
-    std::unique_ptr<Yandex::Download> started = yandexLibrary->api()->download(url);
-    Yandex::Download* raw = started.get();
-    connect(raw, &Yandex::Download::received, this, [this, stream](const QByteArray& bytes) {
+std::unique_ptr<TrackDownload> Player::startDownload(std::unique_ptr<TrackDownload> opened, TStreamId stream) {
+    TrackDownload* started = opened.get();
+    connect(started, &TrackDownload::received, this, [this, stream](const QByteArray& bytes) {
         audioEngine->appendData(stream, bytes);
         if (stream == streamId) {
             currentBytes += bytes.size();
         }
     });
-    connect(raw, &Yandex::Download::finished, this, [this, raw, stream](const Yandex::RequestError& error) {
-        if (error.isError()) {
-            audioEngine->failData(stream);
-        } else {
-            audioEngine->finishData(stream);
+    connect(
+        started,
+        &TrackDownload::finished,
+        this,
+        [this, started, stream](const std::optional<TrackFailure>& failure) {
+            if (failure) {
+                audioEngine->failData(stream);
+            } else {
+                audioEngine->finishData(stream);
+            }
+            downloadFinished(started, stream, failure);
         }
-        downloadFinished(raw, stream, error);
-    });
-    return started;
+    );
+    started->start();
+    return opened;
 }
 
-void Player::downloadFinished(Yandex::Download* finished, TStreamId stream, const Yandex::RequestError& error) {
+void Player::downloadFinished(TrackDownload* finished, TStreamId stream, const std::optional<TrackFailure>& failure) {
     if (download.get() == finished) {
         download.release()->deleteLater();
-    } else if (preload && preload->reply.get() == finished) {
-        preload->reply.release()->deleteLater();
+    } else if (preload && preload->download.get() == finished) {
+        preload->download.release()->deleteLater();
     }
     if (stream && stream == streamId) {
-        if (error.isError()) {
-            const FailureKind kind = KindOf(error);
+        if (failure) {
             if (currentBytes == 0) {  // no audio arrived: act now
-                return handleFailure(kind, error.text);
+                return handleFailure(failure->kind, failure->text);
             }
             // Some audio arrived: it plays out, then the end of the track decides (a network
             // failure waits, ERR-03; anything else ends the track as a skip). Too few bytes to
             // decode end the same way, through streamUndecodable.
-            streamFailure = kind;
-            if (kind != FailureKind::Network) {
-                Q_EMIT statusMessage(tr("Download failed: %1").arg(error.text));
+            streamFailure = failure->kind;
+            if (failure->kind != FailureKind::Network) {
+                Q_EMIT statusMessage(tr("Download failed: %1").arg(failure->text));
             }
             return;
         }
         currentDownloaded = true;
         maybePreload();
     } else if (preload && preload->stream == stream) {
-        if (error.isError()) {
+        if (failure) {
             // Not chained half-done: the track is fetched again when its turn comes.
             cancelPreload();
             return;
@@ -636,32 +631,27 @@ void Player::retryAfterNetwork() {
     retryTimer.stop();
     const quint64 requestGeneration = ++generation;
     const Track track = *currentTrack();
-    yandexLibrary->api()->resolveTrackUrl(
-        track.key.id,
-        audioQuality,
-        [this, self = QPointer<Player>(this), requestGeneration, track](
-            const Yandex::ResolvedUrl& link, const Yandex::RequestError& error
-        ) {
-            if (!self || requestGeneration != generation || !networkWait) {
-                return;
-            }
-            if (error.isError()) {
-                return handleFailure(KindOf(error), error.text);
-            }
-            const NetworkWait wait = *std::exchange(networkWait, std::nullopt);
-            currentLinkUrl = link.url;
-            download = startDownload(link.url, streamId);
-            if (openTrack) {
-                bitrateKbps = link.bitrateKbps;
-                Q_EMIT currentTrackChanged();
-            } else {  // the link had failed before the track ever started
-                trackStarted(track, link.bitrateKbps);
-            }
-            if (wait.resume) {
-                audioEngine->resume();
-            }
+    trackSources->open(track, [this, self = QPointer<Player>(this), requestGeneration, track](TOpenResult result) {
+        if (!self || requestGeneration != generation || !networkWait) {
+            return;
         }
-    );
+        if (const auto* failure = std::get_if<TrackFailure>(&result)) {
+            return handleFailure(failure->kind, failure->text);
+        }
+        OpenedTrack& opened = std::get<OpenedTrack>(result);
+        const NetworkWait wait = *std::exchange(networkWait, std::nullopt);
+        currentLinkUrl = opened.link;
+        download = startDownload(std::move(opened.download), streamId);
+        if (openTrack) {
+            bitrateKbps = opened.bitrateKbps;
+            Q_EMIT currentTrackChanged();
+        } else {  // the link had failed before the track ever started
+            trackStarted(track, opened.bitrateKbps);
+        }
+        if (wait.resume) {
+            audioEngine->resume();
+        }
+    });
 }
 
 void Player::cancelNetworkWait() {
@@ -709,25 +699,21 @@ void Player::maybePreload() {
     preload->key = queuedTracks[index].key;
     preload->generation = ++preloadGeneration;
     QPointer<Player> self(this);
-    yandexLibrary->api()->resolveTrackUrl(
-        preload->key.id,
-        audioQuality,
-        [self,
-         requestGeneration = preload->generation](const Yandex::ResolvedUrl& link, const Yandex::RequestError& error) {
-            if (!self || !self->preload || self->preload->generation != requestGeneration) {
-                return;
-            }
-            const TStreamId stream = error.isError() ? 0 : self->audioEngine->queueStream();
-            if (!stream) {
-                self->preload.reset();
-                return;
-            }
-            self->preload->stream = stream;
-            self->preload->bitrate = link.bitrateKbps;
-            self->preload->link = link.url;
-            self->preload->reply = self->startDownload(link.url, stream);
+    trackSources->open(queuedTracks[index], [self, requestGeneration = preload->generation](TOpenResult result) {
+        if (!self || !self->preload || self->preload->generation != requestGeneration) {
+            return;
         }
-    );
+        auto* opened = std::get_if<OpenedTrack>(&result);
+        const TStreamId stream = opened ? self->audioEngine->queueStream() : 0;
+        if (!stream) {
+            self->preload.reset();
+            return;
+        }
+        self->preload->stream = stream;
+        self->preload->bitrate = opened->bitrateKbps;
+        self->preload->link = opened->link;
+        self->preload->download = self->startDownload(std::move(opened->download), stream);
+    });
 }
 
 void Player::cancelPreload() {

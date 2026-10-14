@@ -2,21 +2,28 @@
 #include "core/track_source.h"
 #include "sources/yandex/source.h"
 #include "sources/yandex/tracks.h"
+#include "support/mock_http_server.h"
 #include "support/spec_fixtures.h"
 #include "support/yandex_json.h"
 #include "yandex/api_client.h"
+#include "yandex/file_info.h"
+#include "yandex/library.h"
 
+#include <QByteArray>
 #include <QJsonArray>
 #include <QJsonDocument>
 #include <QJsonObject>
 #include <QJsonValue>
 #include <QList>
 #include <QObject>
+#include <QSignalSpy>
 #include <QString>
 #include <QTest>
 #include <QUrl>
 
 #include <optional>
+#include <utility>
+#include <variant>
 
 namespace {
 
@@ -62,11 +69,37 @@ Yandex::Track Sample(const QString& id, const QString& albumId) {
     return track;
 }
 
+Core::TOpenResult Open(Core::TrackSource& source, const Core::Track& track) {
+    std::optional<Core::TOpenResult> result;
+    source.open(track, [&](Core::TOpenResult opened) { result = std::move(opened); });
+    QTest::qWaitFor([&] { return result.has_value(); }, 5'000);
+    return result ? std::move(*result) : Core::TOpenResult(Core::TrackFailure{Core::FailureKind::Track, "timeout"});
+}
+
 }  // namespace
 
 class TestYandexSource : public QObject {
     Q_OBJECT
+private:
+    Tests::MockHttpServer server;
+    Tests::LocalNetworkAccessManager networkManager;
+    Yandex::ApiClient api{&networkManager};
+    Yandex::Library library{&api};
+
+    qsizetype requestsTo(const QString& prefix, qsizetype from = 0) const {
+        qsizetype count = 0;
+        for (qsizetype i = from; i < server.requests().size(); ++i) {
+            count += server.requests()[i].path.startsWith(prefix) ? 1 : 0;
+        }
+        return count;
+    }
+
 private Q_SLOTS:
+    void initTestCase() {
+        api.setBaseUrl(server.baseUrl());
+        api.setToken(QStringLiteral("test-token"));
+    }
+
     void aTrackWithAnAlbumIsKeyedByTrackAndAlbum() {
         const Core::Track track = YandexSource::TrackOf(Sample(QStringLiteral("123"), QStringLiteral("7")));
         QCOMPARE(track.key.source, QStringLiteral("yandex"));
@@ -98,13 +131,13 @@ private Q_SLOTS:
         local.cover = {QStringLiteral("avatars.yandex.net/get-music-content/1/a/%%")};
         QVERIFY(!YandexSource::YandexTrackOf(local));
         QVERIFY(YandexSource::CatalogId(local.key).isEmpty());
-        const YandexSource::Source source;
+        const YandexSource::Source source(&library);
         QVERIFY(source.coverUrl(local, 400).isEmpty());
         QVERIFY(source.webPage(local).isEmpty());
     }
 
     void coverAndPageAreTheClientsOwn() {
-        YandexSource::Source source;
+        YandexSource::Source source(&library);
         Core::SourceRegistry registry;
         registry.add(YandexSource::kSourceName, &source);
         QList<Yandex::Track> tracks = FixtureTracks();
@@ -119,6 +152,91 @@ private Q_SLOTS:
         QVERIFY(registry.find(QStringLiteral("nowhere")) == nullptr);
         QVERIFY(registry.coverUrl(unknown, 400).isEmpty());
         QVERIFY(registry.webPage(unknown).isEmpty());
+    }
+
+    void anOpenedTrackDownloadsOnlyOnceStarted() {
+        const QByteArray body(4'000, 'a');
+        server.audioTracks({QStringLiteral("5")}, body);
+        YandexSource::Source source(&library);
+        Core::TOpenResult result =
+            Open(source, YandexSource::TrackOf(Sample(QStringLiteral("5"), QStringLiteral("7"))));
+        auto* opened = std::get_if<Core::OpenedTrack>(&result);
+        QVERIFY(opened);
+        QCOMPARE(opened->bitrateKbps, 320);
+        QCOMPARE(opened->codec, QStringLiteral("mp3"));
+        QVERIFY(opened->link.path().startsWith(QStringLiteral("/get-mp3/")));
+        QTest::qWait(100);
+        QCOMPARE(requestsTo(QStringLiteral("/get-mp3/")), 0);
+        QByteArray bytes;
+        std::optional<std::optional<Core::TrackFailure>> finish;
+        connect(opened->download.get(), &Core::TrackDownload::received, this, [&](const QByteArray& received) {
+            bytes += received;
+        });
+        connect(
+            opened->download.get(),
+            &Core::TrackDownload::finished,
+            this,
+            [&](const std::optional<Core::TrackFailure>& failure) { finish = failure; }
+        );
+        opened->download->start();
+        QVERIFY(QTest::qWaitFor([&] { return finish.has_value(); }, 5'000));
+        QVERIFY(!finish->has_value());
+        QVERIFY(bytes == body);
+        QCOMPARE(requestsTo(QStringLiteral("/get-mp3/")), 1);
+    }
+
+    void aTrackThatCannotOpenSaysWhy() {
+        server.json("GET", QStringLiteral("/tracks/41/download-info"), "{}", 404);
+        server.json("GET", QStringLiteral("/tracks/42/download-info"), "{}", 401);
+        YandexSource::Source source(&library);
+        const Core::TOpenResult missing = Open(source, YandexSource::TrackOf(Sample(QStringLiteral("41"), {})));
+        QVERIFY(std::holds_alternative<Core::TrackFailure>(missing));
+        QCOMPARE(std::get<Core::TrackFailure>(missing).kind, Core::FailureKind::Track);
+        QVERIFY(!std::get<Core::TrackFailure>(missing).text.isEmpty());
+        const Core::TOpenResult denied = Open(source, YandexSource::TrackOf(Sample(QStringLiteral("42"), {})));
+        QVERIFY(std::holds_alternative<Core::TrackFailure>(denied));
+        QCOMPARE(std::get<Core::TrackFailure>(denied).kind, Core::FailureKind::Auth);
+    }
+
+    void onlyAStartReportsAPlay() {
+        server.fixture("POST", "/play-audio", "play-audio/ok");
+        YandexSource::Source source(&library);
+        const Core::Track track = YandexSource::TrackOf(Sample(QStringLiteral("5"), QStringLiteral("7")));
+        const qsizetype from = server.requests().size();
+        source.trackEvent(Core::TrackEvent::Finished, track, 10);
+        source.trackEvent(Core::TrackEvent::Skipped, track, 1);
+        source.trackEvent(Core::TrackEvent::Started, track, 0);
+        QVERIFY(QTest::qWaitFor([&] { return requestsTo(QStringLiteral("/play-audio"), from) > 0; }, 5'000));
+        QTest::qWait(100);
+        QCOMPARE(requestsTo(QStringLiteral("/play-audio"), from), 1);
+        const Tests::MockRequest* report = server.last(QStringLiteral("/play-audio"));
+        QCOMPARE(report->formValue(QStringLiteral("track-id")), QStringLiteral("5"));
+        QCOMPARE(report->formValue(QStringLiteral("album-id")), QStringLiteral("7"));
+    }
+
+    void anotherQualityChangesTheFiles() {  // QUAL-05
+        YandexSource::Source source(&library);
+        Core::SourceRegistry registry;
+        registry.add(YandexSource::kSourceName, &source);
+        QSignalSpy changed(&registry, &Core::SourceRegistry::filesChanged);
+        source.setQuality(Yandex::Quality::Standard);
+        QCOMPARE(changed.count(), 0);
+        source.setQuality(Yandex::Quality::Economy);
+        QCOMPARE(source.quality(), Yandex::Quality::Economy);
+        QCOMPARE(changed.count(), 1);
+        QCOMPARE(changed.first().first().toString(), YandexSource::kSourceName);
+    }
+
+    void aTrackOfNoSourceFailsAfterOpenReturns() {
+        Core::SourceRegistry registry;
+        Core::Track unknown;
+        unknown.key = {QStringLiteral("nowhere"), QStringLiteral("1")};
+        std::optional<Core::TOpenResult> result;
+        registry.open(unknown, [&](Core::TOpenResult opened) { result = std::move(opened); });
+        QVERIFY(!result);
+        QVERIFY(QTest::qWaitFor([&] { return result.has_value(); }, 1'000));
+        QVERIFY(std::holds_alternative<Core::TrackFailure>(*result));
+        QCOMPARE(std::get<Core::TrackFailure>(*result).kind, Core::FailureKind::Track);
     }
 
     void theDisplayTitleNamesTheArtistsFirst() {

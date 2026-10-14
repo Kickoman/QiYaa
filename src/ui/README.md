@@ -38,7 +38,8 @@ the next repaint; `SkinnedWindow::changeEvent` answers `QEvent::LanguageChange` 
 `audio/equalizer.h`), `qiyaa_vis` (`main_window.h` includes `vis/visualizer.h`, `milkdrop_window.h`
 includes `vis/milkdrop_presets.h`) and `Qt6::Widgets`; PRIVATE `qiyaa_core`, `qiyaa_skins`,
 `qiyaa_sources_yandex` and `qiyaa_yandex` (the headers only forward-declare `Core::Player`,
-`Core::CoverCache`, `Skins::Skin`, `YandexSource::Catalog`, `Yandex::DeviceLogin`).
+`Core::CoverCache`, `Skins::Skin`, `YandexSource::Catalog`, `Yandex::DeviceLogin`,
+`Yandex::Library`).
 `milkdrop_window.*` is added to the target only when Milkdrop is built; `QIYAA_HAVE_MILKDROP` then
 comes PUBLIC from `qiyaa_vis`. `jam_window.*` and `jam_server_dialog.*` are added only when the jam
 is built: `qiyaa_ui` then links PUBLIC `qiyaa_jam` (`QIYAA_HAVE_JAM` comes with it) and PRIVATE
@@ -811,7 +812,7 @@ screen; a right click in the view or in the frame's content opens the preset men
 ```cpp
 void AddLibraryActions(
     QMenu* menu,
-    Core::Player* player,                 // library and current track for the dislike label
+    Yandex::Library* library,             // logged in or not, and the lists the items offer
     YandexSource::Catalog* catalog,       // what every item plays
     const Core::SourceRegistry* sources,  // the target's web page
     const Core::Track* track,             // target of like/dislike/open; nullptr disables them

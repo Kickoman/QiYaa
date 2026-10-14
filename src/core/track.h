@@ -6,6 +6,8 @@
 
 namespace Core {
 
+enum class TrackEvent { Started, Finished, Skipped };
+
 struct TrackKey {
     QString source;
     QString id;

@@ -1,9 +1,8 @@
 #include "audio/audio_engine.h"
 #include "core/player.h"
+#include "core/track_source.h"
 #include "skins/skin.h"
 #include "ui/main_window.h"
-#include "yandex/api_client.h"
-#include "yandex/library.h"
 
 #include <QCoreApplication>
 #include <QEvent>
@@ -11,7 +10,6 @@
 #include <QImage>
 #include <QList>
 #include <QMouseEvent>
-#include <QNetworkAccessManager>
 #include <QObject>
 #include <QPoint>
 #include <QPointF>
@@ -26,9 +24,7 @@ class TestMainWindow : public QObject {
     Q_OBJECT
 private:
     Skins::Skin skin;
-    QNetworkAccessManager networkManager;
-    std::unique_ptr<Yandex::ApiClient> api;
-    std::unique_ptr<Yandex::Library> library;
+    Core::SourceRegistry sources;
     std::unique_ptr<Audio::AudioEngine> engine;
     std::unique_ptr<Core::Player> player;
     std::unique_ptr<Ui::MainWindow> window;
@@ -51,10 +47,8 @@ private Q_SLOTS:
     void initTestCase() {
         skin = Skins::Skin::BuiltinBase();
         QVERIFY(skin.isValid());
-        api = std::make_unique<Yandex::ApiClient>(&networkManager);
-        library = std::make_unique<Yandex::Library>(api.get());
         engine = std::make_unique<Audio::AudioEngine>();
-        player = std::make_unique<Core::Player>(library.get(), engine.get());
+        player = std::make_unique<Core::Player>(engine.get(), &sources);
         window = std::make_unique<Ui::MainWindow>(player.get(), &skin);
         window->show();
         QVERIFY(QTest::qWaitForWindowExposed(window.get()));

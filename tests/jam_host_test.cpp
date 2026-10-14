@@ -10,6 +10,7 @@
 #include "support/jam_stub_server.h"
 #include "support/mock_http_server.h"
 #include "support/spec_fixtures.h"
+#include "support/yandex_sources.h"
 #include "yandex/api_client.h"
 #include "yandex/library.h"
 
@@ -162,6 +163,7 @@ private:
         int greeted = 0;
         bool share = false;
         Audio::AudioEngine engine;  // not initialised: no sound card
+        Tests::YandexSources ports;
         Core::Player player;
         Core::JamMode jam;
         Jam::HostSession host;
@@ -169,7 +171,8 @@ private:
         QSignalSpy ended;
 
         explicit Stack(Yandex::Library* library, const std::optional<Jam::Session>& stored = {})
-            : player(library, &engine)
+            : ports(library)
+            , player(&engine, &ports.registry)
             , jam(&player, YandexSource::JamWaves(library))
             , host(&jam, library, Stored(store, stored), options())
             , refused(&host, &Jam::HostSession::refused)

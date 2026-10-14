@@ -6,6 +6,7 @@
 #include "sources/yandex/tracks.h"
 #include "support/mock_http_server.h"
 #include "support/spec_fixtures.h"
+#include "support/yandex_sources.h"
 #include "yandex/api_client.h"
 #include "yandex/library.h"
 
@@ -63,6 +64,7 @@ private:
 
     struct Stack {
         Audio::AudioEngine engine;  // not initialised: no sound card
+        Tests::YandexSources ports;
         Core::Player player;
         YandexSource::Catalog sources;
         Core::JamMode jam;
@@ -70,7 +72,8 @@ private:
         QSignalSpy playbacks;
         QSignalSpy status;
         explicit Stack(Yandex::Library* library)
-            : player(library, &engine)
+            : ports(library)
+            , player(&engine, &ports.registry)
             , sources(&player, library)
             , jam(&player, YandexSource::JamWaves(library))
             , started(&jam, &Core::JamMode::itemStarted)
