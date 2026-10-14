@@ -25,6 +25,25 @@ inline constexpr double kPreviousRestartsAfterSeconds = 3.0;
 // to restart the current track from 0 (spec TR-01, TR-02).
 int PreviousTarget(double positionSeconds, int cursor, int size, bool repeat);
 
+enum class NoticeCode {
+    ShuffleOffInVibe,
+    AudioError,
+    NoOutputDevice,
+    LoadingMore,
+    DownloadFailed,
+    TrackFailed,
+    AccessDenied,
+    StoppedAfterFailures,
+    WaitingForNetwork,
+};
+
+struct PlayerNotice {
+    NoticeCode code = NoticeCode::AudioError;
+    QString detail;
+    int count = 0;
+    bool undecodable = false;
+};
+
 // How the queue's source wants its tracks treated; a new source (setQueue) has the defaults.
 struct QueueRules {
     bool playReports = true;
@@ -101,6 +120,7 @@ public:
 
 Q_SIGNALS:
     void statusMessage(const QString& text);
+    void noticed(const Core::PlayerNotice& notice);
     void failed(Core::FailureKind kind);
     void stateChanged(Core::Player::State state);
     void playlistChanged();
@@ -157,7 +177,7 @@ private:
     Feed* feedOf(TStreamId stream);
     void downloadFinished(TrackDownload* finished, const std::optional<TrackFailure>& failure);
     void sourceFilesChanged(const QString& source);
-    void handleFailure(FailureKind kind, const QString& text);
+    void handleFailure(FailureKind kind, const QString& text, bool undecodable = false);
     void waitForNetwork();
     void retryAfterNetwork();
     int pickNext() const;

@@ -21,13 +21,15 @@ to Yandex ([src/yandex](../yandex/README.md)), or create, lay out, connect and s
 | `now_playing_window.h/.cpp` | `NowPlayingWindow` — cover and details of the current track |
 | `milkdrop_window.h/.cpp` | `MilkdropWindow` — projectM view in a GEN frame: preset switching, black-preset skipping, full screen. Built only with Milkdrop |
 | `library_menu.h/.cpp` | `AddLibraryActions`: the Yandex menu items, which call `YandexSource::Catalog` |
+| `player_notices.h/.cpp` | `NoticeText`: what a `Core::PlayerNotice` says, in the user's language |
 | `login_dialog.h/.cpp` | `LoginDialog` — Yandex login by device code or by a pasted token |
 | `input_dialogs.h/.cpp` | `AskText`, `AskItem`: `QInputDialog` questions with the app's own OK and Cancel |
 | `jam_window.h/.cpp` | `JamWindow` — the host's jam in a GEN frame: start, QR code and link, settings, guests, end, search that adds tracks. Built only with the jam |
 | `jam_server_dialog.h/.cpp` | `JamServerDialog` — the jam server's address, "Teach the jam vibe" and "Guests may listen". Built only with the jam |
 
 The windows' texts are English sources in `tr()` (in free functions
-`QCoreApplication::translate` with the class-like context `Ui::LibraryMenu`, `Ui::InputDialogs`),
+`QCoreApplication::translate` with the class-like context `Ui::LibraryMenu`, `Ui::InputDialogs`,
+`Ui::PlayerNotices`),
 translated in [translations](../../translations/README.md). Painted texts follow the language at
 the next repaint; `SkinnedWindow::changeEvent` answers `QEvent::LanguageChange` with
 `retranslate()` (the window title) and `update()`.
@@ -51,8 +53,9 @@ through `qiyaa_vis`), `Qt6::Network` (`LoginDialog` receives a `QNetworkAccessMa
 to `Yandex::DeviceLogin`), miniaudio or miniz.
 
 Inside the module `skinned_window.h` is included by the main, equalizer, playlist and GEN windows,
-`gen_window.h` by the "Now playing" and Milkdrop windows, and `snap.h` only by `skinned_window.cpp`
-(and by `src/app`). `library_menu` and `login_dialog` include no other `ui/` header.
+`gen_window.h` by the "Now playing" and Milkdrop windows, `snap.h` only by `skinned_window.cpp`
+(and by `src/app`), and `player_notices.h` only by `main_window.cpp`. `library_menu`,
+`login_dialog` and `player_notices` include no other `ui/` header.
 
 ```bash
 grep -rnE --include='*.h' --include='*.cpp' '#include "(app|integrations)/' src/ui/  # must print nothing
@@ -331,7 +334,8 @@ come from the `Player` (`state()`, `positionSeconds()`, `stateChanged`; the look
 [src/core](../core/README.md#phases-and-state)). The engine gives only what is the sound's own:
 volume and balance, the visualization samples, the source's rate and channels.
 `setVolume`/`setBalance` push the value to the `AudioEngine` every time, the signals fire only on a
-change. `Player::statusMessage` is connected to `setStatusText`.
+change. `Player::noticed`, worded by `NoticeText`, and `Player::statusMessage` (the catalogue's) are
+connected to `setStatusText`.
 
 The timer runs only while something on screen changes (first matching row wins):
 
@@ -811,6 +815,19 @@ screen; a right click in the view or in the frame's content opens the preset men
   comes back with `setPlaying` changing, the restore menu item, or a new full-screen view.
 - `reloadPresets` re-reads the folders, clears the history and keeps the current preset by name
   (index −1 if it is gone), but does not reload the view.
+
+## Player notices — `player_notices.h/.cpp`
+
+```cpp
+QString NoticeText(const Core::PlayerNotice& notice);
+```
+
+The words for each `Core::NoticeCode` ([src/core](../core/README.md#notices)), in the context
+`Ui::PlayerNotices`: "Shuffle does not apply to a vibe", "Audio error: %1", "No audio output
+device", "Loading more tracks…", "Download failed: %1", "The track does not play: %1" (with "the
+sound could not be decoded" for `undecodable`), "Access error: %1", "Stopped: %n track(s) in a row
+did not play", "No network — waiting for it…". `%1` is the notice's English `detail`. They are the
+texts the `Player` itself sent until #23 (test `theNoticesReadAsTheStatusLineDidBefore`).
 
 ## Library menu — `library_menu.h/.cpp`
 

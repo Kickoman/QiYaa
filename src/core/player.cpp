@@ -1,6 +1,5 @@
 #include "core/player.h"
 
-#include <QCoreApplication>
 #include <QPointer>
 
 #include <algorithm>
@@ -14,8 +13,13 @@ using Audio::AudioEngine;
 namespace {
 constexpr int kLoadMoreWhenLeft = 2;
 
-QString ShuffleOffInWaveText() {
-    return QCoreApplication::translate("Core::Player", "Shuffle does not apply to a vibe");
+PlayerNotice NoticeOf(NoticeCode code, const QString& detail = {}, int count = 0, bool undecodable = false) {
+    PlayerNotice notice;
+    notice.code = code;
+    notice.detail = detail;
+    notice.count = count;
+    notice.undecodable = undecodable;
+    return notice;
 }
 }  // namespace
 
@@ -26,7 +30,7 @@ Player::Player(Audio::AudioEngine* engine, SourceRegistry* sources, QObject* par
     connect(audioEngine, &AudioEngine::trackFinished, this, &Player::engineFinished);
     connect(audioEngine, &AudioEngine::trackAdvanced, this, &Player::engineAdvanced);
     connect(audioEngine, &AudioEngine::errorOccurred, this, [this](const QString& message) {
-        Q_EMIT statusMessage(tr("Audio error: %1").arg(message));
+        Q_EMIT noticed(NoticeOf(NoticeCode::AudioError, message));
     });
     connect(audioEngine, &AudioEngine::streamUndecodable, this, [this](TStreamId stream) {
         if (!current || !stream || stream != current->feed.stream) {
@@ -34,7 +38,8 @@ Player::Player(Audio::AudioEngine* engine, SourceRegistry* sources, QObject* par
         }
         handleFailure(  // ERR-04
             current->feed.failure == FailureKind::Network ? FailureKind::Network : FailureKind::Track,
-            tr("the sound could not be decoded")
+            {},
+            true
         );
     });
     connect(trackSources, &SourceRegistry::filesChanged, this, &Player::sourceFilesChanged);
@@ -90,7 +95,7 @@ void Player::setQueue(
     Q_EMIT playlistChanged();
     Q_EMIT currentTrackChanged();
     if (loadMore && shuffleEnabled) {
-        Q_EMIT statusMessage(ShuffleOffInWaveText());
+        Q_EMIT noticed(NoticeOf(NoticeCode::ShuffleOffInVibe));
     }
     if (autoplay && playingIndex >= 0) {
         playIndex(0);
@@ -331,7 +336,7 @@ void Player::setShuffle(bool on) {
     resetNavigator();
     Q_EMIT modesChanged();
     if (on && loadMore) {
-        Q_EMIT statusMessage(ShuffleOffInWaveText());
+        Q_EMIT noticed(NoticeOf(NoticeCode::ShuffleOffInVibe));
     }
     refreshPreload();
 }
@@ -396,7 +401,7 @@ void Player::next() {
         stop();
         setWaitingForMore(true);
         maybeLoadMore();
-        Q_EMIT statusMessage(tr("Loading more tracks…"));
+        Q_EMIT noticed(NoticeOf(NoticeCode::LoadingMore));
         return;
     }
     stop();
@@ -500,7 +505,7 @@ void Player::playIndex(int index) {
     if (!audioEngine->hasOutput()) {
         Q_EMIT currentTrackChanged();
         maybeLoadMore();
-        Q_EMIT statusMessage(tr("No audio output device"));
+        Q_EMIT noticed(NoticeOf(NoticeCode::NoOutputDevice));
         return;
     }
     current.emplace();
@@ -622,7 +627,7 @@ void Player::downloadFinished(TrackDownload* finished, const std::optional<Track
         }
         current->feed.failure = failure->kind;
         if (failure->kind != FailureKind::Network) {
-            Q_EMIT statusMessage(tr("Download failed: %1").arg(failure->text));
+            Q_EMIT noticed(NoticeOf(NoticeCode::DownloadFailed, failure->text));
         }
         return;
     }
@@ -656,26 +661,26 @@ void Player::engineAdvanced() {
     adoptPreload(preload->index);
 }
 
-void Player::handleFailure(FailureKind kind, const QString& text) {
+void Player::handleFailure(FailureKind kind, const QString& text, bool undecodable) {
     Q_EMIT failed(kind);
     const FailureAction action = DecideOnFailure(kind, failuresInRow, pickNext() >= 0, static_cast<bool>(loadMore));
     switch (action) {
         case FailureAction::WaitForNetwork: return waitForNetwork();
         case FailureAction::Next:  // ERR-04, ERR-07
             ++failuresInRow;
-            Q_EMIT statusMessage(tr("The track does not play: %1").arg(text));
+            Q_EMIT noticed(NoticeOf(NoticeCode::TrackFailed, text, 0, undecodable));
             return next();
         case FailureAction::Stop:
             if (kind == FailureKind::Auth) {  // ERR-08
-                Q_EMIT statusMessage(tr("Access error: %1").arg(text));
+                Q_EMIT noticed(NoticeOf(NoticeCode::AccessDenied, text));
             } else {  // ERR-07
                 ++failuresInRow;
-                Q_EMIT statusMessage(tr("The track does not play: %1").arg(text));
+                Q_EMIT noticed(NoticeOf(NoticeCode::TrackFailed, text, 0, undecodable));
             }
             return stop();
         case FailureAction::StopAfterLimit:  // ERR-05
             failuresInRow = 0;
-            Q_EMIT statusMessage(tr("Stopped: %n track(s) in a row did not play", nullptr, kMaxTrackFailuresInRow));
+            Q_EMIT noticed(NoticeOf(NoticeCode::StoppedAfterFailures, {}, kMaxTrackFailuresInRow));
             return stop();
     }
 }
@@ -692,7 +697,7 @@ void Player::waitForNetwork() {
         const AudioEngine::State state = audioEngine->state();
         wait.resume = state != AudioEngine::State::Paused;
         wait.position = state == AudioEngine::State::Stopped ? current->lastPosition : audioEngine->positionSeconds();
-        Q_EMIT statusMessage(tr("No network — waiting for it…"));
+        Q_EMIT noticed(NoticeOf(NoticeCode::WaitingForNetwork));
     }
     ++generation;
     cancelPreload();

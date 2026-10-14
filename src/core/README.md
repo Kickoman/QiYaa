@@ -13,7 +13,8 @@ disk. The folder does not decide what a pick plays or talk to a source's catalog
 ([src/sources](../sources/README.md)). It does not decode or output audio or chain streams at the
 sample level ([src/audio](../audio/README.md)). It speaks to no music service: links, files, cover
 URLs and play reports are a source's ([src/sources](../sources/README.md)). It builds no menus
-([src/ui](../ui/README.md), `library_menu.cpp`) and shows nothing on screen. Namespace `Core`,
+([src/ui](../ui/README.md), `library_menu.cpp`), shows nothing on screen and holds no text for the
+user: the `Player` says what happened as `PlayerNotice` codes, and `src/ui` words them. Namespace `Core`,
 library `qiyaa_core`.
 
 | File | Contains |
@@ -48,6 +49,7 @@ library `qiyaa_core`.
 grep -rnE --include='*.h' --include='*.cpp' '#include "(sources|jam|ui|vis|skins|integrations|app)/' src/core/   # must print nothing
 grep -rnE --include='*.h' --include='*.cpp' '#include <(QWidget|QApplication|QDialog|QMenu|QtWidgets)' src/core/   # must print nothing
 grep -rnwE --include='*.h' --include='*.cpp' 'throw|catch' src/core/                                    # must print nothing
+grep -rnE --include='*.h' --include='*.cpp' '\btr\(|translate\(' src/core/                                # must print nothing
 grep -rn --include='*.h' --include='*.cpp' -e '->poll()' src/ | grep -v '^src/core/player.cpp:'         # must print nothing
 grep -rn --include='*.h' --include='*.cpp' '#include "yandex/' src/core/                               # must print nothing
 grep -rnE --include='*.h' --include='*.cpp' 'QNetworkRe(quest|ply)' src/core/ | grep -v '^src/core/cover_cache\.'   # must print nothing
@@ -117,7 +119,8 @@ public:
     void setNetworkRetryDelays(int firstMs, int maxMs); // 2 s doubling to 60 s by default
 
 Q_SIGNALS:
-    void statusMessage(const QString& text);
+    void statusMessage(const QString& text);          // YandexSource::Catalog's, until #28
+    void noticed(const Core::PlayerNotice& notice);   // see Notices
     void failed(Core::FailureKind kind);              // every failure the policy decides on
     void stateChanged(Core::Player::State state);     // once per pass of the event loop, on a change
     void playlistChanged();
@@ -243,8 +246,8 @@ The load-more request: idle, or in flight. It is independent of both phases abov
      bitrate become the current track's. Then `currentTrackChanged`, the load-more check, and the
      start.
   3. **Otherwise:** `cancelPreload()`, then `AudioEngine::beginStream()`. Without an output device
-     (stream 0) no track opens: `currentTrackChanged`, the load-more check and
-     `statusMessage("No audio output device")`, and the state stays Stopped. Otherwise
+     no track opens: `currentTrackChanged`, the load-more check and the notice `NoOutputDevice`,
+     and the state stays Stopped. Otherwise
      `currentTrackChanged` (with `currentBitrate()` still 0), the load-more check, then
      `SourceRegistry::open` (so do the network retry and the preload). An answer that comes after
      `stop`, `playIndex` or `setQueue` is dropped, and its download never starts. A `TrackFailure`:
@@ -257,7 +260,7 @@ The load-more request: idle, or in flight. It is independent of both phases abov
 - **`next()`**: with an empty queue, nothing happens. If a preload exists in any phase:
   `playIndex(preload index)`. Else if `pickNext() >= 0`: `playIndex` of it. Else, if the source is
   endless: `stop()`, mark waiting, run the load-more check, then emit
-  `statusMessage("Loading more tracks…")`. Else (the end of a finite queue with repeat off):
+  the notice `LoadingMore`. Else (the end of a finite queue with repeat off):
   `stop()`, and the cursor stays on the last track.
 - **`previous()`** (spec TR-01, TR-02): more than
   `kPreviousRestartsAfterSeconds` (3 s) into a playing or paused track, it restarts that track
@@ -286,7 +289,7 @@ The load-more request: idle, or in flight. It is independent of both phases abov
 - **Download finished**:
   - The current track's, failed: when no audio arrived on its stream, the failure policy at once;
     otherwise the failure kind is kept for the track's end (a network failure then waits, ERR-03;
-    any other shows `statusMessage("Download failed: <text>")` and ends the track as `Skipped`).
+    any other gives the notice `DownloadFailed` and ends the track as `Skipped`).
     A preload taken over brings what arrived on its own stream.
   - The current track's, succeeded: then `maybePreload()`.
   - The preload's: a failure cancels the preload (that track is fetched again when its turn
@@ -303,7 +306,7 @@ The load-more request: idle, or in flight. It is independent of both phases abov
   its file; no signal is emitted.
 - **`setShuffle`, `setRepeat`**: nothing happens without a change. With a change:
   `modesChanged`, then `refreshPreload()`. Switching shuffle on while the queue is endless also
-  emits `statusMessage("Shuffle does not apply to a vibe")`; `setQueue` emits the same when an
+  gives the notice `ShuffleOffInVibe`; `setQueue` gives the same when an
   endless queue starts with shuffle on.
 - **`seekTo(seconds)`**: clamps the target to `[0, durationSeconds()]`, or to `>= 0` when the
   duration is 0. It returns `false` and emits nothing when `AudioEngine::seek` refuses, which
@@ -396,12 +399,13 @@ FailureAction DecideOnFailure(FailureKind kind, int failuresInRow, bool hasNext,
   `TrackFailure`; Yandex's kinds are `YandexSource::FailureKindOf`), and
   `AudioEngine::streamUndecodable` (a Track failure, or a Network one if the download had already
   broken off).
-- **Track** (ERR-04, ERR-05, ERR-07): `"The track does not play: <text>"` and `next()`, which in a wave at
-  its end waits for more. The third in a row stops instead, with `"Stopped: 3 tracks in a row did
-  not play"`; with no next track in a finite queue it stops at once. The count goes back to 0
-  when the engine reaches Playing, and in `setQueue` (ERR-06).
-- **Auth** (ERR-08): `"Access error: <text>"` and a stop. It is not counted.
-- **Network** (ERR-01 to ERR-03): the track is parked. `"No network — waiting for it…"` once; the
+- **Track** (ERR-04, ERR-05, ERR-07): the notice `TrackFailed` (with `undecodable` when the sound
+  could not be decoded) and `next()`, which in a wave at its end waits for more. The third in a row
+  stops instead, with `StoppedAfterFailures` (count 3); with no next track in a finite queue it
+  stops at once. The count goes back to 0 when the engine reaches Playing, and in `setQueue`
+  (ERR-06).
+- **Auth** (ERR-08): the notice `AccessDenied` and a stop. It is not counted.
+- **Network** (ERR-01 to ERR-03): the track is parked. The notice `WaitingForNetwork` once; the
   download and the preload are dropped, and a new stream is begun at the position the track had
   reached and paused, so every view shows it paused there. The track stays open: no `Skipped`
   now, and no new `Started` or play report when it continues. A retry follows after 2 s, then
@@ -478,7 +482,8 @@ FailureAction DecideOnFailure(FailureKind kind, int failuresInRow, bool hasNext,
 
 | Signal | Emitted |
 |---|---|
-| `statusMessage(text)` | `"Audio error: <message>"` (from `AudioEngine::errorOccurred`), `"No audio output device"`, the failure statuses (`"The track does not play: …"`, `"Stopped: 3 tracks in a row did not play"`, `"Access error: …"`, `"No network — waiting for it…"`, `"Download failed: …"`), and `"Loading more tracks…"` (loading more tracks). `YandexSource::Catalog` also emits it on the `Player` for picks, likes and dislikes, which makes it the app's one status line |
+| `statusMessage(text)` | never by the `Player` itself: `YandexSource::Catalog` emits it on the `Player` for picks, likes and dislikes until [#28](https://github.com/Kickoman/QiYaa/issues/28) |
+| `noticed(notice)` | see [Notices](#notices) |
 | `stateChanged(state)` | after a pass of the event loop in which `state()` changed; see [Phases and `State`](#phases-and-state) |
 | `playlistChanged` | by `setQueue`; by `appendTracks` when something was added; by `removeTracks` always, even when no index was valid |
 | `queueReplaced` | by `setQueue` and `clearQueue` only, before `playlistChanged` |
@@ -486,6 +491,36 @@ FailureAction DecideOnFailure(FailureKind kind, int failuresInRow, bool hasNext,
 | `positionTick` | after each timer tick's `poll()`, every 100 ms while the engine is Buffering, Playing or Paused |
 | `modesChanged` | by `setShuffle`, `setShuffleAlgorithm` and `setRepeat` on a change |
 | `seeked(target)` | after a successful `seekTo` or `seekFraction`, with the clamped target |
+
+### Notices
+
+```cpp
+enum class NoticeCode { ShuffleOffInVibe, AudioError, NoOutputDevice, LoadingMore, DownloadFailed,
+                        TrackFailed, AccessDenied, StoppedAfterFailures, WaitingForNetwork };
+struct PlayerNotice {
+    NoticeCode code;
+    QString detail;           // English, for AudioError, DownloadFailed, TrackFailed, AccessDenied
+    int count = 0;            // StoppedAfterFailures: how many in a row
+    bool undecodable = false; // TrackFailed: the sound could not be decoded; detail is empty
+};
+```
+
+What the `Player` has to tell the user goes out as `noticed`, never as text: `Ui::NoticeText`
+([src/ui](../ui/README.md)) words it in the user's language, and the main window shows it in the
+marquee. `detail` is not translated: it is the source's or the engine's own English text (an HTTP
+status and path, an engine message). Codes for the engine's errors are a later step.
+
+| Code | When |
+|---|---|
+| `ShuffleOffInVibe` | shuffle switched on in an endless queue, or an endless queue set with shuffle on (WAVE-10) |
+| `AudioError` | `AudioEngine::errorOccurred` |
+| `NoOutputDevice` | `playIndex` without an output device |
+| `LoadingMore` | `next()` at the end of an endless queue |
+| `DownloadFailed` | the current download failed after some audio arrived, not on the network |
+| `TrackFailed` | the policy skips the track or stops on it (ERR-04, ERR-07) |
+| `AccessDenied` | an Auth failure (ERR-08) |
+| `StoppedAfterFailures` | the third track in a row did not play (ERR-05) |
+| `WaitingForNetwork` | a network wait begins (ERR-01 to ERR-03) |
 
 **Traps:**
 
@@ -497,9 +532,8 @@ FailureAction DecideOnFailure(FailureKind kind, int failuresInRow, bool hasNext,
   call `newSourceRequest()` and throw the ticket away. Do not remove those calls.
 - A `TLoadMoreCallback` must call `done` exactly once, on the `Player`'s thread, with an empty list
   on failure. Until it does, that queue never asks again. After `done({})`, a waiting `next()` stays
-  stopped with "Loading more tracks…" on the status line; the next `next()` asks again. If `done`
-  runs synchronously inside the `TLoadMoreCallback`, playback has already moved on when `next()`
-  emits that message.
+  waiting after its `LoadingMore`; the next `next()` asks again. If `done` runs synchronously
+  inside the `TLoadMoreCallback`, playback has already moved on when `next()` gives that notice.
 - `TLoadMoreCallback` and `TEventCallback` run synchronously inside `Player` methods and the timer's
   handler. They must not call `playIndex`, `stop` or `setQueue`, and they must not throw (see
   [Errors](#errors)).
@@ -512,9 +546,8 @@ FailureAction DecideOnFailure(FailureKind kind, int failuresInRow, bool hasNext,
 - Removing a track before the current one changes `currentIndex()` without
   `currentTrackChanged`. The same is true when `appendTracks` moves the cursor from -1 to 0. UI
   that depends on the index must also listen to `playlistChanged`.
-- Without an output device no track opens: Play only moves the cursor and says
-  `"No audio output device"`. Nothing reaches the source or the callback, and the load-more check
-  still runs.
+- Without an output device no track opens: Play only moves the cursor and gives
+  `NoOutputDevice`. Nothing reaches the source or the callback, and the load-more check still runs.
 - `shutDown()` blocks playback only. `setQueue`, `appendTracks` and `removeTracks` still change
   the list, and `next()` at the end of an endless queue still calls the `TLoadMoreCallback`.
 - `Started` means "the download began", not "audio is audible".
@@ -859,13 +892,13 @@ loaders that throw (the project's error policy is in
 
 | Where | Failure arrives as |
 |---|---|
-| no output device | `statusMessage("No audio output device")`; the track does not open |
+| no output device | the notice `NoOutputDevice`; the track does not open |
 | opening, current track | the failure policy, by the `TrackFailure`'s kind |
 | opening, preload | nothing; the preload is dropped |
 | a track of no known source | a `TrackFailure{Track}` from `SourceRegistry::open` |
-| download, current track | the failure policy; after some audio, `statusMessage("Download failed: …")` and `Skipped` at the end, or for the network a wait |
+| download, current track | the failure policy; after some audio, the notice `DownloadFailed` and `Skipped` at the end, or for the network a wait |
 | download, preload | the preload is cancelled, with no message |
-| audio engine | `statusMessage("Audio error: <message>")`; an undecodable current stream also goes to the failure policy (`AudioEngine::streamUndecodable`) |
+| audio engine | the notice `AudioError` with the engine's message; an undecodable current stream also goes to the failure policy (`AudioEngine::streamUndecodable`) |
 | endless source | the `TLoadMoreCallback` reports a failed load as `done({})`; a waiting `next()` stays stopped |
 | seek | `seekTo` and `seekFraction` return `false` |
 | index out of range | `playIndex` does nothing; `removeTracks` skips it |

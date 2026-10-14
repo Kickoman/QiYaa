@@ -4,6 +4,7 @@
 #include "core/player.h"
 #include "skins/skin.h"
 #include "skins/sprites.h"
+#include "ui/player_notices.h"
 
 #include <QApplication>
 #include <QCloseEvent>
@@ -89,6 +90,9 @@ MainWindow::MainWindow(Core::Player* player, Audio::AudioEngine* engine, const S
         update();
     });
     connect(corePlayer, &Core::Player::statusMessage, this, &MainWindow::setStatusText);
+    connect(corePlayer, &Core::Player::noticed, this, [this](const Core::PlayerNotice& notice) {
+        setStatusText(NoticeText(notice));
+    });
     // The shuffle button shows shuffleActive(), which a wave switches off.
     connect(corePlayer, &Core::Player::queueReplaced, this, qOverload<>(&QWidget::update));
     connect(corePlayer, &Core::Player::modesChanged, this, qOverload<>(&QWidget::update));

@@ -647,7 +647,7 @@ private Q_SLOTS:
         }
         server.fixture("GET", QStringLiteral("/get-file-info"), name);
         QSignalSpy failures(&playback.player, &Core::Player::failed);
-        QSignalSpy statuses(&playback.player, &Core::Player::statusMessage);
+        QSignalSpy notices(&playback.player, &Core::Player::noticed);
         playback.sources.source.setQuality(Yandex::Quality::Economy);
         playback.player.setQueue(NumberedTracks({41}), "A", false);
         playback.player.playIndex(0);
@@ -655,7 +655,8 @@ private Q_SLOTS:
         QVERIFY(playback.player.currentLink().path().endsWith(QStringLiteral("/t41")));
         QCOMPARE(playback.player.currentBitrate(), 320);
         QCOMPARE(failures.count(), 0);
-        QCOMPARE(statuses.count(), 0);
+        QVERIFY(notices.isValid());
+        QCOMPARE(notices.count(), 0);
         playback.player.stop();
     }
 
@@ -968,14 +969,11 @@ private Q_SLOTS:
         Audio::AudioEngine engine;  // not initialised: nothing actually plays
         Tests::YandexSources sources(&library);
         Core::Player player(&engine, &sources.registry);
-        QSignalSpy status(&player, &Core::Player::statusMessage);
-        auto shuffleMessages = [&] {
-            int count = 0;
-            for (const QList<QVariant>& arguments : status) {
-                count += arguments.at(0).toString().startsWith(QStringLiteral("Shuffle"));
-            }
-            return count;
-        };
+        int shuffleNotices = 0;
+        connect(&player, &Core::Player::noticed, this, [&](const Core::PlayerNotice& notice) {
+            shuffleNotices += notice.code == Core::NoticeCode::ShuffleOffInVibe ? 1 : 0;
+        });
+        auto shuffleMessages = [&] { return shuffleNotices; };
         player.setShuffle(true);
         QList<int> ids;
         for (int i = 1; i <= 12; ++i) {

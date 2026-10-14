@@ -54,8 +54,8 @@ jobs:
           cmake -S . -B build -G Ninja -DCMAKE_BUILD_TYPE=RelWithDebInfo -DQIYAA_WITH_MILKDROP=OFF \
             -DCMAKE_C_FLAGS=-fsanitize=thread -DCMAKE_CXX_FLAGS=-fsanitize=thread \
             -DCMAKE_EXE_LINKER_FLAGS=-fsanitize=thread
-          cmake --build build --target audio_test failures_test library_test sources_test
-      - run: ctest --test-dir build --output-on-failure -R '^(audio|failures|library|sources)_test$'
+          cmake --build build --target audio_test failures_test library_test player_test sources_test
+      - run: ctest --test-dir build --output-on-failure -R '^(audio|failures|library|player|sources)_test$'
         env:
           TSAN_OPTIONS: halt_on_error=1 second_deadlock_stack=1 suppressions=${{ github.workspace }}/tests/tsan.supp
 

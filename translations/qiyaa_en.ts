@@ -2,7 +2,7 @@
 <!DOCTYPE TS>
 <TS version="2.1" language="en" sourcelanguage="en">
 <context>
-    <name>Core::Player</name>
+    <name>Ui::PlayerNotices</name>
     <message numerus="yes">
         <source>Stopped: %n track(s) in a row did not play</source>
         <translation>

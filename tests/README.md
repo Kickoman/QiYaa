@@ -35,7 +35,7 @@ is formatting (the clang-format check in `.github/workflows/ci.yml`).
 | `sources_test.cpp` | `YandexSource::Catalog` against the `spec/player` scenarios on spec fixtures, one function per scenario group: the last pick wins, stale failures, search as one pick, a failed source keeps the queue, likes with their count, an empty source keeping the queue, search's best result, and a wave played on the Null output (radio start, load more with the last ids, batch ids on the events, dislike and skip) |
 | `jam_mode_test.cpp` | `Core::JamMode` with `YandexSource::JamWaves` against `spec/jam/host.md` by ID, on the Null output with a `Tests::FakeSource` that opens every track at once and spec fixtures: the start keeping the playing track, the jam part following the state with the smallest change, started and playing reports, Previous restarting, an item into a waiting player, the jam wave from the seeds behind the items and a new session for new seeds, a late reply of the previous jam's wave kept out of the next jam, and of a session that new seeds closed kept out of the queue, no events to the source and wave feedback only to the jam wave, skip by item, picks refused during the jam, and the end |
 | `failures_test.cpp` | What the `Player` does when a track cannot play (`spec/player/errors.md`): the failure policy as a table, `ClassifyReply` and `YandexSource::FailureKindOf` on real replies, and on the Null output a broken and an undecodable track skipped, three in a row stopping, the count reset by a track that plays, a broken last track, a rejected account, no network (pause, then continue the same track), and a download cut short that waits instead of moving on |
-| `main_window_test.cpp` | One `Ui::MainWindow` on the default offscreen screen: position clamping, dragging and edge snapping, shuffle click, the shuffle light off during a wave, volume slider, ×2 and fractional scale |
+| `main_window_test.cpp` | One `Ui::MainWindow` on the default offscreen screen: position clamping, dragging and edge snapping, shuffle click, the shuffle light off during a wave, volume slider, ×2 and fractional scale; `Ui::NoticeText` giving the `Player`'s former status texts |
 | `windows_test.cpp` | The whole `App::Application` window set: docking, detaching, scaling, playlist selection/scroll/resize, track menu targets (including multiple selection, keyboard invocation and queue changes), dislike skipping only the current track, EQ sliders, shade modes, login dialog layout, Milkdrop and Now Playing windows, `snapshot()`; the Quality menu and its setting (QUAL-06) |
 | `screenshots_test.cpp` | Golden screenshots of the main window and the equalizer (see **Golden screenshots**) |
 | `jam_test.cpp` | `Jam::` (only with Qt WebSockets): every example of `spec/jam/protocol/examples` through the codec (valid ones pass, `invalid-*` fail) and client examples through encode and decode; the client against a `QWebSocketServer` on localhost — hello with a version the server takes and the clock offset, reconnects after the delays and at once on `networkBack`, the outbox, `ended` stopping it for good, refusing to send what the server would refuse, invalid and unknown-reason messages; the stored session across a restart and broken, foreign or oversized files |
@@ -189,9 +189,9 @@ TSan reported the test library's own watchdog thread at every exit; Qt 6.8 does 
 ```bash
 cmake -S . -B build-tsan -G Ninja -DCMAKE_BUILD_TYPE=RelWithDebInfo -DQIYAA_WITH_MILKDROP=OFF \
   -DCMAKE_C_FLAGS=-fsanitize=thread -DCMAKE_CXX_FLAGS=-fsanitize=thread -DCMAKE_EXE_LINKER_FLAGS=-fsanitize=thread
-cmake --build build-tsan --target audio_test failures_test library_test sources_test
+cmake --build build-tsan --target audio_test failures_test library_test player_test sources_test
 TSAN_OPTIONS="halt_on_error=1 suppressions=$PWD/tests/tsan.supp" \
-  ctest --test-dir build-tsan --output-on-failure -R '^(audio|failures|library|sources)_test$'
+  ctest --test-dir build-tsan --output-on-failure -R '^(audio|failures|library|player|sources)_test$'
 ```
 
 Qt is not instrumented, so the synchronisation inside it is invisible and its threads look racy;

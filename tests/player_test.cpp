@@ -290,15 +290,18 @@ private Q_SLOTS:
     void withoutAnOutputDeviceATrackStaysStopped() {
         Stack stack;
         QSignalSpy states(&stack.player, &Core::Player::stateChanged);
-        QSignalSpy status(&stack.player, &Core::Player::statusMessage);
+        QList<Core::PlayerNotice> notices;
+        connect(&stack.player, &Core::Player::noticed, this, [&](const Core::PlayerNotice& notice) {
+            notices << notice;
+        });
         stack.player.setQueue(Tracks(2), QStringLiteral("Fake"), true, {}, Recorder(stack.events));
         QTest::qWait(50);
         QCOMPARE(States(states), QList{Core::Player::State::Stopped});
         QCOMPARE(stack.player.currentIndex(), 0);
         QVERIFY(stack.source.asked().isEmpty());
         QVERIFY(stack.events.isEmpty());
-        QCOMPARE(status.count(), 1);
-        QCOMPARE(status.last().at(0).toString(), QStringLiteral("No audio output device"));
+        QCOMPARE(notices.size(), 1);
+        QCOMPARE(notices.first().code, Core::NoticeCode::NoOutputDevice);
     }
 
     void theSourceHearsTheEventsOfItsTracks() {

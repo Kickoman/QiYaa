@@ -178,6 +178,7 @@ qiyaa_add_module(ui
     src/ui/login_dialog.cpp     src/ui/login_dialog.h
     src/ui/main_window.cpp      src/ui/main_window.h
     src/ui/now_playing_window.cpp src/ui/now_playing_window.h
+    src/ui/player_notices.cpp   src/ui/player_notices.h
     src/ui/playlist_window.cpp  src/ui/playlist_window.h
     src/ui/skinned_window.cpp   src/ui/skinned_window.h
     src/ui/snap.cpp             src/ui/snap.h)

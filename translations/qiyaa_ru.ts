@@ -249,53 +249,6 @@
     </message>
 </context>
 <context>
-    <name>Core::Player</name>
-    <message>
-        <source>Shuffle does not apply to a vibe</source>
-        <translation>Перемешивание не действует в волне</translation>
-    </message>
-    <message>
-        <source>Audio error: %1</source>
-        <translation>Ошибка звука: %1</translation>
-    </message>
-    <message>
-        <source>the sound could not be decoded</source>
-        <translation>не удалось декодировать звук</translation>
-    </message>
-    <message>
-        <source>Loading more tracks…</source>
-        <translation>Загружаю ещё треки…</translation>
-    </message>
-    <message>
-        <source>Download failed: %1</source>
-        <translation>Загрузка не удалась: %1</translation>
-    </message>
-    <message>
-        <source>The track does not play: %1</source>
-        <translation>Трек не играет: %1</translation>
-    </message>
-    <message>
-        <source>Access error: %1</source>
-        <translation>Ошибка доступа: %1</translation>
-    </message>
-    <message numerus="yes">
-        <source>Stopped: %n track(s) in a row did not play</source>
-        <translation>
-            <numerusform>Остановлено: %n трек подряд не играет</numerusform>
-            <numerusform>Остановлено: %n трека подряд не играют</numerusform>
-            <numerusform>Остановлено: %n треков подряд не играют</numerusform>
-        </translation>
-    </message>
-    <message>
-        <source>No network — waiting for it…</source>
-        <translation>Нет сети — жду подключения…</translation>
-    </message>
-    <message>
-        <source>No audio output device</source>
-        <translation>Нет устройства для вывода звука</translation>
-    </message>
-</context>
-<context>
     <name>Ui::EqualizerWindow</name>
     <message>
         <source>Equalizer preset</source>
@@ -861,6 +814,53 @@
     <message>
         <source>QiYaa: now playing</source>
         <translation>QiYaa: сейчас играет</translation>
+    </message>
+</context>
+<context>
+    <name>Ui::PlayerNotices</name>
+    <message>
+        <source>Shuffle does not apply to a vibe</source>
+        <translation>Перемешивание не действует в волне</translation>
+    </message>
+    <message>
+        <source>Audio error: %1</source>
+        <translation>Ошибка звука: %1</translation>
+    </message>
+    <message>
+        <source>No audio output device</source>
+        <translation>Нет устройства для вывода звука</translation>
+    </message>
+    <message>
+        <source>Loading more tracks…</source>
+        <translation>Загружаю ещё треки…</translation>
+    </message>
+    <message>
+        <source>Download failed: %1</source>
+        <translation>Загрузка не удалась: %1</translation>
+    </message>
+    <message>
+        <source>the sound could not be decoded</source>
+        <translation>не удалось декодировать звук</translation>
+    </message>
+    <message>
+        <source>The track does not play: %1</source>
+        <translation>Трек не играет: %1</translation>
+    </message>
+    <message>
+        <source>Access error: %1</source>
+        <translation>Ошибка доступа: %1</translation>
+    </message>
+    <message numerus="yes">
+        <source>Stopped: %n track(s) in a row did not play</source>
+        <translation>
+            <numerusform>Остановлено: %n трек подряд не играет</numerusform>
+            <numerusform>Остановлено: %n трека подряд не играют</numerusform>
+            <numerusform>Остановлено: %n треков подряд не играют</numerusform>
+        </translation>
+    </message>
+    <message>
+        <source>No network — waiting for it…</source>
+        <translation>Нет сети — жду подключения…</translation>
     </message>
 </context>
 <context>

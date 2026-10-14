@@ -249,53 +249,6 @@
     </message>
 </context>
 <context>
-    <name>Core::Player</name>
-    <message>
-        <source>Shuffle does not apply to a vibe</source>
-        <translation>Перамешванне не дзейнічае ў хвалі</translation>
-    </message>
-    <message>
-        <source>Audio error: %1</source>
-        <translation>Памылка гуку: %1</translation>
-    </message>
-    <message>
-        <source>the sound could not be decoded</source>
-        <translation>не ўдалося дэкадаваць гук</translation>
-    </message>
-    <message>
-        <source>Loading more tracks…</source>
-        <translation>Загружаю яшчэ трэкі…</translation>
-    </message>
-    <message>
-        <source>Download failed: %1</source>
-        <translation>Загрузка не ўдалася: %1</translation>
-    </message>
-    <message>
-        <source>The track does not play: %1</source>
-        <translation>Трэк не грае: %1</translation>
-    </message>
-    <message>
-        <source>Access error: %1</source>
-        <translation>Памылка доступу: %1</translation>
-    </message>
-    <message numerus="yes">
-        <source>Stopped: %n track(s) in a row did not play</source>
-        <translation>
-            <numerusform>Спынена: %n трэк запар не грае</numerusform>
-            <numerusform>Спынена: %n трэкі запар не граюць</numerusform>
-            <numerusform>Спынена: %n трэкаў запар не граюць</numerusform>
-        </translation>
-    </message>
-    <message>
-        <source>No network — waiting for it…</source>
-        <translation>Няма сеткі — чакаю падключэння…</translation>
-    </message>
-    <message>
-        <source>No audio output device</source>
-        <translation>Няма прылады для вываду гуку</translation>
-    </message>
-</context>
-<context>
     <name>Ui::EqualizerWindow</name>
     <message>
         <source>Equalizer preset</source>
@@ -861,6 +814,53 @@
     <message>
         <source>QiYaa: now playing</source>
         <translation>QiYaa: зараз грае</translation>
+    </message>
+</context>
+<context>
+    <name>Ui::PlayerNotices</name>
+    <message>
+        <source>Shuffle does not apply to a vibe</source>
+        <translation>Перамешванне не дзейнічае ў хвалі</translation>
+    </message>
+    <message>
+        <source>Audio error: %1</source>
+        <translation>Памылка гуку: %1</translation>
+    </message>
+    <message>
+        <source>No audio output device</source>
+        <translation>Няма прылады для вываду гуку</translation>
+    </message>
+    <message>
+        <source>Loading more tracks…</source>
+        <translation>Загружаю яшчэ трэкі…</translation>
+    </message>
+    <message>
+        <source>Download failed: %1</source>
+        <translation>Загрузка не ўдалася: %1</translation>
+    </message>
+    <message>
+        <source>the sound could not be decoded</source>
+        <translation>не ўдалося дэкадаваць гук</translation>
+    </message>
+    <message>
+        <source>The track does not play: %1</source>
+        <translation>Трэк не грае: %1</translation>
+    </message>
+    <message>
+        <source>Access error: %1</source>
+        <translation>Памылка доступу: %1</translation>
+    </message>
+    <message numerus="yes">
+        <source>Stopped: %n track(s) in a row did not play</source>
+        <translation>
+            <numerusform>Спынена: %n трэк запар не грае</numerusform>
+            <numerusform>Спынена: %n трэкі запар не граюць</numerusform>
+            <numerusform>Спынена: %n трэкаў запар не граюць</numerusform>
+        </translation>
+    </message>
+    <message>
+        <source>No network — waiting for it…</source>
+        <translation>Няма сеткі — чакаю падключэння…</translation>
     </message>
 </context>
 <context>

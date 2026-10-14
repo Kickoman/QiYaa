@@ -22,6 +22,7 @@
 #include <QUrl>
 #include <QVariant>
 
+#include <algorithm>
 #include <functional>
 #include <memory>
 
@@ -46,12 +47,17 @@ private:
         Audio::AudioEngine engine;
         Tests::YandexSources sources{&library};
         Core::Player player{&engine, &sources.registry};
-        QSignalSpy status{&player, &Core::Player::statusMessage};
+        QList<Core::PlayerNotice> notices;
         QStringList events;
 
-        bool sawPrefix(const QString& prefix) const {
-            for (const QList<QVariant>& arguments : status) {
-                if (arguments.at(0).toString().startsWith(prefix)) {
+        Stack() {
+            QObject::connect(&player, &Core::Player::noticed, [this](const Core::PlayerNotice& notice) {
+                notices << notice;
+            });
+        }
+        bool saw(Core::NoticeCode code, const QString& detailPrefix = {}) const {
+            for (const Core::PlayerNotice& notice : notices) {
+                if (notice.code == code && notice.detail.startsWith(detailPrefix)) {
                     return true;
                 }
             }
@@ -180,7 +186,7 @@ private Q_SLOTS:
         stack->player.playIndex(1);
         QVERIFY(QTest::qWaitFor([&] { return stack->player.currentIndex() == 2; }, 5000));
         QVERIFY(QTest::qWaitFor([&] { return stack->playing(); }, 5000));
-        QVERIFY(stack->sawPrefix(QStringLiteral("The track does not play: HTTP 404")));
+        QVERIFY(stack->saw(Core::NoticeCode::TrackFailed, QStringLiteral("HTTP 404")));
         stack->player.stop();
     }
 
@@ -193,7 +199,9 @@ private Q_SLOTS:
         stack->player.playIndex(0);
         QVERIFY(QTest::qWaitFor([&] { return stack->player.currentIndex() == 1; }, 5000));
         QVERIFY(QTest::qWaitFor([&] { return stack->playing(); }, 5000));
-        QVERIFY(stack->sawPrefix(QStringLiteral("The track does not play: ")));
+        QVERIFY(std::any_of(stack->notices.cbegin(), stack->notices.cend(), [](const Core::PlayerNotice& notice) {
+            return notice.code == Core::NoticeCode::TrackFailed && notice.undecodable;
+        }));
         stack->player.stop();
     }
 
@@ -203,8 +211,7 @@ private Q_SLOTS:
             QSKIP("no audio output");
         }
         stack->player.playIndex(0);
-        QVERIFY(QTest::qWaitFor([&] { return stack->sawPrefix(QStringLiteral("Stopped: 3 track(s) in a row")); }, 5000)
-        );
+        QVERIFY(QTest::qWaitFor([&] { return stack->saw(Core::NoticeCode::StoppedAfterFailures); }, 5000));
         QCOMPARE(stack->player.currentIndex(), 2);
         QCOMPARE(stack->engine.state(), Audio::AudioEngine::State::Stopped);
         QCOMPARE(requestsTo("/tracks/124/download-info"), 0);
@@ -219,7 +226,7 @@ private Q_SLOTS:
         QVERIFY(QTest::qWaitFor([&] { return stack->player.currentIndex() == 1 && stack->playing(); }, 5000));
         stack->player.next();  // 133 and 134 broken (1, 2): 135 plays
         QVERIFY(QTest::qWaitFor([&] { return stack->player.currentIndex() == 4 && stack->playing(); }, 5000));
-        QVERIFY(!stack->sawPrefix(QStringLiteral("Stopped")));
+        QVERIFY(!stack->saw(Core::NoticeCode::StoppedAfterFailures));
         stack->player.stop();
     }
 
@@ -230,7 +237,7 @@ private Q_SLOTS:
         }
         stack->player.playIndex(0);
         QVERIFY(
-            QTest::qWaitFor([&] { return stack->sawPrefix(QStringLiteral("The track does not play: HTTP 503")); }, 5000)
+            QTest::qWaitFor([&] { return stack->saw(Core::NoticeCode::TrackFailed, QStringLiteral("HTTP 503")); }, 5000)
         );
         QCOMPARE(stack->player.currentIndex(), 0);
         QCOMPARE(stack->engine.state(), Audio::AudioEngine::State::Stopped);
@@ -242,7 +249,9 @@ private Q_SLOTS:
             QSKIP("no audio output");
         }
         stack->player.playIndex(0);
-        QVERIFY(QTest::qWaitFor([&] { return stack->sawPrefix(QStringLiteral("Access error: HTTP 401")); }, 5000));
+        QVERIFY(QTest::qWaitFor(
+            [&] { return stack->saw(Core::NoticeCode::AccessDenied, QStringLiteral("HTTP 401")); }, 5000
+        ));
         QCOMPARE(stack->player.currentIndex(), 0);
         QCOMPARE(stack->engine.state(), Audio::AudioEngine::State::Stopped);
         QCOMPARE(requestsTo("/tracks/152/download-info"), 0);
@@ -259,7 +268,7 @@ private Q_SLOTS:
         stack->player.playIndex(0);
         QVERIFY(QTest::qWaitFor([&] { return (stack->player.state() == Core::Player::State::WaitingForNetwork); }, 5000)
         );
-        QVERIFY(stack->sawPrefix(QStringLiteral("No network")));
+        QVERIFY(stack->saw(Core::NoticeCode::WaitingForNetwork));
         QCOMPARE(stack->engine.state(), Audio::AudioEngine::State::Paused);
         QCOMPARE(stack->player.currentIndex(), 0);
         QTest::qWait(300);  // offline: no retries, and it stays on the track

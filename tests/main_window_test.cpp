@@ -3,6 +3,7 @@
 #include "core/track_source.h"
 #include "skins/skin.h"
 #include "ui/main_window.h"
+#include "ui/player_notices.h"
 
 #include <QCoreApplication>
 #include <QEvent>
@@ -15,6 +16,7 @@
 #include <QPointF>
 #include <QRect>
 #include <QScreen>
+#include <QString>
 #include <QTest>
 
 #include <functional>
@@ -158,6 +160,32 @@ private Q_SLOTS:
         window->setScale(1.3333);  // rounded to 0.05 steps
         QCOMPARE(window->scale(), 1.35);
         window->setScale(1);
+    }
+
+    void theNoticesReadAsTheStatusLineDidBefore() {
+        const auto text =
+            [](Core::NoticeCode code, const QString& detail = {}, int count = 0, bool undecodable = false) {
+                Core::PlayerNotice notice;
+                notice.code = code;
+                notice.detail = detail;
+                notice.count = count;
+                notice.undecodable = undecodable;
+                return Ui::NoticeText(notice);
+            };
+        using Code = Core::NoticeCode;
+        QCOMPARE(text(Code::ShuffleOffInVibe), QStringLiteral("Shuffle does not apply to a vibe"));
+        QCOMPARE(text(Code::AudioError, "device lost"), QStringLiteral("Audio error: device lost"));
+        QCOMPARE(text(Code::NoOutputDevice), QStringLiteral("No audio output device"));
+        QCOMPARE(text(Code::LoadingMore), QStringLiteral("Loading more tracks…"));
+        QCOMPARE(text(Code::DownloadFailed, "HTTP 500"), QStringLiteral("Download failed: HTTP 500"));
+        QCOMPARE(text(Code::TrackFailed, "HTTP 404"), QStringLiteral("The track does not play: HTTP 404"));
+        QCOMPARE(
+            text(Code::TrackFailed, {}, 0, true),
+            QStringLiteral("The track does not play: the sound could not be decoded")
+        );
+        QCOMPARE(text(Code::AccessDenied, "HTTP 401"), QStringLiteral("Access error: HTTP 401"));
+        QCOMPARE(text(Code::StoppedAfterFailures, {}, 3), QStringLiteral("Stopped: 3 track(s) in a row did not play"));
+        QCOMPARE(text(Code::WaitingForNetwork), QStringLiteral("No network — waiting for it…"));
     }
 
     void cleanupTestCase() { window.reset(); }
