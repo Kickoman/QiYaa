@@ -1,5 +1,6 @@
 #pragma once
 
+#include "core/source_notice.h"
 #include "core/track.h"
 
 #include <QList>
@@ -17,6 +18,7 @@ namespace Yandex {
 class Library;
 struct PlaylistReference;
 struct RequestError;
+struct Track;
 }  // namespace Yandex
 
 namespace YandexSource {
@@ -51,9 +53,13 @@ public:
 
 Q_SIGNALS:
     void likesChanged();
+    void noticed(const Core::SourceNotice& notice);
 
 private:
-    void showStatus(const QString& text);
+    using TTracksDone = std::function<void(const QList<Yandex::Track>& tracks, const QString& error)>;
+
+    TTracksDone queueLoader(const QString& title, quint64 ticket);
+    void notify(const Core::SourceNotice& notice);
 
     Core::Player* corePlayer;
     Yandex::Library* yandexLibrary;

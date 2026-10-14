@@ -22,6 +22,7 @@ user: the `Player` says what happened as `PlayerNotice` codes, and `src/ui` word
 | `queue.h/.cpp` | `Queue`, private to `Player`: the entries, the cursor, what plays next and before (waiting items, the head through the navigator, then the continuation), shuffle and repeat, the title, the layer's seeds, and the load-more generation |
 | `track.h/.cpp` | `Track`, `TrackKey`, `CoverRef`, `TrackEvent`: a track of any source |
 | `track_source.h/.cpp` | `TrackSource`, what each music source implements; `TrackDownload`, `OpenedTrack`, `TrackFailure`, `TOpenResult`; `SourceRegistry`, the sources by name |
+| `source_notice.h` | `SourceNotice`, `SourceNoticeCode`: what a source's catalogue says about a pick, a like or a dislike, as a code for `src/ui` to word |
 | `continuation.h` | `Continuation`, what follows a queue's head: more tracks on request and the events of the tracks it gave; `ContinuationRequest`, `ContinuationReply`, `SeedHint` |
 | `queue_source.h` | `QueueSource` (a title, a head, a continuation and the tracks it already gave), `QueueEntry` and `EntryPart`: what a source puts into the queue and what each entry is; `LayerItem`, `QueueRules` and `QueueLayer`: what a layer over the queue (the jam) brings |
 | `track_navigator.h/.cpp` | `TrackNavigator`, `ShuffleAlgorithm`, `MakeTrackNavigator`: sequential, random and stored shuffled traversal |
@@ -57,6 +58,7 @@ grep -rn --include='*.h' --include='*.cpp' -e '->poll()' src/ | grep -v '^src/co
 grep -rn --include='*.h' --include='*.cpp' '#include "yandex/' src/core/                               # must print nothing
 grep -rnE --include='*.h' --include='*.cpp' 'QNetworkRe(quest|ply)' src/core/ | grep -v '^src/core/cover_cache\.'   # must print nothing
 grep -rln --include='*.h' --include='*.cpp' '#include "core/queue.h"' src/ | grep -vx 'src/core/\(player\|queue\)\.cpp'   # must print nothing
+grep -rn --include='*.h' --include='*.cpp' --include='*.mm' 'statusMessage' src/                       # must print nothing
 ```
 
 ## `player.h`: `Player`
@@ -119,7 +121,6 @@ public:
     void setNetworkRetryDelays(int firstMs, int maxMs); // 2 s doubling to 60 s by default
 
 Q_SIGNALS:
-    void statusMessage(const QString& text);          // YandexSource::Catalog's, until #28
     void noticed(const Core::PlayerNotice& notice);   // see Notices
     void failed(Core::FailureKind kind);              // every failure the policy decides on
     void trackEvent(Core::TrackEvent event, const Core::Track& track, double playedSeconds);   // every track's
@@ -562,7 +563,6 @@ FailureAction DecideOnFailure(FailureKind kind, int failuresInRow, bool hasNext,
 
 | Signal | Emitted |
 |---|---|
-| `statusMessage(text)` | never by the `Player` itself: `YandexSource::Catalog` emits it on the `Player` for picks, likes and dislikes until [#28](https://github.com/Kickoman/QiYaa/issues/28) |
 | `noticed(notice)` | see [Notices](#notices) |
 | `stateChanged(state)` | after a pass of the event loop in which `state()` changed; see [Phases and `State`](#phases-and-state) |
 | `playlistChanged` | by `setSource`; by a continuation's reply when something was added; by `removeRows` always, even when no row was valid; by `setLayer`, `setLayerItems` and `playIndex` when the entries changed (items came, went, moved or stopped waiting; stale wave tracks went) |
@@ -778,6 +778,24 @@ Q_SIGNALS:
   with `TrackFailure{Track}` on the next pass of the event loop, and its events go nowhere.
 - Like, dislike and the other capabilities of a source are not in the port yet: the Yandex menu
   asks `YandexSource::Catalog`.
+
+## `source_notice.h`: `SourceNotice`
+
+```cpp
+enum class SourceNoticeCode { Loading, Searching, Failed, VibeFailed, SearchFailed, Empty, NothingFound,
+                              Loaded, AddedToLiked, RemovedFromLiked, Disliked };
+struct SourceNotice {
+    SourceNoticeCode code;
+    QString subject;          // the pick's title (a search's text for Searching)
+    QString detail;           // English: the request's error
+    int count = 0;            // Loaded: the available tracks
+};
+```
+
+A catalogue tells what became of the user's pick as a code, never as text, as the `Player` does
+with `PlayerNotice`: `YandexSource::Catalog::noticed`, worded by `Ui::SourceNoticeText`. `subject`
+is a title the catalogue gives the queue, already in the user's language; `detail` is not
+translated.
 
 ## `continuation.h`: `Continuation`
 

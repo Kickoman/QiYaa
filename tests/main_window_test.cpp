@@ -1,10 +1,12 @@
 #include "audio/audio_engine.h"
 #include "core/player.h"
+#include "core/source_notice.h"
 #include "core/track_source.h"
 #include "skins/skin.h"
 #include "support/fake_continuation.h"
 #include "ui/main_window.h"
 #include "ui/player_notices.h"
+#include "ui/source_notices.h"
 
 #include <QCoreApplication>
 #include <QEvent>
@@ -193,6 +195,26 @@ private Q_SLOTS:
         QCOMPARE(text(Code::StoppedAfterFailures, {}, 3), QStringLiteral("Stopped: 3 track(s) in a row did not play"));
         QCOMPARE(text(Code::WaitingForNetwork), QStringLiteral("No network — waiting for it…"));
         QCOMPARE(text(Code::VibeFailed, "HTTP 500"), QStringLiteral("Vibe error: HTTP 500"));
+    }
+
+    void theCatalogsNoticesReadAsItsStatusesDid() {
+        using Code = Core::SourceNoticeCode;
+        const auto text = [](Code code, const QString& subject = {}, const QString& detail = {}, int count = 0) {
+            return Ui::SourceNoticeText(
+                Core::SourceNotice{.code = code, .subject = subject, .detail = detail, .count = count}
+            );
+        };
+        QCOMPARE(text(Code::Loading, "Liked"), QStringLiteral("Liked: loading…"));
+        QCOMPARE(text(Code::Searching, "кино"), QStringLiteral("Search: кино…"));
+        QCOMPARE(text(Code::Failed, "Звезда", "HTTP 500"), QStringLiteral("Error: HTTP 500"));
+        QCOMPARE(text(Code::VibeFailed, "My Vibe", "HTTP 500"), QStringLiteral("Vibe error: HTTP 500"));
+        QCOMPARE(text(Code::SearchFailed, "Search: кино", "HTTP 500"), QStringLiteral("Search error: HTTP 500"));
+        QCOMPARE(text(Code::Empty, "My Vibe"), QStringLiteral("My Vibe: empty"));
+        QCOMPARE(text(Code::NothingFound), QStringLiteral("Nothing found"));
+        QCOMPARE(text(Code::Loaded, "Liked", {}, 2), QStringLiteral("Liked: 2 track(s)"));
+        QCOMPARE(text(Code::AddedToLiked), QStringLiteral("Added to Liked"));
+        QCOMPARE(text(Code::RemovedFromLiked), QStringLiteral("Removed from Liked"));
+        QCOMPARE(text(Code::Disliked), QStringLiteral("Disliked"));
     }
 
     void cleanupTestCase() { window.reset(); }

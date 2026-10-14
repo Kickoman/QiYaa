@@ -1,6 +1,8 @@
 #include "app/application.h"
 #include "app/translations.h"
+#include "core/source_notice.h"
 #include "ui/playlist_window.h"
+#include "ui/source_notices.h"
 
 #include <QCoreApplication>
 #include <QFile>
@@ -199,7 +201,13 @@ private Q_SLOTS:
         QFETCH(QString, text);
         App::Translations translations;
         QVERIFY(translations.apply(static_cast<App::Language>(language)));
-        QCOMPARE(QCoreApplication::translate("YandexSource::Catalog", "Liked: %n track(s)", nullptr, count), text);
+        const QString liked = QCoreApplication::translate("YandexSource::Catalog", "Liked");
+        QCOMPARE(
+            Ui::SourceNoticeText(
+                Core::SourceNotice{.code = Core::SourceNoticeCode::Loaded, .subject = liked, .count = count}
+            ),
+            text
+        );
     }
 };
 
