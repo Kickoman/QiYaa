@@ -143,7 +143,7 @@ broken or foreign file (another `version`, a required field missing) and for one
 
 ```cpp
 struct HostConfig { QString serverUrl; bool waveFeedback = true; bool shareAudio = false; };
-struct HostOptions { ClientOptions client; std::function<HostConfig()> config; QString queueTitle;
+struct HostOptions { ClientOptions client; std::function<HostConfig()> config;
                      std::function<QString()> newId; int resumeRetryMs = 30'000; };
 enum class HostPhase { None, Creating, Active };
 enum class HostEnd { ByHost, ByServer, Expired, Gone };
@@ -154,6 +154,7 @@ class HostSession : public QObject {
     HostSession(Core::JamMode*, Yandex::Library*, SessionStore, HostOptions, QObject* parent = nullptr);
     HostPhase phase() const;  Status connection() const;  bool isConnected() const;
     const std::optional<Room>& room() const;  QString joinUrl() const;  bool hasStoredSession() const;
+    QString participantName(const QString& publicId) const;   // empty for one the room does not list
     bool create(const QString& hostName, const std::optional<SettingsPatch>& settings = {});
     void cancelCreate();  void continueStored();  void discardStored();  void end();
     bool add(const Core::Track&);  bool playNext(const Core::Track&);  bool pin(const QString& itemId);
@@ -162,6 +163,7 @@ class HostSession : public QObject {
     void networkBack();
 Q_SIGNALS:
     void changed();  void refused(const QString& reason);  void ended(Jam::HostEnd why);
+    void offline();                                   // the host removed jam items without a connection
 };
 ```
 
@@ -169,25 +171,30 @@ The host's side of `spec/jam/host.md`, a port of the Android app's `JamHost`: th
 server, `Core::JamMode` for the queue, `Yandex::Library` for the guests' search and checks, the
 `SessionStore` for the jam between runs.
 
-- **Create.** `create` trims the name and cuts it to 24 characters; it returns false while a jam
-  is on or being created, without a server address (`config().serverUrl`), and for a name or
-  settings the server would refuse. After `welcome` it sends `create`; `created` stores the session
-  and starts `JamMode` with `queueTitle`. A refused `create` (`rate-limited`, `server-full`…) is
-  `refused(reason)` and no jam.
+- **Create.** `create` trims the name and cuts it to 24 characters; it returns false while a jam is
+  on or being created, without a server address (`config().serverUrl`), and for a name or settings
+  the server would refuse. After `welcome` it sends `create`; `created` stores the session and
+  starts `JamMode` with `config().waveFeedback`. A refused `create` (`rate-limited`, `server-full`…)
+  is `refused(reason)` and no jam.
 - **Resume.** Every `welcome` of an active jam sends `resume` with the stored snapshot and the
   client's outbox (the last 500). After `resumed` the outbox is cleared and `JamMode` reports what
   plays (HOST-26). `room-not-found` or `bad-secret` ends the jam here (`ended(Gone)`, HOST-24);
   another refusal is `refused` and a new try after `resumeRetryMs`.
 - **"Continue the jam?"** (HOST-23). The constructor loads the stored session; `hasStoredSession()`
   asks the app to put the question. `continueStored()` starts `JamMode` at once (the queue is not
-  kept between runs: its jam part comes with the first `state`) and connects. `discardStored()`
+  kept between runs: the base is what the queue holds then, and the jam part comes with the first
+  `state`) and connects. `discardStored()`
   clears the file at once, then connects only to `resume` and `end` the room; the guests see the
   end.
 - **State.** A `state` older than the last one of the same connection is ignored; the first after
   a `welcome` is taken whatever its version. It goes to `JamMode::setQueue`, and to `room()`.
 - **The queue's events.** `JamMode::itemStarted` → `Client::started` (to the outbox while not
-  connected, HOST-25); `JamMode::playback` → `playing`, only while connected. A wave track the
-  protocol cannot carry is not reported.
+  connected, HOST-25); `JamMode::playback` → `playing`, only while connected, a base track as
+  `source: wave` (HOST-10). A base track the protocol cannot carry is not reported
+  (Kickoman/QiYaa-spec#4). `JamMode::removeRequested` → `remove` for each item; without a
+  connection that fails, and `offline()` lets the app say so (HOST-25, HOST-36).
+- **Names.** `participantName(publicId)` is the name of a participant of `room()`, for the line
+  that says who added an item (HOST-34).
 - **Guests.** `searchRequest` → `Library::searchTracks` (`type=track`), the available tracks that
   `JamTrackOf` takes, 20 at most; a 401 or 403 is `error: unauthorized`, any other failure `failed`
   (HOST-28, HOST-29). `validateRequest` → `Library::tracksByIds`: an entry per id in order, a track
@@ -197,10 +204,10 @@ server, `Core::JamMode` for the queue, `Yandex::Library` for the guests' search 
   already waiting; otherwise it adds it and pins the item when a `state` brings it (added by the
   host), unless it came pinned. A refused add of `playNext` is `refused` and nothing is pinned.
 - **End.** `end()` sends `end` when connected, then ends here: the file is cleared, `JamMode::end`
-  keeps the jam items as ordinary tracks (HOST-32), the client stops, `ended(ByHost)`. `ended` from
-  the server does the same without `end` (`ByServer`, `Expired`).
+  keeps the waiting jam items as ordinary tracks that play first (HOST-32), the client stops,
+  `ended(ByHost)`. `ended` from the server does the same without `end` (`ByServer`, `Expired`).
 - **Listening along** (`spec/jam/listen.md`, LISTEN-01 to LISTEN-05). With `config().shareAudio`,
-  a `playing` for an item or a wave track carries `listenUrl`, the file the host plays
+  a `playing` for an item or a base track carries `listenUrl`, the file the host plays
   (`JamPlayback::link`), and `listenNextUrl`, the preloaded next one (`JamPlayback::nextLink`),
   each when it is a file of Yandex Music's storage (`IsListenUrl`); any other link (a test's mock
   server) is left out, so the server takes the report. Guests on the jam page may then play it.
@@ -227,7 +234,7 @@ carry the track id alone.
 ## Not here
 
 - What the server does and the protocol's rules: Kickoman/QiYaa-jam and `spec/jam/`.
-- The jam mode of the queue (mirror of the state, the jam wave, reports): `Core::JamMode`,
-  [src/core/README.md](../core/README.md).
+- The jam over the queue (the mirror of the state, the base, the jam vibe, reports):
+  `Core::JamMode`, [src/core/README.md](../core/README.md).
 - Where the settings and the session file live, the question at start and the texts of refusals:
   [src/app/README.md](../app/README.md).

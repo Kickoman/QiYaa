@@ -17,6 +17,10 @@
 
 class QPainter;
 
+namespace Core {
+struct QueueEntry;
+}  // namespace Core
+
 namespace Jam {
 class HostSession;
 }  // namespace Jam
@@ -26,6 +30,8 @@ class Catalog;
 }  // namespace YandexSource
 
 namespace Ui {
+
+QString JamTrackNote(const Core::QueueEntry& entry, bool jamActive, const Jam::HostSession* host);
 
 // The host's jam window (spec/jam/host.md HOST-20, HOST-25, HOST-35): the start of a jam, then
 // its QR code and link, the room's settings, the guests and the end on one page, and a search

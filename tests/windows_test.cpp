@@ -2,6 +2,9 @@
 #include "core/continuation.h"
 #include "core/cover_cache.h"
 #include "core/jam_mode.h"
+#ifdef QIYAA_HAVE_JAM
+#include "jam/host_session.h"
+#endif
 #include "sources/yandex/tracks.h"
 #include "support/mock_http_server.h"
 #include "ui/equalizer_window.h"
@@ -953,23 +956,35 @@ private Q_SLOTS:
 #endif
     }
 
-    void duringAJamThePlaylistDoesNotEditTheQueue() {  // HOST-21
+    void duringAJamThePlaylistEditsTheBase() {  // HOST-36
 #ifdef QIYAA_HAVE_JAM
-        application->player()->setSource(
-            Core::QueueSource{.title = QStringLiteral("A"), .head = YandexSource::TracksOf(MakeTracks(3))}, false
-        );
-        application->player()->playIndex(0);
-        application->jam()->start(QStringLiteral("Джем"), false);
+        Core::Player* player = application->player();
+        const auto ids = [player] {
+            QStringList found;
+            for (const Core::QueueEntry& entry : player->entries()) {
+                found << YandexSource::CatalogId(entry.track.key);
+            }
+            return found;
+        };
+        const QList<Core::Track> tracks = YandexSource::TracksOf(MakeTracks(5));
+        player->setSource(Core::QueueSource{.title = QStringLiteral("A"), .head = tracks.mid(0, 4)}, false);
+        application->jam()->start(false);
         QVERIFY(application->jam()->isActive());
-        const qsizetype size = application->player()->entries().size();
-        Click(playlist, {60, 20 + 3 + 6});  // row 0
+        application->jam()->setQueue({Core::JamEntry {.itemId = QStringLiteral("i1"), .track = tracks[4] }}, {}, 0);
+        QCOMPARE(ids(), (QStringList{"1", "5", "2", "3", "4"}));
         QKeyEvent deleteKey(QEvent::KeyPress, Qt::Key_Delete, Qt::NoModifier);
+        Click(playlist, {60, 20 + 3 + 6 + 2 * 13});  // row 2, a base track
         QCoreApplication::sendEvent(playlist, &deleteKey);
-        QCOMPARE(application->player()->entries().size(), size);
+        QCOMPARE(ids(), (QStringList{"1", "5", "3", "4"}));
+        QSignalSpy offline(application->jamHost(), &Jam::HostSession::offline);
+        Click(playlist, {60, 20 + 3 + 6 + 13});  // row 1, the item: only the server removes it
+        QCoreApplication::sendEvent(playlist, &deleteKey);
+        QCOMPARE(ids(), (QStringList{"1", "5", "3", "4"}));
+        QCOMPARE(offline.size(), 1);
+        player->clear();
+        QCOMPARE(ids(), (QStringList{"1", "5"}));
+        QCOMPARE(player->currentIndex(), 0);
         application->jam()->end();
-        Click(playlist, {60, 20 + 3 + 6});
-        QCoreApplication::sendEvent(playlist, &deleteKey);
-        QCOMPARE(application->player()->entries().size(), size - 1);
 #else
         QSKIP("built without the jam");
 #endif

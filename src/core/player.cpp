@@ -3,6 +3,7 @@
 #include "core/queue.h"
 
 #include <QPointer>
+#include <QStringList>
 
 #include <algorithm>
 #include <functional>
@@ -86,7 +87,7 @@ void Player::setSource(QueueSource source, bool autoplay) {
         }
         Q_EMIT modesChanged();
         if (queue->continuation()) {
-            queue->continuation()->begin(false);  // HOST-15
+            queue->continuation()->begin(queueRules.ownContinuationFeedback);  // HOST-15
         }
         refreshPreload();
         return;
@@ -111,6 +112,22 @@ void Player::setSource(QueueSource source, bool autoplay) {
 }
 
 void Player::removeRows(QList<int> rows) {
+    if (layer) {
+        QStringList items;
+        QList<int> others;
+        for (int row : rows) {
+            const bool waiting = row >= 0 && row < queue->entries().size() && queue->entries()[row].pending;
+            if (waiting) {
+                items << queue->entries()[row].itemId;  // HOST-36: the server removes it
+            } else {
+                others << row;
+            }
+        }
+        if (!items.isEmpty() && layer->removeItems) {
+            layer->removeItems(items);
+        }
+        rows = others;
+    }
     if (queue->remove(std::move(rows))) {
         stop();
         Q_EMIT currentTrackChanged();
@@ -135,7 +152,11 @@ void Player::setLayer(std::optional<QueueLayer> newLayer) {
     queueRules = layer ? layer->rules : QueueRules{};
     if (ending) {
         queue->endLayer();  // HOST-32
-        setWaitingForMore(false);
+        for (const std::shared_ptr<Continuation>& begun : {queue->continuation(), queue->historyWave()}) {
+            if (begun) {
+                begun->begin(true);  // HOST-33: what began without feedback during the jam
+            }
+        }
     }
     Q_EMIT modesChanged();
     queueEdited(revision);
@@ -500,9 +521,6 @@ std::shared_ptr<Continuation> Player::askedContinuation() const {
     if (queue->continuation()) {
         return queue->continuation();
     }
-    if (layer && layer->wave) {
-        return layer->wave;
-    }
     return queue->continuesWithVibe() ? queue->historyWave() : nullptr;
 }
 
@@ -512,8 +530,11 @@ void Player::maybeLoadMore() {
         return;
     }
     queue->setAsking(true);
+    const bool history = continuation == queue->historyWave();
     ContinuationRequest request;
     request.history = queue->history();
+    request.jamSeeds = layer ? queue->seeds() : std::nullopt;  // HOST-11
+    request.feedback = history ? queueRules.historyFeedback : queueRules.ownContinuationFeedback;
     const QList<QueueEntry>& entries = queue->entries();
     for (qsizetype i = std::max<qsizetype>(0, entries.size() - kQueueEndSize); i < entries.size(); ++i) {
         request.queueEnd << entries[i].track;
@@ -533,8 +554,12 @@ void Player::maybeLoadMore() {
 
 void Player::continuationReplied(const std::shared_ptr<Continuation>& giver, const ContinuationReply& reply) {
     queue->setAsking(false);
-    if (reply.seedsVersion && queue->isStale(*reply.seedsVersion)) {
-        return maybeLoadMore();  // HOST-11: a session that new seeds closed
+    if (giver == queue->historyWave() && queue->isStale(reply.seedsVersion)) {
+        maybeLoadMore();  // HOST-11, HOST-32: a session that the seeds outdated
+        if (!queue->isAsking() && waitingForMore) {
+            setWaitingForMore(false);
+        }
+        return;
     }
     if (!reply.failure.isEmpty()) {
         Q_EMIT noticed(NoticeOf(NoticeCode::VibeFailed, reply.failure));
@@ -642,7 +667,9 @@ void Player::startCurrent(int bitrate) {
     current->bitrate = bitrate;
     current->started = true;
     const QueueEntry* entry = queue->currentEntry();
-    current->giver = entry && entry->part == EntryPart::Continuation ? entry->giver : nullptr;
+    const bool feedback =
+        entry && (entry->fromHistory ? queueRules.historyFeedback : queueRules.ownContinuationFeedback);
+    current->giver = feedback && entry->part == EntryPart::Continuation ? entry->giver : nullptr;  // HOST-15, HOST-16
     current->reportToSource = queueRules.playReports;
     current->playedSeconds = 0;
     current->lastPosition = 0;

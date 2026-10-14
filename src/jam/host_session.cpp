@@ -10,6 +10,7 @@
 #include <QHash>
 #include <QPointer>
 #include <QRegularExpression>
+#include <QStringList>
 #include <QUuid>
 
 #include <algorithm>
@@ -147,6 +148,12 @@ HostSession::HostSession(
         }
     });
     connect(jam, &Core::JamMode::playback, this, &HostSession::sendPlaying);
+    connect(jam, &Core::JamMode::removeRequested, this, [this](const QStringList& itemIds) {
+        const auto removeItem = [this](const QString& itemId) { return remove(itemId); };
+        if (!std::all_of(itemIds.cbegin(), itemIds.cend(), removeItem)) {
+            Q_EMIT offline();  // HOST-25, HOST-36
+        }
+    });
 }
 
 HostSession::~HostSession() = default;
@@ -200,7 +207,7 @@ void HostSession::continueStored() {
     session = std::exchange(stored, std::nullopt);
     const HostConfig config = options.config();
     client.restoreOutbox(session->outbox);
-    jam->start(options.queueTitle, config.waveFeedback);
+    jam->start(config.waveFeedback);
     connectTo(config.serverUrl);
     Q_EMIT changed();
 }
@@ -251,6 +258,18 @@ bool HostSession::playNext(const Core::Track& track) {
     pendingPinTrack = catalogId;
     pendingPinAdd = id;
     return true;
+}
+
+QString HostSession::participantName(const QString& publicId) const {
+    if (!currentRoom) {
+        return {};
+    }
+    for (const Participant& participant : currentRoom->participants) {
+        if (participant.publicId == publicId) {
+            return participant.name;
+        }
+    }
+    return {};
 }
 
 bool HostSession::pin(const QString& itemId) {
@@ -339,7 +358,7 @@ void HostSession::created(const Created& message) {
     requestId.clear();
     connected = true;
     save(Session{message.roomId, message.hostSecret, message.joinUrl, std::nullopt, {}});
-    jam->start(options.queueTitle, options.config().waveFeedback);
+    jam->start(options.config().waveFeedback);
 }
 
 void HostSession::resumed() {
@@ -498,11 +517,11 @@ void HostSession::sendPlaying(const Core::JamPlayback& playback) {
             message.source = Source::Item;
             message.itemId = playback.itemId;
             break;
-        case Core::JamPlayback::Kind::Wave:
-            message.source = Source::Wave;
+        case Core::JamPlayback::Kind::Base:
+            message.source = Source::Wave;  // HOST-10: the protocol's name for a base track
             message.track = playback.track ? JamTrackOf(*playback.track) : std::nullopt;
             if (!message.track) {
-                return;  // a wave track the protocol cannot carry is not reported
+                return;  // a base track the protocol cannot carry is not reported (Kickoman/QiYaa-spec#4)
             }
             break;
         case Core::JamPlayback::Kind::Idle:

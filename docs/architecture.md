@@ -25,8 +25,8 @@ audio, yandex, skins, telemetry  →  vis, core  →  sources/yandex  →  jam  
 | [src/skins](../src/skins/README.md) | `Skins` | Loads `.wsz` skins: sheets, `region.txt`, `pledit.txt`, `viscolor.txt`, bitmap text; sprite tables | Qt Gui | miniz |
 | [src/telemetry](../src/telemetry/README.md) | `Telemetry` | Usage statistics and crash reports ([spec/telemetry](../spec/telemetry/README.md)): the events kept on disk until the jam server takes them, the crash handler. Optional (`QIYAA_WITH_TELEMETRY`, on in the releases) | Qt Core, Network | Qt Gui; dbghelp (Windows) or dl |
 | [src/vis](../src/vis/README.md) | `Vis` | Spectrum, oscilloscope, FFT; Milkdrop through projectM in a `QOpenGLWindow` | Qt Gui (+ OpenGL) | audio, skins (+ projectM) |
-| [src/core](../src/core/README.md) | `Core` | `Track` and `TrackKey` (a track of any source), `TrackSource` and `SourceRegistry` (what a source answers about its tracks, and how it opens their files), `Player` (queue, transport, downloads, preload, track events), `JamMode` (the queue while hosting a jam) and `CoverCache` | audio, Qt Gui, Network | |
-| [src/sources/yandex](../src/sources/yandex/README.md) | `YandexSource` | Yandex Music as a source: `Yandex::Track` ↔ `Core::Track`, its `TrackSource` (cover, web page, the file and its quality, the play report), `Catalog` (what a pick plays, wave callbacks, likes) and the jam's own vibe | core, yandex, Qt Core | |
+| [src/core](../src/core/README.md) | `Core` | `Track` and `TrackKey` (a track of any source), `TrackSource` and `SourceRegistry` (what a source answers about its tracks, and how it opens their files), `Player` (queue, transport, downloads, preload, track events), `JamMode` (the jam over the host's queue, as the queue's layer) and `CoverCache` | audio, Qt Gui, Network | |
+| [src/sources/yandex](../src/sources/yandex/README.md) | `YandexSource` | Yandex Music as a source: `Yandex::Track` ↔ `Core::Track`, its `TrackSource` (cover, web page, the file and its quality, the play report), `Catalog` (what a pick plays, likes), and the continuations `Vibe` (a vibe or station) and `HistoryWave` (the vibe after a queue's head, the jam vibe during a jam) | core, yandex, Qt Core | |
 | [src/jam](../src/jam/README.md) | `Jam` | The jam: protocol messages and their JSON, the WebSocket connection to a jam server, the host's stored session, and `HostSession` (create, resume, the guests' search and checks, end). Optional (Qt WebSockets) | core, yandex, Qt Core, WebSockets | sources/yandex |
 | [src/ui](../src/ui/README.md) | `Ui` | The skinned windows, snapping and docking, the Yandex menus, the login dialog, the jam window | audio, vis, Qt Widgets (+ jam) | core, skins, sources/yandex, yandex (+ qrcodegen) |
 | [src/integrations](../src/integrations/README.md) | `Integrations` | Media keys and system media panels: MPRIS (Linux), SMTC (Windows) or MediaPlayer (macOS) | Qt Gui (+ DBus) | core |
@@ -66,7 +66,9 @@ Ui (menu)  ──source──▶  Core::Player  ──open──▶  Core::Sourc
    `Yandex::Library` for a source (a playlist, the likes, a wave) and hands it to
    `Player::setSource` as a `Core::QueueSource`: a head of `Core::Track`s, keyed by source and the
    source's own id, and for a wave a continuation (`YandexSource::Vibe`) that fetches more tracks
-   and sends the wave feedback for the tracks it gave.
+   and sends the wave feedback for the tracks it gave. Any other queue goes on, when its flag says
+   so, with the vibe from history (`YandexSource::HistoryWave`, from the factory the app gives the
+   `Player`); during a jam that is the jam vibe, under the guests' items.
 2. `Player::playIndex` starts a stream in the engine and asks the track's source, through
    `SourceRegistry`, to open the track. `YandexSource::Source` resolves the link of the file in the
    chosen quality (a signed mp3 link, or AAC in MP4 at the economy quality) and hands back a

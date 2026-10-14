@@ -39,8 +39,9 @@ JamServerDialog::JamServerDialog(
     feedbackBox->setChecked(waveFeedback);
     layout->addWidget(feedbackBox);
     auto* note = new QLabel(tr(
-        "When the guests' queue is empty, the jam vibe plays. On: it learns from the skips during "
-        "the jam, and only there. Off: no feedback at all."
+        "When the guests' queue is empty, your own queue plays on, and after it the jam vibe if the "
+        "queue has no vibe of its own and goes on with a vibe. On: the jam vibe learns from the skips "
+        "during the jam, and only there. Off: no feedback at all."
     ));
     note->setWordWrap(true);
     layout->addWidget(note);

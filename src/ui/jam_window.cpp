@@ -1,5 +1,7 @@
 #include "ui/jam_window.h"
 
+#include "core/jam_mode.h"
+#include "core/queue_source.h"
 #include "jam/host_session.h"
 #include "skins/skin.h"
 #include "sources/yandex/catalog.h"
@@ -46,6 +48,17 @@ QString KindText(Jam::ParticipantKind kind) {
 }
 
 }  // namespace
+
+QString JamTrackNote(const Core::QueueEntry& entry, bool jamActive, const Jam::HostSession* host) {
+    if (!jamActive) {
+        return {};
+    }
+    if (Core::IsJamItem(&entry)) {
+        const QString name = host ? host->participantName(entry.addedBy) : QString();
+        return name.isEmpty() ? QString() : QStringLiteral("+ ") + name;
+    }
+    return entry.fromHistory ? QCoreApplication::translate("Ui::JamWindow", "jam vibe") : QString();
+}
 
 // Where the page is drawn and what it collects: a cursor down the content area, the colours of
 // the skin's playlist, and the controls met on the way.

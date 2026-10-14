@@ -37,15 +37,7 @@ public:
     const QSet<int>& selection() const { return selectedRows; }
     int rowAt(QPoint skinPos) const;
 
-    // What a jam changes in the playlist (HOST-21, HOST-34): `note` is a word after a row's
-    // title ("+ Аня", "волна джема"); `remove` and `clear` get the edits first and return true
-    // when they took them, so the Player's queue is left alone. Unset: the Player's own edits.
-    struct QueueHooks {
-        std::function<QString(int row)> note;
-        std::function<bool(const QList<int>& rows)> remove;
-        std::function<bool()> clear;
-    };
-    void setQueueHooks(QueueHooks hooks);
+    void setTrackNote(std::function<QString(int row)> note);
 
 Q_SIGNALS:
     void closeRequested();
@@ -85,7 +77,7 @@ private:
     void clearQueue();
 
     Core::Player* corePlayer;
-    QueueHooks queueHooks;
+    std::function<QString(int row)> trackNote;
     QSize resizeSteps{0, 4};
     int scrollRow = 0;
     QSet<int> selectedRows;

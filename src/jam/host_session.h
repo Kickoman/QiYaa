@@ -33,7 +33,6 @@ struct HostConfig {
 struct HostOptions {
     ClientOptions client;
     std::function<HostConfig()> config;
-    QString queueTitle;
     std::function<QString()> newId;
     int resumeRetryMs = 30'000;
 };
@@ -67,6 +66,7 @@ public:
     Status connection() const { return client.status(); }
     bool isConnected() const { return connected; }
     const std::optional<Room>& room() const { return currentRoom; }
+    QString participantName(const QString& publicId) const;
     QString joinUrl() const;
     bool hasStoredSession() const { return stored.has_value(); }
 
@@ -90,6 +90,7 @@ Q_SIGNALS:
     void changed();
     void refused(const QString& reason);
     void ended(Jam::HostEnd why);
+    void offline();
 
 private:
     struct CreateRequest {

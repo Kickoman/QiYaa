@@ -7,6 +7,7 @@
 #include <QString>
 #include <QStringList>
 
+#include <functional>
 #include <memory>
 #include <optional>
 
@@ -25,6 +26,7 @@ struct QueueEntry {
     Track track{};
     EntryPart part = EntryPart::Head;
     std::shared_ptr<Continuation> giver{};
+    bool fromHistory = false;
     std::optional<int> seedsVersion{};
     QString itemId{};
     QString addedBy{};
@@ -40,11 +42,13 @@ struct LayerItem {
 struct QueueRules {
     bool playReports = true;
     bool previousRestartsOnly = false;
+    bool ownContinuationFeedback = true;
+    bool historyFeedback = true;
 };
 
 struct QueueLayer {
     QueueRules rules{};
-    std::shared_ptr<Continuation> wave{};
+    std::function<void(const QStringList& itemIds)> removeItems{};
 };
 
 }  // namespace Core

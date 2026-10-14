@@ -126,12 +126,12 @@ every method must be called from the GUI thread (the audio engine's decoder thre
 callback stay inside [src/audio](../audio/README.md)). `Application` owns everything it wires:
 `QSettings`, the base and the current `Skins::Skin`, `ApiClient`, `Library`, `AudioEngine`,
 `YandexSource::Source`, `Core::SourceRegistry` (the Yandex source under `"yandex"`, added first in
-the constructor, before any window), `Player`, `YandexSource::Catalog` and `JamMode` (with
-`YandexSource::JamWaves`) as members; its own `QNetworkAccessManager` unless `Options::network`
-lends one; the `Jam::HostSession`, `CoverCache`, `MediaControls`, the `Mpris`, `MacMediaControls` or
-`Smtc` object (held as `std::unique_ptr<QObject>`) and the windows (five, and the jam window in a
-jam build) through `std::unique_ptr`. The accessors return non-owning pointers, valid until the
-`Application` is destroyed.
+the constructor, before any window), `Player`, `YandexSource::Catalog` and `JamMode` as members; its
+own `QNetworkAccessManager` unless `Options::network` lends one; the `Jam::HostSession`,
+`CoverCache`, `MediaControls`, the `Mpris`, `MacMediaControls` or `Smtc` object (held as
+`std::unique_ptr<QObject>`) and the windows (five, and the jam window in a jam build) through
+`std::unique_ptr`. The accessors return non-owning pointers, valid until the `Application` is
+destroyed.
 
 Member order is load-bearing. Members are constructed in declaration order, and the initialiser list
 relies on it: the settings file after the temporary directory, `ApiClient` after the network
@@ -161,9 +161,8 @@ and `QSettings` before the temporary directory that may hold its file.
    with built-in presets from `:/milkdrop` and user presets from `<ConfigDirectory>/milkdrop`
    (`<temp dir>/milkdrop` when `readOnlySettings`). Every window gets the shortcuts listed below;
    all but the main window are "secondary" (no taskbar button on Windows).
-6. Gives `Catalog` the `JamMode` (a pick during a jam is refused, HOST-21). In a jam build
-   (`setUpJam()`) creates the `Jam::HostSession`: the server and the wave feedback from the
-   `jam/*` settings at each use, the queue title `Jam`, the app's version for `hello`, and the
+6. In a jam build (`setUpJam()`) creates the `Jam::HostSession`: the server and the wave feedback
+   from the `jam/*` settings at each use, the app's version for `hello`, and the
    session file `jam-session.json` next to the settings file (so `readOnlySettings` and a test's
    `settingsFile` keep it in their own folder). Its signals go to the marquee: a refusal by its
    reason (below), the end of the jam (`The jam is over`, `The jam was ended`, `The jam closed while you
@@ -171,13 +170,11 @@ and `QSettings` before the temporary directory that may hold its file.
    connection (`No connection to the jam server · trying again by itself`) and its return (`The jam is connected`). Then
    the jam window (`Ui::JamWindow`, steps `jamWindow/steps`, the server's host from `jam/server`;
    its `statusText` to the marquee, its "Server settings…" to `showJamServerDialog()`), and the
-   jam's part in the other windows (HOST-34, HOST-21): the playlist's rows and the marquee get a
-   note, `+ <name>` for a jam item (the participant whose `publicId` is the slot's `addedBy`) and
-   `jam vibe` for a jam wave track; during a jam the playlist's remove sends `remove` for the
-   selected jam items (`Select jam tracks to remove them` when none is one, `No connection to the
-   jam server` when a send fails) and its clear only says `A jam is on: add tracks to
-   the jam`; neither touches the `Player`. It is done here, before the loops below over `windows()`,
-   which take the jam window in.
+   jam's part in the other windows (HOST-34, HOST-36): the playlist's rows and the marquee get
+   `Ui::JamTrackNote` of their entry, and `HostSession::offline` (jam items removed without a
+   connection) says `No connection to the jam server`. A pick during a jam replaces the jam's base
+   (HOST-21), and the playlist's remove and clear go to the `Player` as ever. It is done here,
+   before the loops below over `windows()`, which take the jam window in.
 7. Restores the settings listed in [Settings](#settings) and connects the windows:
    - the equalizer's shade mode shows and sets the main window's volume and balance (`setMixer`,
      `volumeRequested`, `balanceRequested`);

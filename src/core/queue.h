@@ -43,8 +43,9 @@ public:
     );
     bool remove(QList<int> indices);
     void setItems(const QList<LayerItem>& items, std::optional<SeedHint> hint);
+    const std::optional<SeedHint>& seeds() const { return seedHint; }
     void endLayer();
-    bool isStale(int seedsVersion) const { return !seedHint || seedsVersion != seedHint->version; }
+    bool isStale(std::optional<int> seedsVersion) const;
 
     int select(int index);
     int next() const;

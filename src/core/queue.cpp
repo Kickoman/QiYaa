@@ -12,12 +12,15 @@ QList<QueueEntry> EntriesOf(
     const QList<Track>& tracks,
     EntryPart part,
     const std::shared_ptr<Continuation>& giver,
+    bool fromHistory = false,
     std::optional<int> seedsVersion = std::nullopt
 ) {
     QList<QueueEntry> entries;
     for (const Track& track : tracks) {
         if (track.available) {
-            entries << QueueEntry{.track = track, .part = part, .giver = giver, .seedsVersion = seedsVersion};
+            entries << QueueEntry{
+                .track = track, .part = part, .giver = giver, .fromHistory = fromHistory, .seedsVersion = seedsVersion
+            };
         }
     }
     return entries;
@@ -69,12 +72,13 @@ bool Queue::appendContinuation(
     const std::shared_ptr<Continuation>& giver,
     std::optional<int> seedsVersion
 ) {
-    const QList<QueueEntry> added = EntriesOf(tracks, EntryPart::Continuation, giver, seedsVersion);
+    const bool fromHistory = giver && giver == historyContinuation;
+    const QList<QueueEntry> added = EntriesOf(tracks, EntryPart::Continuation, giver, fromHistory, seedsVersion);
     if (added.isEmpty()) {
         return false;
     }
     queued << added;
-    historyGave = historyGave || (giver && giver == historyContinuation);
+    historyGave = historyGave || fromHistory;
     if (playingIndex < 0 && queued.size() == added.size()) {
         playingIndex = 0;
         markCurrent();
@@ -120,6 +124,9 @@ bool Queue::remove(QList<int> indices) {
 }
 
 void Queue::setItems(const QList<LayerItem>& items, std::optional<SeedHint> hint) {
+    if (hint && !hint->seeds.isEmpty() && (!seedHint || seedHint->version != hint->version)) {
+        stalled = false;  // HOST-11: new seeds
+    }
     seedHint = std::move(hint);
     const QueueEntry* current = currentEntry();
     const bool currentIsItem = current && current->part == EntryPart::Item;
@@ -167,12 +174,18 @@ void Queue::endLayer() {
         QueueEntry& entry = queued[i];
         entry.itemId.clear();
         if (entry.part == EntryPart::Continuation && entry.seedsVersion && ordinalOf(i) > continuationMark) {
-            stale << i;
+            stale << i;  // HOST-32: the jam's own seeds are over
         }
     }
     remove(stale);
-    renew();
     ++changes;
+}
+
+bool Queue::isStale(std::optional<int> seedsVersion) const {
+    if (!seedHint) {
+        return seedsVersion.has_value();
+    }
+    return !seedHint->seeds.isEmpty() && seedsVersion != seedHint->version;
 }
 
 int Queue::select(int index) {
@@ -321,14 +334,15 @@ void Queue::gatherPending() {
 
 void Queue::dropStaleWave() {
     const QueueEntry* entry = currentEntry();
-    if (!seedHint || (entry && entry->seedsVersion) || std::any_of(queued.cbegin(), queued.cend(), IsPending)) {
+    if (!seedHint || seedHint->seeds.isEmpty() || (entry && entry->fromHistory)
+        || std::any_of(queued.cbegin(), queued.cend(), IsPending)) {
         return;
     }
     QList<int> stale;
     for (int i = 0; i < queued.size(); ++i) {
         const QueueEntry& candidate = queued[i];
-        if (candidate.part == EntryPart::Continuation && candidate.seedsVersion
-            && *candidate.seedsVersion != seedHint->version && ordinalOf(i) > continuationMark) {
+        if (candidate.part == EntryPart::Continuation && candidate.fromHistory
+            && candidate.seedsVersion != seedHint->version && ordinalOf(i) > continuationMark) {
             stale << i;  // HOST-11
         }
     }
