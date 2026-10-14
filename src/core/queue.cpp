@@ -2,35 +2,38 @@
 
 #include <algorithm>
 #include <functional>
+#include <utility>
 
 namespace Core {
 
 namespace {
-QList<Track> Available(const QList<Track>& tracks) {
-    QList<Track> available;
+QList<QueueEntry> EntriesOf(const QList<Track>& tracks, EntryPart part, const std::shared_ptr<Continuation>& giver) {
+    QList<QueueEntry> entries;
     for (const Track& track : tracks) {
         if (track.available) {
-            available << track;
+            entries << QueueEntry{.track = track, .part = part, .giver = giver};
         }
     }
-    return available;
+    return entries;
 }
 }  // namespace
 
-const Track* Queue::currentTrack() const {
+const QueueEntry* Queue::currentEntry() const {
     return (playingIndex >= 0 && playingIndex < queued.size()) ? &queued[playingIndex] : nullptr;
 }
 
-void Queue::replace(const QList<Track>& tracks, const QString& title) {
-    queued = Available(tracks);
-    titleText = title;
+void Queue::replace(QueueSource source) {
+    ownContinuation = std::move(source.continuation);
+    queued = EntriesOf(source.head, EntryPart::Head, nullptr);
+    queued << EntriesOf(source.given, EntryPart::Continuation, ownContinuation);
+    titleText = source.title;
     playingIndex = queued.isEmpty() ? -1 : 0;
     renew();
     resetNavigator();
 }
 
-bool Queue::append(const QList<Track>& tracks) {
-    const QList<Track> added = Available(tracks);
+bool Queue::appendContinuation(const QList<Track>& tracks, const std::shared_ptr<Continuation>& giver) {
+    const QList<QueueEntry> added = EntriesOf(tracks, EntryPart::Continuation, giver);
     if (added.isEmpty()) {
         return false;
     }
@@ -43,7 +46,7 @@ bool Queue::append(const QList<Track>& tracks) {
 }
 
 bool Queue::insert(int index, const QList<Track>& tracks) {
-    const QList<Track> added = Available(tracks);
+    const QList<QueueEntry> added = EntriesOf(tracks, EntryPart::Head, nullptr);
     if (added.isEmpty()) {
         return false;
     }
@@ -85,8 +88,9 @@ bool Queue::remove(QList<int> indices) {
     return removedCurrent;
 }
 
-void Queue::setEndless(bool on) {
-    endless = on;
+void Queue::setContinuation(std::shared_ptr<Continuation> continuation) {
+    ownContinuation = std::move(continuation);
+    renew();
     resetNavigator();
 }
 
@@ -96,7 +100,7 @@ void Queue::select(int index) {
 }
 
 int Queue::next() const {
-    return navigator->next(repeatEnabled && !endless);
+    return navigator->next(repeatEnabled && !ownContinuation);
 }
 
 int Queue::previous() const {

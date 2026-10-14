@@ -19,6 +19,27 @@ QList<Track> Playable(const QList<Track>& tracks) {
     return playable;
 }
 
+class JamWaveContinuation : public Continuation {
+public:
+    using TLoad = std::function<void(JamWave::TDone done)>;
+
+    JamWaveContinuation(TLoad loader, std::shared_ptr<JamWave> jamWave)
+        : load(std::move(loader))
+        , wave(std::move(jamWave)) { }
+
+    bool more(const ContinuationRequest&, TDone done) override {
+        load([done](const QList<Track>& tracks) { done(ContinuationReply{.tracks = tracks}); });
+        return true;
+    }
+    void trackEvent(TrackEvent event, const Track& track, double playedSeconds) override {
+        wave->trackEvent(event, track, playedSeconds);  // HOST-16
+    }
+
+private:
+    TLoad load;
+    std::shared_ptr<JamWave> wave;
+};
+
 }  // namespace
 
 JamMode::JamMode(Player* player, TJamWaveFactory makeWave, QObject* parent)
@@ -37,6 +58,16 @@ JamMode::JamMode(Player* player, TJamWaveFactory makeWave, QObject* parent)
         }
         schedulePlaybackReport();
         QTimer::singleShot(0, this, &JamMode::dropDeferredWave);
+    });
+    connect(corePlayer, &Player::trackEvent, this, [this](TrackEvent event) {
+        if (!active) {
+            return;
+        }
+        const JamSlot slot = currentSlot();
+        if (event == TrackEvent::Started && slot.kind == JamSlot::Kind::Item) {
+            Q_EMIT itemStarted(slot.itemId);  // HOST-05
+        }
+        schedulePlaybackReport();
     });
     connect(corePlayer, &Player::seeked, this, &JamMode::schedulePlaybackReport);
     connect(corePlayer, &Player::stateChanged, this, &JamMode::schedulePlaybackReport);
@@ -61,7 +92,7 @@ void JamMode::start(const QString& title, bool waveFeedback) {
 
     const int cursor = corePlayer->currentIndex();
     QList<int> others;
-    for (int i = 0; i < corePlayer->playlist().size(); ++i) {
+    for (int i = 0; i < corePlayer->entries().size(); ++i) {
         if (i != cursor) {
             others << i;
         }
@@ -69,30 +100,17 @@ void JamMode::start(const QString& title, bool waveFeedback) {
     if (!others.isEmpty()) {
         corePlayer->removeTracks(others);  // HOST-14: the playing track stays, the rest goes
     }
-    trackSlots = corePlayer->playlist().isEmpty() ? QList<JamSlot>{} : QList<JamSlot>{JamSlot{}};
+    trackSlots = corePlayer->entries().isEmpty() ? QList<JamSlot>{} : QList<JamSlot>{JamSlot{}};
     active = true;
 
-    const std::shared_ptr<JamWave> state = wave;
-    Player::TLoadMoreCallback more = [self](std::function<void(const QList<Track>&)> done) {
+    const auto load = [self](JamWave::TDone done) {
         if (!self || !self->active) {
             return done({});
         }
         self->loadWave(std::move(done));
     };
-    Player::TEventCallback events = [self, state](Player::TrackEvent event, const Track& track, double played) {
-        if (self && self->active) {
-            const JamSlot slot = self->currentSlot();
-            if (event == Player::TrackEvent::Started && slot.kind == JamSlot::Kind::Item) {
-                Q_EMIT self->itemStarted(slot.itemId);  // HOST-05
-            }
-            self->schedulePlaybackReport();
-        }
-        if (!self || !self->active || self->currentSlot().kind == JamSlot::Kind::Wave) {
-            state->trackEvent(event, track, played);  // HOST-16
-        }
-    };
     // HOST-15: no play reports; HOST-07: Previous restarts the track.
-    corePlayer->changeSource(title, std::move(more), std::move(events), QueueRules{false, true});
+    corePlayer->changeSource(title, std::make_shared<JamWaveContinuation>(load, wave), QueueRules{false, true});
     reportTimer.start();
     reportPlayback();
 }
@@ -103,7 +121,7 @@ void JamMode::setQueue(const QList<JamEntry>& entries, const QStringList& seeds,
     }
     lastSeeds = seeds;
     lastSeedsVersion = seedsVersion;
-    if (corePlayer->playlist().isEmpty()) {
+    if (corePlayer->entries().isEmpty()) {
         if (!entries.isEmpty()) {  // HOST-08: nothing plays, the first item starts at once
             insertItems(0, entries);
             corePlayer->playIndex(0);
@@ -112,7 +130,7 @@ void JamMode::setQueue(const QList<JamEntry>& entries, const QStringList& seeds,
     }
     const int cursor = corePlayer->currentIndex();
     const JamSlot current = currentSlot();
-    const bool tailWasEmpty = cursor + 1 >= corePlayer->playlist().size();
+    const bool tailWasEmpty = cursor + 1 >= corePlayer->entries().size();
     QList<JamEntry> wanted;
     for (const JamEntry& entry : entries) {
         if (current.kind != JamSlot::Kind::Item || entry.itemId != current.itemId) {
@@ -172,7 +190,7 @@ void JamMode::end() {
     if (!waveTracks.isEmpty()) {
         corePlayer->removeTracks(waveTracks);  // HOST-32: the jam items stay as ordinary tracks
     }
-    corePlayer->changeSource(corePlayer->queueTitle(), {}, {}, QueueRules{});  // HOST-33
+    corePlayer->changeSource(corePlayer->queueTitle(), nullptr, QueueRules{});  // HOST-33
 }
 
 void JamMode::reportPlayback() {
@@ -223,8 +241,8 @@ void JamMode::loadWave(JamWave::TDone done) {
 QList<Track> JamMode::recentWaveTracks() const {
     QList<Track> recent;
     for (qsizetype i = trackSlots.size() - 1; i >= 0 && recent.size() < kJamWaveHistory; --i) {
-        if (trackSlots[i].kind == JamSlot::Kind::Wave && i < corePlayer->playlist().size()) {
-            recent.prepend(corePlayer->playlist()[i]);
+        if (trackSlots[i].kind == JamSlot::Kind::Wave && i < corePlayer->entries().size()) {
+            recent.prepend(corePlayer->entries()[i].track);
         }
     }
     return recent;
@@ -282,15 +300,15 @@ void JamMode::insertItems(int at, const QList<JamEntry>& entries) {
 }
 
 void JamMode::checkSlots() {
-    if (!active || trackSlots.size() == corePlayer->playlist().size()) {
+    if (!active || trackSlots.size() == corePlayer->entries().size()) {
         return;
     }
     qWarning(
         "jam: the queue has %lld tracks but the jam knows %lld; the queue was changed outside it",
-        static_cast<long long>(corePlayer->playlist().size()),
+        static_cast<long long>(corePlayer->entries().size()),
         static_cast<long long>(trackSlots.size())
     );
-    trackSlots.resize(corePlayer->playlist().size());
+    trackSlots.resize(corePlayer->entries().size());
 }
 
 void JamMode::schedulePlaybackReport() {

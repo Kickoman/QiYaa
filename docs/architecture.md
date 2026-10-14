@@ -63,10 +63,10 @@ Ui (menu)  ──source──▶  Core::Player  ──open──▶  Core::Sourc
 ```
 
 1. A menu item from `Ui::AddLibraryActions` calls `YandexSource::Catalog`, which asks
-   `Yandex::Library` for a source (a playlist, the likes, a wave) and hands the tracks to
-   `Player::setQueue` as `Core::Track`s, keyed by source and the source's own id. An endless source
-   also gives a callback that fetches more tracks; for a wave, `Catalog` also sends wave feedback
-   from `Player`'s track events.
+   `Yandex::Library` for a source (a playlist, the likes, a wave) and hands it to
+   `Player::setSource` as a `Core::QueueSource`: a head of `Core::Track`s, keyed by source and the
+   source's own id, and for a wave a continuation (`YandexSource::Vibe`) that fetches more tracks
+   and sends the wave feedback for the tracks it gave.
 2. `Player::playIndex` starts a stream in the engine and asks the track's source, through
    `SourceRegistry`, to open the track. `YandexSource::Source` resolves the link of the file in the
    chosen quality (a signed mp3 link, or AAC in MP4 at the economy quality) and hands back a

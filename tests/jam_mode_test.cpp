@@ -45,7 +45,8 @@ Core::JamEntry Item(const QString& itemId, const QString& trackId) {
 
 QStringList Ids(const Core::Player& player) {
     QStringList ids;
-    for (const Core::Track& track : player.playlist()) {
+    for (const Core::QueueEntry& entry : player.entries()) {
+        const Core::Track& track = entry.track;
         ids << YandexSource::CatalogId(track.key);
     }
     return ids;
@@ -141,8 +142,11 @@ private Q_SLOTS:
     void startKeepsThePlayingTrackAndDropsTheRest() {  // HOST-14
         Stack stack(&library);
         noWave();
-        stack.player.setQueue(
-            {TrackOf("11"), TrackOf("22"), TrackOf("33"), TrackOf("44")}, QStringLiteral("Likes"), false
+        stack.player.setSource(
+            Core::QueueSource{
+                .title = QStringLiteral("Likes"), .head = {TrackOf("11"), TrackOf("22"), TrackOf("33"), TrackOf("44")}
+            },
+            false
         );
         stack.player.playIndex(1);
         stack.jam.start(QStringLiteral("Джем"), false);

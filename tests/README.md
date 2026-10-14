@@ -19,6 +19,7 @@ is formatting (the clang-format check in `.github/workflows/ci.yml`).
 | `support/mock_http_server.h/.cpp` | `Tests::MockRequest`, `Tests::MockResponse`, `Tests::MockHttpServer` |
 | `support/spec_fixtures.h/.cpp` | `Tests::Fixture`, `FixtureStatus`, `Expected`, `ExpectedObject`, `Json`: reading `spec/fixtures/yandex` and `spec/expected/yandex`; `SpecObject` and `SpecPath` for any file of `spec/` |
 | `support/jam_stub_server.h/.cpp` | `Tests::JamStubServer`: the server's end of the jam protocol on localhost for `jam_test` and `jam_host_test` (built only with the jam) |
+| `support/fake_continuation.h/.cpp` | `Tests::FakeContinuation`: a `Core::Continuation` the test answers by hand, or at once; it records the requests, `begin` and the events of its tracks. `Tests::EventName` |
 | `support/fake_source.h/.cpp` | `Tests::FakeSource` and `Tests::FakeDownload`: a `Core::TrackSource` the test answers by hand (see below) |
 | `support/yandex_sources.h` | `Tests::YandexSources`: a `Core::SourceRegistry` with a `YandexSource::Source` under `"yandex"`, as the application wires them; header only, for suites that link `sources_yandex` |
 | `support/yandex_json.h/.cpp` | `Tests::ToJson` and friends: the `Yandex::` models in the neutral JSON of `spec/expected/yandex`; `CheckError` |
@@ -30,7 +31,7 @@ is formatting (the clang-format check in `.github/workflows/ci.yml`).
 | `mp4_aac_test.cpp` | `Audio::Mp4AacBackend` through an `ma_decoder` over memory: `IsMp4`, the rate, length, level and 440 Hz of the test m4a, seeking to the same samples as playing through, the end, a file cut short, an MP4 without its index; with `QIYAA_MP4_SAMPLE=<path>` it also decodes that file (a Yandex economy file kept outside the repository) |
 | `dsp_test.cpp` | EQ response and processing, the 17 built-in EQ presets, `.eqf` read/write, `EqualizerWindow::GraphCurve`, the FFT analyzer, spectrum and oscilloscope rendering; the reference vectors of `spec/dsp` (checks them, and writes them with `QIYAA_WRITE_DSP_VECTORS=1`) |
 | `queue_test.cpp` | `Core::Queue` alone, without audio: only available tracks, order and the end of a finite queue, repeat, previous, an endless queue that neither wraps nor shuffles, the stored shuffled order and its rebuild after edits, the cursor across edits, a new generation per source (SRC-05, TR-01, TR-03 to TR-05, WAVE-10, WAVE-12, SHUF-01, SHUF-02, SHUF-04) |
-| `player_test.cpp` | `Core::Player` on `Tests::FakeSource` and the Null output. Late answers are dropped: the link of a track left behind, a link after Stop, a retry after the network wait (and none follows a Stop: no request is left hanging, with no timed wait), the link of a cancelled preload, a load for a replaced queue; a dropped answer's download never starts. Another source's `filesChanged` leaves the preload alone; a track starts under the rules of its start (HOST-15); the source hears its tracks' events. `Player::State` of each phase, and `stateChanged` as one change each for a Stop, a last track that cannot play (ERR-07: it fails to open, or its sound cannot be decoded and the engine stops in the middle), a lost network (ERR-01, ERR-03), and none for Play without an output device |
+| `player_test.cpp` | `Core::Player` on `Tests::FakeSource` and the Null output. Late answers are dropped: the link of a track left behind, a link after Stop, a retry after the network wait (and none follows a Stop: no request is left hanging, with no timed wait), the link of a cancelled preload, a load for a replaced queue; a dropped answer's download never starts. Another source's `filesChanged` leaves the preload alone; a track starts under the rules of its start (HOST-15); the source hears its tracks' events; a continuation hears only the tracks it gave, also after the queue was replaced (TRK-03 to TRK-06). `Player::State` of each phase, and `stateChanged` as one change each for a Stop, a last track that cannot play (ERR-07: it fails to open, or its sound cannot be decoded and the engine stops in the middle), a lost network (ERR-01, ERR-03), and none for Play without an output device |
 | `library_test.cpp` | `Yandex::Library`/`ApiClient` against the mock server serving spec fixtures: request shapes and parsing for every source the menu offers, likes, waves, search with each kind of best result, errors, device login and wave feedback. Also `Core::Player` track events, preloading, endless sources, shuffle not applying in a wave, and repeat not replaying the only track of a wave (WAVE-12); the economy quality (QUAL-02 to QUAL-05): the request and its signature, the fallbacks, the network wait, the preload fetched again |
 | `yandex_source_test.cpp` | `src/sources/yandex`'s tracks: the key with and without an album, every spec track back whole, another source's track, the cover and web page through `Core::SourceRegistry` against the client's, `Core::Track::displayTitle`; its `Source` against the mock server: an opened track downloads only once started, the failure kinds, a play report on `Started` only, `filesChanged` on another quality; a track of no source fails after `open` returns |
 | `sources_test.cpp` | `YandexSource::Catalog` against the `spec/player` scenarios on spec fixtures, one function per scenario group: the last pick wins, stale failures, search as one pick, a failed source keeps the queue, likes with their count, an empty source keeping the queue, search's best result, and a wave played on the Null output (radio start, load more with the last ids, batch ids on the events, dislike and skip) |
@@ -94,8 +95,8 @@ QT_QPA_PLATFORM=offscreen QIYAA_AUDIO_BACKEND=null build/tests/audio_test queued
 | `skin_test` | skins | plain |
 | `mp4_aac_test` | audio (+ `qiyaa_miniaudio`) | plain; `QIYAA_TEST_DATA`; `QIYAA_MP4_SAMPLE` adds a file of your own |
 | `audio_test` | audio core | plain; `QIYAA_TEST_DATA` |
-| `main_window_test` | audio core skins ui | plain |
-| `queue_test` | core | plain |
+| `main_window_test` | audio core skins ui (+ `qiyaa_test_core`) | plain |
+| `queue_test` | core (+ `qiyaa_test_core`) | plain |
 | `player_test` | audio core (+ `qiyaa_test_core`) | plain; `QIYAA_TEST_DATA` |
 | `library_test` | audio core sources_yandex yandex (+ `qiyaa_test_core`, `qiyaa_test_yandex`) | plain; `QIYAA_TEST_DATA` |
 | `sources_test` | audio core sources_yandex yandex (+ `qiyaa_test_yandex`) | plain; `QIYAA_TEST_DATA` |
@@ -217,8 +218,9 @@ audio decoder and races that are not there. CI's GCC 13 has it. With GCC 11, lin
 - `qiyaa_test_yandex`: `support/yandex_json.cpp`. It PUBLIC-links `qiyaa_test_support` and
   `qiyaa_yandex`. Only `library_test`, `sources_test`, `yandex_test` and `yandex_source_test` link
   it.
-- `qiyaa_test_core`: `support/fake_source.cpp`. It PUBLIC-links `qiyaa_test_support` and
-  `qiyaa_core`. Only `player_test`, `library_test`, `jam_mode_test` and `jam_host_test` link it.
+- `qiyaa_test_core`: `support/fake_source.cpp` and `support/fake_continuation.cpp`. It
+  PUBLIC-links `qiyaa_test_support` and `qiyaa_core`. Only `queue_test`, `player_test`,
+  `main_window_test`, `library_test`, `jam_mode_test` and `jam_host_test` link it.
 - `support/yandex_sources.h` is a header with no library: a suite that includes it links
   `qiyaa_sources_yandex` itself.
 - Each suite links the modules in the table above, plus what those modules link PUBLIC. For

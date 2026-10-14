@@ -442,8 +442,8 @@ Application::Application(const Options& options, QObject* parent)
         showMainMenu(pos, corePlayer.currentTrack());
     });
     connect(playlistWindowInstance.get(), &Ui::PlaylistWindow::trackMenuRequested, this, [this](QPoint pos, int row) {
-        const auto& tracks = corePlayer.playlist();
-        showMainMenu(pos, row >= 0 && row < tracks.size() ? &tracks[row] : nullptr);
+        const auto& entries = corePlayer.entries();
+        showMainMenu(pos, row >= 0 && row < entries.size() ? &entries[row].track : nullptr);
     });
     connect(playlistWindowInstance.get(), &Ui::PlaylistWindow::sizeStepsChanged, this, [this](QSize steps) {
         settings.setValue(QStringLiteral("playlist/steps"), steps);
@@ -743,7 +743,7 @@ void Application::offerStoredJam() {
             setJamWindowVisible(true);
         } else if (question->clickedButton() == no) {
             jamHostSession->discardStored();
-            if (corePlayer.playlist().isEmpty() && yandexLibrary.isLoggedIn()) {
+            if (corePlayer.entries().isEmpty() && yandexLibrary.isLoggedIn()) {
                 catalog.playLikes(false);
             }
         }
@@ -849,7 +849,7 @@ void Application::applyToken(const QString& token, bool save) {
         jamWindowInstance->setHostName(account.displayName);
 #endif
         const bool jam = jamMode.isActive() || storedJamQuestion;
-        if (corePlayer.playlist().isEmpty() && !jam) {
+        if (corePlayer.entries().isEmpty() && !jam) {
             catalog.playLikes(false);
         }
     });

@@ -93,11 +93,11 @@ private:
         }
         server.audioTracks(good, mp3);
         Stack* raw = stack.get();
-        const Core::Player::TEventCallback record =
-            [raw](Core::Player::TrackEvent event, const Core::Track& track, double) {
+        QObject::
+            connect(&raw->player, &Core::Player::trackEvent, [raw](Core::TrackEvent event, const Core::Track& track) {
                 raw->events << QStringLiteral("%1:%2").arg(static_cast<int>(event)).arg(track.key.id);
-            };
-        stack->player.setQueue(tracks, "Q", false, {}, record);
+            });
+        stack->player.setSource(Core::QueueSource{.title = QStringLiteral("Q"), .head = tracks}, false);
         return stack;
     }
 

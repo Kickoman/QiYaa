@@ -88,7 +88,7 @@ PlaylistWindow::PlaylistWindow(Core::Player* player, const Skins::Skin* skin, QW
         update();
     });
     connect(corePlayer, &Core::Player::playlistChanged, this, [this] {
-        const int trackCount = static_cast<int>(corePlayer->playlist().size());
+        const int trackCount = static_cast<int>(corePlayer->entries().size());
         QSet<int> valid;
         for (int row : selectedRows) {
             if (row < trackCount) {
@@ -149,7 +149,7 @@ int PlaylistWindow::visibleRows() const {
 }
 
 int PlaylistWindow::maxScroll() const {
-    return std::max(0, static_cast<int>(corePlayer->playlist().size()) - visibleRows());
+    return std::max(0, static_cast<int>(corePlayer->entries().size()) - visibleRows());
 }
 
 void PlaylistWindow::setScrollOffset(int row) {
@@ -186,7 +186,7 @@ int PlaylistWindow::rowAt(QPoint skinPos) const {
         return -1;
     }
     const int row = scrollRow + rowOnScreen;
-    return row < corePlayer->playlist().size() ? row : -1;
+    return row < corePlayer->entries().size() ? row : -1;
 }
 
 QRect PlaylistWindow::scrollHandleRect() const {
@@ -297,13 +297,13 @@ void PlaylistWindow::drawRows(QPainter& painter) const {
     painter.setFont(font);
     const QFontMetrics metrics(font);
 
-    const auto& tracks = corePlayer->playlist();
+    const auto& entries = corePlayer->entries();
     const int current = corePlayer->currentIndex();
     painter.save();
     painter.setClipRect(listArea);
     for (int i = 0; i < visibleRows(); ++i) {
         const int row = scrollRow + i;
-        if (row >= tracks.size()) {
+        if (row >= entries.size()) {
             break;
         }
         const QRect rowRect(
@@ -316,7 +316,7 @@ void PlaylistWindow::drawRows(QPainter& painter) const {
             painter.fillRect(rowRect, style.selectedBackground);
         }
         painter.setPen(row == current ? style.current : style.normal);
-        const QString duration = FormatTime(tracks[row].durationMs / 1000);
+        const QString duration = FormatTime(entries[row].track.durationMs / 1000);
         const int durationWidth = metrics.horizontalAdvance(duration) + 3;
         const QString note = queueHooks.note ? queueHooks.note(row) : QString();
         const int noteWidth = note.isEmpty() ? 0 : metrics.horizontalAdvance(note) + 6;
@@ -324,7 +324,7 @@ void PlaylistWindow::drawRows(QPainter& painter) const {
         if (!note.isEmpty()) {
             painter.drawText(rowRect.adjusted(0, 0, -durationWidth - 4, 0), Qt::AlignRight | Qt::AlignVCenter, note);
         }
-        const QString title = QStringLiteral("%1. %2").arg(row + 1).arg(tracks[row].displayTitle());
+        const QString title = QStringLiteral("%1. %2").arg(row + 1).arg(entries[row].track.displayTitle());
         painter.drawText(
             titleRect, Qt::AlignLeft | Qt::AlignVCenter, metrics.elidedText(title, Qt::ElideRight, titleRect.width())
         );
@@ -332,7 +332,7 @@ void PlaylistWindow::drawRows(QPainter& painter) const {
     }
     painter.restore();
 
-    if (tracks.isEmpty()) {
+    if (entries.isEmpty()) {
         painter.setPen(style.normal);
         painter.drawText(
             listArea.adjusted(4, kListPaddingTop, -4, 0),
@@ -347,11 +347,11 @@ void PlaylistWindow::drawBottomInfo(QPainter& painter) const {
     const QPoint base(windowWidth - 150, windowHeight - Skins::PlaylistSprites::kBottomHeight);
 
     qint64 totalSeconds = 0, selectedSeconds = 0;
-    const auto& tracks = corePlayer->playlist();
-    for (int i = 0; i < tracks.size(); ++i) {
-        totalSeconds += tracks[i].durationMs / 1000;
+    const auto& entries = corePlayer->entries();
+    for (int i = 0; i < entries.size(); ++i) {
+        totalSeconds += entries[i].track.durationMs / 1000;
         if (selectedRows.contains(i)) {
-            selectedSeconds += tracks[i].durationMs / 1000;
+            selectedSeconds += entries[i].track.durationMs / 1000;
         }
     }
     painter.save();
@@ -605,7 +605,7 @@ void PlaylistWindow::skinMouseRelease(QPoint pos, Qt::MouseButton button) {
                 auto* menu = new QMenu(this);
                 menu->addAction(tr("Select all"), this, [this] {
                     selectedRows.clear();
-                    for (int i = 0; i < corePlayer->playlist().size(); ++i) {
+                    for (int i = 0; i < corePlayer->entries().size(); ++i) {
                         selectedRows.insert(i);
                     }
                     update();
@@ -651,7 +651,7 @@ void PlaylistWindow::wheelEvent(QWheelEvent* event) {
 }
 
 void PlaylistWindow::keyPressEvent(QKeyEvent* event) {
-    const int count = static_cast<int>(corePlayer->playlist().size());
+    const int count = static_cast<int>(corePlayer->entries().size());
     if (count == 0) {
         return QWidget::keyPressEvent(event);
     }

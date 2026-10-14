@@ -4,7 +4,6 @@
 #include "yandex/library.h"
 
 #include <algorithm>
-#include <optional>
 #include <utility>
 
 namespace YandexSource {
@@ -41,7 +40,7 @@ bool JamWave::start(const QStringList& seeds, int seedsVersion, const Core::Trac
             ++self->sessionNumber;
             self->station = startSeeds.value(0);
             self->sessionSeedsVersion = seedsVersion;
-            self->addBatch(batch);
+            self->origins.add(self->session, self->station, batch);
             if (self->sendsFeedback) {
                 self->yandexLibrary->waveFeedback(
                     self->session, self->station, batch.batchId, Yandex::WaveEvent::RadioStarted
@@ -68,34 +67,20 @@ void JamWave::more(TDone done) {
             if (self->sessionNumber != askedSession) {
                 return done({});
             }
-            self->addBatch(batch);
+            self->origins.add(self->session, self->station, batch);
             done(TracksOf(batch.tracks));
         });
 }
 
 void JamWave::trackEvent(Core::Player::TrackEvent event, const Core::Track& track, double playedSeconds) {
-    const std::optional<Track> yandexTrack = YandexTrackOf(track);
-    if (!sendsFeedback || !yandexTrack) {
-        return;
+    if (sendsFeedback) {
+        origins.send(yandexLibrary, event, track, playedSeconds);
     }
-    const auto origin = originOfTrack.constFind(yandexTrack->id);
-    if (origin == originOfTrack.constEnd()) {
-        return;
-    }
-    yandexLibrary->waveFeedback(
-        origin->session, origin->station, origin->batch, WaveEventOf(event), &*yandexTrack, playedSeconds
-    );
 }
 
 void JamWave::endSession() {
     session.clear();
     ++sessionNumber;
-}
-
-void JamWave::addBatch(const Yandex::WaveBatch& batch) {
-    for (const Track& track : batch.tracks) {
-        originOfTrack.insert(track.id, Origin{session, station, batch.batchId});
-    }
 }
 
 Core::TJamWaveFactory JamWaves(Yandex::Library* library) {

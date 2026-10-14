@@ -2,12 +2,13 @@
 
 #include "core/jam_mode.h"
 #include "core/player.h"
+#include "core/queue_source.h"
 #include "sources/yandex/tracks.h"
+#include "sources/yandex/vibe.h"
 #include "yandex/api_client.h"
 #include "yandex/library.h"
 
 #include <QCoreApplication>
-#include <QHash>
 #include <QList>
 #include <QPointer>
 
@@ -22,8 +23,6 @@ using Core::Player;
 using Yandex::Track;
 
 namespace {
-
-constexpr qsizetype kWaveHistory = 5;
 
 bool HasAvailable(const QList<Track>& tracks) {
     return std::any_of(tracks.cbegin(), tracks.cend(), [](const Track& track) { return track.available; });
@@ -49,54 +48,7 @@ auto QueueLoader(Player* player, const QString& title, quint64 ticket) {
                 guardedPlayer, QCoreApplication::translate("YandexSource::Catalog", "%1: empty").arg(title)
             );
         }
-        guardedPlayer->setQueue(TracksOf(tracks), title, true);
-    };
-}
-
-struct WaveState {
-    QString session;
-    QString station;
-    QHash<QString, QString> batchOfTrack;
-};
-
-Player::TLoadMoreCallback
-WaveMore(QPointer<Player> player, Yandex::Library* library, std::shared_ptr<WaveState> state) {
-    return [player, library, state](std::function<void(const QList<Core::Track>&)> done) {
-        if (!player) {
-            return;
-        }
-        QStringList queue;
-        const QList<Core::Track>& playlist = player->playlist();
-        for (qsizetype i = std::max<qsizetype>(0, playlist.size() - kWaveHistory); i < playlist.size(); ++i) {
-            queue << CatalogId(playlist[i].key);
-        }
-        library->moreWave(
-            state->session,
-            queue,
-            [done, state](const Yandex::WaveBatch& nextBatch, const QString& waveError) {
-                if (!waveError.isEmpty()) {
-                    qWarning("wave: %s", qPrintable(waveError));
-                }
-                for (const Track& track : nextBatch.tracks) {
-                    state->batchOfTrack.insert(track.id, nextBatch.batchId);
-                }
-                done(TracksOf(nextBatch.tracks));
-            }
-        );
-    };
-}
-
-Player::TEventCallback WaveEvents(Yandex::Library* library, std::shared_ptr<WaveState> state) {
-    return [library, state](Player::TrackEvent event, const Core::Track& track, double played) {
-        const std::optional<Track> yandexTrack = YandexTrackOf(track);
-        library->waveFeedback(
-            state->session,
-            state->station,
-            state->batchOfTrack.value(CatalogId(track.key)),
-            WaveEventOf(event),
-            yandexTrack ? &*yandexTrack : nullptr,
-            played
-        );
+        guardedPlayer->setSource(Core::QueueSource{.title = title, .head = TracksOf(tracks)}, true);
     };
 }
 
@@ -138,10 +90,8 @@ void Catalog::playLikes(bool autoplay) {
         if (!HasAvailable(tracks)) {  // SRC-07, SRC-08
             return ShowStatus(guardedPlayer, tr("Liked: empty"));
         }
-        guardedPlayer->setQueue(TracksOf(tracks), tr("Liked"), autoplay);
-        ShowStatus(
-            guardedPlayer, tr("Liked: %n track(s)", nullptr, static_cast<int>(guardedPlayer->playlist().size()))
-        );
+        guardedPlayer->setSource(Core::QueueSource{.title = tr("Liked"), .head = TracksOf(tracks)}, autoplay);
+        ShowStatus(guardedPlayer, tr("Liked: %n track(s)", nullptr, static_cast<int>(guardedPlayer->entries().size())));
     });
 }
 
@@ -196,18 +146,12 @@ void Catalog::playWave(const QStringList& seeds, const QString& title) {
             if (!HasAvailable(batch.tracks)) {  // WAVE-03
                 return ShowStatus(guardedPlayer, tr("%1: empty").arg(title));
             }
-            auto state = std::make_shared<WaveState>();
-            state->session = batch.sessionId;
-            state->station = seeds.value(0);
-            for (const Track& track : batch.tracks) {
-                state->batchOfTrack.insert(track.id, batch.batchId);
-            }
             if (self) {
                 self->waveSeeds = seeds;
             }
-            library->waveFeedback(state->session, state->station, batch.batchId, Yandex::WaveEvent::RadioStarted);
-            guardedPlayer->setQueue(
-                TracksOf(batch.tracks), title, true, WaveMore(guardedPlayer, library, state), WaveEvents(library, state)
+            const auto vibe = std::make_shared<Vibe>(library, batch, seeds.value(0));
+            guardedPlayer->setSource(
+                Core::QueueSource{.title = title, .continuation = vibe, .given = TracksOf(batch.tracks)}, true
             );
         }
     );
@@ -244,7 +188,7 @@ void Catalog::search(const QString& text) {
             if (!HasAvailable(result.tracks)) {  // SRC-12
                 return ShowStatus(guardedPlayer, tr("Nothing found"));
             }
-            guardedPlayer->setQueue(TracksOf(result.tracks), title, true);
+            guardedPlayer->setSource(Core::QueueSource{.title = title, .head = TracksOf(result.tracks)}, true);
         }
     );
 }

@@ -45,11 +45,16 @@ struct JamPlayback {
 inline constexpr int kJamPlayingReportMs = 10'000;
 inline constexpr int kJamWaveHistory = 5;
 
-class JamWave : public Continuation {
+class JamWave {
 public:
+    using TDone = std::function<void(const QList<Track>& tracks)>;
     using TRecent = std::function<QList<Track>()>;
 
+    virtual ~JamWave() = default;
+
     virtual bool start(const QStringList& seeds, int seedsVersion, const Track* current, TDone done) = 0;
+    virtual void more(TDone done) = 0;
+    virtual void trackEvent(TrackEvent event, const Track& track, double playedSeconds) = 0;
     virtual bool hasSession() const = 0;
     virtual int seedsVersion() const = 0;
     virtual void endSession() = 0;
