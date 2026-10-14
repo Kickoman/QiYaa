@@ -101,7 +101,9 @@ int Run(int& argc, char* argv[]) {
         application.setScale(commandLine.value(scaleOption).toDouble(), App::Application::ScaleScope::ThisRun);
     }
     if (commandLine.isSet(demoOption)) {
-        application.player()->setQueue(App::DemoTracks(), QStringLiteral("Demo"), false);
+        application.player()->setSource(
+            Core::QueueSource{.title = QStringLiteral("Demo"), .head = App::DemoTracks()}, false
+        );
     }
     if (commandLine.isSet(textOption)) {
         application.mainWindow()->setStatusText(commandLine.value(textOption));

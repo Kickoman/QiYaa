@@ -128,7 +128,7 @@ private Q_SLOTS:
         QVERIFY(QTest::qWaitFor([&] { return stack.player.queueTitle() == QStringLiteral("My Vibe"); }, 3000));
         QTest::qWait(600);  // the likes response arrives now
         QCOMPARE(stack.player.queueTitle(), QStringLiteral("My Vibe"));
-        QCOMPARE(stack.player.playlist().first().title, ExpectedTitle("rotor-session-new/ok"));
+        QCOMPARE(stack.player.entries().first().track.title, ExpectedTitle("rotor-session-new/ok"));
         QVERIFY(!stack.saw(QStringLiteral("Liked: 2 track(s)")));
     }
 
@@ -170,7 +170,7 @@ private Q_SLOTS:
 
     void failedSourceKeepsTheQueue() {  // SRC-04
         Stack stack(&library);
-        stack.player.setQueue({KeptTrack()}, "Kept", false);
+        stack.player.setSource(Core::QueueSource{.title = QStringLiteral("Kept"), .head = {KeptTrack()}}, false);
         server.fixture("GET", "/albums/4053/with-tracks", "account-status/500-empty");
         stack.sources.playAlbum(QStringLiteral("4053"), QStringLiteral("Звезда"));
         QVERIFY(QTest::qWaitFor([&] { return stack.sawPrefix(QStringLiteral("Error: ")); }, 3000));
@@ -184,8 +184,8 @@ private Q_SLOTS:
         stack.sources.playLikes(false);
         QVERIFY(QTest::qWaitFor([&] { return stack.saw(QStringLiteral("Liked: 2 track(s)")); }, 3000));
         QCOMPARE(stack.player.queueTitle(), QStringLiteral("Liked"));
-        QCOMPARE(stack.player.playlist().size(), 2);
-        QCOMPARE(stack.player.playlist().first().title, ExpectedTitle("tracks/two-tracks"));
+        QCOMPARE(stack.player.entries().size(), 2);
+        QCOMPARE(stack.player.entries().first().track.title, ExpectedTitle("tracks/two-tracks"));
     }
 
     void emptySourceKeepsTheQueue_data() {  // SRC-07, SRC-08
@@ -199,7 +199,7 @@ private Q_SLOTS:
         QFETCH(QString, likes);
         QFETCH(QString, tracks);
         Stack stack(&library);
-        stack.player.setQueue({KeptTrack()}, "Kept", false);
+        stack.player.setSource(Core::QueueSource{.title = QStringLiteral("Kept"), .head = {KeptTrack()}}, false);
         server.fixture("GET", "/users/42/likes/tracks", likes);
         server.fixture("POST", "/tracks/", tracks);
         stack.sources.playLikes(true);
@@ -222,7 +222,7 @@ private Q_SLOTS:
 
     void waveWithoutPlayableTracksKeepsTheQueue() {  // WAVE-03
         Stack stack(&library);
-        stack.player.setQueue({KeptTrack()}, "Kept", false);
+        stack.player.setSource(Core::QueueSource{.title = QStringLiteral("Kept"), .head = {KeptTrack()}}, false);
         server.fixture("POST", "/rotor/session/new", "rotor-session-new/all-unavailable");
         const auto before = server.requests().size();
         stack.sources.playMyWave();
@@ -247,7 +247,7 @@ private Q_SLOTS:
         QFETCH(QString, title);
         QFETCH(int, count);
         Stack stack(&library);
-        stack.player.setQueue({KeptTrack()}, "Kept", false);
+        stack.player.setSource(Core::QueueSource{.title = QStringLiteral("Kept"), .head = {KeptTrack()}}, false);
         server.fixture("GET", "/search", name);
         server.fixture("GET", "/artists/9/track-ids-by-rating", "artists-track-ids-by-rating/ok");
         server.fixture("POST", "/tracks/", "tracks/two-tracks");
@@ -259,7 +259,7 @@ private Q_SLOTS:
             return;
         }
         QVERIFY(QTest::qWaitFor([&] { return stack.player.queueTitle() == title; }, 3000));
-        QCOMPARE(stack.player.playlist().size(), count);
+        QCOMPARE(stack.player.entries().size(), count);
     }
 
     // WAVE-01, WAVE-02, WAVE-05, WAVE-08, TRK-03, TRK-04, TRK-06, TRK-07: a wave played through
@@ -287,12 +287,13 @@ private Q_SLOTS:
         QCOMPARE(newBody.value("seeds").toArray(), QJsonArray{"user:onyourwave"});  // WAVE-02
         QCOMPARE(stack.sources.lastWaveSeeds(), QStringList{"user:onyourwave"});
         // The unavailable track of the batch is left out (SRC-05).
-        for (const Core::Track& track : stack.player.playlist()) {
-            QVERIFY(track.available);
+        for (const Core::QueueEntry& entry : stack.player.entries()) {
+            QVERIFY(entry.track.available);
         }
 
-        const Core::TrackKey firstKey = stack.player.playlist().first().key;
-        const std::optional<Yandex::Track> firstQueued = YandexSource::YandexTrackOf(stack.player.playlist().first());
+        const Core::TrackKey firstKey = stack.player.entries().first().track.key;
+        const std::optional<Yandex::Track> firstQueued =
+            YandexSource::YandexTrackOf(stack.player.entries().first().track);
         QVERIFY(firstQueued);
         const QString firstId = firstQueued->id;
         const QString firstTrack = firstId + u':' + firstQueued->albumId;
@@ -312,7 +313,7 @@ private Q_SLOTS:
         QCOMPARE(moreBody.value("queue").toArray(), QJsonArray{firstId});
 
         // Dislike: the request, then a skip and the next track, from the new batch (TRK-07).
-        QVERIFY(QTest::qWaitFor([&] { return stack.player.playlist().size() == 2; }, 3000));
+        QVERIFY(QTest::qWaitFor([&] { return stack.player.entries().size() == 2; }, 3000));
         stack.sources.dislikeAndSkip(firstKey);
         QVERIFY(QTest::qWaitFor([&] { return feedbackEvents(before).size() >= 4; }, 5000));
         QCOMPARE(server.last("/users/42/dislikes/tracks/add-multiple")->formValue("track-ids"), firstId);

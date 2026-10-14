@@ -637,7 +637,7 @@ int main(int argc, char* argv[]);  // Run() inside try/catch
 | `--play-file <path>` | `offline`, `audio` on; `StreamLocalFile(engine, path)` |
 | `--offline` | `Options::offline` |
 | `--text <text>` | `MainWindow::setStatusText(text)` |
-| `--demo` | `Player::setQueue(DemoTracks(), "Demo", false)` |
+| `--demo` | `Player::setSource(QueueSource{.title = "Demo", .head = DemoTracks()}, false)` |
 | `--scale <factor>` | `Application::setScale(value.toDouble(), ScaleScope::ThisRun)`: this run only |
 
 Qt's own arguments (`-platform`, `-style`, …) are taken out by `QApplication` before the parser

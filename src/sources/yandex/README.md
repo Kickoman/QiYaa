@@ -14,7 +14,9 @@ Yandex half of the jam's own vibe: the rotor session, its seeds and its feedback
 
 | File | Contains |
 |---|---|
-| `catalog.h/.cpp` | `Catalog`: playing a pick (likes, playlist, recommendations, artist, album, vibe or station, search) with a ticket each, the vibe's load-more and feedback callbacks, like and dislike by track key |
+| `catalog.h/.cpp` | `Catalog`: playing a pick (likes, playlist, recommendations, artist, album, vibe or station, search) with a ticket each, like and dislike by track key |
+| `vibe.h/.cpp` | `Vibe`, the `Core::Continuation` of a vibe or station: `radioStarted`, load-more, the feedback on its tracks |
+| `wave_origins.h/.cpp` | `WaveOrigins`: the session, station and batch each wave track came in, and the feedback sent to them |
 | `jam_wave.h/.cpp` | `JamWave` (a `Core::JamWave`) and `JamWaves`, the factory `Core::JamMode` takes |
 | `source.h/.cpp` | `Source`, the `Core::TrackSource` of Yandex tracks: the cover, the web page, opening the file, the play report, the quality; `FailureKindOf` |
 | `tracks.h/.cpp` | `kSourceName`, `KeyOf`, `TrackOf`, `TracksOf`, `YandexTrackOf`, `CatalogId`: `Core::Track` ↔ `Yandex::Track`; `WaveEventOf` |
@@ -82,15 +84,12 @@ The scenarios are [spec/player/sources.md](../../../spec/player/sources.md),
   `Removed from Liked`, `Disliked`, `A jam is on: add tracks to the jam`.
 - **An empty pick keeps the queue** (SRC-07, SRC-08, WAVE-03): when a reply has no available
   track (none at all, or all `available: false`), the status is `<title>: empty` (search:
-  `Nothing found`) and nothing else happens: no `setQueue`, and for a vibe no `RadioStarted`.
+  `Nothing found`) and nothing else happens: no `setSource`, and for a vibe no `RadioStarted`.
 - **Search** (SRC-09 to SRC-12): a best artist queues its top 100 under its name, a best album its
   tracks under its title, anything else the found tracks as `Search: <text>`.
-- **A vibe** (`playWave`): `Library::startWave(seeds)`. On success the vibe's state (session,
-  station = first seed, track id → batch id) is shared by two callbacks for the life of that
-  queue: `more` asks `moreWave` with the ids of the last 5 queued tracks (WAVE-05), and `events`
-  maps each `TrackEvent` with `WaveEventOf` and sends it with the batch the track came in (TRK-04
-  to TRK-06). `RadioStarted` is sent before `setQueue`, so before the first track's
-  `trackStarted` (TRK-03). The seeds become `lastWaveSeeds()`.
+- **A vibe** (`playWave`): `Library::startWave(seeds)`. On success the source is an empty head
+  and a [`Vibe`](#vibeh-vibe) with the first batch as its tracks; the seeds become
+  `lastWaveSeeds()`.
 - **Tracks** go to the `Player` as `Core::Track`s (`TracksOf`). The vibe's history, the batch of
   each track and every like and dislike use the catalog id (`CatalogId`); the feedback's
   `trackId` is `<id>:<albumId>` as before.
@@ -107,10 +106,33 @@ The scenarios are [spec/player/sources.md](../../../spec/player/sources.md),
 - One Yandex track can have two keys: a guest's jam item without an album is `11`, the same track
   from the host's catalogue `11:1`. Compare `CatalogId`s where Yandex's identity matters, keys
   where the queue's does.
-- The vibe's callbacks hold the `Library` and a `QPointer<Player>`, not the `Catalog`: the
-  `Player` closes the open track, and sends its feedback, while the application shuts down,
-  after the `Catalog` may be gone.
+- A `Vibe` holds the `Library`, not the `Catalog`: the `Player` closes the open track, and sends its
+  feedback, while the application shuts down, after the `Catalog` may be gone.
 - `playLikes(false)` (after login) fills the queue without starting playback.
+
+## `vibe.h`: `Vibe`
+
+```cpp
+class Vibe : public Core::Continuation, public std::enable_shared_from_this<Vibe> {
+public:
+    Vibe(Yandex::Library* library, const Yandex::WaveBatch& first, QString station);
+};
+```
+
+A vibe or station as a queue's continuation (spec/player/wave.md, tracking.md):
+- `begin(true)` sends `RadioStarted` with the first batch, once; the `Player` calls it when it takes
+  the source, before the first track's `trackStarted` (TRK-03).
+- `more` asks `Library::moreWave` of its session with the catalog ids of the request's `queueEnd`,
+  the last 5 tracks of the queue (WAVE-05). A failed request only logs `wave: …`; the reply has no
+  tracks then.
+- `trackEvent` sends the rotor feedback (`WaveEventOf`) of a track it gave to the session, station
+  and batch it came in (TRK-04 to TRK-07). The `Player` gives it only its own tracks.
+- The library callback holds the `Vibe` (`shared_from_this`): a reply for a queue that was replaced
+  meanwhile reaches a live object, and the `Player` drops it.
+
+`WaveOrigins` (`wave_origins.h`) is the shared part of `Vibe` and `JamWave`: for each track id of a
+batch, the session, station and batch it came in, and `send`, which posts a track's feedback there
+and nothing for a track it does not know.
 
 ## `jam_wave.h`: `JamWave`, `JamWaves`
 

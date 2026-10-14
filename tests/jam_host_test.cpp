@@ -127,7 +127,8 @@ Jam::Session StoredSession(QStringList outbox = {}) {
 
 QStringList Ids(const Core::Player& player) {
     QStringList ids;
-    for (const Core::Track& track : player.playlist()) {
+    for (const Core::QueueEntry& entry : player.entries()) {
+        const Core::Track& track = entry.track;
         ids << YandexSource::CatalogId(track.key);
     }
     return ids;
@@ -375,7 +376,7 @@ private Q_SLOTS:
         QVERIFY(stack.host.hasStoredSession());
         stack.host.continueStored();
         QVERIFY(stack.jam.isActive());
-        QVERIFY(stack.player.playlist().isEmpty());  // the desktop does not keep the queue
+        QVERIFY(stack.player.entries().isEmpty());  // the desktop does not keep the queue
         QVERIFY(!stack.host.hasStoredSession());
         QCOMPARE(stack.host.phase(), Jam::HostPhase::Active);
         QVERIFY(stack.open());

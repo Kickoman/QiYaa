@@ -1,7 +1,9 @@
 #pragma once
 
 #include "audio/audio_engine.h"
+#include "core/continuation.h"
 #include "core/failure_policy.h"
+#include "core/queue_source.h"
 #include "core/track.h"
 #include "core/track_navigator.h"
 #include "core/track_source.h"
@@ -55,9 +57,7 @@ struct QueueRules {
 class Player : public QObject {
     Q_OBJECT
 public:
-    using TLoadMoreCallback = std::function<void(std::function<void(const QList<Track>&)> done)>;
     using TrackEvent = Core::TrackEvent;
-    using TEventCallback = std::function<void(TrackEvent event, const Track& track, double playedSeconds)>;
     enum class State { Empty, Stopped, Loading, Playing, Paused, WaitingForNetwork, WaitingForMore };
     Q_ENUM(State)
 
@@ -67,19 +67,13 @@ public:
     quint64 newSourceRequest() { return ++sourceRequest; }
     bool isLatestSourceRequest(quint64 ticket) const { return ticket == sourceRequest; }
 
-    void setQueue(
-        const QList<Track>& tracks,
-        const QString& title,
-        bool autoplay,
-        TLoadMoreCallback more = {},
-        TEventCallback events = {}
-    );
+    void setSource(QueueSource source, bool autoplay);
     void appendTracks(const QList<Track>& tracks);
     void insertTracks(int index, const QList<Track>& tracks);
     void removeTracks(QList<int> indices);
     void clearQueue();
     // Keeps the queue and the current track playing; replaces the source behind them.
-    void changeSource(const QString& title, TLoadMoreCallback more, TEventCallback events, QueueRules rules);
+    void changeSource(const QString& title, std::shared_ptr<Continuation> continuation, QueueRules rules);
     // The load-more check now, not only when a track becomes current.
     void requestMore() { maybeLoadMore(); }
 
@@ -106,7 +100,7 @@ public:
     QUrl currentLink() const;
     QUrl nextLink() const;
 
-    const QList<Track>& playlist() const;
+    const QList<QueueEntry>& entries() const;
     const QString& queueTitle() const;
     int currentIndex() const;
     const Track* currentTrack() const;
@@ -125,6 +119,7 @@ Q_SIGNALS:
     void statusMessage(const QString& text);
     void noticed(const Core::PlayerNotice& notice);
     void failed(Core::FailureKind kind);
+    void trackEvent(Core::TrackEvent event, const Core::Track& track, double playedSeconds);
     void stateChanged(Core::Player::State state);
     void playlistChanged();
     void queueReplaced();
@@ -150,7 +145,7 @@ private:
     struct CurrentTrack {
         Track track;
         bool started = false;
-        TEventCallback events;
+        std::shared_ptr<Continuation> giver;
         bool reportToSource = false;
         QUrl link;
         int bitrate = 0;
@@ -186,6 +181,7 @@ private:
     void cancelPreload();
     void refreshPreload();
     void maybeLoadMore();
+    void appendContinuation(const QList<Track>& tracks, const std::shared_ptr<Continuation>& giver);
     void setWaitingForMore(bool waiting);
     double accumulatePlayedSeconds();
     void noteState();
@@ -194,8 +190,6 @@ private:
     Audio::AudioEngine* audioEngine;
     SourceRegistry* trackSources;
     std::unique_ptr<Queue> queue;
-    TLoadMoreCallback loadMore;
-    TEventCallback reportEvent;
     QueueRules queueRules;
     std::optional<CurrentTrack> current;
     std::optional<Preload> preload;

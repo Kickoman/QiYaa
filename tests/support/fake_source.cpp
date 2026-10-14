@@ -1,22 +1,13 @@
 #include "support/fake_source.h"
 
+#include "support/fake_continuation.h"
+
 #include <QTimer>
 
 #include <memory>
 #include <utility>
 
 namespace Tests {
-
-namespace {
-QString EventName(Core::TrackEvent event) {
-    switch (event) {
-        case Core::TrackEvent::Started: return QStringLiteral("started");
-        case Core::TrackEvent::Finished: return QStringLiteral("finished");
-        case Core::TrackEvent::Skipped: break;
-    }
-    return QStringLiteral("skipped");
-}
-}  // namespace
 
 FakeDownload::FakeDownload(FakeSource* owner, QString trackId)
     : source(owner)

@@ -132,6 +132,7 @@ qiyaa_add_module(core
     src/core/jam_mode.cpp       src/core/jam_mode.h
     src/core/player.cpp         src/core/player.h
     src/core/queue.cpp          src/core/queue.h
+    src/core/queue_source.h
     src/core/track.cpp          src/core/track.h
     src/core/track_navigator.cpp src/core/track_navigator.h
     src/core/track_source.cpp   src/core/track_source.h)
@@ -141,7 +142,9 @@ qiyaa_add_module(sources_yandex
     src/sources/yandex/catalog.cpp  src/sources/yandex/catalog.h
     src/sources/yandex/jam_wave.cpp src/sources/yandex/jam_wave.h
     src/sources/yandex/source.cpp   src/sources/yandex/source.h
-    src/sources/yandex/tracks.cpp   src/sources/yandex/tracks.h)
+    src/sources/yandex/tracks.cpp   src/sources/yandex/tracks.h
+    src/sources/yandex/vibe.cpp     src/sources/yandex/vibe.h
+    src/sources/yandex/wave_origins.cpp src/sources/yandex/wave_origins.h)
 target_link_libraries(qiyaa_sources_yandex PUBLIC qiyaa_core qiyaa_yandex Qt6::Core)
 
 # Jam: a shared queue the app hosts for guests (spec/jam). Needs Qt WebSockets; without it the

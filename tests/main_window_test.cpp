@@ -2,6 +2,7 @@
 #include "core/player.h"
 #include "core/track_source.h"
 #include "skins/skin.h"
+#include "support/fake_continuation.h"
 #include "ui/main_window.h"
 #include "ui/player_notices.h"
 
@@ -122,9 +123,14 @@ private Q_SLOTS:
         const QImage off = shuffleButton();
         QVERIFY(on != off);
         player->setShuffle(true);
-        player->setQueue({}, "Wave", false, [](std::function<void(const QList<Core::Track>&)>) {});
+        player->setSource(
+            Core::QueueSource{
+                .title = QStringLiteral("Wave"), .continuation = std::make_shared<Tests::FakeContinuation>()
+            },
+            false
+        );
         QCOMPARE(shuffleButton(), off);
-        player->setQueue({}, "Plain", false);
+        player->setSource(Core::QueueSource{.title = QStringLiteral("Plain")}, false);
         QCOMPARE(shuffleButton(), on);
     }
 

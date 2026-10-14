@@ -3,6 +3,7 @@
 #include "core/track.h"
 #include "core/track_source.h"
 #include "sources/yandex/tracks.h"
+#include "support/fake_continuation.h"
 #include "support/fake_source.h"
 #include "support/mock_http_server.h"
 #include "support/spec_fixtures.h"
@@ -473,16 +474,16 @@ private Q_SLOTS:
         Core::Player player(&engine, &registry);
         const QList<Core::Track> tracks = NumberedTracks({1, 2});
         QStringList log;
-        const auto record = [&](Core::Player::TrackEvent event, const Core::Track& track, double) {
+        connect(&player, &Core::Player::trackEvent, this, [&](Core::TrackEvent event, const Core::Track& track) {
             log << QStringLiteral("%1:%2").arg(static_cast<int>(event)).arg(track.key.id);
-        };
-        player.setQueue(tracks, "W", false, {}, record);
+        });
+        player.setSource(Core::QueueSource{.title = QStringLiteral("W"), .head = tracks}, false);
         player.playIndex(0);
         QVERIFY(QTest::qWaitFor([&] { return log.contains("0:1"); }, 3000));
         player.playIndex(1);
         QVERIFY(QTest::qWaitFor([&] { return log.contains("0:2"); }, 3000));
         QCOMPARE(log, (QStringList{"0:1", "2:1", "0:2"}));
-        player.setQueue({}, "", false);
+        player.setSource({}, false);
         QCOMPARE(log.last(), QStringLiteral("2:2"));
     }
 
@@ -535,14 +536,16 @@ private Q_SLOTS:
             QSKIP("no audio output");
         }
         QStringList log;
-        playback.player.setQueue(
-            NumberedTracks({11, 12, 13}),
-            "A",
-            false,
-            {},
-            [&](Core::Player::TrackEvent event, const Core::Track& track, double) {
+        connect(
+            &playback.player,
+            &Core::Player::trackEvent,
+            this,
+            [&](Core::TrackEvent event, const Core::Track& track) {
                 log << QStringLiteral("%1:%2").arg(static_cast<int>(event)).arg(track.key.id);
             }
+        );
+        playback.player.setSource(
+            Core::QueueSource{.title = QStringLiteral("A"), .head = NumberedTracks({11, 12, 13})}, false
         );
         QSignalSpy advanced(&playback.engine, &Audio::AudioEngine::trackAdvanced);
         QSignalSpy finished(&playback.engine, &Audio::AudioEngine::trackFinished);
@@ -577,7 +580,9 @@ private Q_SLOTS:
         if (!setUpAudio(playback, {21, 22, 23})) {
             QSKIP("no audio output");
         }
-        playback.player.setQueue(NumberedTracks({21, 22, 23}), "A", false);
+        playback.player.setSource(
+            Core::QueueSource{.title = QStringLiteral("A"), .head = NumberedTracks({21, 22, 23})}, false
+        );
         playback.player.playIndex(0);
         QVERIFY(QTest::qWaitFor([&] { return playback.player.preloadedIndex() == 1; }, 5000));
         playback.player.removeTracks({1});  // the preloaded track is gone: 23 follows now
@@ -599,7 +604,9 @@ private Q_SLOTS:
         }
         server.economyTracks({"31", "32"}, EconomyFile());
         playback.sources.source.setQuality(Yandex::Quality::Economy);
-        playback.player.setQueue(NumberedTracks({31, 32}), "A", false);
+        playback.player.setSource(
+            Core::QueueSource{.title = QStringLiteral("A"), .head = NumberedTracks({31, 32})}, false
+        );
         playback.player.playIndex(0);
         QVERIFY(QTest::qWaitFor([&] { return playback.engine.state() == Audio::AudioEngine::State::Playing; }, 3000));
         QCOMPARE(playback.player.currentBitrate(), 64);
@@ -649,7 +656,7 @@ private Q_SLOTS:
         QSignalSpy failures(&playback.player, &Core::Player::failed);
         QSignalSpy notices(&playback.player, &Core::Player::noticed);
         playback.sources.source.setQuality(Yandex::Quality::Economy);
-        playback.player.setQueue(NumberedTracks({41}), "A", false);
+        playback.player.setSource(Core::QueueSource{.title = QStringLiteral("A"), .head = NumberedTracks({41})}, false);
         playback.player.playIndex(0);
         QVERIFY(QTest::qWaitFor([&] { return playback.engine.state() == Audio::AudioEngine::State::Playing; }, 3000));
         QVERIFY(playback.player.currentLink().path().endsWith(QStringLiteral("/t41")));
@@ -670,7 +677,7 @@ private Q_SLOTS:
         });
         playback.player.setNetworkRetryDelays(60'000, 60'000);
         playback.sources.source.setQuality(Yandex::Quality::Economy);
-        playback.player.setQueue(NumberedTracks({45}), "A", false);
+        playback.player.setSource(Core::QueueSource{.title = QStringLiteral("A"), .head = NumberedTracks({45})}, false);
         playback.player.playIndex(0);
         QVERIFY(QTest::qWaitFor([&] { return playback.player.state() == Core::Player::State::WaitingForNetwork; }, 3000)
         );
@@ -689,7 +696,9 @@ private Q_SLOTS:
             QSKIP("no audio output");
         }
         server.economyTracks({"51", "52"}, EconomyFile());
-        playback.player.setQueue(NumberedTracks({51, 52}), "A", false);
+        playback.player.setSource(
+            Core::QueueSource{.title = QStringLiteral("A"), .head = NumberedTracks({51, 52})}, false
+        );
         playback.player.playIndex(0);
         QVERIFY(QTest::qWaitFor([&] { return playback.player.preloadedIndex() == 1; }, 5000));
         QVERIFY(playback.player.nextLink().path().endsWith(QStringLiteral("/t52")));
@@ -713,23 +722,20 @@ private Q_SLOTS:
         Audio::AudioEngine engine;  // not initialised: nothing actually plays
         Tests::YandexSources sources(&library);
         Core::Player player(&engine, &sources.registry);
-        int asked = 0;
-        player.setQueue(
-            NumberedTracks({1, 2, 3}),
-            "Wave",
-            false,
-            [&](std::function<void(const QList<Core::Track>&)> done) {
-                ++asked;
-                done(YandexSource::TracksOf(
-                    {Yandex::ApiClient::ParseTrack(QJsonDocument::fromJson(TrackJson(99, "more")).object())}
-                ));
-            }
+        const auto wave = std::make_shared<Tests::FakeContinuation>();
+        wave->answerAtOnce(YandexSource::TracksOf(
+            {Yandex::ApiClient::ParseTrack(QJsonDocument::fromJson(TrackJson(99, "more")).object())}
+        ));
+        player.setSource(
+            Core::
+                QueueSource{.title = QStringLiteral("Wave"), .continuation = wave, .given = NumberedTracks({1, 2, 3})},
+            false
         );
-        QCOMPARE(player.playlist().size(), 3);
+        QCOMPARE(player.entries().size(), 3);
         player.playIndex(1);  // 2 tracks left -> ask for more
-        QCOMPARE(asked, 1);
-        QCOMPARE(player.playlist().size(), 4);
-        QCOMPARE(player.playlist().last().title, QStringLiteral("more"));
+        QCOMPARE(wave->requests().size(), 1);
+        QCOMPARE(player.entries().size(), 4);
+        QCOMPARE(player.entries().last().track.title, QStringLiteral("more"));
     }
 
     void previousFollowsTheThreeSecondRule_data() {  // spec TR-01, TR-02
@@ -758,8 +764,10 @@ private Q_SLOTS:
             QSKIP("no audio output");
         }
         playback.player.setRepeat(true);
-        playback.player.setQueue(
-            NumberedTracks({21}), "Wave", false, [](std::function<void(const QList<Core::Track>&)>) {}
+        const auto wave = std::make_shared<Tests::FakeContinuation>();
+        playback.player.setSource(
+            Core::QueueSource{.title = QStringLiteral("Wave"), .continuation = wave, .given = NumberedTracks({21})},
+            false
         );
         QSignalSpy finished(&playback.engine, &Audio::AudioEngine::trackFinished);
         playback.player.playIndex(0);
@@ -778,7 +786,9 @@ private Q_SLOTS:
         Tests::YandexSources sources(&library);
         Core::Player player(&engine, &sources.registry);
         player.setShuffle(true);
-        player.setQueue(NumberedTracks({1, 2, 3, 4, 5, 6}), "Plain", false);
+        player.setSource(
+            Core::QueueSource{.title = QStringLiteral("Plain"), .head = NumberedTracks({1, 2, 3, 4, 5, 6})}, false
+        );
         QSet<int> visited;
         for (int count = 0; count < 6; ++count) {
             QVERIFY(!visited.contains(player.currentIndex()));
@@ -795,7 +805,7 @@ private Q_SLOTS:
         QCOMPARE(changed.count(), 0);
         QCOMPARE(player.state(), Core::Player::State::Stopped);
         for (int index = 0; index < 6; ++index) {
-            QCOMPARE(player.playlist()[index].key.id, QString::number(index + 1));
+            QCOMPARE(player.entries()[index].track.key.id, QString::number(index + 1));
         }
     }
 
@@ -803,7 +813,9 @@ private Q_SLOTS:
         Audio::AudioEngine engine;
         Tests::YandexSources sources(&library);
         Core::Player player(&engine, &sources.registry);
-        player.setQueue(NumberedTracks({1, 2, 3, 4, 5}), "Plain", false);
+        player.setSource(
+            Core::QueueSource{.title = QStringLiteral("Plain"), .head = NumberedTracks({1, 2, 3, 4, 5})}, false
+        );
         player.setShuffle(true);
         player.setRepeat(true);
         QList<int> order{player.currentIndex()};
@@ -843,7 +855,9 @@ private Q_SLOTS:
         Audio::AudioEngine engine;
         Tests::YandexSources sources(&library);
         Core::Player player(&engine, &sources.registry);
-        player.setQueue(NumberedTracks({1, 2, 3, 4}), "Plain", false);
+        player.setSource(
+            Core::QueueSource{.title = QStringLiteral("Plain"), .head = NumberedTracks({1, 2, 3, 4})}, false
+        );
         player.playIndex(2);
         player.setShuffle(true);
         if (operation == "append") {
@@ -859,7 +873,7 @@ private Q_SLOTS:
             QCOMPARE(player.currentTrack()->key.id, QStringLiteral("3"));
         }
         QSet<QString> visited;
-        const int size = static_cast<int>(player.playlist().size());
+        const int size = static_cast<int>(player.entries().size());
         for (int count = 0; count < size; ++count) {
             const QString id = player.currentTrack()->key.id;
             QVERIFY(!visited.contains(id));
@@ -892,7 +906,9 @@ private Q_SLOTS:
         }
         auto& player = playback.player;
         player.setShuffleAlgorithm(static_cast<Core::ShuffleAlgorithm>(algorithm));
-        player.setQueue(NumberedTracks({31, 32, 33}), "Plain", true);
+        player.setSource(
+            Core::QueueSource{.title = QStringLiteral("Plain"), .head = NumberedTracks({31, 32, 33})}, true
+        );
         QVERIFY(QTest::qWaitFor([&] { return player.preloadedIndex() == 1; }, 5000));
         QVERIFY(player.seekTo(0.5));
         player.pause();
@@ -951,11 +967,11 @@ private Q_SLOTS:
         registry.add(YandexSource::kSourceName, &source);
         Core::Player player(&engine, &registry);
         player.setShuffle(true);
-        player.setQueue({}, "Empty", false);
+        player.setSource(Core::QueueSource{.title = QStringLiteral("Empty"), .head = {}}, false);
         player.next();
         player.previous();
         QCOMPARE(player.currentIndex(), -1);
-        player.setQueue(NumberedTracks({1}), "Single", false);
+        player.setSource(Core::QueueSource{.title = QStringLiteral("Single"), .head = NumberedTracks({1})}, false);
         player.playIndex(0);
         player.next();
         QCOMPARE(player.state(), Core::Player::State::Stopped);
@@ -979,10 +995,11 @@ private Q_SLOTS:
         for (int i = 1; i <= 12; ++i) {
             ids << i;
         }
-        int asked = 0;
-        player.setQueue(NumberedTracks(ids), "Wave", false, [&](std::function<void(const QList<Core::Track>&)>) {
-            ++asked;
-        });
+        const auto wave = std::make_shared<Tests::FakeContinuation>();
+        player.setSource(
+            Core::QueueSource{.title = QStringLiteral("Wave"), .continuation = wave, .given = NumberedTracks(ids)},
+            false
+        );
         QCOMPARE(shuffleMessages(), 1);
         QVERIFY(player.shuffle());
         QVERIFY(!player.shuffleActive());
@@ -991,13 +1008,13 @@ private Q_SLOTS:
             player.next();
             QCOMPARE(player.currentIndex(), expected);  // in order, not a random pick
         }
-        QCOMPARE(asked, 1);  // 2 tracks left at index 10
+        QCOMPARE(wave->requests().size(), 1);  // 2 tracks left at index 10
 
         player.setShuffle(false);
         player.setShuffle(true);
         QCOMPARE(shuffleMessages(), 2);
 
-        player.setQueue(NumberedTracks(ids), "Plain", false);
+        player.setSource(Core::QueueSource{.title = QStringLiteral("Plain"), .head = NumberedTracks(ids)}, false);
         QVERIFY(player.shuffle());
         QVERIFY(player.shuffleActive());
         QCOMPARE(shuffleMessages(), 2);

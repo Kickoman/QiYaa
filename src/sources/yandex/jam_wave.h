@@ -1,8 +1,8 @@
 #pragma once
 
 #include "core/jam_mode.h"
+#include "sources/yandex/wave_origins.h"
 
-#include <QHash>
 #include <QString>
 
 #include <memory>
@@ -26,14 +26,6 @@ public:
     void endSession() override;
 
 private:
-    struct Origin {
-        QString session;
-        QString station;
-        QString batch;
-    };
-
-    void addBatch(const Yandex::WaveBatch& batch);
-
     Yandex::Library* yandexLibrary;
     bool sendsFeedback;
     TRecent recentTracks;
@@ -41,7 +33,7 @@ private:
     QString station;
     int sessionSeedsVersion = -1;
     int sessionNumber = 0;
-    QHash<QString, Origin> originOfTrack;
+    WaveOrigins origins;
 };
 
 Core::TJamWaveFactory JamWaves(Yandex::Library* library);

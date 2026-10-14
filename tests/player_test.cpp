@@ -2,6 +2,7 @@
 #include "core/player.h"
 #include "core/track.h"
 #include "core/track_source.h"
+#include "support/fake_continuation.h"
 #include "support/fake_source.h"
 
 #include <QByteArray>
@@ -15,7 +16,7 @@
 #include <QStringList>
 #include <QTest>
 
-#include <functional>
+#include <memory>
 
 namespace {
 
@@ -33,19 +34,8 @@ QList<Core::Track> Tracks(int count) {
     return tracks;
 }
 
-QString EventName(Core::TrackEvent event) {
-    switch (event) {
-        case Core::TrackEvent::Started: return QStringLiteral("started");
-        case Core::TrackEvent::Finished: return QStringLiteral("finished");
-        case Core::TrackEvent::Skipped: break;
-    }
-    return QStringLiteral("skipped");
-}
-
-Core::Player::TEventCallback Recorder(QStringList& log) {
-    return [&log](Core::TrackEvent event, const Core::Track& track, double) {
-        log << EventName(event) + u':' + track.key.id;
-    };
+Core::QueueSource HeadOf(const QList<Core::Track>& tracks, const QString& title = QStringLiteral("Fake")) {
+    return Core::QueueSource{.title = title, .head = tracks};
 }
 
 struct Stack {
@@ -58,12 +48,15 @@ struct Stack {
     Stack() {
         registry.add(kFake, &source);
         engine.setVolume(0);
+        QObject::connect(&player, &Core::Player::trackEvent, [this](Core::TrackEvent event, const Core::Track& track) {
+            events << Tests::EventName(event) + u':' + track.key.id;
+        });
     }
     bool start(int tracks) {
         if (!engine.init().ok) {
             return false;
         }
-        player.setQueue(Tracks(tracks), QStringLiteral("Fake"), false, {}, Recorder(events));
+        player.setSource(HeadOf(Tracks(tracks)), false);
         return true;
     }
 };
@@ -179,36 +172,34 @@ private Q_SLOTS:
     void aLoadForAReplacedQueueIsDropped() {
         Stack stack;
         QVERIFY(stack.start(0));
-        std::function<void(const QList<Core::Track>&)> late;
-        stack.player.setQueue(Tracks(1), QStringLiteral("Vibe"), false, [&](auto done) { late = done; });
+        const auto vibe = std::make_shared<Tests::FakeContinuation>();
+        stack.player.setSource(
+            Core::QueueSource{.title = QStringLiteral("Vibe"), .continuation = vibe, .given = Tracks(1)}, false
+        );
         stack.player.playIndex(0);
-        QVERIFY(late);
-        stack.player.setQueue(Tracks(2), QStringLiteral("Other"), false);
-        late(Tracks(3));
-        QCOMPARE(stack.player.playlist().size(), 2);
-        late = {};
-        stack.player.changeSource(QStringLiteral("Vibe"), [&](auto done) { late = done; }, {}, {});
+        QCOMPARE(vibe->pending(), 1);
+        stack.player.setSource(HeadOf(Tracks(2), QStringLiteral("Other")), false);
+        vibe->answer(Tracks(3));
+        QCOMPARE(stack.player.entries().size(), 2);
+        const auto again = std::make_shared<Tests::FakeContinuation>();
+        stack.player.changeSource(QStringLiteral("Vibe"), again, {});
         stack.player.requestMore();
-        QVERIFY(late);
-        stack.player.changeSource(QStringLiteral("Fixed"), {}, {}, {});
-        late(Tracks(3));
-        QCOMPARE(stack.player.playlist().size(), 2);
+        QCOMPARE(again->pending(), 1);
+        stack.player.changeSource(QStringLiteral("Fixed"), nullptr, {});
+        again->answer(Tracks(3));
+        QCOMPARE(stack.player.entries().size(), 2);
     }
 
     void aTrackStartsUnderTheRulesOfItsStart() {  // HOST-15
         Stack stack;
         QVERIFY(stack.start(2));
         stack.player.playIndex(0);
-        QStringList jamEvents;
-        Core::QueueRules jamRules;
-        jamRules.playReports = false;
-        stack.player.changeSource(QStringLiteral("Jam"), {}, Recorder(jamEvents), jamRules);
+        stack.player.changeSource(QStringLiteral("Jam"), nullptr, Core::QueueRules{.playReports = false});
         stack.source.complete(0);
-        QCOMPARE(jamEvents, QStringList{"started:1"});
-        QVERIFY(stack.events.isEmpty());
+        QCOMPARE(stack.events, QStringList{"started:1"});
         QVERIFY(stack.source.events().isEmpty());
         stack.player.stop();
-        QCOMPARE(jamEvents, (QStringList{"started:1", "skipped:1"}));
+        QCOMPARE(stack.events, (QStringList{"started:1", "skipped:1"}));
         QVERIFY(stack.source.events().isEmpty());
     }
 
@@ -231,7 +222,10 @@ private Q_SLOTS:
         QCOMPARE(stack.player.state(), Core::Player::State::Stopped);
         QVERIFY(stack.player.currentLink().isEmpty());
         QCOMPARE(stack.player.currentBitrate(), 0);
-        stack.player.setQueue(Tracks(1), QStringLiteral("Vibe"), false, [](auto) {});
+        const auto vibe = std::make_shared<Tests::FakeContinuation>();
+        stack.player.setSource(
+            Core::QueueSource{.title = QStringLiteral("Vibe"), .continuation = vibe, .given = Tracks(1)}, false
+        );
         stack.player.playIndex(0);
         stack.source.complete(1);
         stack.player.next();
@@ -307,7 +301,7 @@ private Q_SLOTS:
 
     void withoutAnOutputDevicePlayStaysStopped() {
         Stack stack;
-        stack.player.setQueue(Tracks(2), QStringLiteral("Fake"), false, {}, Recorder(stack.events));
+        stack.player.setSource(HeadOf(Tracks(2)), false);
         QSignalSpy states(&stack.player, &Core::Player::stateChanged);
         QTRY_COMPARE(States(states), QList{Core::Player::State::Stopped});
         states.clear();
@@ -324,6 +318,36 @@ private Q_SLOTS:
         QVERIFY(stack.events.isEmpty());
         QCOMPARE(notices.size(), 1);
         QCOMPARE(notices.first().code, Core::NoticeCode::NoOutputDevice);
+    }
+
+    void aContinuationHearsOnlyTheTracksItGaveAlsoAfterTheQueueWasReplaced() {  // TRK-03 to TRK-06
+        Stack stack;
+        QVERIFY(stack.start(0));
+        QList<Core::Track> given = Tracks(2);
+        for (Core::Track& track : given) {
+            track.key.id = QStringLiteral("w") + track.key.id;
+        }
+        const auto vibe = std::make_shared<Tests::FakeContinuation>();
+        stack.player.setSource(
+            Core::
+                QueueSource{.title = QStringLiteral("Mixed"), .head = Tracks(1), .continuation = vibe, .given = given},
+            false
+        );
+        QCOMPARE(vibe->begins(), QList<bool>{true});
+        stack.player.playIndex(0);
+        stack.source.complete(0);
+        stack.player.playIndex(1);
+        stack.source.complete(1);
+        QCOMPARE(vibe->eventLog(), QStringList{"started:w1"});
+        stack.player.setSource(HeadOf(Tracks(3)), false);
+        QCOMPARE(vibe->eventLog(), (QStringList{"started:w1", "skipped:w1"}));
+        stack.player.playIndex(0);
+        stack.source.complete(2);
+        stack.player.stop();
+        QCOMPARE(vibe->eventLog().size(), 2);
+        QCOMPARE(
+            stack.events, (QStringList{"started:1", "skipped:1", "started:w1", "skipped:w1", "started:1", "skipped:1"})
+        );
     }
 
     void theSourceHearsTheEventsOfItsTracks() {

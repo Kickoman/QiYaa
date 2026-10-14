@@ -18,7 +18,9 @@ target_link_libraries(qiyaa_test_yandex PUBLIC qiyaa_test_support qiyaa_yandex)
 qiyaa_target_defaults(qiyaa_test_yandex)
 
 # A music source the tests answer by hand, for the Player's own suite and the jam's.
-add_library(qiyaa_test_core STATIC support/fake_source.cpp support/fake_source.h)
+add_library(qiyaa_test_core STATIC
+    support/fake_continuation.cpp support/fake_continuation.h
+    support/fake_source.cpp support/fake_source.h)
 target_link_libraries(qiyaa_test_core PUBLIC qiyaa_test_support qiyaa_core)
 qiyaa_target_defaults(qiyaa_test_core)
 
@@ -48,11 +50,13 @@ qiyaa_add_test(mp4_aac_test audio)
 target_link_libraries(mp4_aac_test PRIVATE qiyaa_miniaudio)
 target_compile_definitions(mp4_aac_test PRIVATE QIYAA_TEST_DATA="${CMAKE_CURRENT_SOURCE_DIR}/data")
 qiyaa_add_test(main_window_test audio core skins ui)
+target_link_libraries(main_window_test PRIVATE qiyaa_test_core)
 qiyaa_add_test(library_test audio core sources_yandex yandex)
 target_link_libraries(library_test PRIVATE qiyaa_test_core qiyaa_test_yandex)
 target_compile_definitions(library_test PRIVATE QIYAA_TEST_DATA="${CMAKE_CURRENT_SOURCE_DIR}/data")
 qiyaa_add_test(track_navigator_test core)
 qiyaa_add_test(queue_test core)
+target_link_libraries(queue_test PRIVATE qiyaa_test_core)
 qiyaa_add_test(player_test audio core)
 target_link_libraries(player_test PRIVATE qiyaa_test_core)
 target_compile_definitions(player_test PRIVATE QIYAA_TEST_DATA="${CMAKE_CURRENT_SOURCE_DIR}/data")

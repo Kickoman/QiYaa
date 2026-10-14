@@ -112,7 +112,9 @@ private Q_SLOTS:
         mpris = std::make_unique<Integrations::Mpris>(controls.get(), QStringLiteral("qiyaatest"));
         QVERIFY(mpris->isRegistered());
         QCOMPARE(mpris->serviceName(), kService);
-        player->setQueue(YandexSource::TracksOf(MakeTracks(3)), QStringLiteral("T"), false);
+        player->setSource(
+            Core::QueueSource{.title = QStringLiteral("T"), .head = YandexSource::TracksOf(MakeTracks(3))}, false
+        );
     }
 
     void rootInterfaceNamesTheAppAndRaisesIt() {
