@@ -18,6 +18,8 @@
 
 namespace Core {
 
+class Queue;
+
 // Previous goes back a track only near a track's start; later it restarts the track.
 inline constexpr double kPreviousRestartsAfterSeconds = 3.0;
 
@@ -60,6 +62,7 @@ public:
     Q_ENUM(State)
 
     Player(Audio::AudioEngine* engine, SourceRegistry* sources, QObject* parent = nullptr);
+    ~Player() override;
 
     quint64 newSourceRequest() { return ++sourceRequest; }
     bool isLatestSourceRequest(quint64 ticket) const { return ticket == sourceRequest; }
@@ -91,21 +94,21 @@ public:
     bool seekFraction(double fraction);
     void setShuffle(bool on);
     void setShuffleAlgorithm(ShuffleAlgorithm algorithm);
-    ShuffleAlgorithm shuffleAlgorithm() const { return preferredShuffleAlgorithm; }
+    ShuffleAlgorithm shuffleAlgorithm() const;
     void setRepeat(bool on);
-    bool shuffle() const { return shuffleEnabled; }  // the user's choice
+    bool shuffle() const;  // the user's choice
     // Shuffle as it applies now: never in an endless queue (a wave plays in queue order).
-    bool shuffleActive() const { return shuffleEnabled && !loadMore; }
-    bool repeat() const { return repeatEnabled; }
+    bool shuffleActive() const;
+    bool repeat() const;
     const QueueRules& rules() const { return queueRules; }
     State state() const;
     double positionSeconds() const;
     QUrl currentLink() const;
     QUrl nextLink() const;
 
-    const QList<Track>& playlist() const { return queuedTracks; }
-    const QString& queueTitle() const { return titleText; }
-    int currentIndex() const { return playingIndex; }
+    const QList<Track>& playlist() const;
+    const QString& queueTitle() const;
+    int currentIndex() const;
     const Track* currentTrack() const;
     int currentBitrate() const;
     double durationSeconds() const;
@@ -179,8 +182,6 @@ private:
     void handleFailure(FailureKind kind, const QString& text, bool undecodable = false);
     void waitForNetwork();
     void retryAfterNetwork();
-    int pickNext() const;
-    void resetNavigator();
     void maybePreload();
     void cancelPreload();
     void refreshPreload();
@@ -192,10 +193,7 @@ private:
 
     Audio::AudioEngine* audioEngine;
     SourceRegistry* trackSources;
-    QList<Track> queuedTracks;
-    std::unique_ptr<TrackNavigator> navigator = MakeTrackNavigator(std::nullopt);
-    ShuffleAlgorithm preferredShuffleAlgorithm = ShuffleAlgorithm::WithoutRepeats;
-    QString titleText;
+    std::unique_ptr<Queue> queue;
     TLoadMoreCallback loadMore;
     TEventCallback reportEvent;
     QueueRules queueRules;
@@ -207,18 +205,13 @@ private:
     int retryFirstMs = 2'000;
     int retryMaxMs = 60'000;
     bool isShutDown = false;
-    bool loadingMore = false;
     bool waitingForMore = false;
     quint64 sourceRequest = 0;
     QTimer pollTimer;
     QTimer stateTimer;
     State reportedState = State::Empty;
-    quint64 queueGeneration = 0;
     quint64 generation = 0;
     quint64 preloadGeneration = 0;
-    int playingIndex = -1;
-    bool shuffleEnabled = false;
-    bool repeatEnabled = false;
 };
 
 }  // namespace Core

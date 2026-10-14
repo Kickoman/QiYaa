@@ -131,6 +131,7 @@ qiyaa_add_module(core
     src/core/failure_policy.cpp src/core/failure_policy.h
     src/core/jam_mode.cpp       src/core/jam_mode.h
     src/core/player.cpp         src/core/player.h
+    src/core/queue.cpp          src/core/queue.h
     src/core/track.cpp          src/core/track.h
     src/core/track_navigator.cpp src/core/track_navigator.h
     src/core/track_source.cpp   src/core/track_source.h)
