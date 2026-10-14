@@ -1,5 +1,6 @@
 #include "yandex/api_client.h"
 
+#include "yandex/download.h"
 #include "yandex/track_url.h"
 
 #include <QDateTime>
@@ -17,6 +18,7 @@ namespace Yandex {
 
 namespace {
 constexpr int kTimeoutMs = 20'000;
+constexpr int kDownloadTimeoutMs = 30'000;
 
 QNetworkRequest MakeRequest(const QUrl& url, const QString& token) {
     QNetworkRequest request(url);
@@ -375,6 +377,13 @@ void ApiClient::
             }
         }
     );
+}
+
+std::unique_ptr<Download> ApiClient::download(const QUrl& url) {
+    QNetworkRequest request(url);
+    request.setAttribute(QNetworkRequest::RedirectPolicyAttribute, QNetworkRequest::NoLessSafeRedirectPolicy);
+    request.setTransferTimeout(kDownloadTimeoutMs);
+    return std::make_unique<Download>(networkManager->get(request));
 }
 
 }  // namespace Yandex

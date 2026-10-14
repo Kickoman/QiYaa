@@ -12,12 +12,15 @@
 #include <QUrlQuery>
 
 #include <functional>
+#include <memory>
 #include <utility>
 
 class QNetworkAccessManager;
 class QNetworkReply;
 
 namespace Yandex {
+
+class Download;
 
 struct Account {
     QString uid;
@@ -92,6 +95,7 @@ public:
     void tracks(const QStringList& ids, TCallback<QList<Track>> callback);
     void resolveTrackUrl(const QString& trackId, Quality quality, TUrlCallback callback);
     void reportPlayStarted(const Account& account, const QString& trackId, qint64 durationMs, const QString& playId);
+    std::unique_ptr<Download> download(const QUrl& url);
 
     int pendingPosts() const { return pendingPostCount; }
 

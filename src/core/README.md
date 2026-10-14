@@ -340,18 +340,17 @@ Tickets start at 1, so 0 never matches. `YandexSource::Catalog` takes one for ev
 
 ### Downloads
 
-- The GET goes through `Library::api()->network()`, the `QNetworkAccessManager` that `ApiClient`
-  uses. The signed link needs no auth header. Redirects use `NoLessSafeRedirectPolicy`, and
-  `setTransferTimeout(kDownloadTimeoutMs)` aborts the transfer after 30 s without data.
-- Every `readyRead` passes the bytes to `AudioEngine::appendData(stream, …)`, with the stream id
-  captured at the start. At `finished`, success appends the rest and calls `finishData(stream)`;
-  an error calls `failData(stream)`. The engine ignores data for streams it has dropped.
+- The file comes from `Library::api()->download(link)`: the request, the error page and how a
+  failure is classified are [`Yandex::Download`](../yandex/README.md#downloadh--download)'s.
+- Every `received` passes the bytes to `AudioEngine::appendData(stream, …)`, with the stream id
+  captured at the start. `finished` calls `finishData(stream)`, or `failData(stream)` on an error.
+  The engine ignores data for streams it has dropped.
 - `Player` sets no byte limit. Every byte goes to the engine, which keeps the stream in memory.
 - At most one track download is in flight. A preload's link is requested only after the current
-  track's download has finished without error. Aborted downloads are disconnected before
-  `abort()`, so they never reach the finish handler.
-- An HTTP error page (status 400 or more) is not passed to the engine. A download fails by
-  `Yandex::ClassifyReply`: a broken connection is a network failure even after its status line.
+  track's download has finished without error. A dropped download is deleted, which aborts it
+  without signals.
+- A finished download is taken out of the `Player` and deleted later, before the `Player` acts on
+  its result, so it is never deleted inside its own signal.
 
 ### Failures during playback
 

@@ -1,11 +1,7 @@
 #include "core/player.h"
 
-#include "yandex/api_client.h"
-
 #include <QCoreApplication>
-#include <QNetworkAccessManager>
-#include <QNetworkReply>
-#include <QNetworkRequest>
+#include <QPointer>
 #include <QUuid>
 
 #include <algorithm>
@@ -17,14 +13,9 @@ namespace Core {
 using Audio::AudioEngine;
 namespace {
 constexpr int kLoadMoreWhenLeft = 2;
-constexpr int kDownloadTimeoutMs = 30'000;
 
 QString ShuffleOffInWaveText() {
     return QCoreApplication::translate("Core::Player", "Shuffle does not apply to a vibe");
-}
-
-bool IsHttpError(const QNetworkReply& reply) {
-    return reply.attribute(QNetworkRequest::HttpStatusCodeAttribute).toInt() >= 400;
 }
 }  // namespace
 
@@ -61,9 +52,9 @@ Player::Player(Yandex::Library* library, Audio::AudioEngine* engine, QObject* pa
             nextIndex >= 0 ? playIndex(nextIndex) : stop();
             return;
         }
-        const Preload upcoming = *std::exchange(preload, std::nullopt);
+        Preload upcoming = *std::exchange(preload, std::nullopt);
         ++generation;
-        download = upcoming.reply;
+        download = std::move(upcoming.reply);
         currentLinkUrl = upcoming.link;
         streamId = upcoming.stream;
         playingIndex = upcoming.index;
@@ -470,9 +461,9 @@ void Player::playIndex(int index) {
     const Track track = queuedTracks[index];
 
     if (preload && preload->stream && preload->key == track.key && preload->stream == audioEngine->queuedStream()) {
-        const Preload upcoming = *std::exchange(preload, std::nullopt);
+        Preload upcoming = *std::exchange(preload, std::nullopt);
         streamId = audioEngine->playQueuedNow();
-        download = upcoming.reply;
+        download = std::move(upcoming.reply);
         currentLinkUrl = upcoming.link;
         currentDownloaded = upcoming.downloadDone;
         currentBytes = 1;  // the preload's bytes went to its own stream id
@@ -530,40 +521,34 @@ void Player::trackStarted(const Track& track, int bitrate) {
     maybePreload();
 }
 
-QNetworkReply* Player::startDownload(const QUrl& url, TStreamId stream) {
-    QNetworkRequest request(url);
-    request.setAttribute(QNetworkRequest::RedirectPolicyAttribute, QNetworkRequest::NoLessSafeRedirectPolicy);
-    request.setTransferTimeout(kDownloadTimeoutMs);
-    QNetworkReply* reply = yandexLibrary->api()->network()->get(request);
-    // The engine ignores data for streams it has dropped meanwhile. An error page is not audio.
-    connect(reply, &QNetworkReply::readyRead, this, [this, reply, stream] {
-        const QByteArray bytes = reply->readAll();
-        if (!IsHttpError(*reply)) {
-            audioEngine->appendData(stream, bytes);
-            if (stream == streamId) {
-                currentBytes += bytes.size();
-            }
+std::unique_ptr<Yandex::Download> Player::startDownload(const QUrl& url, TStreamId stream) {
+    std::unique_ptr<Yandex::Download> started = yandexLibrary->api()->download(url);
+    Yandex::Download* raw = started.get();
+    connect(raw, &Yandex::Download::received, this, [this, stream](const QByteArray& bytes) {
+        audioEngine->appendData(stream, bytes);
+        if (stream == streamId) {
+            currentBytes += bytes.size();
         }
     });
-    connect(reply, &QNetworkReply::finished, this, [this, reply, stream] {
-        reply->deleteLater();
-        Yandex::RequestError error = Yandex::ClassifyReply(*reply);
+    connect(raw, &Yandex::Download::finished, this, [this, raw, stream](const Yandex::RequestError& error) {
         if (error.isError()) {
-            error.text = reply->errorString();
             audioEngine->failData(stream);
         } else {
-            audioEngine->appendData(stream, reply->readAll());
             audioEngine->finishData(stream);
         }
-        downloadFinished(stream, error);
+        downloadFinished(raw, stream, error);
     });
-    return reply;
+    return started;
 }
 
-void Player::downloadFinished(TStreamId stream, const Yandex::RequestError& error) {
+void Player::downloadFinished(Yandex::Download* finished, TStreamId stream, const Yandex::RequestError& error) {
+    if (download.get() == finished) {
+        download.release()->deleteLater();
+    } else if (preload && preload->reply.get() == finished) {
+        preload->reply.release()->deleteLater();
+    }
     if (stream && stream == streamId) {
         if (error.isError()) {
-            download.clear();  // finished: acting on it must not abort it
             const FailureKind kind = KindOf(error);
             if (currentBytes == 0) {  // no audio arrived: act now
                 return handleFailure(kind, error.text);
@@ -703,12 +688,7 @@ void Player::setNetworkRetryDelays(int firstMs, int maxMs) {
 }
 
 void Player::abortDownload() {
-    if (QNetworkReply* reply = download) {
-        download.clear();
-        disconnect(reply, nullptr, this, nullptr);
-        reply->abort();
-        reply->deleteLater();
-    }
+    download.reset();
 }
 
 int Player::preloadedIndex() const {
@@ -724,17 +704,16 @@ void Player::maybePreload() {
     if (index < 0) {
         return;
     }
-    Preload upcoming;
-    upcoming.index = index;
-    upcoming.key = queuedTracks[index].key;
-    upcoming.generation = ++preloadGeneration;
-    preload = upcoming;
+    preload.emplace();
+    preload->index = index;
+    preload->key = queuedTracks[index].key;
+    preload->generation = ++preloadGeneration;
     QPointer<Player> self(this);
     yandexLibrary->api()->resolveTrackUrl(
-        upcoming.key.id,
+        preload->key.id,
         audioQuality,
         [self,
-         requestGeneration = upcoming.generation](const Yandex::ResolvedUrl& link, const Yandex::RequestError& error) {
+         requestGeneration = preload->generation](const Yandex::ResolvedUrl& link, const Yandex::RequestError& error) {
             if (!self || !self->preload || self->preload->generation != requestGeneration) {
                 return;
             }
@@ -756,11 +735,6 @@ void Player::cancelPreload() {
         return;
     }
     const Preload upcoming = *std::exchange(preload, std::nullopt);
-    if (QNetworkReply* reply = upcoming.reply) {
-        disconnect(reply, nullptr, this, nullptr);
-        reply->abort();
-        reply->deleteLater();
-    }
     if (upcoming.stream && upcoming.stream == audioEngine->queuedStream()) {
         audioEngine->clearQueued();
     }

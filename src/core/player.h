@@ -5,11 +5,11 @@
 #include "core/track.h"
 #include "core/track_navigator.h"
 #include "yandex/api_client.h"
+#include "yandex/download.h"
 #include "yandex/library.h"
 
 #include <QList>
 #include <QObject>
-#include <QPointer>
 #include <QString>
 #include <QTimer>
 #include <QUrl>
@@ -17,8 +17,6 @@
 #include <functional>
 #include <memory>
 #include <optional>
-
-class QNetworkReply;
 
 namespace Core {
 
@@ -129,7 +127,7 @@ private:
         quint64 generation = 0;
         TStreamId stream = 0;
         int bitrate = 0;
-        QPointer<QNetworkReply> reply;
+        std::unique_ptr<Yandex::Download> reply;
         bool downloadDone = false;
         QUrl link;
     };
@@ -141,8 +139,8 @@ private:
         int attempt = 0;
     };
 
-    QNetworkReply* startDownload(const QUrl& url, TStreamId stream);
-    void downloadFinished(TStreamId stream, const Yandex::RequestError& error);
+    std::unique_ptr<Yandex::Download> startDownload(const QUrl& url, TStreamId stream);
+    void downloadFinished(Yandex::Download* finished, TStreamId stream, const Yandex::RequestError& error);
     void handleFailure(FailureKind kind, const QString& text);
     void waitForNetwork();
     void retryAfterNetwork();
@@ -193,7 +191,7 @@ private:
     bool repeatEnabled = false;
     Yandex::Quality audioQuality = Yandex::Quality::Standard;
     quint64 generation = 0;
-    QPointer<QNetworkReply> download;
+    std::unique_ptr<Yandex::Download> download;
     TStreamId streamId = 0;
     bool currentDownloaded = false;
     std::optional<Preload> preload;

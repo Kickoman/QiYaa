@@ -1,6 +1,8 @@
+#include "support/mock_http_server.h"
 #include "support/spec_fixtures.h"
 #include "support/yandex_json.h"
 #include "yandex/api_client.h"
+#include "yandex/download.h"
 #include "yandex/file_info.h"
 #include "yandex/token.h"
 #include "yandex/track_url.h"
@@ -20,6 +22,7 @@
 #include <QTest>
 #include <QUrl>
 
+#include <memory>
 #include <optional>
 
 namespace {
@@ -27,6 +30,30 @@ namespace {
 // The "result" of a wrapped API reply in spec/fixtures/yandex.
 QJsonValue ResultOf(const QString& name) {
     return QJsonDocument::fromJson(Tests::Fixture(name)).object().value(QStringLiteral("result"));
+}
+
+struct DownloadLog {
+    QByteArray bytes;
+    QList<Yandex::RequestError> finishes;
+    bool receivedAfterFinish = false;
+};
+
+void Record(Yandex::Download& download, DownloadLog& log) {
+    QObject::connect(&download, &Yandex::Download::received, [&log](const QByteArray& bytes) {
+        log.receivedAfterFinish = log.receivedAfterFinish || !log.finishes.isEmpty();
+        log.bytes += bytes;
+    });
+    QObject::connect(&download, &Yandex::Download::finished, [&log](const Yandex::RequestError& error) {
+        log.finishes << error;
+    });
+}
+
+QByteArray AudioBytes(int size) {
+    QByteArray bytes(size, Qt::Uninitialized);
+    for (int i = 0; i < size; ++i) {
+        bytes[i] = static_cast<char>((i * 7 + i / 251) & 0xff);
+    }
+    return bytes;
 }
 
 }  // namespace
@@ -201,6 +228,80 @@ private Q_SLOTS:
             fromAlbum.coverUrl(200).toString(),
             QStringLiteral("https://avatars.yandex.net/get-music-content/1/a/200x200")
         );
+    }
+    void aDownloadDeliversTheBytesInOrderAndFinishesOnce() {
+        Tests::MockHttpServer server;
+        const QByteArray body = AudioBytes(300'000);
+        server.on("GET", "/file", [body](const Tests::MockRequest&) { return Tests::MockResponse{200, body}; });
+        QNetworkAccessManager network;
+        Yandex::ApiClient api(&network);
+        const std::unique_ptr<Yandex::Download> download = api.download(QUrl(server.baseUrl() + "/file"));
+        DownloadLog log;
+        Record(*download, log);
+        QVERIFY(QTest::qWaitFor([&] { return !log.finishes.isEmpty(); }, 5'000));
+        QTest::qWait(50);
+        QCOMPARE(log.finishes.size(), 1);
+        QVERIFY(!log.finishes.first().isError());
+        QVERIFY(log.bytes == body);
+        QVERIFY(!log.receivedAfterFinish);
+    }
+    void aDownloadCutShortIsANetworkFailure() {
+        Tests::MockHttpServer server;
+        const QByteArray body = AudioBytes(50'000);
+        server.on("GET", "/file", [body](const Tests::MockRequest&) {
+            return Tests::MockResponse{200, body, 0, 20'000};
+        });
+        QNetworkAccessManager network;
+        Yandex::ApiClient api(&network);
+        const std::unique_ptr<Yandex::Download> download = api.download(QUrl(server.baseUrl() + "/file"));
+        DownloadLog log;
+        Record(*download, log);
+        QVERIFY(QTest::qWaitFor([&] { return !log.finishes.isEmpty(); }, 5'000));
+        QCOMPARE(log.finishes.first().kind, Yandex::RequestError::Kind::Network);
+        QVERIFY(!log.finishes.first().text.isEmpty());
+        QVERIFY(log.bytes == body.left(20'000));
+    }
+    void anErrorPageIsNotAudio() {
+        Tests::MockHttpServer server;
+        server.json("GET", "/file", "{\"error\":\"not found\"}", 404);
+        QNetworkAccessManager network;
+        Yandex::ApiClient api(&network);
+        const std::unique_ptr<Yandex::Download> download = api.download(QUrl(server.baseUrl() + "/file"));
+        DownloadLog log;
+        Record(*download, log);
+        QVERIFY(QTest::qWaitFor([&] { return !log.finishes.isEmpty(); }, 5'000));
+        QCOMPARE(log.finishes.first().kind, Yandex::RequestError::Kind::Http);
+        QCOMPARE(log.finishes.first().httpStatus, 404);
+        QVERIFY(log.bytes.isEmpty());
+    }
+    void aDownloadSendsNoToken() {
+        Tests::MockHttpServer server;
+        server.on("GET", "/file", [](const Tests::MockRequest&) { return Tests::MockResponse{200, "abc"}; });
+        QNetworkAccessManager network;
+        Yandex::ApiClient api(&network);
+        api.setToken(QStringLiteral("secret"));
+        const std::unique_ptr<Yandex::Download> download = api.download(QUrl(server.baseUrl() + "/file"));
+        DownloadLog log;
+        Record(*download, log);
+        QVERIFY(QTest::qWaitFor([&] { return !log.finishes.isEmpty(); }, 5'000));
+        QVERIFY(server.last(QStringLiteral("/file")));
+        QVERIFY(!server.last(QStringLiteral("/file"))->headers.contains("authorization"));
+    }
+    void deletingADownloadAbortsItWithoutSignals() {
+        Tests::MockHttpServer server;
+        server.on("GET", "/file", [](const Tests::MockRequest&) {
+            return Tests::MockResponse{200, AudioBytes(1'000), 300};
+        });
+        QNetworkAccessManager network;
+        Yandex::ApiClient api(&network);
+        std::unique_ptr<Yandex::Download> download = api.download(QUrl(server.baseUrl() + "/file"));
+        DownloadLog log;
+        Record(*download, log);
+        QVERIFY(QTest::qWaitFor([&] { return server.last(QStringLiteral("/file")) != nullptr; }, 5'000));
+        download.reset();
+        QTest::qWait(500);
+        QVERIFY(log.finishes.isEmpty());
+        QVERIFY(log.bytes.isEmpty());
     }
 };
 

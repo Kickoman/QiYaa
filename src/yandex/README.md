@@ -4,9 +4,9 @@ Talks to the unofficial Yandex Music API (`https://api.music.yandex.net`) and to
 (`https://oauth.yandex.ru`): sends authorised JSON and form requests, parses the account, tracks,
 playlists, albums, artists, stations, waves and search results, reports plays and wave feedback,
 turns a track id into the link of its file (a signed mp3 link, or an AAC in MP4 file at the
-economy quality), runs the OAuth device-code login, and finds, normalises
-and stores the token. The endpoints are the ones Yaamp used. Every network call is asynchronous
-and answers through a callback or a signal. The module does not download or play audio, fetch
+economy quality), downloads that file as its bytes arrive, runs the OAuth device-code login, and
+finds, normalises and stores the token. The endpoints are the ones Yaamp used. Every network call
+is asynchronous and answers through a callback or a signal. The module does not play audio, fetch
 cover images or decide what plays next: that is [src/core](../core/README.md) (`Player`,
 `CoverCache`). It shows nothing on screen: the login dialog and the library menu are in
 [src/ui](../ui/README.md), and where the token file lives is decided in
@@ -15,6 +15,7 @@ cover images or decide what plays next: that is [src/core](../core/README.md) (`
 | File | Contains |
 |---|---|
 | `api_client.h/.cpp` | `ApiClient` — authorised GET/POST, the `{"result": …}` envelope, the pending-POST count; `Account`, `Track`, `ResolvedUrl`, `RequestError`, `ClassifyReply`, `TForm`; `accountStatus`, `tracks`, `resolveTrackUrl`, `reportPlayStarted` |
+| `download.h/.cpp` | `Download` — a track file's bytes as they arrive, made by `ApiClient::download` |
 | `file_info.h/.cpp` | `Quality`, `QualityKey`, `QualityFromKey`; `FileInfoRequest`, `FileInfo`, `SignFileInfo`, `FileInfoQuery`, `ParseFileInfo`, `IsUsable`, `kFileInfoClient` — `GET /get-file-info`, the economy file |
 | `library.h/.cpp` | `Library` — the logged-in account, likes and dislikes, playlists, "For you" playlists, artists, albums, stations, waves (rotor sessions, feedback, the wheel), search; `NamedReference`, `PlaylistReference`, `Station`, `WaveBatch`, `Wave`, `WaveEvent`, `SearchResult` |
 | `oauth.h/.cpp` | `DeviceLogin` — the OAuth device-code flow; `BrowserLoginUrl` for the implicit-grant fallback |
@@ -27,8 +28,8 @@ cover images or decide what plays next: that is [src/core](../core/README.md) (`
 - It deliberately links no other project module and neither `Qt6::Gui` nor `Qt6::Widgets`. It sits
   at the bottom of the module order; which modules link it is in
   [docs/architecture.md](../../docs/architecture.md#modules).
-- Inside the module: `library.h` includes `api_client.h`, `api_client.h` includes `file_info.h`,
-  and `api_client.cpp` includes `track_url.h`. `oauth` and `token` include only their own headers.
+- Inside the module: `library.h` and `download.h` include `api_client.h`, `api_client.h` includes
+  `file_info.h`, and `api_client.cpp` includes `download.h` and `track_url.h`. `oauth` and `token` include only their own headers.
 
 ```bash
 grep -rn --include='*.cpp' --include='*.h' '#include "' src/yandex/ | grep -v '"yandex/'   # must print nothing
@@ -102,6 +103,7 @@ public:
     using TUrlCallback = std::function<void(const ResolvedUrl& link, const RequestError& error)>;
     void resolveTrackUrl(const QString& trackId, Quality quality, TUrlCallback callback);
     void reportPlayStarted(const Account& account, const QString& trackId, qint64 durationMs, const QString& playId);
+    std::unique_ptr<Download> download(const QUrl& url);   // see download.h
 
     int pendingPosts() const;   // POSTs whose reply has not finished
 
@@ -164,6 +166,37 @@ Q_SIGNALS:
 - `resolveTrackUrl` can end up with a preview or a non-mp3 variant (see `PickBestVariant`).
 - At `Quality::Economy`, a 401 or 403 of `get-file-info` is not an account failure: it falls back,
   and only the standard path's own answers can reach ERR-08.
+
+## `download.h` — `Download`
+
+```cpp
+class Download : public QObject {
+public:
+    explicit Download(QNetworkReply* reply);   // takes the reply over
+    ~Download() override;                      // aborts a running reply; no signal follows
+
+Q_SIGNALS:
+    void received(const QByteArray& bytes);               // the next bytes of the file, in order
+    void finished(const Yandex::RequestError& error);     // once, after the last received
+};
+```
+
+- `ApiClient::download(url)` sends `GET url` at once through the client's network manager. It
+  sends neither `Authorization` nor `Accept-Language`: a signed link needs no token. Redirects use
+  `NoLessSafeRedirectPolicy`, and the transfer is aborted after 30 s without data
+  (`kDownloadTimeoutMs`).
+- `received` carries the body as it arrives, from the event loop. The body of an error page (status
+  400 or more) is never passed on.
+- `finished` comes once and last. Its error is `ClassifyReply`'s with Qt's error text: a connection
+  cut short is Network even after a status line and some bytes; a status of 400 or more is Http.
+- There is no byte limit: the caller keeps or passes on what it receives.
+- Tests: `aDownloadDeliversTheBytesInOrderAndFinishesOnce`, `aDownloadCutShortIsANetworkFailure`,
+  `anErrorPageIsNotAudio`, `aDownloadSendsNoToken`, `deletingADownloadAbortsItWithoutSignals`.
+
+**Traps:**
+- `QNetworkReply::abort()` emits `finished` synchronously. The destructor disconnects the reply
+  before it aborts it; otherwise a `Download` being deleted would still emit `finished`, mid-way
+  through its own destruction (`deletingADownloadAbortsItWithoutSignals` fails without it).
 
 ## `library.h` — `Library`
 
@@ -641,6 +674,7 @@ policy is in [docs/architecture.md](../../docs/architecture.md#errors)). Every f
 | `ApiClient`, `Library` calls | `callback(<empty value>, error)`; `tracksByIds` passes the tracks fetched so far; `setLiked` and `dislike` pass `false` |
 | `reportPlayStarted`, `waveFeedback` | log lines only (`qWarning`, `qInfo` for the fallback) |
 | `DeviceLogin` | the `failed(error)` signal |
+| `Download` | `finished(error)` |
 | `NormalizeToken`, `FindToken` | an empty `QString`, an empty `TokenSource` |
 | `SaveToken`, `ForgetToken` | `false`; nothing |
 | `track_url`, `file_info` functions | `std::nullopt`; `false` from `IsUsable` |
@@ -673,7 +707,7 @@ The error strings, all in English except the device-code expiry:
 
 ## Not here
 
-- Downloading the mp3 bytes, preloading the next track, the play queue, the endless-wave "more"
+- Feeding a track's bytes to the engine, preloading the next track, the play queue, the endless-wave "more"
   hook, cover images: [src/core](../core/README.md) (`Player`, `CoverCache`).
 - The token file's location, the Yaamp `token.json` paths, when a token is saved, the wait for
   `postsSettled` on quit: [src/app](../app/README.md).
@@ -682,7 +716,7 @@ The error strings, all in English except the device-code expiry:
   station being the first seed): [src/ui](../ui/README.md).
 - `Core::Track`, built from `Track` by [src/sources/yandex](../sources/yandex/README.md), and the
   MPRIS and SMTC metadata built from it: [src/integrations](../integrations/README.md).
-- Tests: `tests/yandex_test.cpp` (pure functions: signing, variant choice, tokens, track parsing)
-  and `tests/library_test.cpp` (every endpoint against `Tests::MockHttpServer` in `tests/support/`).
+- Tests: `tests/yandex_test.cpp` (pure functions: signing, variant choice, tokens, track parsing;
+  and `Download` against `Tests::MockHttpServer`) and `tests/library_test.cpp` (every endpoint against `Tests::MockHttpServer` in `tests/support/`).
   The responses they serve and what parsing must give are shared with the Android app in
   `spec/fixtures/yandex` and `spec/expected/yandex` ([tests](../../tests/README.md#spec-fixtures)).

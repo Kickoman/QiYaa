@@ -93,6 +93,7 @@ target_link_libraries(qiyaa_audio PUBLIC Qt6::Core
 
 qiyaa_add_module(yandex
     src/yandex/api_client.cpp   src/yandex/api_client.h
+    src/yandex/download.cpp     src/yandex/download.h
     src/yandex/file_info.cpp    src/yandex/file_info.h
     src/yandex/library.cpp      src/yandex/library.h
     src/yandex/oauth.cpp        src/yandex/oauth.h
