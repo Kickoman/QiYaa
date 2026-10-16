@@ -29,6 +29,10 @@ QList<QueueEntry> EntriesOf(
 bool IsPending(const QueueEntry& entry) {
     return entry.part == EntryPart::Item && entry.pending;
 }
+
+bool IsWaitingItem(const QueueEntry& entry) {
+    return IsPending(entry) && !entry.itemId.isEmpty();
+}
 }  // namespace
 
 const QueueEntry* Queue::currentEntry() const {
@@ -115,7 +119,11 @@ bool Queue::remove(QList<int> indices) {
         playingIndex = -1;
     } else if (removedCurrent) {
         playingIndex = std::min<int>(playingIndex, static_cast<int>(queued.size()) - 1);
-        markCurrent();
+        if (IsPending(queued[playingIndex])) {
+            playingIndex = -1;  // HOST-36: the next item waits until it starts
+        } else {
+            markCurrent();
+        }
     }
     if (headChanged) {
         resetNavigator();
@@ -136,10 +144,12 @@ void Queue::setItems(const QList<LayerItem>& items, std::optional<SeedHint> hint
             wanted << item;  // HOST-04: the current item never goes back into the tail
         }
     }
-    const int start = playingIndex + 1;
+    const auto firstPending = std::find_if(queued.cbegin(), queued.cend(), IsPending);
+    const int start =
+        firstPending != queued.cend() ? static_cast<int>(firstPending - queued.cbegin()) : playingIndex + 1;
     int end = start;
-    while (end < queued.size() && IsPending(queued[end])) {
-        ++end;
+    while (end < queued.size() && IsWaitingItem(queued[end])) {
+        ++end;  // HOST-12, HOST-32: items left from an earlier jam are the base's and wait behind
     }
     int prefix = 0;
     while (start + prefix < end && prefix < wanted.size() && queued[start + prefix].itemId == wanted[prefix].itemId) {
@@ -221,7 +231,25 @@ int Queue::previous() const {
     if (entry && entry->part == EntryPart::Head) {
         return indexOf(EntryPart::Head, navigator->previous(repeatEnabled));
     }
-    return std::max(0, playingIndex - 1);
+    const int row = std::max(0, playingIndex - 1);
+    if (row != playingIndex && row < queued.size() && queued[row].part == EntryPart::Head && headMark >= 0) {
+        return indexOf(EntryPart::Head, headMark);  // SHUF-02: the head's last track in play order
+    }
+    return row;
+}
+
+int Queue::stepBack() {
+    const int target = previous();
+    const QueueEntry* entry = currentEntry();
+    if (entry && entry->part == EntryPart::Continuation && target >= 0
+        && queued[target].part != EntryPart::Continuation) {
+        continuationMark = ordinalOf(playingIndex) - 1;
+    }
+    return target;
+}
+
+int Queue::firstToPlay() const {
+    return playingIndex >= 0 ? playingIndex : std::max(0, next());
 }
 
 int Queue::remaining() const {

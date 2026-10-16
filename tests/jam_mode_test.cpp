@@ -532,6 +532,36 @@ private Q_SLOTS:
         stack.player.removeRows({0});
         QCOMPARE(stack.player.state(), Core::Player::State::Stopped);
         QCOMPARE(Ids(stack.player), (QStringList{"55", "66"}));
+        QVERIFY(stack.player.entries()[0].pending);
+        QTRY_COMPARE(stack.lastPlayback().kind, Core::JamPlayback::Kind::Idle);
+        QVERIFY(stack.started.isEmpty());
+        stack.player.next();
+        QTRY_COMPARE(stack.started.size(), 1);
+        QCOMPARE(stack.started.at(0).at(0).toString(), QStringLiteral("i1"));
+    }
+
+    void itemsTheLastJamLeftStayInTheBaseOfTheNext() {  // HOST-14, HOST-32, HOST-12, HOST-36
+        Stack stack(&library);
+        noWave();
+        stack.player.setSource(HeadOf({"11", "22"}), false);
+        stack.player.playIndex(0);
+        stack.jam.start(false);
+        stack.jam.setQueue({Item("i1", "55"), Item("i2", "66")}, {}, 0);
+        stack.jam.end();
+        stack.jam.start(false);
+        stack.jam.setQueue({}, {}, 0);
+        QCOMPARE(Ids(stack.player), (QStringList{"11", "55", "66", "22"}));
+        stack.jam.setQueue({Item("i3", "77")}, {}, 0);
+        QCOMPARE(Ids(stack.player), (QStringList{"11", "77", "55", "66", "22"}));
+        stack.player.removeRows({3});
+        QVERIFY(stack.removals.isEmpty());
+        QCOMPARE(Ids(stack.player), (QStringList{"11", "77", "55", "22"}));
+        stack.player.next();
+        QTRY_COMPARE(stack.started.size(), 1);
+        stack.player.next();
+        QCOMPARE(Current(stack.player), QStringLiteral("55"));
+        QTRY_COMPARE(stack.lastPlayback().kind, Core::JamPlayback::Kind::Base);
+        QCOMPARE(stack.started.size(), 1);
     }
 };
 

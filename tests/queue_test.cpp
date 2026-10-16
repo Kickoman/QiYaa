@@ -345,6 +345,70 @@ private Q_SLOTS:
         QCOMPARE(IdAt(queue, queue.next()), QStringLiteral("a"));
     }
 
+    void removingTheCurrentTrackLeavesTheNextItemWaiting() {  // HOST-36
+        Core::Queue queue;
+        queue.replace(HeadOf(Tracks(3)));
+        queue.select(1);
+        queue.setItems(Items({"a", "b"}), Core::SeedHint{});
+        QVERIFY(queue.remove({1}));
+        QCOMPARE(Ids(queue), (QStringList{"0", "a", "b", "2"}));
+        QCOMPARE(queue.cursor(), -1);
+        QVERIFY(queue.entries()[1].pending);
+        queue.setItems(Items({"a", "b", "c"}), Core::SeedHint{});
+        QCOMPARE(Ids(queue), (QStringList{"0", "a", "b", "c", "2"}));
+        QCOMPARE(queue.firstToPlay(), 1);
+        queue.select(queue.firstToPlay());
+        QCOMPARE(PlayOrder(queue), (QList<int>{1, 2, 3, 4}));
+    }
+
+    void itemsAnEarlierLayerLeftWaitBehindTheNewOnes() {  // HOST-12, HOST-32
+        Core::Queue queue;
+        queue.replace(HeadOf(Tracks(2)));
+        queue.setItems(Items({"a", "b"}), Core::SeedHint{});
+        queue.endLayer();
+        queue.setItems({}, Core::SeedHint{});
+        QCOMPARE(Ids(queue), (QStringList{"0", "a", "b", "1"}));
+        queue.setItems(Items({"c"}), Core::SeedHint{});
+        QCOMPARE(Ids(queue), (QStringList{"0", "c", "a", "b", "1"}));
+        QCOMPARE(PlayOrder(queue), (QList<int>{0, 1, 2, 3, 4}));
+    }
+
+    void aStepBackFromTheVibeToTheHeadAndNextComesBack() {  // SHUF-02, CONT-09, CONT-11
+        for (const bool shuffle : {false, true}) {
+            Core::Queue queue;
+            queue.replace(HeadOf(Tracks(6)));
+            queue.setShuffle(shuffle);
+            queue.appendContinuation(Tracks(3, QStringLiteral("w")), std::make_shared<Tests::FakeContinuation>(), {});
+            int lastOfHead = queue.cursor();
+            while (queue.entries()[queue.next()].part == Core::EntryPart::Head) {
+                lastOfHead = queue.select(queue.next());
+            }
+            const int vibe = queue.select(queue.next());
+            QCOMPARE(IdAt(queue, vibe), QStringLiteral("w0"));
+            const int back = queue.stepBack();
+            QCOMPARE(back, lastOfHead);
+            queue.select(back);
+            QCOMPARE(queue.next(), vibe);
+            QCOMPARE(queue.remaining(), 4);
+            queue.select(vibe + 1);
+            queue.select(queue.stepBack());
+            QCOMPARE(queue.next(), vibe + 1);
+        }
+    }
+
+    void aStepBackFromTheVibeToAPlayedItemAndNextComesBack() {  // CONT-11, HOST-32
+        Core::Queue queue;
+        queue.replace(HeadOf(Tracks(1)));
+        queue.setItems(Items({"a"}), Core::SeedHint{});
+        queue.endLayer();
+        queue.appendContinuation(Tracks(2, QStringLiteral("w")), std::make_shared<Tests::FakeContinuation>(), {});
+        queue.select(1);
+        queue.select(2);
+        queue.select(queue.stepBack());
+        QCOMPARE(IdAt(queue, queue.cursor()), QStringLiteral("a"));
+        QCOMPARE(IdAt(queue, queue.next()), QStringLiteral("w0"));
+    }
+
     void aNewSourceStartsANewGeneration() {
         Core::Queue queue;
         const quint64 before = queue.generation();

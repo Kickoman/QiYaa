@@ -116,9 +116,9 @@ void Player::removeRows(QList<int> rows) {
         QStringList items;
         QList<int> others;
         for (int row : rows) {
-            const bool waiting = row >= 0 && row < queue->entries().size() && queue->entries()[row].pending;
-            if (waiting) {
-                items << queue->entries()[row].itemId;  // HOST-36: the server removes it
+            const QueueEntry* entry = row >= 0 && row < queue->entries().size() ? &queue->entries()[row] : nullptr;
+            if (entry && entry->pending && !entry->itemId.isEmpty()) {
+                items << entry->itemId;  // HOST-36: the server removes it
             } else {
                 others << row;
             }
@@ -336,7 +336,7 @@ void Player::play() {
         case AudioEngine::State::Paused: audioEngine->resume(); return;
         case AudioEngine::State::Playing: playIndex(queue->cursor()); return;  // Winamp: Play restarts the track
         case AudioEngine::State::Buffering: return;
-        case AudioEngine::State::Stopped: playIndex(std::max(0, queue->cursor())); return;
+        case AudioEngine::State::Stopped: playIndex(queue->firstToPlay()); return;
     }
 }
 
@@ -491,7 +491,7 @@ void Player::previous() {
     }
     const bool active = audioEngine->state() != AudioEngine::State::Stopped;
     const int target =
-        active && audioEngine->positionSeconds() > kPreviousRestartsAfterSeconds ? -1 : queue->previous();
+        active && audioEngine->positionSeconds() > kPreviousRestartsAfterSeconds ? -1 : queue->stepBack();
     if (target >= 0) {
         playIndex(target);
     } else if (!seekTo(0)) {

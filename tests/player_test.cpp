@@ -358,6 +358,32 @@ private Q_SLOTS:
         QCOMPARE(stack.current(), QStringLiteral("11"));
     }
 
+    void previousThenNextComesBackAtTheJoinOfTheHeadAndTheVibe_data() {
+        QTest::addColumn<bool>("shuffle");
+        QTest::newRow("in order") << false;
+        QTest::newRow("shuffled") << true;
+    }
+
+    void previousThenNextComesBackAtTheJoinOfTheHeadAndTheVibe() {  // SHUF-02, CONT-09, CONT-11
+        QFETCH(bool, shuffle);
+        HistoryStack stack;
+        QVERIFY(stack.start(4));
+        stack.player.setShuffle(shuffle);
+        stack.player.playIndex(0);
+        QString lastOfHead;
+        for (int step = 0; step < 8 && stack.current() != QStringLiteral("11"); ++step) {
+            if (stack.wave->pending() > 0) {
+                stack.wave->answer(Tracks(2, 11));
+            }
+            lastOfHead = stack.current();
+            stack.player.next();
+        }
+        stack.player.previous();
+        QCOMPARE(stack.current(), lastOfHead);
+        stack.player.next();
+        QCOMPARE(stack.current(), QStringLiteral("11"));
+    }
+
     void anEmptyReplyAtTheEndStopsAndNextAsksAgain() {  // WAVE-09
         Stack stack;
         QVERIFY(stack.start(0));
@@ -502,11 +528,10 @@ private Q_SLOTS:
             track.key.id = QStringLiteral("w") + track.key.id;
         }
         const auto vibe = std::make_shared<Tests::FakeContinuation>();
-        stack.player.setSource(
-            Core::
-                QueueSource{.title = QStringLiteral("Mixed"), .head = Tracks(1), .continuation = vibe, .given = given},
-            false
-        );
+        const Core::QueueSource mixed{
+            .title = QStringLiteral("Mixed"), .head = Tracks(1), .continuation = vibe, .given = given
+        };
+        stack.player.setSource(mixed, false);
         QCOMPARE(vibe->begins(), QList<bool>{true});
         stack.player.playIndex(0);
         stack.source.complete(0);

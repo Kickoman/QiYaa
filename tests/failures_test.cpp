@@ -93,10 +93,10 @@ private:
         }
         server.audioTracks(good, mp3);
         Stack* raw = stack.get();
-        QObject::
-            connect(&raw->player, &Core::Player::trackEvent, [raw](Core::TrackEvent event, const Core::Track& track) {
-                raw->events << QStringLiteral("%1:%2").arg(static_cast<int>(event)).arg(track.key.id);
-            });
+        const auto record = [raw](Core::TrackEvent event, const Core::Track& track) {
+            raw->events << QStringLiteral("%1:%2").arg(static_cast<int>(event)).arg(track.key.id);
+        };
+        QObject::connect(&raw->player, &Core::Player::trackEvent, record);
         stack->player.setSource(Core::QueueSource{.title = QStringLiteral("Q"), .head = tracks}, false);
         return stack;
     }

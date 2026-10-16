@@ -50,6 +50,8 @@ public:
     int select(int index);
     int next() const;
     int previous() const;
+    int stepBack();
+    int firstToPlay() const;
     int remaining() const;
 
     void setShuffle(bool on);
