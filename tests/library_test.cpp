@@ -726,11 +726,10 @@ private Q_SLOTS:
         wave->answerAtOnce(YandexSource::TracksOf(
             {Yandex::ApiClient::ParseTrack(QJsonDocument::fromJson(TrackJson(99, "more")).object())}
         ));
-        player.setSource(
-            Core::
-                QueueSource{.title = QStringLiteral("Wave"), .continuation = wave, .given = NumberedTracks({1, 2, 3})},
-            false
-        );
+        const Core::QueueSource source{
+            .title = QStringLiteral("Wave"), .continuation = wave, .given = NumberedTracks({1, 2, 3})
+        };
+        player.setSource(source, false);
         QCOMPARE(player.entries().size(), 3);
         player.playIndex(1);  // 2 tracks left -> ask for more
         QCOMPARE(wave->requests().size(), 1);

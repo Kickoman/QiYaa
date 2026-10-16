@@ -835,12 +835,12 @@ QString SourceNoticeText(const Core::SourceNotice& notice);
 ```
 
 The words for each `Core::SourceNoticeCode`
-([src/core](../core/README.md#source_noticeh-sourcenotice)), in the context `Ui::SourceNotices`: "%1: loading…" and "%1: empty" with the subject, "Search: %1…"
-with the search's text, "Error: %1" and "Search error: %1" with the detail, "Nothing found",
-"%1: %n track(s)", "Added to Liked", "Removed from Liked", "Disliked". `VibeFailed` takes
-`NoticeText`'s "Vibe error: %1", so the two say it in one translation. They are the texts the
-catalogue itself sent until #28, with "Liked: %n track(s)" now "%1: %n track(s)" (test
-`theCatalogsNoticesReadAsItsStatusesDid`).
+([src/core](../core/README.md#source_noticeh-sourcenotice)), in the context `Ui::SourceNotices`:
+"%1: loading…" and "%1: empty" with the subject, "Search: %1…" with the search's text, "Error: %1"
+and "Search error: %1" with the detail, "Nothing found", "%1: %n track(s)", "Added to Liked",
+"Removed from Liked", "Disliked". `VibeFailed` takes `NoticeText`'s "Vibe error: %1", so the two say
+it in one translation. They are the texts the catalogue itself sent until #28, with "Liked: %n
+track(s)" now "%1: %n track(s)" (test `theCatalogsNoticesReadAsItsStatusesDid`).
 
 ## Library menu — `library_menu.h/.cpp`
 

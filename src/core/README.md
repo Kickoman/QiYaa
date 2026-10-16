@@ -153,15 +153,18 @@ Q_SIGNALS:
   continuation already gave (`QueueSource::given`, a vibe's first batch) after them as
   `Continuation` entries, each with that continuation as its giver. Every way into the queue keeps
   only tracks with `Track::available == true`; indices always refer to this filtered list.
-- `currentIndex()` is a cursor. It is -1 when the queue is empty, and when it holds only waiting
-  items (a layer's items that came into an empty queue; `next()` plays the first). Otherwise it is
-  a valid index, also while nothing plays. `setSource` sets it to 0 and plays only with
+- `currentIndex()` is a cursor. It is -1 when the queue is empty, when it holds only waiting
+  items (a layer's items that came into an empty queue), and after the current entry was removed
+  with a waiting item behind it; `next()` and `play()` then play the first waiting item. Otherwise
+  it is a valid index, also while nothing plays. `setSource` sets it to 0 and plays only with
   `autoplay`. A continuation's first tracks in an empty queue move it from -1 to 0 and do not
   play.
 - `removeRows` takes rows of the queue before the removal. Duplicates and out-of-range rows are
   ignored. Removing rows before the cursor shifts the cursor down. If the current entry is
   removed, playback stops (it does not skip), and the cursor moves to the entry that followed it,
-  or to the new last one.
+  or to the new last one. A waiting item that followed it does not become current: it goes on
+  waiting, the cursor goes to -1, and the item starts, with its `Started`, only by Play or Next
+  (HOST-36).
 - `clear()` takes a new ticket and calls `setSource({}, false)`. This also drops the continuation.
 - The layer is in [The layer](#the-layer).
 
@@ -268,10 +271,15 @@ The load-more request: idle, or in flight. It is independent of both phases abov
   refuses the seek, `playIndex(cursor)`. Earlier, or while stopped: `playIndex(Queue::previous())`.
   On a head entry that is the navigator's previous head entry: in source order, at the first one
   the last with repeat and itself without; with shuffle the stored order for WithoutRepeats,
-  source order for Random. On any other entry it is the row before, or the entry itself on row 0.
+  source order for Random. On any other entry it is the row before, or the entry itself on row 0;
+  when the row before is a head entry, it is the head entry that became current last, the head's
+  last track in play order (SHUF-02). A step back from a continuation's entry to an entry of
+  another kind moves the continuation's mark back before it (`Queue::stepBack`), so Next returns
+  to it.
 - **`play()`**, by engine state: Paused resumes. Playing calls `playIndex(cursor)`, which restarts
   the track as Winamp does, with `Skipped` and then a new `Started`. Buffering does nothing.
-  Stopped calls `playIndex(cursor)`, or `playIndex(0)` when the cursor is -1.
+  Stopped calls `playIndex(cursor)`; when the cursor is -1, `playIndex(Queue::next())`, or row 0
+  when that is -1 too.
 - **`pause()`**: Paused resumes. Playing or Buffering pauses. Stopped does nothing.
 - **`stop()`**: sends `Skipped` for the open track, drops the current track whole, ends the wait
   for more, cancels the preload and stops the engine. It keeps the queue, the cursor and the
@@ -419,9 +427,10 @@ A layer lies over the queue's own source, the base, while it is on: the jam
 - `setLayerItems(items, hint)` makes the waiting items match `items` with the smallest change
   (HOST-01 to HOST-04): the longest common prefix of the waiting items and `items` stays, with its
   preload, the rest goes, and what differs comes in right behind the current entry, in front of the
-  rest of the base (HOST-12). The current item is left out even while `items` still lists it. Items
-  come in as `Item` entries that wait, available whatever their `Track::available` says. Nothing
-  starts; HOST-08 is the caller's.
+  rest of the base (HOST-12). Only items with an item id are the layer's: items an earlier layer
+  left waiting are the base's now, and the new ones come in front of them. The current item is left
+  out even while `items` still lists it. Items come in as `Item` entries that wait, available
+  whatever their `Track::available` says. Nothing starts; HOST-08 is the caller's.
 - `SeedHint` is the server's seeds and their version. While the layer is on, the vibe from history
   is asked with them (`ContinuationRequest::jamSeeds`) and replies with the version its session
   started with. When the hint has seeds (HOST-11):
@@ -437,14 +446,17 @@ A layer lies over the queue's own source, the base, while it is on: the jam
   queue. Nothing stops or starts (`autoplay` is ignored), the base begins before its head's first
   track, and its continuation gets `begin(ownContinuationFeedback)` (HOST-15).
 - `removeRows` under a layer (HOST-36) hands the waiting items' ids to `QueueLayer::removeItems`
-  (the server removes them, and the next state takes them out) and removes the other rows at once.
+  (the server removes them, and the next state takes them out) and removes the other rows at once,
+  items an earlier layer left among them.
   `clear()` is `setSource({})` under it: the current entry and the waiting items stay.
 - `setLayer(std::nullopt)` ends the layer (HOST-32, HOST-33): every item loses its item id, the
   waiting ones still play first, the entries of the vibe from history that came on the server's
-  seeds and have not played go, and the rules return to the defaults. The base's own continuation
-  and the vibe from history get `begin(true)`, so what began without feedback during the jam sends
-  `radioStarted` before the feedback of its next track. A reply in flight from the server's seeds
-  is dropped when it comes (no hint: any version is stale).
+  seeds and have not played go, and the rules return to the defaults. The waiting items do not join
+  the head, a departure from HOST-32's "join the head, in front of its rest": they play once, before
+  the head goes on, repeat does not play them again, and shuffle does not take them into its pass.
+  The base's own continuation and the vibe from history get `begin(true)`, so what began without
+  feedback during the jam sends `radioStarted` before the feedback of its next track. A reply in
+  flight from the server's seeds is dropped when it comes (no hint: any version is stale).
 
 ### Downloads
 
@@ -666,6 +678,8 @@ public:
     int select(int index);                            // the row it is on after waiting items moved
     int next() const;                                 // -1: nothing follows
     int previous() const;
+    int stepBack();                                   // previous(), and the continuation's mark moves back
+    int firstToPlay() const;                          // the cursor, or with none the first next() gives
     int remaining() const;                            // in play order; kEndlessTracks
     // shuffle, its algorithm, repeat; the load-more generation and whether a load is in flight
 };
@@ -958,8 +972,8 @@ reports through its signals. What the queue does is the `Player`'s [layer](#the-
   them to the jam's guests when the host allows it.
 - **Reports**: `itemStarted(itemId)` when a jam item's `Started` fires; `playback` after every
   track event, on the `Player`'s `stateChanged`, seeks, and every 10 s while `state()` is Playing
-  (HOST-05, HOST-06). `Idle` when nothing plays: Empty, waiting for more, or Stopped with nothing
-  next; otherwise the current track, as `Item` or `Base`.
+  (HOST-05, HOST-06). `Idle` when there is no current track or nothing plays: Empty, waiting for
+  more, or Stopped with nothing next; otherwise the current track, as `Item` or `Base`.
 - **Skip** (HOST-18, HOST-19): `skip(itemId)` is `Player::next()` only when that item is current.
 - **End** (HOST-32, HOST-33): `Player::setLayer(std::nullopt)`. The current track plays on, the
   waiting items play first as ordinary tracks, the jam vibe's tracks on the server's seeds go, and
