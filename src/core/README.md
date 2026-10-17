@@ -441,14 +441,15 @@ A layer lies over the queue's own source, the base, while it is on: the jam
     a head track and the base's own vibe's never do;
   - a hint with a new version ends the stall (CONT-07); the request goes at the next check.
 - `setSource` under a layer replaces the base only (HOST-21). The current entry stays (an item as
-  an item, anything else as `Other`), the waiting items stay behind it, and the new head and
-  continuation follow; played rows and the old base go, and the new base takes the flag of a new
-  queue. Nothing stops or starts (`autoplay` is ignored), the base begins before its head's first
-  track, and its continuation gets `begin(ownContinuationFeedback)` (HOST-15).
+  an item, anything else as `Other`), the layer's waiting items stay behind it, and the new head
+  and continuation follow; played rows and the old base go, items an earlier layer left waiting
+  among it, and the new base takes the flag of a new queue. Nothing stops or starts (`autoplay` is
+  ignored), the base begins before its head's first track, and its continuation gets
+  `begin(ownContinuationFeedback)` (HOST-15).
 - `removeRows` under a layer (HOST-36) hands the waiting items' ids to `QueueLayer::removeItems`
   (the server removes them, and the next state takes them out) and removes the other rows at once,
   items an earlier layer left among them.
-  `clear()` is `setSource({})` under it: the current entry and the waiting items stay.
+  `clear()` is `setSource({})` under it: the current entry and the layer's waiting items stay.
 - `setLayer(std::nullopt)` ends the layer (HOST-32, HOST-33): every item loses its item id, the
   waiting ones still play first, the entries of the vibe from history that came on the server's
   seeds and have not played go, and the rules return to the defaults. The waiting items do not join
@@ -666,7 +667,7 @@ public:
     const std::shared_ptr<Continuation>& continuation() const;   // the source's own
     quint64 revision() const;                         // changes with every change of the entries
     void replace(QueueSource source);                 // a new queue and generation
-    void replaceBase(QueueSource source);             // under a layer: the current entry and waiting items stay
+    void replaceBase(QueueSource source);             // under a layer: the current entry and the layer's items stay
     bool appendContinuation(const QList<Track>& tracks, const std::shared_ptr<Continuation>& giver,
                             std::optional<int> seedsVersion);   // false: none available
     bool remove(QList<int> indices);                  // true: the current entry went

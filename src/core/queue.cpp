@@ -59,7 +59,7 @@ void Queue::replaceBase(QueueSource source) {
             kept.front().part = EntryPart::Other;
         }
     }
-    std::copy_if(queued.cbegin(), queued.cend(), std::back_inserter(kept), IsPending);
+    std::copy_if(queued.cbegin(), queued.cend(), std::back_inserter(kept), IsWaitingItem);  // HOST-21, HOST-36
     playingIndex = currentEntry() ? 0 : -1;
     ownContinuation = std::move(source.continuation);
     kept << EntriesOf(source.head, EntryPart::Head, nullptr);
