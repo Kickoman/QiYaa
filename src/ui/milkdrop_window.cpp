@@ -133,6 +133,9 @@ void MilkdropWindow::selectPreset(int index, Vis::PresetTransition transition, P
         view->loadPreset(presetData, transition);
     }
     Q_EMIT presetChanged(currentPreset(), origin);
+    if (origin == PresetOrigin::User) {
+        Q_EMIT statusText(QStringLiteral("Milkdrop: ") + currentPreset());
+    }
     Q_EMIT settingsChanged();
 }
 

@@ -104,16 +104,21 @@ private Q_SLOTS:
         Ui::MilkdropWindow window(&engine, builtIn.path(), user.path(), &skin);
         QVERIFY(!window.view());
         QSignalSpy changed(&window, &Ui::MilkdropWindow::presetChanged);
+        QSignalSpy status(&window, &Ui::MilkdropWindow::statusText);
         window.setShuffle(false);
         window.selectPreset(0);
         QCOMPARE(window.currentPreset(), QStringLiteral("A-first"));
+        QCOMPARE(status.count(), 1);
+        QCOMPARE(status.last().at(0).toString(), QStringLiteral("Milkdrop: A-first"));
         window.nextPreset();
         QCOMPARE(window.currentPreset(), QStringLiteral("b-second"));
         window.previousPreset();
         QCOMPARE(window.currentPreset(), QStringLiteral("A-first"));
-        // projectM asking for the next one (time is up)...
+        QCOMPARE(status.count(), 3);
+        // projectM asking for the next one (time is up), which the marquee does not tell...
         window.onSwitchRequested(Vis::PresetTransition::Blend);
         QCOMPARE(window.currentPreset(), QStringLiteral("b-second"));
+        QCOMPARE(status.count(), 3);
         // ...is ignored while locked.
         window.setLocked(true);
         window.onSwitchRequested(Vis::PresetTransition::Blend);

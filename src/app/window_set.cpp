@@ -261,6 +261,13 @@ QList<Ui::SkinnedWindow*> WindowSet::all() const {
     return windows;
 }
 
+const WindowSet::Spec& WindowSet::spec(const Ui::SkinnedWindow* window) const {
+    const auto entry = std::find_if(entries.cbegin(), entries.cend(), [window](const Entry& candidate) {
+        return candidate.window == window;
+    });
+    return entry != entries.cend() ? entry->spec : mainSpec;
+}
+
 QImage WindowSet::snapshot() const {
     QRect bounds;
     for (Ui::SkinnedWindow* window : all()) {

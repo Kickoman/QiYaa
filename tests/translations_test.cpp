@@ -152,12 +152,12 @@ private Q_SLOTS:
         {
             App::Application application(options);
             QCOMPARE(application.language(), App::Language::Belarusian);
-            QCOMPARE(QCoreApplication::translate("App::Application", "Quit QiYaa"), QStringLiteral("Закрыць QiYaa"));
+            QCOMPARE(QCoreApplication::translate("App::MainMenu", "Quit QiYaa"), QStringLiteral("Закрыць QiYaa"));
             application.setLanguage(App::Language::Russian);
         }
         App::Application application(options);
         QCOMPARE(application.language(), App::Language::Russian);
-        QCOMPARE(QCoreApplication::translate("App::Application", "Quit QiYaa"), QStringLiteral("Закрыть QiYaa"));
+        QCOMPARE(QCoreApplication::translate("App::MainMenu", "Quit QiYaa"), QStringLiteral("Закрыть QiYaa"));
     }
 
     void anotherLanguageAppliesWhileTheAppRuns() {

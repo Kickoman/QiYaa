@@ -327,6 +327,7 @@ qiyaa_add_module(app
     src/app/account.cpp         src/app/account.h
     src/app/application.cpp     src/app/application.h
     src/app/jam_bridge.h
+    src/app/main_menu.cpp       src/app/main_menu.h
     src/app/network_watch.cpp   src/app/network_watch.h
     src/app/offline_sources.cpp src/app/offline_sources.h
     src/app/paths.cpp           src/app/paths.h

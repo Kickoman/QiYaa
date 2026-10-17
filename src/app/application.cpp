@@ -2,6 +2,7 @@
 
 #include "app/account.h"
 #include "app/jam_bridge.h"
+#include "app/main_menu.h"
 #include "app/paths.h"
 #include "app/telemetry_bridge.h"
 #include "app/window_set.h"
@@ -13,17 +14,12 @@
 #include "sources/yandex/history_wave.h"
 #include "sources/yandex/tracks.h"
 #include "ui/equalizer_window.h"
-#include "ui/gen_window.h"
 #include "ui/jam_window.h"
-#include "ui/library_menu.h"
-#include "ui/login_dialog.h"
 #include "ui/main_window.h"
 #include "ui/milkdrop_window.h"
 #include "ui/now_playing_window.h"
 #include "ui/playlist_window.h"
 #include "ui/source_notices.h"
-#include "yandex/file_info.h"
-#include "yandex/token.h"
 #ifdef QIYAA_HAVE_MPRIS
 #include "integrations/mpris.h"
 #endif
@@ -34,25 +30,12 @@
 #include "integrations/mac_media_controls.h"
 #endif
 
-#include <QAction>
-#include <QActionGroup>
 #include <QApplication>
 #include <QCoreApplication>
-#include <QDir>
-#include <QFileDialog>
 #include <QKeySequence>
-#include <QLatin1String>
-#include <QList>
-#include <QMenu>
-#include <QNetworkInformation>
-#include <QPoint>
 #include <QString>
-#include <QStringList>
 #include <QTimer>
 
-#include <cmath>
-#include <initializer_list>
-#include <optional>
 #include <utility>
 
 namespace App {
@@ -113,15 +96,6 @@ Application::Application(const Options& options, QObject* parent)
     nowPlayingWindowInstance = std::make_unique<Ui::NowPlayingWindow>(
         &corePlayer, &catalog, &trackSources, coverCache.get(), currentSkin.get()
     );
-    const std::initializer_list<QWidget*> windowsWithShortcuts{
-        mainWindowInstance.get(),
-        equalizerWindowInstance.get(),
-        playlistWindowInstance.get(),
-        nowPlayingWindowInstance.get(),
-    };
-    for (QWidget* widget : windowsWithShortcuts) {
-        installShortcuts(widget);
-    }
     windowSet = std::make_unique<WindowSet>(
         &settings,
         mainWindowInstance.get(),
@@ -133,7 +107,9 @@ Application::Application(const Options& options, QObject* parent)
          .place = WindowSet::Place::Stacked,
          .visibleByDefault = true,
          .keepsShade = true,
-         .button = WindowSet::Button::Equalizer}
+         .button = WindowSet::Button::Equalizer,
+         .menuText = QT_TRANSLATE_NOOP("App::MainMenu", "Equalizer"),
+         .key = QKeySequence(Qt::ALT | Qt::Key_G)}
     );
     windowSet->add(
         playlistWindowInstance.get(),
@@ -142,10 +118,15 @@ Application::Application(const Options& options, QObject* parent)
          .visibleByDefault = true,
          .keepsShade = true,
          .stepsByDefault = QSize(0, 4),
-         .button = WindowSet::Button::Playlist}
+         .button = WindowSet::Button::Playlist,
+         .menuText = QT_TRANSLATE_NOOP("App::MainMenu", "Playlist"),
+         .key = QKeySequence(Qt::ALT | Qt::Key_E)}
     );
     windowSet->add(
-        nowPlayingWindowInstance.get(), {.group = QStringLiteral("nowPlaying"), .stepsByDefault = QSize(0, 0)}
+        nowPlayingWindowInstance.get(),
+        {.group = QStringLiteral("nowPlaying"),
+         .stepsByDefault = QSize(0, 0),
+         .menuText = QT_TRANSLATE_NOOP("App::MainMenu", "Now playing")}
     );
     accountControl = std::make_unique<Account>(
         Account::Parts{&apiClient, &yandexLibrary, &corePlayer, &catalog, networkManager, mainWindowInstance.get()},
@@ -159,12 +140,13 @@ Application::Application(const Options& options, QObject* parent)
         milkdropWindowInstance = std::make_unique<Ui::MilkdropWindow>(
             &audioEngine, QStringLiteral(":/milkdrop"), userPresets, currentSkin.get()
         );
-        installShortcuts(milkdropWindowInstance.get());
         windowSet->add(
             milkdropWindowInstance.get(),
             {.group = QStringLiteral("milkdrop"),
              .place = WindowSet::Place::BelowRightOfMain,
-             .stepsByDefault = QSize(0, 4)}
+             .stepsByDefault = QSize(0, 4),
+             .menuText = QT_TRANSLATE_NOOP("App::MainMenu", "Milkdrop"),
+             .key = QKeySequence(Qt::CTRL | Qt::SHIFT | Qt::Key_K)}
         );
         const MilkdropSettings milkdrop = settings.milkdrop();
         milkdropWindowInstance->setShuffle(milkdrop.shuffle);
@@ -183,15 +165,13 @@ Application::Application(const Options& options, QObject* parent)
         });
         connect(
             milkdropWindowInstance.get(),
-            &Ui::MilkdropWindow::presetChanged,
-            this,
-            [this](const QString& name, Ui::MilkdropWindow::PresetOrigin origin) {
-                if (origin == Ui::MilkdropWindow::PresetOrigin::User) {
-                    mainWindowInstance->setStatusText(QStringLiteral("Milkdrop: ") + name);
-                }
-            }
+            &Ui::MilkdropWindow::statusText,
+            mainWindowInstance.get(),
+            &Ui::MainWindow::setStatusText
         );
-        connect(milkdropWindowInstance.get(), &Ui::MilkdropWindow::transportKey, this, &Application::transportKey);
+        connect(milkdropWindowInstance.get(), &Ui::MilkdropWindow::transportKey, this, [this](int key) {
+            TransportKey(&corePlayer, &audioEngine, key);
+        });
         connect(
             &audioEngine,
             &Audio::AudioEngine::stateChanged,
@@ -219,7 +199,6 @@ Application::Application(const Options& options, QObject* parent)
     jamHostSession = std::make_unique<Jam::HostSession>(&jamMode, &yandexLibrary, jamStore, std::move(jamOptions));
     connect(&networkWatch, &NetworkWatch::back, jamHostSession.get(), &Jam::HostSession::networkBack);  // HOST-26
     jamWindowInstance = std::make_unique<Ui::JamWindow>(jamHostSession.get(), &catalog, currentSkin.get());
-    installShortcuts(jamWindowInstance.get());
     windowSet->add(
         jamWindowInstance.get(),
         {.group = QStringLiteral("jamWindow"),
@@ -252,10 +231,6 @@ Application::Application(const Options& options, QObject* parent)
     connect(mainWindowInstance.get(), &Ui::MainWindow::playlistToggleRequested, this, [this] {
         windowSet->toggle(playlistWindowInstance.get());
     });
-    connect(mainWindowInstance.get(), &Ui::MainWindow::menuRequested, this, [this](QPoint pos) {
-        showMainMenu(pos, corePlayer.currentTrack());
-    });
-    connect(mainWindowInstance.get(), &Ui::MainWindow::sourcesMenuRequested, this, &Application::showSourcesMenu);
     connect(mainWindowInstance.get(), &Ui::MainWindow::closeRequested, this, &Application::quit);
 
     const Audio::EqSettings eq = settings.equalizer();
@@ -296,14 +271,6 @@ Application::Application(const Options& options, QObject* parent)
         mainWindowInstance.get(),
         &Ui::MainWindow::setBalance
     );
-
-    connect(playlistWindowInstance.get(), &Ui::PlaylistWindow::sourcesMenuRequested, this, [this](QPoint pos) {
-        showMainMenu(pos, corePlayer.currentTrack());
-    });
-    connect(playlistWindowInstance.get(), &Ui::PlaylistWindow::trackMenuRequested, this, [this](QPoint pos, int row) {
-        const auto& entries = corePlayer.entries();
-        showMainMenu(pos, row >= 0 && row < entries.size() ? &entries[row].track : nullptr);
-    });
 
     connect(windowSet.get(), &WindowSet::saveRequested, this, &Application::saveState);
     windowSet->restore();
@@ -361,6 +328,26 @@ Application::Application(const Options& options, QObject* parent)
             startOptions.telemetryUrl, networkManager, startOptions.skinOverride, startOptions.audio, audioFailed
         }
     );
+    mainMenu = std::make_unique<MainMenu>(MainMenu::Parts{
+        &corePlayer,
+        &audioEngine,
+        &yandexLibrary,
+        &catalog,
+        &trackSources,
+        &yandexSource,
+        &settings,
+        windowSet.get(),
+        accountControl.get(),
+        jamBridge.get(),
+        telemetryBridge.get(),
+        &translations,
+        mainWindowInstance.get(),
+        playlistWindowInstance.get()
+    });
+    connect(mainMenu.get(), &MainMenu::skinChosen, this, &Application::loadSkin);
+    connect(mainMenu.get(), &MainMenu::languageChosen, this, &Application::setLanguage);
+    connect(mainMenu.get(), &MainMenu::visModeChosen, this, &Application::saveState);
+    connect(mainMenu.get(), &MainMenu::quitChosen, this, &Application::quit);
 }
 
 Application::~Application() = default;
@@ -436,219 +423,6 @@ void Application::saveState() {
     });
     settings.setEqualizerAuto(equalizerWindowInstance->autoOn());
     windowSet->savePositions();
-}
-
-void Application::installShortcuts(QWidget* widget) {
-    auto add = [widget](const QKeySequence& shortcut, auto handler) {
-        auto* action = new QAction(widget);
-        action->setShortcut(shortcut);
-        QObject::connect(action, &QAction::triggered, widget, handler);
-        widget->addAction(action);
-    };
-    for (int key : {Qt::Key_Z, Qt::Key_X, Qt::Key_C, Qt::Key_V, Qt::Key_B, Qt::Key_Left, Qt::Key_Right}) {
-        add(QKeySequence(key), [this, key] { transportKey(key); });
-    }
-    add(QKeySequence(Qt::ALT | Qt::Key_G), [this] { windowSet->toggle(equalizerWindowInstance.get()); });
-    add(QKeySequence(Qt::ALT | Qt::Key_E), [this] { windowSet->toggle(playlistWindowInstance.get()); });
-    add(QKeySequence(Qt::CTRL | Qt::Key_D), [this] {
-        windowSet->setScale(std::abs(mainWindowInstance->scale() - 2.0) < 1e-6 ? 1.0 : 2.0);
-    });
-    add(QKeySequence(Qt::CTRL | Qt::Key_W), [this] { mainWindowInstance->setShaded(!mainWindowInstance->isShaded()); });
-    add(QKeySequence(Qt::CTRL | Qt::SHIFT | Qt::Key_K), [this] { windowSet->toggle(milkdropWindowInstance.get()); });
-}
-
-void Application::transportKey(int key) {
-    switch (key) {
-        case Qt::Key_Z: corePlayer.previous(); break;
-        case Qt::Key_X: corePlayer.play(); break;
-        case Qt::Key_C: corePlayer.pause(); break;
-        case Qt::Key_V: corePlayer.stop(); break;
-        case Qt::Key_B: corePlayer.next(); break;
-        case Qt::Key_Left: corePlayer.seekTo(audioEngine.positionSeconds() - 5); break;
-        case Qt::Key_Right: corePlayer.seekTo(audioEngine.positionSeconds() + 5); break;
-        default: break;
-    }
-}
-
-void Application::fillWindowActions(QMenu* menu) {
-    QAction* equalizerAction = menu->addAction(tr("Equalizer"), this, [this](bool on) {
-        windowSet->setVisible(equalizerWindowInstance.get(), on);
-    });
-    equalizerAction->setCheckable(true);
-    equalizerAction->setChecked(equalizerWindowInstance->isVisible());
-    equalizerAction->setShortcut(QKeySequence(Qt::ALT | Qt::Key_G));
-    QAction* playlistAction = menu->addAction(tr("Playlist"), this, [this](bool on) {
-        windowSet->setVisible(playlistWindowInstance.get(), on);
-    });
-    playlistAction->setCheckable(true);
-    playlistAction->setChecked(playlistWindowInstance->isVisible());
-    playlistAction->setShortcut(QKeySequence(Qt::ALT | Qt::Key_E));
-    QAction* nowPlayingAction = menu->addAction(tr("Now playing"), this, [this](bool on) {
-        windowSet->setVisible(nowPlayingWindowInstance.get(), on);
-    });
-    nowPlayingAction->setCheckable(true);
-    nowPlayingAction->setChecked(nowPlayingWindowInstance->isVisible());
-    if (milkdropWindowInstance) {
-        QAction* milkdropAction = menu->addAction(QStringLiteral("Milkdrop"), this, [this](bool on) {
-            windowSet->setVisible(milkdropWindowInstance.get(), on);
-        });
-        milkdropAction->setCheckable(true);
-        milkdropAction->setChecked(milkdropWindowInstance->isVisible());
-        milkdropAction->setShortcut(QKeySequence(Qt::CTRL | Qt::SHIFT | Qt::Key_K));
-    }
-
-    QMenu* visualizationMenu = menu->addMenu(tr("Visualization"));
-    auto* visualizationGroup = new QActionGroup(visualizationMenu);
-    const std::pair<Ui::MainWindow::VisMode, QString> modes[] = {
-        {Ui::MainWindow::VisMode::Spectrum, tr("Spectrum")},
-        {Ui::MainWindow::VisMode::Oscilloscope, tr("Oscilloscope")},
-        {Ui::MainWindow::VisMode::Off, tr("Off")}
-    };
-    for (const auto& [mode, name] : modes) {
-        QAction* action = visualizationMenu->addAction(name, this, [this, mode] {
-            mainWindowInstance->setVisMode(mode);
-            saveState();
-        });
-        action->setCheckable(true);
-        action->setChecked(mainWindowInstance->visMode() == mode);
-        visualizationGroup->addAction(action);
-    }
-
-    QMenu* shuffleMenu = menu->addMenu(tr("Shuffle"));
-    shuffleMenu->setObjectName(QStringLiteral("shuffleMenu"));
-    auto* shuffleGroup = new QActionGroup(shuffleMenu);
-    const std::pair<Core::ShuffleAlgorithm, QString> algorithms[] = {
-        {Core::ShuffleAlgorithm::Random, tr("Random track")},
-        {Core::ShuffleAlgorithm::WithoutRepeats, tr("Without repeats")}
-    };
-    for (const auto& [algorithm, name] : algorithms) {
-        QAction* action = shuffleMenu->addAction(name, this, [this, algorithm] {
-            corePlayer.setShuffleAlgorithm(algorithm);
-        });
-        action->setCheckable(true);
-        action->setChecked(corePlayer.shuffleAlgorithm() == algorithm);
-        shuffleGroup->addAction(action);
-    }
-    QAction* vibeAction = menu->addAction(tr("Continue with a vibe"), this, [this](bool on) {
-        corePlayer.setContinueWithVibe(on);  // CONT-02
-    });
-    vibeAction->setObjectName(QStringLiteral("continueWithVibe"));
-    vibeAction->setCheckable(true);
-    vibeAction->setChecked(corePlayer.continuesWithVibe());
-    vibeAction->setEnabled(!corePlayer.hasOwnContinuation());
-
-    QMenu* qualityMenu = menu->addMenu(tr("Quality"));
-    qualityMenu->setObjectName(QStringLiteral("qualityMenu"));
-    auto* qualityGroup = new QActionGroup(qualityMenu);
-    const std::pair<Yandex::Quality, QString> qualities[] = {
-        {Yandex::Quality::Standard, tr("Standard")}, {Yandex::Quality::Economy, tr("Economy: a third of the data")}
-    };
-    for (const auto& [quality, name] : qualities) {
-        QAction* action = qualityMenu->addAction(name, this, [this, quality] {
-            yandexSource.setQuality(quality);
-            settings.setQuality(quality);
-        });
-        action->setCheckable(true);
-        action->setChecked(yandexSource.quality() == quality);
-        qualityGroup->addAction(action);
-    }
-
-    QMenu* skinsMenu = menu->addMenu(tr("Skins"));
-    const QStringList builtin =
-        QDir(QStringLiteral(":/skins")).entryList({QStringLiteral("*.wsz")}, QDir::Files, QDir::Name);
-    for (const QString& name : builtin) {
-        const QString path = QStringLiteral(":/skins/") + name;
-        skinsMenu->addAction(QString(name).chopped(4), this, [this, path] { loadSkin(path); });
-    }
-    skinsMenu->addSeparator();
-    skinsMenu->addAction(tr("Load a skin…"), this, [this] {
-        const QString path = QFileDialog::getOpenFileName(
-            mainWindowInstance.get(), tr("Winamp skin"), QDir::homePath(), tr("Winamp skins (*.wsz *.zip)")
-        );
-        if (!path.isEmpty()) {
-            loadSkin(path);
-        }
-    });
-
-    QMenu* sizeMenu = menu->addMenu(tr("Size"));
-    auto* sizeGroup = new QActionGroup(sizeMenu);
-    for (double scaleFactor : {1.0, 1.25, 1.5, 1.75, 2.0, 2.5, 3.0}) {
-        QAction* action =
-            sizeMenu->addAction(QStringLiteral("%1%").arg(qRound(scaleFactor * 100)), this, [this, scaleFactor] {
-                windowSet->setScale(scaleFactor);
-            });
-        action->setCheckable(true);
-        action->setChecked(std::abs(mainWindowInstance->scale() - scaleFactor) < 1e-6);
-        sizeGroup->addAction(action);
-    }
-    sizeMenu->addSeparator();
-    QAction* doubleSizeAction = sizeMenu->addAction(tr("Double size"), this, [this] {
-        windowSet->setScale(std::abs(mainWindowInstance->scale() - 2.0) < 1e-6 ? 1.0 : 2.0);
-    });
-    doubleSizeAction->setShortcut(QKeySequence(Qt::CTRL | Qt::Key_D));
-
-    // Named in each language, and with the English word, so that a wrong pick can be undone.
-    QString languageTitle = tr("Language");
-    if (languageTitle != QLatin1String("Language")) {
-        languageTitle += QStringLiteral(" (Language)");
-    }
-    QMenu* languageMenu = menu->addMenu(languageTitle);
-    auto* languageGroup = new QActionGroup(languageMenu);
-    for (Language language : Languages()) {
-        QAction* action = languageMenu->addAction(LanguageName(language), this, [this, language] {
-            setLanguage(language);
-        });
-        action->setCheckable(true);
-        action->setChecked(language == translations.language());
-        languageGroup->addAction(action);
-    }
-
-    QAction* alwaysOnTopAction = menu->addAction(tr("Always on top"), this, [this](bool on) {
-        windowSet->setAlwaysOnTop(on);
-    });
-    alwaysOnTopAction->setCheckable(true);
-    alwaysOnTopAction->setChecked(mainWindowInstance->windowFlags().testFlag(Qt::WindowStaysOnTopHint));
-    if (telemetryBridge->available()) {
-        QAction* telemetryAction = menu->addAction(tr("Send statistics"), this, [this](bool on) {
-            telemetryBridge->setEnabled(on);
-        });
-        telemetryAction->setCheckable(true);
-        telemetryAction->setChecked(telemetryBridge->enabled());
-    }
-}
-
-void Application::showSourcesMenu(QPoint globalPosition) {
-    auto* menu = new QMenu(mainWindowInstance.get());
-    menu->setAttribute(Qt::WA_DeleteOnClose);
-    Ui::AddLibraryActions(
-        menu,
-        &yandexLibrary,
-        &catalog,
-        &trackSources,
-        corePlayer.currentTrack(),
-        mainWindowInstance.get(),
-        [this] { accountControl->login(); }
-    );
-    menu->popup(globalPosition);
-}
-
-void Application::showMainMenu(QPoint globalPosition, const Core::Track* track) {
-    auto* menu = new QMenu(mainWindowInstance.get());
-    menu->setAttribute(Qt::WA_DeleteOnClose);
-    Ui::AddLibraryActions(menu, &yandexLibrary, &catalog, &trackSources, track, mainWindowInstance.get(), [this] {
-        accountControl->login();
-    });
-    menu->addSeparator();
-    jamBridge->addMenu(menu);
-    fillWindowActions(menu);
-    menu->addSeparator();
-    if (yandexLibrary.isLoggedIn()) {
-        menu->addAction(
-            tr("Log out (%1)").arg(yandexLibrary.account().displayName), accountControl.get(), &Account::logout
-        );
-    }
-    menu->addAction(tr("Quit QiYaa"), this, &Application::quit);
-    menu->popup(globalPosition);
 }
 
 }  // namespace App

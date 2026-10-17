@@ -83,6 +83,7 @@ public:
 Q_SIGNALS:
     void failed(Vis::MilkdropFailure failure);
     void presetChanged(const QString& name, Ui::MilkdropWindow::PresetOrigin origin);
+    void statusText(const QString& text);
     void settingsChanged();
     void transportKey(int key);
 
