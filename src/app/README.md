@@ -1,18 +1,27 @@
 # `src/app` — composition root and the `qiyaa` entry point
 
 `src/app` assembles the running player. `App::Application` creates and owns every long-lived
-object (the audio engine, the Yandex API client and library, the player, the jam mode and, in a
-jam build, the jam's host session, the cover cache, the media controls and the windows: main,
-equalizer, playlist, now-playing and, in a Milkdrop build, Milkdrop), connects their signals, places and re-stacks the windows,
-builds the context menus and keyboard shortcuts, keeps `settings.ini`, finds and saves the Yandex
-token, swaps skins and shuts down in order. `paths.*` says where QiYaa's own files and the old
-Yaamp's files live. `offline_sources.*` holds what `--play-file` and `--demo` play without
-Yandex. `main.cpp` belongs to the `qiyaa` executable, not to the library: it picks the
-Qt platform, parses the command line and runs the application. The folder only wires things
-together. Drawing, dragging, snapping, shading and resizing a window are in
-[src/ui](../ui/README.md); the queue, playback and wave reports in [src/core](../core/README.md);
-HTTP, OAuth and the token file format in [src/yandex](../yandex/README.md); `.wsz` parsing in
-[src/skins](../skins/README.md); MPRIS, SMTC and macOS MediaPlayer in [src/integrations](../integrations/README.md).
+object (the audio engine, the Yandex API client and library, the player, the jam mode and, in a jam
+build, the jam's host session, the cover cache, the media controls, the windows: main, equalizer,
+playlist, now-playing and, in a Milkdrop build, Milkdrop, and the controllers below), passes them
+their dependencies and connects them; it decides nothing itself. The decisions are the
+controllers':
+
+- `App::Settings` keeps `settings.ini`: every key and its default, once;
+- `App::WindowSet` places, shows, minimises and scales the windows, one `Spec` each;
+- `App::MainMenu` builds the context menus and the keyboard shortcuts;
+- `App::Account` finds and saves the Yandex token, logs in and out;
+- `App::JamBridge` gives the jam its words and questions (in a jam build);
+- `App::TelemetryBridge` is all of the telemetry (in a telemetry build);
+- `App::NetworkWatch` tells the player and the jam whether the network is there.
+
+`paths.*` says where QiYaa's own files and the old Yaamp's files live. `offline_sources.*` holds
+what `--play-file` and `--demo` play without Yandex. `main.cpp` belongs to the `qiyaa` executable,
+not to the library: it picks the Qt platform, parses the command line and runs the application.
+Drawing, dragging, snapping, shading and resizing a window are in [src/ui](../ui/README.md); the
+queue, playback and wave reports in [src/core](../core/README.md); HTTP, OAuth and the token file
+format in [src/yandex](../yandex/README.md); `.wsz` parsing in [src/skins](../skins/README.md);
+MPRIS, SMTC and macOS MediaPlayer in [src/integrations](../integrations/README.md).
 
 | File | Contains |
 |---|---|
@@ -62,7 +71,8 @@ and `resources/icons/qiyaa.icns` on macOS.
 `app` deliberately does not link the vendored `qiyaa_miniaudio`, `qiyaa_miniz` or projectM (it
 reaches them only through `audio`, `skins` and `vis`), nor Qt D-Bus or WinRT (only through
 `integrations`). Nothing links `qiyaa_app` except the executable and, among the tests,
-`windows_test` and `jam_e2e_test`.
+`windows_test`, `settings_test`, `account_test`, `translations_test`, `telemetry_test` and, in a jam
+build, `jam_window_test`, `jam_bridge_test` and `jam_e2e_test`.
 
 `app` is the top of the one-way order `audio`, `yandex`, `skins` → `vis`, `core` → `ui`,
 `integrations` → `app` → `qiyaa`:
@@ -73,6 +83,8 @@ grep -rln --include='*.h' --include='*.cpp' 'QSettings' src/ | grep -v '^src/app
 grep -rnw --include='*.h' --include='*.cpp' 'throw' src/app/                               # must print nothing: app only catches
 grep -rn --include='*.h' --include='*.cpp' 'QIYAA_HAVE_TELEMETRY' src/                      # must print nothing: CMake picks telemetry_bridge.cpp or telemetry_off.cpp
 grep -rln --include='*.h' --include='*.cpp' 'Telemetry::' src/app/ | grep -v '^src/app/telemetry_'   # must print nothing: telemetry lives in its bridge
+grep -rnE --include='*.cpp' '"[a-z][A-Za-z]*/[a-z][A-Za-z]*"' src/app/ | grep -v '^src/app/settings\.cpp:'   # must print nothing: settings keys are written once, in App::Settings
+grep -nE '#include (<(QAction|QActionGroup|QMenu|QMessageBox|QNetworkInformation|QFileDialog|QSettings)>|"(ui/login_dialog|ui/jam_server_dialog|ui/library_menu|yandex/token)\.h")' src/app/application.cpp   # must print nothing: Application builds no menu and asks nothing
 ```
 
 ## `application.h/.cpp` — `App::Application`
@@ -139,17 +151,18 @@ the constructor, before any window), `Player`, `YandexSource::Catalog` and `JamM
 own `QNetworkAccessManager` unless `Options::network` lends one; the `Jam::HostSession`,
 `CoverCache`, `MediaControls`, the `Mpris`, `MacMediaControls` or `Smtc` object (held as
 `std::unique_ptr<QObject>`), the windows (five, and the jam window in a jam build) and the
-`WindowSet` through `std::unique_ptr`. The accessors return non-owning pointers, valid until the
-`Application` is destroyed.
+controllers (`WindowSet`, `Account`, `JamBridge`, `TelemetryBridge`, `MainMenu`) through
+`std::unique_ptr`; `NetworkWatch` is a member. The accessors return non-owning pointers, valid until
+the `Application` is destroyed.
 
 Member order is load-bearing. Members are constructed in declaration order, and the initialiser list
 relies on it: the settings file after the temporary directory, `ApiClient` after the network
 manager, the Yandex source after the library, `Player` after the engine and the registry, `JamMode`
 after the player. The host session is declared after `JamMode` and destroyed before it. The windows
-are declared last, and the `WindowSet` after them, so the set goes first, then the windows, while
-the player, engine and skins they point at still exist. The `Mpris`/`Smtc`/`MacMediaControls` object
-dies before the `MediaControls` it wraps, and `App::Settings` before the temporary directory that
-may hold its file.
+are declared after everything they point at, and the controllers after the windows, so the
+controllers go first, then the windows, while the player, engine and skins they point at still
+exist. The `Mpris`/`Smtc`/`MacMediaControls` object dies before the `MediaControls` it wraps, and
+`App::Settings` before the temporary directory that may hold its file.
 
 **Construction**, in this order:
 
@@ -425,8 +438,8 @@ window; the bridge only connects them. A build without the jam compiles `jam_off
   which asks "End the jam? The guests will see that it is over." in a modal `QMessageBox` and then
   calls `HostSession::end()`; "Server settings…".
 - **"Server settings…"** (`showServerDialog()`, also the jam window's `serverSettingsRequested`):
-  `Ui::JamServerDialog`, modal, which writes `jam/server`, `jam/waveFeedback` and `jam/shareAudio` on
-  Save and tells the jam window the server's host (and a port that is not the default one).
+  `Ui::JamServerDialog`, modal, which writes `jam/server`, `jam/waveFeedback` and `jam/shareAudio`
+  on Save and tells the jam window the server's host (and a port that is not the default one).
 
 The refusals of the jam server, by reason: `server-full` "The jam server is full, try later",
 `rate-limited` "Too many requests, wait a little", `update-required` "Update QiYaa to work with
@@ -813,9 +826,9 @@ place.
   failure.
 - On Windows QiYaa's folder is under Local (`%LOCALAPPDATA%`, Qt's choice), while Yaamp's is under
   Roaming (`%APPDATA%`); on macOS it is `Preferences`, not `Application Support`.
-- The "imported" test in `start()` is a string-prefix test against `ConfigDirectory()`. If `TokenFile()`
-  ever moves out of `ConfigDirectory()`, QiYaa's own token counts as imported and is saved again at every
-  start.
+- The "imported" test in `Account::start()` is a string-prefix test against `ConfigDirectory()`. If
+  `TokenFile()` ever moves out of `ConfigDirectory()`, QiYaa's own token counts as imported and is
+  saved again at every start.
 - On case-insensitive file systems (Windows, macOS by default) `Yaamp` and `yaamp` are the same
   folder, so the same `token.json` may be read twice; `FindToken` stops at the first usable one.
 
@@ -899,15 +912,15 @@ snapped together) needs that. So:
 On native Wayland `SkinnedWindow::CanPositionWindows()` is false and window positions are not
 saved.
 
-**Screenshot.** Without `--play-file`: one `QApplication::processEvents()`, then `windows()->snapshot()` saved
-to `<png>` (format from the extension, by `QImage::save`); `Run` returns `kSuccess`, or `kFailure`
-when saving fails. The event loop never runs. There is no audio device, no network, no media
-integration, and the settings are fresh defaults in a temporary directory deleted at exit, so the
-image depends only on the options (`--skin`, `--scale`, `--demo`, `--text`), the build and the
-platform. With `--play-file`, the file plays and the snapshot is taken 1500 ms later from the event
-loop, then `QApplication::exit(kSuccess or kFailure)`, so the visualizer is moving in the image.
-CI runs `QiYaa --screenshot <png> --offline` on the offscreen platform as a start-up check of every
-build and package.
+**Screenshot.** Without `--play-file`: one `QApplication::processEvents()`, then
+`windows()->snapshot()` saved to `<png>` (format from the extension, by `QImage::save`); `Run`
+returns `kSuccess`, or `kFailure` when saving fails. The event loop never runs. There is no audio
+device, no network, no media integration, and the settings are fresh defaults in a temporary
+directory deleted at exit, so the image depends only on the options (`--skin`, `--scale`, `--demo`,
+`--text`), the build and the platform. With `--play-file`, the file plays and the snapshot is taken
+1500 ms later from the event loop, then `QApplication::exit(kSuccess or kFailure)`, so the
+visualizer is moving in the image. CI runs `QiYaa --screenshot <png> --offline` on the offscreen
+platform as a start-up check of every build and package.
 
 **Exit codes:**
 
