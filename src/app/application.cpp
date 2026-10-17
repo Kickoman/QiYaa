@@ -40,10 +40,6 @@
 
 namespace App {
 
-using Audio::EqSettings;
-
-namespace { }  // namespace
-
 Application::Application(const Options& options, QObject* parent)
     : QObject(parent)
     , startOptions(options)
