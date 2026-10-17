@@ -1,5 +1,6 @@
 #pragma once
 
+#include "app/settings.h"
 #include "app/translations.h"
 #include "audio/audio_engine.h"
 #include "core/jam_mode.h"
@@ -16,7 +17,6 @@
 #include <QNetworkAccessManager>
 #include <QObject>
 #include <QPointer>
-#include <QSettings>
 #include <QTemporaryDir>
 #include <QUrl>
 
@@ -140,7 +140,7 @@ private:
 
     Options startOptions;
     std::unique_ptr<QTemporaryDir> temporaryDirectory;
-    QSettings settings;
+    Settings settings;
     Translations translations;
     Skins::Skin baseSkin;
     std::unique_ptr<Skins::Skin> currentSkin;

@@ -43,7 +43,6 @@
 #include <QDialog>
 #include <QDir>
 #include <QFileDialog>
-#include <QFileInfo>
 #include <QGuiApplication>
 #include <QHash>
 #include <QImage>
@@ -76,26 +75,6 @@ namespace App {
 using Audio::EqSettings;
 
 namespace {
-
-QString SettingsPath(const Application::Options& options, QTemporaryDir* temporaryDirectory) {
-    if (temporaryDirectory) {
-        return temporaryDirectory->filePath(QStringLiteral("settings.ini"));
-    }
-    return options.settingsFile.isEmpty()
-        ? App::ConfigDirectory() + QStringLiteral("/settings.ini")
-        : options.settingsFile;
-}
-
-Audio::EqSettings ReadEq(const QSettings& settings) {
-    Audio::EqSettings eq;
-    eq.enabled = settings.value(QStringLiteral("equalizer/enabled"), true).toBool();
-    eq.preampDb = settings.value(QStringLiteral("equalizer/preamp"), 0.0).toDouble();
-    const QStringList bands = settings.value(QStringLiteral("equalizer/bands")).toStringList();
-    for (int i = 0; i < Audio::kEqBands && i < bands.size(); ++i) {
-        eq.bandsDb[i] = bands[i].toDouble();
-    }
-    return eq;
-}
 
 // The names telemetry gives (spec/telemetry): codes, never a path or a text.
 QString SkinName(const QString& path) {
@@ -167,10 +146,6 @@ QString JamRefusalText(const QString& reason) {
     );
 }
 
-QString JamServer(const QSettings& settings) {
-    return settings.value(QStringLiteral("jam/server"), QStringLiteral(QIYAA_JAM_URL)).toString().trimmed();
-}
-
 // What the jam window shows of the server: its host, and a port that is not the default one.
 QString JamServerName(const QString& server) {
     const QUrl url(server);
@@ -190,23 +165,13 @@ QString JamEndText(Jam::HostEnd why) {
 }
 #endif
 
-void WriteEq(QSettings& settings, const Audio::EqSettings& eq) {
-    settings.setValue(QStringLiteral("equalizer/enabled"), eq.enabled);
-    settings.setValue(QStringLiteral("equalizer/preamp"), eq.preampDb);
-    QStringList bands;
-    for (double bandDb : eq.bandsDb) {
-        bands << QString::number(bandDb, 'f', 1);
-    }
-    settings.setValue(QStringLiteral("equalizer/bands"), bands);
-}
-
 }  // namespace
 
 Application::Application(const Options& options, QObject* parent)
     : QObject(parent)
     , startOptions(options)
     , temporaryDirectory(options.readOnlySettings ? std::make_unique<QTemporaryDir>() : nullptr)
-    , settings(SettingsPath(options, temporaryDirectory.get()), QSettings::IniFormat)
+    , settings(SettingsFile(options.settingsFile, temporaryDirectory.get()))
     , baseSkin(Skins::Skin::BuiltinBase())
     , currentSkin(std::make_unique<Skins::Skin>(baseSkin))
     , ownNetworkManager(options.network ? nullptr : std::make_unique<QNetworkAccessManager>())
@@ -218,27 +183,15 @@ Application::Application(const Options& options, QObject* parent)
     , catalog(&corePlayer, &yandexLibrary)
     , jamMode(&corePlayer) {
     trackSources.add(YandexSource::kSourceName, &yandexSource);
-    firstRun = settings.allKeys().isEmpty();
+    firstRun = settings.wasEmpty();
     // Before any window: they take their texts from the translation.
-    const std::optional<Language> storedLanguage =
-        LanguageFromCode(settings.value(QStringLiteral("language")).toString());
-    translations.apply(options.language.value_or(storedLanguage.value_or(kDefaultLanguage)));
-    const bool randomShuffle =
-        settings.value(QStringLiteral("shuffle/algorithm")).toString() == QLatin1String("random");
-    corePlayer.setShuffleAlgorithm(
-        randomShuffle ? Core::ShuffleAlgorithm::Random : Core::ShuffleAlgorithm::WithoutRepeats
-    );
-    const QString storedQuality = settings.value(QStringLiteral("playback/quality")).toString();
-    yandexSource.setQuality(Yandex::QualityFromKey(storedQuality).value_or(Yandex::Quality::Standard));
-    corePlayer.setContinueWithVibeByDefault(settings.value(QStringLiteral("playback/continueWithVibe"), true).toBool());
+    translations.apply(options.language.value_or(settings.language().value_or(kDefaultLanguage)));
+    corePlayer.setShuffleAlgorithm(settings.shuffleAlgorithm());
+    yandexSource.setQuality(settings.quality());
+    corePlayer.setContinueWithVibeByDefault(settings.continueWithVibe());
     corePlayer.setHistoryWaveFactory(YandexSource::HistoryWaves(&yandexLibrary));
     connect(&corePlayer, &Core::Player::modesChanged, this, [this] {
-        settings.setValue(
-            QStringLiteral("shuffle/algorithm"),
-            corePlayer.shuffleAlgorithm() == Core::ShuffleAlgorithm::Random
-                ? QStringLiteral("random")
-                : QStringLiteral("without-repeats")
-        );
+        settings.setShuffleAlgorithm(corePlayer.shuffleAlgorithm());
     });
     if (startOptions.audio) {
         if (const Audio::AudioEngine::InitResult initResult = audioEngine.init(); !initResult.ok) {
@@ -249,8 +202,7 @@ Application::Application(const Options& options, QObject* parent)
         }
     }
 
-    const QString skinPath =
-        options.skinOverride.isEmpty() ? settings.value(QStringLiteral("skin")).toString() : options.skinOverride;
+    const QString skinPath = options.skinOverride.isEmpty() ? settings.skin() : options.skinOverride;
     if (!skinPath.isEmpty()) {
         try {
             currentSkin = std::make_unique<Skins::Skin>(Skins::Skin::LoadFile(skinPath, &baseSkin));
@@ -280,12 +232,12 @@ Application::Application(const Options& options, QObject* parent)
     equalizerWindowInstance->setSecondary();
     playlistWindowInstance->setSecondary();
     nowPlayingWindowInstance->setSecondary();
-    nowPlayingWindowInstance->setSizeSteps(settings.value(QStringLiteral("nowPlaying/steps"), QSize(0, 0)).toSize());
+    nowPlayingWindowInstance->setSizeSteps(settings.window(QStringLiteral("nowPlaying"), false, QSize(0, 0)).steps);
     connect(nowPlayingWindowInstance.get(), &Ui::NowPlayingWindow::closeRequested, this, [this] {
         setNowPlayingVisible(false);
     });
     connect(nowPlayingWindowInstance.get(), &Ui::GenWindow::sizeStepsChanged, this, [this](QSize steps) {
-        settings.setValue(QStringLiteral("nowPlaying/steps"), steps);
+        settings.setWindowSteps(QStringLiteral("nowPlaying"), steps);
     });
 #if defined(QIYAA_HAVE_MILKDROP)
     {
@@ -296,24 +248,27 @@ Application::Application(const Options& options, QObject* parent)
         );
         installShortcuts(milkdropWindowInstance.get());
         milkdropWindowInstance->setSecondary();
-        milkdropWindowInstance->setSizeSteps(settings.value(QStringLiteral("milkdrop/steps"), QSize(0, 4)).toSize());
-        milkdropWindowInstance->setShuffle(settings.value(QStringLiteral("milkdrop/shuffle"), true).toBool());
-        milkdropWindowInstance->setLocked(settings.value(QStringLiteral("milkdrop/locked"), false).toBool());
-        milkdropWindowInstance->setPresetSeconds(settings.value(QStringLiteral("milkdrop/seconds"), 30).toInt());
-        milkdropWindowInstance->setBlackPresets(settings.value(QStringLiteral("milkdrop/black")).toStringList());
-        milkdropWindowInstance->selectPreset(settings.value(QStringLiteral("milkdrop/preset")).toString());
+        milkdropWindowInstance->setSizeSteps(settings.window(QStringLiteral("milkdrop"), false, QSize(0, 4)).steps);
+        const MilkdropSettings milkdrop = settings.milkdrop();
+        milkdropWindowInstance->setShuffle(milkdrop.shuffle);
+        milkdropWindowInstance->setLocked(milkdrop.locked);
+        milkdropWindowInstance->setPresetSeconds(milkdrop.seconds);
+        milkdropWindowInstance->setBlackPresets(milkdrop.black);
+        milkdropWindowInstance->selectPreset(milkdrop.preset);
         connect(milkdropWindowInstance.get(), &Ui::MilkdropWindow::closeRequested, this, [this] {
             setMilkdropVisible(false);
         });
         connect(milkdropWindowInstance.get(), &Ui::GenWindow::sizeStepsChanged, this, [this](QSize steps) {
-            settings.setValue(QStringLiteral("milkdrop/steps"), steps);
+            settings.setWindowSteps(QStringLiteral("milkdrop"), steps);
         });
         connect(milkdropWindowInstance.get(), &Ui::MilkdropWindow::settingsChanged, this, [this] {
-            settings.setValue(QStringLiteral("milkdrop/shuffle"), milkdropWindowInstance->shuffle());
-            settings.setValue(QStringLiteral("milkdrop/locked"), milkdropWindowInstance->locked());
-            settings.setValue(QStringLiteral("milkdrop/seconds"), milkdropWindowInstance->presetSeconds());
-            settings.setValue(QStringLiteral("milkdrop/preset"), milkdropWindowInstance->currentPreset());
-            settings.setValue(QStringLiteral("milkdrop/black"), milkdropWindowInstance->blackPresets());
+            settings.setMilkdrop(MilkdropSettings{
+                milkdropWindowInstance->shuffle(),
+                milkdropWindowInstance->locked(),
+                milkdropWindowInstance->presetSeconds(),
+                milkdropWindowInstance->currentPreset(),
+                milkdropWindowInstance->blackPresets()
+            });
         });
         connect(
             milkdropWindowInstance.get(),
@@ -343,12 +298,11 @@ Application::Application(const Options& options, QObject* parent)
     // Before the loops over windows() below, which take in the jam window.
     setUpJam();
 
-    mainWindowInstance->setVolume(settings.value(QStringLiteral("volume"), 75).toInt());
-    mainWindowInstance->setBalance(settings.value(QStringLiteral("balance"), 0).toInt());
-    mainWindowInstance->setVisMode(
-        static_cast<Ui::MainWindow::VisMode>(std::clamp(settings.value(QStringLiteral("vis/mode"), 0).toInt(), 0, 2))
-    );
-    mainWindowInstance->setShowsRemainingTime(settings.value(QStringLiteral("time/remaining"), false).toBool());
+    const MainWindowState mainState = settings.mainWindow();
+    mainWindowInstance->setVolume(mainState.volume);
+    mainWindowInstance->setBalance(mainState.balance);
+    mainWindowInstance->setVisMode(static_cast<Ui::MainWindow::VisMode>(mainState.visMode));
+    mainWindowInstance->setShowsRemainingTime(mainState.remainingTime);
     connect(mainWindowInstance.get(), &Ui::MainWindow::eqToggleRequested, this, [this] {
         setEqualizerVisible(!equalizerWindowInstance->isVisible());
     });
@@ -372,28 +326,28 @@ Application::Application(const Options& options, QObject* parent)
                 jamWindowInstance->hide();
             }
         } else {
-            if (settings.value(QStringLiteral("equalizer/visible"), true).toBool()) {
+            if (settings.window(QStringLiteral("equalizer"), true).visible) {
                 equalizerWindowInstance->show();
             }
-            if (settings.value(QStringLiteral("playlist/visible"), true).toBool()) {
+            if (settings.window(QStringLiteral("playlist"), true).visible) {
                 playlistWindowInstance->show();
             }
-            if (settings.value(QStringLiteral("nowPlaying/visible"), false).toBool()) {
+            if (settings.window(QStringLiteral("nowPlaying"), false).visible) {
                 nowPlayingWindowInstance->show();
             }
-            if (milkdropWindowInstance && settings.value(QStringLiteral("milkdrop/visible"), false).toBool()) {
+            if (milkdropWindowInstance && settings.window(QStringLiteral("milkdrop"), false).visible) {
                 milkdropWindowInstance->show();
             }
-            if (jamWindowInstance && settings.value(QStringLiteral("jamWindow/visible"), false).toBool()) {
+            if (jamWindowInstance && settings.window(QStringLiteral("jamWindow"), false).visible) {
                 jamWindowInstance->show();
             }
         }
     });
     connect(mainWindowInstance.get(), &Ui::MainWindow::activated, this, &Application::raiseWindows);
 
-    const Audio::EqSettings eq = ReadEq(settings);
+    const Audio::EqSettings eq = settings.equalizer();
     equalizerWindowInstance->setSettings(eq);
-    equalizerWindowInstance->setAutoOn(settings.value(QStringLiteral("equalizer/auto"), false).toBool());
+    equalizerWindowInstance->setAutoOn(settings.equalizerAuto());
     audioEngine.setEqualizer(eq);
     connect(
         equalizerWindowInstance.get(),
@@ -401,7 +355,7 @@ Application::Application(const Options& options, QObject* parent)
         this,
         [this, wasEnabled = eq.enabled](const Audio::EqSettings& equalizerSettings) mutable {
             audioEngine.setEqualizer(equalizerSettings);
-            WriteEq(settings, equalizerSettings);
+            settings.setEqualizer(equalizerSettings);
             if (equalizerSettings.enabled != wasEnabled) {
                 wasEnabled = equalizerSettings.enabled;
                 telemetryFeature(
@@ -439,7 +393,7 @@ Application::Application(const Options& options, QObject* parent)
         setEqualizerVisible(false);
     });
 
-    playlistWindowInstance->setSizeSteps(settings.value(QStringLiteral("playlist/steps"), QSize(0, 4)).toSize());
+    playlistWindowInstance->setSizeSteps(settings.window(QStringLiteral("playlist"), true, QSize(0, 4)).steps);
     connect(playlistWindowInstance.get(), &Ui::PlaylistWindow::closeRequested, this, [this] {
         setPlaylistVisible(false);
     });
@@ -451,7 +405,7 @@ Application::Application(const Options& options, QObject* parent)
         showMainMenu(pos, row >= 0 && row < entries.size() ? &entries[row].track : nullptr);
     });
     connect(playlistWindowInstance.get(), &Ui::PlaylistWindow::sizeStepsChanged, this, [this](QSize steps) {
-        settings.setValue(QStringLiteral("playlist/steps"), steps);
+        settings.setWindowSteps(QStringLiteral("playlist"), steps);
     });
 
     for (Ui::SkinnedWindow* window : windows()) {
@@ -459,23 +413,23 @@ Application::Application(const Options& options, QObject* parent)
     }
 
     const std::pair<Ui::SkinnedWindow*, QString> shades[] = {
-        {mainWindowInstance.get(), QStringLiteral("mainWindow/shaded")},
-        {equalizerWindowInstance.get(), QStringLiteral("equalizer/shaded")},
-        {playlistWindowInstance.get(), QStringLiteral("playlist/shaded")}
+        {mainWindowInstance.get(), QStringLiteral("mainWindow")},
+        {equalizerWindowInstance.get(), QStringLiteral("equalizer")},
+        {playlistWindowInstance.get(), QStringLiteral("playlist")}
     };
-    for (const auto& [window, key] : shades) {
-        window->setShaded(settings.value(key, false).toBool());
-        connect(window, &Ui::SkinnedWindow::shadeChanged, this, [this, key](bool on) {
-            settings.setValue(key, on);
+    for (const auto& [window, group] : shades) {
+        window->setShaded(settings.window(group, true).shaded);
+        connect(window, &Ui::SkinnedWindow::shadeChanged, this, [this, group](bool on) {
+            settings.setWindowShaded(group, on);
             saveState();
         });
     }
 
-    const double scale = settings.value(QStringLiteral("scale"), 1.0).toDouble();
+    const double scale = settings.scale();
     for (Ui::SkinnedWindow* window : windows()) {
         window->setScale(scale);
     }
-    if (settings.value(QStringLiteral("alwaysOnTop"), false).toBool()) {
+    if (settings.alwaysOnTop()) {
         setAlwaysOnTop(true);
     }
 
@@ -600,24 +554,21 @@ void Application::setUpJam() {
     Jam::HostOptions options;
     options.client.appVersion = QCoreApplication::applicationVersion();
     options.config = [this] {
-        return Jam::HostConfig{
-            JamServer(settings),
-            settings.value(QStringLiteral("jam/waveFeedback"), true).toBool(),
-            settings.value(QStringLiteral("jam/shareAudio"), false).toBool()
-        };
+        const JamSettings jam = settings.jam();
+        return Jam::HostConfig{jam.server, jam.waveFeedback, jam.shareAudio};
     };
     // Next to the settings: a test's or a read-only run's jam stays in its own directory.
-    const Jam::SessionStore store(QFileInfo(settings.fileName()).dir().filePath(QStringLiteral("jam-session.json")));
+    const Jam::SessionStore store(settings.directory() + QStringLiteral("/jam-session.json"));
     jamHostSession = std::make_unique<Jam::HostSession>(&jamMode, &yandexLibrary, store, std::move(options));
 
     jamWindowInstance = std::make_unique<Ui::JamWindow>(jamHostSession.get(), &catalog, currentSkin.get());
     installShortcuts(jamWindowInstance.get());
     jamWindowInstance->setSecondary();
-    jamWindowInstance->setSizeSteps(settings.value(QStringLiteral("jamWindow/steps"), QSize(1, 8)).toSize());
-    jamWindowInstance->setServerName(JamServerName(JamServer(settings)));
+    jamWindowInstance->setSizeSteps(settings.window(QStringLiteral("jamWindow"), false, QSize(1, 8)).steps);
+    jamWindowInstance->setServerName(JamServerName(settings.jam().server));
     connect(jamWindowInstance.get(), &Ui::JamWindow::closeRequested, this, [this] { setJamWindowVisible(false); });
     connect(jamWindowInstance.get(), &Ui::GenWindow::sizeStepsChanged, this, [this](QSize steps) {
-        settings.setValue(QStringLiteral("jamWindow/steps"), steps);
+        settings.setWindowSteps(QStringLiteral("jamWindow"), steps);
     });
     connect(
         jamWindowInstance.get(), &Ui::JamWindow::statusText, mainWindowInstance.get(), &Ui::MainWindow::setStatusText
@@ -729,35 +680,38 @@ void Application::raiseWindows() {
 }
 
 void Application::layoutWindows() {
-    const QPoint mainPosition = settings.value(QStringLiteral("mainWindow/pos"), QPoint(100, 100)).toPoint();
+    const QPoint mainPosition = settings.window(QStringLiteral("mainWindow"), true).pos.value_or(QPoint(100, 100));
     const QPoint equalizerDefault = mainPosition + QPoint(0, mainWindowInstance->height());
     const QPoint playlistDefault = equalizerDefault + QPoint(0, equalizerWindowInstance->height());
     mainWindowInstance->placeAt(mainPosition);
-    equalizerWindowInstance->placeAt(settings.value(QStringLiteral("equalizer/pos"), equalizerDefault).toPoint());
-    playlistWindowInstance->placeAt(settings.value(QStringLiteral("playlist/pos"), playlistDefault).toPoint());
+    equalizerWindowInstance->placeAt(settings.window(QStringLiteral("equalizer"), false).pos.value_or(equalizerDefault)
+    );
+    playlistWindowInstance->placeAt(settings.window(QStringLiteral("playlist"), false).pos.value_or(playlistDefault));
     const QPoint rightOfMain = mainPosition + QPoint(mainWindowInstance->width(), 0);
     const QPoint belowRightOfMain = rightOfMain + QPoint(0, mainWindowInstance->height());
-    nowPlayingWindowInstance->placeAt(settings.value(QStringLiteral("nowPlaying/pos"), rightOfMain).toPoint());
+    nowPlayingWindowInstance->placeAt(settings.window(QStringLiteral("nowPlaying"), false).pos.value_or(rightOfMain));
     if (milkdropWindowInstance) {
-        milkdropWindowInstance->placeAt(settings.value(QStringLiteral("milkdrop/pos"), belowRightOfMain).toPoint());
+        milkdropWindowInstance->placeAt(
+            settings.window(QStringLiteral("milkdrop"), false).pos.value_or(belowRightOfMain)
+        );
     }
     if (jamWindowInstance) {
-        jamWindowInstance->placeAt(settings.value(QStringLiteral("jamWindow/pos"), rightOfMain).toPoint());
+        jamWindowInstance->placeAt(settings.window(QStringLiteral("jamWindow"), false).pos.value_or(rightOfMain));
     }
 }
 
 void Application::start() {
     mainWindowInstance->show();
-    if (settings.value(QStringLiteral("equalizer/visible"), true).toBool()) {
+    if (settings.window(QStringLiteral("equalizer"), true).visible) {
         equalizerWindowInstance->show();
     }
-    if (settings.value(QStringLiteral("playlist/visible"), true).toBool()) {
+    if (settings.window(QStringLiteral("playlist"), true).visible) {
         playlistWindowInstance->show();
     }
-    if (settings.value(QStringLiteral("nowPlaying/visible"), false).toBool()) {
+    if (settings.window(QStringLiteral("nowPlaying"), false).visible) {
         nowPlayingWindowInstance->show();
     }
-    if (milkdropWindowInstance && settings.value(QStringLiteral("milkdrop/visible"), false).toBool()) {
+    if (milkdropWindowInstance && settings.window(QStringLiteral("milkdrop"), false).visible) {
         milkdropWindowInstance->show();
     }
     layoutWindows();
@@ -841,7 +795,7 @@ bool Application::loadSkin(const QString& path) {
         window->setSkin(skin.get());
     }
     currentSkin = std::move(skin);
-    settings.setValue(QStringLiteral("skin"), path);
+    settings.setSkin(path);
     telemetryFeature(QStringLiteral("skin"), SkinName(path));
     return true;
 }
@@ -900,7 +854,7 @@ void Application::setScale(double scale, ScaleScope scope) {
 
     transientScale = scope == ScaleScope::ThisRun;
     if (scope == ScaleScope::Saved) {
-        settings.setValue(QStringLiteral("scale"), newScale);
+        settings.setScale(newScale);
         saveState();
     }
 }
@@ -908,7 +862,7 @@ void Application::setScale(double scale, ScaleScope scope) {
 void Application::setLanguage(Language language) {
     // Qt sends LanguageChange to every widget; the windows draw their texts again.
     translations.apply(language);
-    settings.setValue(QStringLiteral("language"), LanguageCode(language));
+    settings.setLanguage(language);
     telemetryFeature(QStringLiteral("language"), LanguageCode(language));
 }
 
@@ -920,15 +874,15 @@ void Application::setAlwaysOnTop(bool on) {
             window->show();  // changing flags hides the window
         }
     }
-    settings.setValue(QStringLiteral("alwaysOnTop"), on);
+    settings.setAlwaysOnTop(on);
 }
 
 bool Application::telemetryEnabled() const {
-    return settings.value(QStringLiteral("telemetry/enabled"), true).toBool();
+    return settings.telemetryEnabled();
 }
 
 void Application::setTelemetryEnabled(bool on) {
-    settings.setValue(QStringLiteral("telemetry/enabled"), on);
+    settings.setTelemetryEnabled(on);
 #ifdef QIYAA_HAVE_TELEMETRY
     if (on) {
         startTelemetry();
@@ -943,7 +897,7 @@ void Application::setTelemetryEnabled(bool on) {
 }
 
 QString Application::telemetryDirectory() const {
-    return QFileInfo(settings.fileName()).absolutePath() + QStringLiteral("/telemetry");
+    return settings.directory() + QStringLiteral("/telemetry");
 }
 
 void Application::startTelemetry() {
@@ -956,13 +910,12 @@ void Application::startTelemetry() {
         return;
     }
     const QString version = QCoreApplication::applicationVersion();
-    const QString machineKey = QStringLiteral("telemetry/machine");
-    const auto storeMachine = [this, &machineKey](const QString& id) { settings.setValue(machineKey, id); };
+    const auto storeMachine = [this](const QString& id) { settings.setMachine(id); };
     telemetryReporter = std::make_unique<Telemetry::Reporter>(Telemetry::Reporter::Config{
         startOptions.telemetryUrl,
         telemetryDirectory(),
         version.isEmpty() ? QStringLiteral("dev") : version,
-        Telemetry::MachineIdFor(settings.value(machineKey).toString(), storeMachine),
+        Telemetry::MachineIdFor(settings.machine(), storeMachine),
         networkManager
     });
     static const QRegularExpression notBackend(QStringLiteral("[^A-Za-z0-9 _-]"));
@@ -972,11 +925,7 @@ void Application::startTelemetry() {
     fields.insert(QStringLiteral("scale"), std::clamp(mainWindowInstance->scale(), 1.0, 4.0));
     fields.insert(
         QStringLiteral("skin"),
-        SkinName(
-            startOptions.skinOverride.isEmpty()
-                ? settings.value(QStringLiteral("skin")).toString()
-                : startOptions.skinOverride
-        )
+        SkinName(startOptions.skinOverride.isEmpty() ? settings.skin() : startOptions.skinOverride)
     );
     fields.insert(QStringLiteral("vis"), VisModeCode(mainWindowInstance->visMode()));
     fields.insert(QStringLiteral("equalizer"), equalizerWindowInstance->settings().enabled);
@@ -989,10 +938,8 @@ void Application::startTelemetry() {
     );
     fields.insert(QStringLiteral("loggedIn"), !Yandex::FindToken(TokenFile(), YaampTokenFiles()).token.isEmpty());
     fields.insert(QStringLiteral("firstRun"), firstRun);
-    if (!settings.contains(QStringLiteral("telemetry/firstStart"))) {
-        // Saved now: a first run that is killed must not make the next one first too.
-        settings.setValue(QStringLiteral("telemetry/firstStart"), QDate::currentDate().toString(Qt::ISODate));
-        settings.sync();
+    if (!settings.hasFirstStart()) {
+        settings.setFirstStart(QDate::currentDate());
     }
     telemetryReporter->begin(fields);
     telemetryReporter->setMilkdropShown(milkdropVisible);
@@ -1029,7 +976,7 @@ void Application::setEqualizerVisible(bool on) {
         equalizerWindowInstance->ensureVisible();
     }
     mainWindowInstance->setEqButton(on);
-    settings.setValue(QStringLiteral("equalizer/visible"), on);
+    settings.setWindowVisible(QStringLiteral("equalizer"), on);
 }
 
 void Application::setPlaylistVisible(bool on) {
@@ -1038,7 +985,7 @@ void Application::setPlaylistVisible(bool on) {
         playlistWindowInstance->ensureVisible();
     }
     mainWindowInstance->setPlaylistButton(on);
-    settings.setValue(QStringLiteral("playlist/visible"), on);
+    settings.setWindowVisible(QStringLiteral("playlist"), on);
 }
 
 void Application::setMilkdropVisible(bool on) {
@@ -1049,7 +996,7 @@ void Application::setMilkdropVisible(bool on) {
     if (on) {
         milkdropWindowInstance->ensureVisible();
     }
-    settings.setValue(QStringLiteral("milkdrop/visible"), on);
+    settings.setWindowVisible(QStringLiteral("milkdrop"), on);
     telemetryFeature(QStringLiteral("milkdrop"), on ? QStringLiteral("on") : QStringLiteral("off"));
 #ifdef QIYAA_HAVE_TELEMETRY
     if (telemetryReporter) {
@@ -1067,7 +1014,7 @@ void Application::setJamWindowVisible(bool on) {
         jamWindowInstance->ensureVisible();
         jamWindowInstance->raise();
     }
-    settings.setValue(QStringLiteral("jamWindow/visible"), on);
+    settings.setWindowVisible(QStringLiteral("jamWindow"), on);
 }
 
 void Application::setNowPlayingVisible(bool on) {
@@ -1075,7 +1022,7 @@ void Application::setNowPlayingVisible(bool on) {
     if (on) {
         nowPlayingWindowInstance->ensureVisible();
     }
-    settings.setValue(QStringLiteral("nowPlaying/visible"), on);
+    settings.setWindowVisible(QStringLiteral("nowPlaying"), on);
 }
 
 void Application::quit() {
@@ -1117,23 +1064,25 @@ void Application::quit() {
 }
 
 void Application::saveState() {
-    settings.setValue(QStringLiteral("volume"), mainWindowInstance->volume());
-    settings.setValue(QStringLiteral("balance"), mainWindowInstance->balance());
-    settings.setValue(QStringLiteral("vis/mode"), static_cast<int>(mainWindowInstance->visMode()));
-    settings.setValue(QStringLiteral("time/remaining"), mainWindowInstance->showsRemainingTime());
-    settings.setValue(QStringLiteral("equalizer/auto"), equalizerWindowInstance->autoOn());
+    settings.setMainWindow(MainWindowState{
+        mainWindowInstance->volume(),
+        mainWindowInstance->balance(),
+        static_cast<int>(mainWindowInstance->visMode()),
+        mainWindowInstance->showsRemainingTime()
+    });
+    settings.setEqualizerAuto(equalizerWindowInstance->autoOn());
     if (!Ui::SkinnedWindow::CanPositionWindows() || !mainWindowInstance->isVisible() || transientScale) {
         return;
     }
-    settings.setValue(QStringLiteral("mainWindow/pos"), mainWindowInstance->pos());
-    settings.setValue(QStringLiteral("equalizer/pos"), equalizerWindowInstance->pos());
-    settings.setValue(QStringLiteral("playlist/pos"), playlistWindowInstance->pos());
-    settings.setValue(QStringLiteral("nowPlaying/pos"), nowPlayingWindowInstance->pos());
+    settings.setWindowPos(QStringLiteral("mainWindow"), mainWindowInstance->pos());
+    settings.setWindowPos(QStringLiteral("equalizer"), equalizerWindowInstance->pos());
+    settings.setWindowPos(QStringLiteral("playlist"), playlistWindowInstance->pos());
+    settings.setWindowPos(QStringLiteral("nowPlaying"), nowPlayingWindowInstance->pos());
     if (milkdropWindowInstance) {
-        settings.setValue(QStringLiteral("milkdrop/pos"), milkdropWindowInstance->pos());
+        settings.setWindowPos(QStringLiteral("milkdrop"), milkdropWindowInstance->pos());
     }
     if (jamWindowInstance) {
-        settings.setValue(QStringLiteral("jamWindow/pos"), jamWindowInstance->pos());
+        settings.setWindowPos(QStringLiteral("jamWindow"), jamWindowInstance->pos());
     }
 }
 
@@ -1241,7 +1190,7 @@ void Application::fillWindowActions(QMenu* menu) {
     for (const auto& [quality, name] : qualities) {
         QAction* action = qualityMenu->addAction(name, this, [this, quality] {
             yandexSource.setQuality(quality);
-            settings.setValue(QStringLiteral("playback/quality"), Yandex::QualityKey(quality));
+            settings.setQuality(quality);
         });
         action->setCheckable(true);
         action->setChecked(yandexSource.quality() == quality);
@@ -1377,19 +1326,14 @@ void Application::addJamMenu(QMenu* menu) {
 
 void Application::showJamServerDialog() {
 #ifdef QIYAA_HAVE_JAM
+    const JamSettings jam = settings.jam();
     Ui::JamServerDialog dialog(
-        JamServer(settings),
-        settings.value(QStringLiteral("jam/waveFeedback"), true).toBool(),
-        settings.value(QStringLiteral("jam/shareAudio"), false).toBool(),
-        QStringLiteral(QIYAA_JAM_URL),
-        mainWindowInstance.get()
+        jam.server, jam.waveFeedback, jam.shareAudio, Settings::DefaultJamServer(), mainWindowInstance.get()
     );
     if (dialog.exec() != QDialog::Accepted) {
         return;
     }
-    settings.setValue(QStringLiteral("jam/server"), dialog.server());
-    settings.setValue(QStringLiteral("jam/waveFeedback"), dialog.waveFeedback());
-    settings.setValue(QStringLiteral("jam/shareAudio"), dialog.shareAudio());
+    settings.setJam(JamSettings{dialog.server(), dialog.waveFeedback(), dialog.shareAudio()});
     jamWindowInstance->setServerName(JamServerName(dialog.server()));
 #endif
 }

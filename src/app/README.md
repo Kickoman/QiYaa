@@ -17,14 +17,16 @@ HTTP, OAuth and the token file format in [src/yandex](../yandex/README.md); `.ws
 | File | Contains |
 |---|---|
 | `application.h/.cpp` | `App::Application` and its `Options`: ownership, wiring, layout, menus, shortcuts, settings, login, skins, quit, `snapshot()` |
-| `paths.h/.cpp` | `ConfigDirectory`, `YaampDataDirectories`, `TokenFile`, `YaampTokenFiles`: where settings and tokens live |
+| `settings.h/.cpp` | `App::Settings`: every key of `settings.ini` with its default, typed reads and per-key writes; the only owner of `QSettings` |
+| `paths.h/.cpp` | `ConfigDirectory`, `YaampDataDirectories`, `TokenFile`, `YaampTokenFiles`, `SettingsFile`: where settings and tokens live |
 | `translations.h/.cpp` | `Language`, `Languages`, `LanguageCode`, `LanguageFromCode`, `LanguageName`, `Translations`: the interface language |
 | `offline_sources.h/.cpp` | `StreamLocalFile` (a local file fed to the engine like a download) and `DemoTracks` (nine sample entries) |
 | `main.cpp` | `main()` of the `qiyaa` executable: platform choice, command-line options, `--screenshot`, exit codes |
 
 ## Dependencies
 
-`qiyaa_app` is built from `application.*`, `offline_sources.*` and `paths.*`:
+`qiyaa_app` is built from `application.*`, `offline_sources.*`, `paths.*`, `settings.*` and
+`translations.*`:
 
 - PUBLIC `qiyaa_audio`, `qiyaa_core`, `qiyaa_skins`, `qiyaa_sources_yandex`, `qiyaa_yandex`:
   `application.h` holds `Audio::AudioEngine`, `Core::Player`, `Core::SourceRegistry`,
@@ -32,9 +34,10 @@ HTTP, OAuth and the token file format in [src/yandex](../yandex/README.md); `.ws
   `Yandex::ApiClient` and `Yandex::Library` by value.
 - PRIVATE `qiyaa_integrations`, `qiyaa_ui`, `qiyaa_vis`: the header only forward-declares the
   windows, `Core::CoverCache` and `Integrations::MediaControls`.
-- PRIVATE `qiyaa_jam` in a jam build (`QIYAA_HAVE_JAM`), with the define
-  `QIYAA_JAM_URL="<the CMake option>"`, the default jam server. The header forward-declares
+- PRIVATE `qiyaa_jam` in a jam build (`QIYAA_HAVE_JAM`). The header forward-declares
   `Jam::HostSession`; the code that calls it is under `#ifdef QIYAA_HAVE_JAM`.
+- The define `QIYAA_JAM_URL="<the CMake option>"`, the default jam server, in every build:
+  `App::Settings` knows the default of `jam/server` whether or not the jam is built.
 - PRIVATE `qiyaa_telemetry` in a telemetry build (`QIYAA_HAVE_TELEMETRY`); the header
   forward-declares `Telemetry::Reporter`, the calls are under `#ifdef QIYAA_HAVE_TELEMETRY`.
 - Resources `:/icons` (`qiyaa-16.png` … `qiyaa-256.png`, seven sizes), used by `main.cpp` for the
@@ -58,7 +61,7 @@ reaches them only through `audio`, `skins` and `vis`), nor Qt D-Bus or WinRT (on
 
 ```bash
 grep -rln --include='*.h' --include='*.cpp' '#include "app/' src/ | grep -v '^src/app/'   # must print nothing
-grep -rln --include='*.h' --include='*.cpp' 'QSettings' src/ | grep -v '^src/app/'        # must print nothing: only app keeps settings
+grep -rln --include='*.h' --include='*.cpp' 'QSettings' src/ | grep -v '^src/app/settings\.'   # must print nothing: only App::Settings keeps settings
 grep -rnw --include='*.h' --include='*.cpp' 'throw' src/app/                               # must print nothing: app only catches
 ```
 
@@ -143,8 +146,9 @@ and `QSettings` before the temporary directory that may hold its file.
 
 **Construction**, in this order:
 
-1. Picks the settings file (INI format): `settings.ini` in a new `QTemporaryDir` when
-   `readOnlySettings`, else `settingsFile`, else `<ConfigDirectory>/settings.ini`.
+1. Opens `App::Settings` on `SettingsFile(settingsFile, temporaryDirectory)`: `settings.ini` in
+   a new `QTemporaryDir` when `readOnlySettings`, else `settingsFile`, else
+   `<ConfigDirectory>/settings.ini`.
    Then installs the interface language (`Options::language`, else the `language` setting, else
    Belarusian), before any window takes its texts. The `Player` gets the shuffle algorithm, the
    `playback/continueWithVibe` setting and `YandexSource::HistoryWaves` as the vibe that goes on
@@ -435,8 +439,9 @@ default context is the window, so the keys work while any of the player's window
 
 ### Settings
 
-`Application` is the only place in `src/` that reads or writes settings. "ctor" is the
-constructor; "setter" is the matching `set*Visible`.
+`App::Settings` (below) is the only place in `src/` that reads or writes settings; the table
+says who asks it when. "ctor" is the `Application` constructor; "setter" is the matching
+`set*Visible`.
 
 | Key | Type | Default | Read | Written |
 |---|---|---|---|---|
@@ -488,6 +493,42 @@ constructor; "setter" is the matching `set*Visible`.
 The `milkdrop/*` keys are read and written only in a build with `QIYAA_HAVE_MILKDROP`, the `jam/*`
 and `jamWindow/*` keys only in a jam build, the `telemetry/*` keys only in a telemetry build. The
 resize steps are clamped to 0..40 per axis by the windows.
+
+## `settings.h/.cpp` — `App::Settings`
+
+```cpp
+struct WindowState { std::optional<QPoint> pos; bool visible = false; bool shaded = false; QSize steps; };
+struct MainWindowState { int volume = 75; int balance = 0; int visMode = 0; bool remainingTime = false; };
+struct MilkdropSettings { bool shuffle = true; bool locked = false; int seconds = 30; QString preset; QStringList black; };
+struct JamSettings { QString server; bool waveFeedback = true; bool shareAudio = false; };
+
+class Settings {                                      // not a QObject; owns the QSettings
+public:
+    explicit Settings(const QString& fileName);       // INI format
+    QString directory() const;                        // absolute folder of settings.ini
+    bool wasEmpty() const;                            // no key when it was opened: the first run
+    // language, skin, scale, alwaysOnTop, shuffleAlgorithm, quality, continueWithVibe (read only),
+    // mainWindow, equalizer, equalizerAuto, milkdrop, jam, telemetryEnabled, machine: a getter
+    // with the default of the table above, and a setter that writes the key(s) at once
+    WindowState window(const QString& group, bool visibleByDefault, QSize stepsByDefault = {}) const;
+    void setWindowPos(const QString& group, QPoint pos);   // and setWindowVisible, setWindowShaded,
+                                                            // setWindowSteps: one key each
+    static QString DefaultJamServer();                // QIYAA_JAM_URL
+    bool hasFirstStart() const;
+    void setFirstStart(QDate date);                   // written and synced at once
+};
+```
+
+- Every key and its default is written once, here. The defaults of a window (`visible`, `steps`,
+  the place) are the caller's, a key is `<group>/<field>`.
+- Reads convert like `QSettings` always did (see the traps in [Settings](#settings)): a present
+  but malformed value is not the default. `vis/mode` is clamped to 0..2; `shuffle/algorithm`,
+  `playback/quality` and `language` fall back for anything they do not know; `jam/server` is
+  trimmed. `WindowState::pos` is empty when the key is absent.
+- Writes go key by key, at the moment the value changes, so nothing writes a key the app has
+  not chosen yet: a fresh start writes nothing.
+- `setMainWindow`, `setEqualizer`, `setMilkdrop` and `setJam` write all their keys.
+- Tests: `tests/settings_test.cpp`.
 
 ## File format: `settings.ini`
 
@@ -556,6 +597,8 @@ QString ConfigDirectory();            // created if missing
 QStringList YaampDataDirectories();    // old Yaamp data folders, may not exist
 QString TokenFile();            // <ConfigDirectory>/token
 QStringList YaampTokenFiles();  // <dir>/token.json for each YaampDataDirectories() entry, same order
+QString SettingsFile(const QString& chosen, const QTemporaryDir* temporaryDirectory);
+                                // <temp dir>/settings.ini, else chosen, else <ConfigDirectory>/settings.ini
 }
 ```
 

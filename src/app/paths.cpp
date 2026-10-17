@@ -2,6 +2,7 @@
 
 #include <QDir>
 #include <QStandardPaths>
+#include <QTemporaryDir>
 
 namespace App {
 
@@ -42,6 +43,13 @@ QStringList YaampTokenFiles() {
         out << directory + QStringLiteral("/token.json");
     }
     return out;
+}
+
+QString SettingsFile(const QString& chosen, const QTemporaryDir* temporaryDirectory) {
+    if (temporaryDirectory) {
+        return temporaryDirectory->filePath(QStringLiteral("settings.ini"));
+    }
+    return chosen.isEmpty() ? ConfigDirectory() + QStringLiteral("/settings.ini") : chosen;
 }
 
 }  // namespace App
