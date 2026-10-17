@@ -1,6 +1,7 @@
 #include "app/application.h"
 
 #include "app/account.h"
+#include "app/jam_bridge.h"
 #include "app/paths.h"
 #include "app/window_set.h"
 #include "audio/equalizer.h"
@@ -15,7 +16,6 @@
 #include "telemetry/system_info.h"
 #include "ui/equalizer_window.h"
 #include "ui/gen_window.h"
-#include "ui/jam_server_dialog.h"
 #include "ui/jam_window.h"
 #include "ui/library_menu.h"
 #include "ui/login_dialog.h"
@@ -41,24 +41,19 @@
 #include <QApplication>
 #include <QCoreApplication>
 #include <QDate>
-#include <QDialog>
 #include <QDir>
 #include <QFileDialog>
-#include <QHash>
 #include <QJsonObject>
 #include <QKeySequence>
 #include <QLatin1String>
 #include <QList>
 #include <QMenu>
-#include <QMessageBox>
 #include <QNetworkInformation>
 #include <QPoint>
-#include <QPushButton>
 #include <QRegularExpression>
 #include <QString>
 #include <QStringList>
 #include <QTimer>
-#include <QUrl>
 
 #include <algorithm>
 #include <cmath>
@@ -121,43 +116,6 @@ QString MilkdropFailureCode(Vis::MilkdropFailure failure) {
         case Vis::MilkdropFailure::ProjectM: break;
     }
     return QStringLiteral("projectm");
-}
-#endif
-
-#ifdef QIYAA_HAVE_JAM
-QString JamRefusalText(const QString& reason) {
-    // Translated on each call: the language can change while the app runs.
-    static const QHash<QString, const char*> texts = {
-        {QStringLiteral("server-full"), QT_TRANSLATE_NOOP("App::Application", "The jam server is full, try later")},
-        {QStringLiteral("rate-limited"), QT_TRANSLATE_NOOP("App::Application", "Too many requests, wait a little")},
-        {QStringLiteral("update-required"),
-         QT_TRANSLATE_NOOP("App::Application", "Update QiYaa to work with this jam server")},
-        {QStringLiteral("not-allowed"), QT_TRANSLATE_NOOP("App::Application", "The jam server does not allow this")},
-        {QStringLiteral("queue-limit"), QT_TRANSLATE_NOOP("App::Application", "The jam queue is full")},
-        {QStringLiteral("duplicate"), QT_TRANSLATE_NOOP("App::Application", "This track is already in the jam queue")},
-        {QStringLiteral("stale"), QT_TRANSLATE_NOOP("App::Application", "This track has already left the queue")},
-    };
-    return QCoreApplication::translate(
-        "App::Application", texts.value(reason, QT_TRANSLATE_NOOP("App::Application", "The jam server refused"))
-    );
-}
-
-// What the jam window shows of the server: its host, and a port that is not the default one.
-QString JamServerName(const QString& server) {
-    const QUrl url(server);
-    return url.port() > 0 ? QStringLiteral("%1:%2").arg(url.host()).arg(url.port()) : url.host();
-}
-
-QString JamEndText(Jam::HostEnd why) {
-    switch (why) {
-        case Jam::HostEnd::ByHost: return QCoreApplication::translate("App::Application", "The jam is over");
-        case Jam::HostEnd::ByServer: return QCoreApplication::translate("App::Application", "The jam was ended");
-        case Jam::HostEnd::Expired:
-            return QCoreApplication::translate("App::Application", "The jam closed while you were away");
-        case Jam::HostEnd::Gone:
-            return QCoreApplication::translate("App::Application", "The jam is over: the server no longer knows it");
-    }
-    return {};
 }
 #endif
 
@@ -313,7 +271,61 @@ Application::Application(const Options& options, QObject* parent)
         mainWindowInstance->setStatusText(Ui::SourceNoticeText(notice));
     });
     // Before WindowSet::restore() below, which takes in the jam window.
-    setUpJam();
+#ifdef QIYAA_HAVE_JAM
+    Jam::HostOptions jamOptions;
+    jamOptions.client.appVersion = QCoreApplication::applicationVersion();
+    jamOptions.config = [this] {
+        const JamSettings jam = settings.jam();
+        return Jam::HostConfig{jam.server, jam.waveFeedback, jam.shareAudio};
+    };
+    // Next to the settings: a test's or a read-only run's jam stays in its own directory.
+    const Jam::SessionStore jamStore(settings.directory() + QStringLiteral("/jam-session.json"));
+    jamHostSession = std::make_unique<Jam::HostSession>(&jamMode, &yandexLibrary, jamStore, std::move(jamOptions));
+    connect(&networkWatch, &NetworkWatch::back, jamHostSession.get(), &Jam::HostSession::networkBack);  // HOST-26
+    jamWindowInstance = std::make_unique<Ui::JamWindow>(jamHostSession.get(), &catalog, currentSkin.get());
+    installShortcuts(jamWindowInstance.get());
+    windowSet->add(
+        jamWindowInstance.get(),
+        {.group = QStringLiteral("jamWindow"),
+         .shownAtStart = false,
+         .raisedWhenShown = true,
+         .stepsByDefault = QSize(1, 8)}
+    );
+    connect(jamHostSession.get(), &Jam::HostSession::refused, this, [this](const QString& reason) {
+        static const QRegularExpression code(QStringLiteral("^[a-z0-9-]{1,32}$"));
+        telemetryError(QStringLiteral("jam"), code.match(reason).hasMatch() ? reason : QStringLiteral("other"));
+    });
+    connect(jamHostSession.get(), &Jam::HostSession::ended, this, [this](Jam::HostEnd why) {
+        switch (why) {
+            case Jam::HostEnd::Gone: telemetryError(QStringLiteral("jam"), QStringLiteral("gone")); break;
+            case Jam::HostEnd::Expired: telemetryError(QStringLiteral("jam"), QStringLiteral("expired")); break;
+            case Jam::HostEnd::ByServer:
+                telemetryError(QStringLiteral("jam"), QStringLiteral("ended-by-server"));
+                break;
+            case Jam::HostEnd::ByHost: break;
+        }
+    });
+    connect(jamHostSession.get(), &Jam::HostSession::activeChanged, this, [this](bool active) {
+        telemetryFeature(QStringLiteral("jam"), active ? QStringLiteral("on") : QStringLiteral("off"));
+#ifdef QIYAA_HAVE_TELEMETRY
+        if (active && telemetryReporter) {
+            telemetryReporter->countJam();
+        }
+#endif
+    });
+#endif
+    jamBridge = std::make_unique<JamBridge>(JamBridge::Parts{
+        jamHostSession.get(),
+        jamWindowInstance.get(),
+        &jamMode,
+        &corePlayer,
+        &settings,
+        windowSet.get(),
+        accountControl.get(),
+        mainWindowInstance.get(),
+        playlistWindowInstance.get()
+    });
+    connect(jamBridge.get(), &JamBridge::statusText, mainWindowInstance.get(), &Ui::MainWindow::setStatusText);
 
     const MainWindowState mainState = settings.mainWindow();
     mainWindowInstance->setVolume(mainState.volume);
@@ -482,116 +494,6 @@ Application::Application(const Options& options, QObject* parent)
 
 Application::~Application() = default;
 
-void Application::setUpJam() {
-#ifdef QIYAA_HAVE_JAM
-    Jam::HostOptions options;
-    options.client.appVersion = QCoreApplication::applicationVersion();
-    options.config = [this] {
-        const JamSettings jam = settings.jam();
-        return Jam::HostConfig{jam.server, jam.waveFeedback, jam.shareAudio};
-    };
-    // Next to the settings: a test's or a read-only run's jam stays in its own directory.
-    const Jam::SessionStore store(settings.directory() + QStringLiteral("/jam-session.json"));
-    jamHostSession = std::make_unique<Jam::HostSession>(&jamMode, &yandexLibrary, store, std::move(options));
-    connect(&networkWatch, &NetworkWatch::back, jamHostSession.get(), &Jam::HostSession::networkBack);  // HOST-26
-    connect(accountControl.get(), &Account::loggingOut, jamHostSession.get(), [this] {
-        jamHostSession->cancelCreate();
-        jamHostSession->end();
-    });
-    accountControl->setLikesOnHold([this] { return jamMode.isActive() || storedJamQuestion; });
-
-    jamWindowInstance = std::make_unique<Ui::JamWindow>(jamHostSession.get(), &catalog, currentSkin.get());
-    installShortcuts(jamWindowInstance.get());
-    windowSet->add(
-        jamWindowInstance.get(),
-        {.group = QStringLiteral("jamWindow"),
-         .shownAtStart = false,
-         .raisedWhenShown = true,
-         .stepsByDefault = QSize(1, 8)}
-    );
-    jamWindowInstance->setServerName(JamServerName(settings.jam().server));
-    connect(
-        jamWindowInstance.get(), &Ui::JamWindow::statusText, mainWindowInstance.get(), &Ui::MainWindow::setStatusText
-    );
-    connect(jamWindowInstance.get(), &Ui::JamWindow::serverSettingsRequested, this, &Application::showJamServerDialog);
-
-    const auto note = [this](int row) -> QString {  // HOST-34
-        const QList<Core::QueueEntry>& entries = corePlayer.entries();
-        if (row < 0 || row >= entries.size()) {
-            return {};
-        }
-        return Ui::JamTrackNote(entries[row], jamMode.isActive(), jamHostSession.get());
-    };
-    mainWindowInstance->setTrackNote(note);
-    playlistWindowInstance->setTrackNote(note);
-    connect(jamHostSession.get(), &Jam::HostSession::offline, this, [this] {
-        mainWindowInstance->setStatusText(tr("No connection to the jam server"));
-    });
-    connect(jamHostSession.get(), &Jam::HostSession::refused, this, [this](const QString& reason) {
-        mainWindowInstance->setStatusText(JamRefusalText(reason));
-        static const QRegularExpression code(QStringLiteral("^[a-z0-9-]{1,32}$"));
-        telemetryError(QStringLiteral("jam"), code.match(reason).hasMatch() ? reason : QStringLiteral("other"));
-    });
-    connect(jamHostSession.get(), &Jam::HostSession::ended, this, [this](Jam::HostEnd why) {
-        mainWindowInstance->setStatusText(JamEndText(why));
-        switch (why) {
-            case Jam::HostEnd::Gone: telemetryError(QStringLiteral("jam"), QStringLiteral("gone")); break;
-            case Jam::HostEnd::Expired: telemetryError(QStringLiteral("jam"), QStringLiteral("expired")); break;
-            case Jam::HostEnd::ByServer:
-                telemetryError(QStringLiteral("jam"), QStringLiteral("ended-by-server"));
-                break;
-            case Jam::HostEnd::ByHost: break;
-        }
-    });
-    connect(jamHostSession.get(), &Jam::HostSession::changed, this, [this] { playlistWindowInstance->update(); });
-    connect(jamHostSession.get(), &Jam::HostSession::connectedChanged, this, [this](bool connected) {
-        mainWindowInstance->setStatusText(
-            connected ? tr("The jam is connected") : tr("No connection to the jam server · trying again by itself")
-        );
-    });
-    connect(jamHostSession.get(), &Jam::HostSession::activeChanged, this, [this](bool active) {
-        telemetryFeature(QStringLiteral("jam"), active ? QStringLiteral("on") : QStringLiteral("off"));
-#ifdef QIYAA_HAVE_TELEMETRY
-        if (active && telemetryReporter) {
-            telemetryReporter->countJam();
-        }
-#endif
-    });
-#endif
-}
-
-void Application::offerStoredJam() {
-#ifdef QIYAA_HAVE_JAM
-    if (!jamHostSession || !jamHostSession->hasStoredSession()) {
-        return;
-    }
-    // HOST-23. Not modal: playback and the windows work while the question waits.
-    auto* question = new QMessageBox(
-        QMessageBox::Question,
-        tr("A jam was on"),
-        tr("Continue it? The guests' link stays the same."),
-        QMessageBox::NoButton,
-        mainWindowInstance.get()
-    );
-    question->setAttribute(Qt::WA_DeleteOnClose);
-    QPushButton* yes = question->addButton(tr("Continue"), QMessageBox::AcceptRole);
-    QPushButton* no = question->addButton(tr("End it"), QMessageBox::DestructiveRole);
-    question->setDefaultButton(yes);
-    connect(question, &QMessageBox::finished, this, [this, question, yes, no] {
-        // Closed without an answer: the jam stays stored, and the next start asks again.
-        if (question->clickedButton() == yes) {
-            jamHostSession->continueStored();
-            windowSet->setVisible(jamWindowInstance.get(), true);
-        } else if (question->clickedButton() == no) {
-            jamHostSession->discardStored();
-            accountControl->queueLikes();
-        }
-    });
-    storedJamQuestion = question;
-    question->open();
-#endif
-}
-
 void Application::start() {
     windowSet->showAtStart();
     startTelemetry();
@@ -599,7 +501,7 @@ void Application::start() {
     if (startOptions.offline) {
         return;
     }
-    offerStoredJam();
+    jamBridge->offerStored();
     accountControl->start();
 }
 
@@ -970,7 +872,7 @@ void Application::showMainMenu(QPoint globalPosition, const Core::Track* track) 
         accountControl->login();
     });
     menu->addSeparator();
-    addJamMenu(menu);
+    jamBridge->addMenu(menu);
     fillWindowActions(menu);
     menu->addSeparator();
     if (yandexLibrary.isLoggedIn()) {
@@ -980,52 +882,6 @@ void Application::showMainMenu(QPoint globalPosition, const Core::Track* track) 
     }
     menu->addAction(tr("Quit QiYaa"), this, &Application::quit);
     menu->popup(globalPosition);
-}
-
-void Application::addJamMenu(QMenu* menu) {
-#ifdef QIYAA_HAVE_JAM
-    QMenu* jam = menu->addMenu(tr("Jam"));
-    const Jam::HostPhase phase = jamHostSession->phase();
-    jam->addAction(phase == Jam::HostPhase::None ? tr("Start…") : tr("Jam window"), this, [this] {
-        windowSet->setVisible(jamWindowInstance.get(), true);
-    });
-    jam->addAction(tr("Join…"))->setEnabled(false);  // Kickoman/QiYaa#16
-    QAction* end = jam->addAction(tr("End"), this, [this] {
-        QMessageBox ask(
-            QMessageBox::Question,
-            tr("End the jam"),
-            tr("End the jam? The guests will see that it is over."),
-            QMessageBox::NoButton,
-            mainWindowInstance.get()
-        );
-        QPushButton* endIt = ask.addButton(tr("End it"), QMessageBox::DestructiveRole);
-        ask.setDefaultButton(ask.addButton(tr("Cancel"), QMessageBox::RejectRole));
-        ask.exec();
-        if (ask.clickedButton() == endIt) {
-            jamHostSession->end();
-        }
-    });
-    end->setEnabled(phase == Jam::HostPhase::Active);
-    jam->addSeparator();
-    jam->addAction(tr("Server settings…"), this, &Application::showJamServerDialog);
-    menu->addSeparator();
-#else
-    Q_UNUSED(menu);
-#endif
-}
-
-void Application::showJamServerDialog() {
-#ifdef QIYAA_HAVE_JAM
-    const JamSettings jam = settings.jam();
-    Ui::JamServerDialog dialog(
-        jam.server, jam.waveFeedback, jam.shareAudio, Settings::DefaultJamServer(), mainWindowInstance.get()
-    );
-    if (dialog.exec() != QDialog::Accepted) {
-        return;
-    }
-    settings.setJam(JamSettings{dialog.server(), dialog.waveFeedback(), dialog.shareAudio()});
-    jamWindowInstance->setServerName(JamServerName(dialog.server()));
-#endif
 }
 
 }  // namespace App

@@ -27,86 +27,6 @@
 <context>
     <name>App::Application</name>
     <message>
-        <source>The jam server is full, try later</source>
-        <translation>Сервер джема переполнен, попробуйте позже</translation>
-    </message>
-    <message>
-        <source>Too many requests, wait a little</source>
-        <translation>Слишком много запросов, подождите немного</translation>
-    </message>
-    <message>
-        <source>Update QiYaa to work with this jam server</source>
-        <translation>Обновите QiYaa, чтобы работать с этим сервером джема</translation>
-    </message>
-    <message>
-        <source>The jam server does not allow this</source>
-        <translation>Сервер джема этого не разрешает</translation>
-    </message>
-    <message>
-        <source>The jam queue is full</source>
-        <translation>Очередь джема заполнена</translation>
-    </message>
-    <message>
-        <source>This track is already in the jam queue</source>
-        <translation>Этот трек уже в очереди джема</translation>
-    </message>
-    <message>
-        <source>This track has already left the queue</source>
-        <translation>Этот трек уже ушёл из очереди</translation>
-    </message>
-    <message>
-        <source>The jam server refused</source>
-        <translation>Сервер джема отказал</translation>
-    </message>
-    <message>
-        <source>The jam is over</source>
-        <translation>Джем закончен</translation>
-    </message>
-    <message>
-        <source>The jam was ended</source>
-        <translation>Джем закончили</translation>
-    </message>
-    <message>
-        <source>The jam closed while you were away</source>
-        <translation>Джем закрылся, пока вас не было</translation>
-    </message>
-    <message>
-        <source>The jam is over: the server no longer knows it</source>
-        <translation>Джем закончен: сервер его больше не знает</translation>
-    </message>
-    <message>
-        <source>Jam</source>
-        <translation>Джем</translation>
-    </message>
-    <message>
-        <source>No connection to the jam server</source>
-        <translation>Нет связи с сервером джема</translation>
-    </message>
-    <message>
-        <source>No connection to the jam server · trying again by itself</source>
-        <translation>Нет связи с сервером джема · повторю сам</translation>
-    </message>
-    <message>
-        <source>The jam is connected</source>
-        <translation>Джем на связи</translation>
-    </message>
-    <message>
-        <source>A jam was on</source>
-        <translation>Шёл джем</translation>
-    </message>
-    <message>
-        <source>Continue it? The guests&apos; link stays the same.</source>
-        <translation>Продолжить? Ссылка у гостей останется прежней.</translation>
-    </message>
-    <message>
-        <source>Continue</source>
-        <translation>Продолжить</translation>
-    </message>
-    <message>
-        <source>End it</source>
-        <translation>Закончить</translation>
-    </message>
-    <message>
         <source>Cannot load the skin: %1</source>
         <translation>Не удалось загрузить скин: %1</translation>
     </message>
@@ -187,6 +107,113 @@
         <translation>Закрыть QiYaa</translation>
     </message>
     <message>
+        <source>Language</source>
+        <translation>Язык</translation>
+    </message>
+    <message>
+        <source>Send statistics</source>
+        <translation>Отправлять статистику</translation>
+    </message>
+    <message>
+        <source>Quality</source>
+        <translation>Качество</translation>
+    </message>
+    <message>
+        <source>Standard</source>
+        <translation>Стандартное</translation>
+    </message>
+    <message>
+        <source>Economy: a third of the data</source>
+        <translation>Экономия: втрое меньше трафика</translation>
+    </message>
+    <message>
+        <source>Continue with a vibe</source>
+        <translation>Продолжать волной</translation>
+    </message>
+</context>
+<context>
+    <name>App::JamBridge</name>
+    <message>
+        <source>The jam server is full, try later</source>
+        <translation>Сервер джема переполнен, попробуйте позже</translation>
+    </message>
+    <message>
+        <source>Too many requests, wait a little</source>
+        <translation>Слишком много запросов, подождите немного</translation>
+    </message>
+    <message>
+        <source>Update QiYaa to work with this jam server</source>
+        <translation>Обновите QiYaa, чтобы работать с этим сервером джема</translation>
+    </message>
+    <message>
+        <source>The jam server does not allow this</source>
+        <translation>Сервер джема этого не разрешает</translation>
+    </message>
+    <message>
+        <source>The jam queue is full</source>
+        <translation>Очередь джема заполнена</translation>
+    </message>
+    <message>
+        <source>This track is already in the jam queue</source>
+        <translation>Этот трек уже в очереди джема</translation>
+    </message>
+    <message>
+        <source>This track has already left the queue</source>
+        <translation>Этот трек уже ушёл из очереди</translation>
+    </message>
+    <message>
+        <source>The jam server refused</source>
+        <translation>Сервер джема отказал</translation>
+    </message>
+    <message>
+        <source>The jam is over</source>
+        <translation>Джем закончен</translation>
+    </message>
+    <message>
+        <source>The jam was ended</source>
+        <translation>Джем закончили</translation>
+    </message>
+    <message>
+        <source>The jam closed while you were away</source>
+        <translation>Джем закрылся, пока вас не было</translation>
+    </message>
+    <message>
+        <source>The jam is over: the server no longer knows it</source>
+        <translation>Джем закончен: сервер его больше не знает</translation>
+    </message>
+    <message>
+        <source>No connection to the jam server</source>
+        <translation>Нет связи с сервером джема</translation>
+    </message>
+    <message>
+        <source>The jam is connected</source>
+        <translation>Джем на связи</translation>
+    </message>
+    <message>
+        <source>No connection to the jam server · trying again by itself</source>
+        <translation>Нет связи с сервером джема · повторю сам</translation>
+    </message>
+    <message>
+        <source>A jam was on</source>
+        <translation>Шёл джем</translation>
+    </message>
+    <message>
+        <source>Continue it? The guests&apos; link stays the same.</source>
+        <translation>Продолжить? Ссылка у гостей останется прежней.</translation>
+    </message>
+    <message>
+        <source>Continue</source>
+        <translation>Продолжить</translation>
+    </message>
+    <message>
+        <source>End it</source>
+        <translation>Закончить</translation>
+    </message>
+    <message>
+        <source>Jam</source>
+        <translation>Джем</translation>
+    </message>
+    <message>
         <source>Start…</source>
         <translation>Начать…</translation>
     </message>
@@ -217,30 +244,6 @@
     <message>
         <source>Server settings…</source>
         <translation>Настройки сервера…</translation>
-    </message>
-    <message>
-        <source>Language</source>
-        <translation>Язык</translation>
-    </message>
-    <message>
-        <source>Send statistics</source>
-        <translation>Отправлять статистику</translation>
-    </message>
-    <message>
-        <source>Quality</source>
-        <translation>Качество</translation>
-    </message>
-    <message>
-        <source>Standard</source>
-        <translation>Стандартное</translation>
-    </message>
-    <message>
-        <source>Economy: a third of the data</source>
-        <translation>Экономия: втрое меньше трафика</translation>
-    </message>
-    <message>
-        <source>Continue with a vibe</source>
-        <translation>Продолжать волной</translation>
     </message>
 </context>
 <context>

@@ -17,7 +17,6 @@
 #include <QList>
 #include <QNetworkAccessManager>
 #include <QObject>
-#include <QPointer>
 #include <QTemporaryDir>
 #include <QUrl>
 
@@ -25,7 +24,6 @@
 #include <optional>
 
 class QMenu;
-class QMessageBox;
 
 namespace Core {
 class CoverCache;
@@ -56,6 +54,7 @@ class SkinnedWindow;
 namespace App {
 
 class Account;
+class JamBridge;
 class WindowSet;
 
 class Application : public QObject {
@@ -119,10 +118,6 @@ private:
     void showSourcesMenu(QPoint globalPosition);
     void fillWindowActions(QMenu* menu);
     void transportKey(int key);
-    void setUpJam();
-    void offerStoredJam();
-    void addJamMenu(QMenu* menu);
-    void showJamServerDialog();
     void startTelemetry();
     QString telemetryDirectory() const;
     void telemetryError(const QString& area, const QString& kind, int httpStatus = 0);
@@ -149,7 +144,6 @@ private:
     YandexSource::Catalog catalog;
     Core::JamMode jamMode;
     std::unique_ptr<Jam::HostSession> jamHostSession;
-    QPointer<QMessageBox> storedJamQuestion;
     std::unique_ptr<Core::CoverCache> coverCache;
     std::unique_ptr<Integrations::MediaControls> mediaControls;
     std::unique_ptr<QObject> systemMediaControls;
@@ -165,6 +159,7 @@ private:
     std::unique_ptr<Ui::JamWindow> jamWindowInstance;
     std::unique_ptr<WindowSet> windowSet;
     std::unique_ptr<Account> accountControl;
+    std::unique_ptr<JamBridge> jamBridge;
 };
 
 }  // namespace App

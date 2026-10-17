@@ -94,6 +94,8 @@ if(QIYAA_HAVE_JAM)
     target_link_libraries(windows_test PRIVATE qiyaa_test_jam)
     qiyaa_add_test(jam_window_test app audio core jam skins ui yandex)
     target_link_libraries(jam_window_test PRIVATE qiyaa_test_jam)
+    qiyaa_add_test(jam_bridge_test app audio core jam skins ui yandex)
+    target_link_libraries(jam_bridge_test PRIVATE qiyaa_test_jam)
     target_compile_definitions(jam_window_test PRIVATE QIYAA_TEST_DATA="${CMAKE_CURRENT_SOURCE_DIR}/data")
     # Against a real jam server: QIYAA_JAM_TEST_SERVER (its PUBLIC_URL), or the test skips.
     qiyaa_add_test(jam_e2e_test app audio core jam ui yandex)
