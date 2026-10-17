@@ -163,6 +163,8 @@ class HostSession : public QObject {
     void networkBack();
 Q_SIGNALS:
     void changed();  void refused(const QString& reason);  void ended(Jam::HostEnd why);
+    void activeChanged(bool active);                  // edges of phase() == Active
+    void connectedChanged(bool connected);            // edges of the connection while the jam is on
     void offline();                                   // the host removed jam items without a connection
 };
 ```
@@ -212,6 +214,13 @@ server, `Core::JamMode` for the queue, `Yandex::Library` for the guests' search 
   each when it is a file of Yandex Music's storage (`IsListenUrl`); any other link (a test's mock
   server) is left out, so the server takes the report. Guests on the jam page may then play it.
 - `changed()` follows any change of `phase()`, the connection, `room()` or `joinUrl()`.
+- **The jam on and its connection** (HOST-25, HOST-26), for the app's status and telemetry:
+  - `activeChanged` gives the edges of `phase() == Active`: `true` after `created` and at once in
+    `continueStored()`, `false` when the jam ends;
+  - `connectedChanged` gives the edges of `isConnected()` while the jam is on: `true` after
+    `created` and after every `resumed` (the first one too), `false` when an active jam loses
+    its connection; the end of the jam says nothing about the connection;
+  - a refused `create` and `discardStored()` send neither.
 
 `JamTrackOf` builds the protocol's track like the server checks it: a catalog id
 (`[0-9A-Za-z_-]{1,64}`, else nullopt), the album id only when it is one, control characters as

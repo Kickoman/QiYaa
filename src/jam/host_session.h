@@ -88,6 +88,8 @@ public:
 
 Q_SIGNALS:
     void changed();
+    void activeChanged(bool active);
+    void connectedChanged(bool connected);
     void refused(const QString& reason);
     void ended(Jam::HostEnd why);
     void offline();
@@ -98,6 +100,7 @@ private:
         std::optional<SettingsPatch> settings;
     };
 
+    void announce();
     void welcomed();
     void received(const ServerMessage& message);
     void created(const Created& message);
@@ -129,6 +132,8 @@ private:
     std::optional<CreateRequest> creating;
     std::optional<Room> currentRoom;
     bool connected = false;
+    bool announcedActive = false;
+    bool announcedConnected = false;
     QString requestId;
     QString endId;
     qint64 lastVersion = -1;

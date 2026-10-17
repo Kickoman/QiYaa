@@ -167,15 +167,16 @@ and `QSettings` before the temporary directory that may hold its file.
    the session file `jam-session.json` next to the settings file (so `readOnlySettings` and a test's
    `settingsFile` keep it in their own folder). Its signals go to the marquee: a refusal by its
    reason (below), the end of the jam (`The jam is over`, `The jam was ended`, `The jam closed while
-   you were away`, `The jam is over: the server no longer knows it`), and, while the jam is on, a
-   lost connection (`No connection to the jam server · trying again by itself`) and its return (`The
-   jam is connected`). Then the jam window (`Ui::JamWindow`, steps `jamWindow/steps`, the server's
-   host from `jam/server`; its `statusText` to the marquee, its "Server settings…" to
-   `showJamServerDialog()`), and the jam's part in the other windows (HOST-34, HOST-36): the
-   playlist's rows and the marquee get `Ui::JamTrackNote` of their entry, and `HostSession::offline`
-   (jam items removed without a connection) says `No connection to the jam server`. A pick during a
-   jam replaces the jam's base (HOST-21), and the playlist's remove and clear go to the `Player` as
-   ever. It is done here, before the loops below over `windows()`, which take the jam window in.
+   you were away`, `The jam is over: the server no longer knows it`), and `connectedChanged`, the
+   connection while the jam is on: lost (`No connection to the jam server · trying again by itself`)
+   and back (`The jam is connected`); its `changed` repaints the playlist. Then the jam window
+   (`Ui::JamWindow`, steps `jamWindow/steps`, the server's host from `jam/server`; its `statusText`
+   to the marquee, its "Server settings…" to `showJamServerDialog()`), and the jam's part in the
+   other windows (HOST-34, HOST-36): the playlist's rows and the marquee get `Ui::JamTrackNote` of
+   their entry, and `HostSession::offline` (jam items removed without a connection) says `No
+   connection to the jam server`. A pick during a jam replaces the jam's base (HOST-21), and the
+   playlist's remove and clear go to the `Player` as ever. It is done here, before the loops below
+   over `windows()`, which take the jam window in.
 7. Restores the settings listed in [Settings](#settings) and connects the windows:
    - the equalizer's shade mode shows and sets the main window's volume and balance (`setMixer`,
      `volumeRequested`, `balanceRequested`);
@@ -303,7 +304,7 @@ connections are made at the end of the constructor:
 | `error login/failed`, `skin/load` | `applyToken`'s callback, `loadSkin` |
 | `error milkdrop/<category>` | `Ui::MilkdropWindow::failed` |
 | `error jam/<reason>`, `jam/gone`, `jam/expired`, `jam/ended-by-server` | `HostSession::refused`, `ended` |
-| `feature vis`, `equalizer`, `skin`, `language`, `milkdrop`, `jam` | `MainWindow::visModeChanged`, the equalizer's `settingsChanged`, `loadSkin`, `setLanguage`, `setMilkdropVisible`, the host session's phase |
+| `feature vis`, `equalizer`, `skin`, `language`, `milkdrop`, `jam` | `MainWindow::visModeChanged`, the equalizer's `settingsChanged`, `loadSkin`, `setLanguage`, `setMilkdropVisible`, `HostSession::activeChanged` |
 
 A skin is `base`, a built-in skin's name or `custom`, never a path. `quit()` records `exit`
 and waits for the last batch within its 1.5 s, like the plays reports. The menu's "Send
