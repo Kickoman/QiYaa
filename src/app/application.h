@@ -1,5 +1,6 @@
 #pragma once
 
+#include "app/network_watch.h"
 #include "app/settings.h"
 #include "app/translations.h"
 #include "audio/audio_engine.h"
@@ -54,6 +55,7 @@ class SkinnedWindow;
 
 namespace App {
 
+class Account;
 class WindowSet;
 
 class Application : public QObject {
@@ -96,6 +98,7 @@ public:
     Jam::HostSession* jamHost() const { return jamHostSession.get(); }
 
     WindowSet* windows() const { return windowSet.get(); }
+    Account* account() const { return accountControl.get(); }
 
     bool loadSkin(const QString& path);
 
@@ -107,10 +110,6 @@ public:
     // Null without telemetry: not built, no URL, or switched off.
     Telemetry::Reporter* telemetry() const { return telemetryReporter.get(); }
 
-    void login();
-    void logout();
-    void applyToken(const QString& token, bool save);
-
     void saveState();
     void quit();
 
@@ -120,7 +119,6 @@ private:
     void showSourcesMenu(QPoint globalPosition);
     void fillWindowActions(QMenu* menu);
     void transportKey(int key);
-    void watchNetwork();
     void setUpJam();
     void offerStoredJam();
     void addJamMenu(QMenu* menu);
@@ -156,6 +154,7 @@ private:
     std::unique_ptr<Integrations::MediaControls> mediaControls;
     std::unique_ptr<QObject> systemMediaControls;
     std::unique_ptr<Telemetry::Reporter> telemetryReporter;
+    NetworkWatch networkWatch;
 
     // Declared last: destroyed first.
     std::unique_ptr<Ui::MainWindow> mainWindowInstance;
@@ -165,6 +164,7 @@ private:
     std::unique_ptr<Ui::MilkdropWindow> milkdropWindowInstance;
     std::unique_ptr<Ui::JamWindow> jamWindowInstance;
     std::unique_ptr<WindowSet> windowSet;
+    std::unique_ptr<Account> accountControl;
 };
 
 }  // namespace App

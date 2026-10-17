@@ -70,6 +70,7 @@ target_compile_definitions(failures_test PRIVATE QIYAA_TEST_DATA="${CMAKE_CURREN
 qiyaa_add_test(dsp_test audio skins ui vis)
 qiyaa_add_test(windows_test app core ui)
 qiyaa_add_test(settings_test app)
+qiyaa_add_test(account_test app)
 qiyaa_add_test(screenshots_test audio core skins ui)
 qiyaa_add_test(translations_test app ui)
 target_compile_definitions(translations_test PRIVATE QIYAA_SOURCE_DIR="${PROJECT_SOURCE_DIR}")

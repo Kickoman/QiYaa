@@ -2,6 +2,29 @@
 <!DOCTYPE TS>
 <TS version="2.1" language="be" sourcelanguage="en">
 <context>
+    <name>App::Account</name>
+    <message>
+        <source>Log in: right click → Log in</source>
+        <translation>Увайдзіце: правы клік → Увайсці</translation>
+    </message>
+    <message>
+        <source>You have logged out</source>
+        <translation>Вы выйшлі з акаўнта</translation>
+    </message>
+    <message>
+        <source>Connecting to Yandex Music…</source>
+        <translation>Падключаюся да Яндэкс Музыкі…</translation>
+    </message>
+    <message>
+        <source>Login failed: %1</source>
+        <translation>Увайсці не ўдалося: %1</translation>
+    </message>
+    <message>
+        <source>Hello, %1!</source>
+        <translation>Прывітанне, %1!</translation>
+    </message>
+</context>
+<context>
     <name>App::Application</name>
     <message>
         <source>The jam server is full, try later</source>
@@ -82,26 +105,6 @@
     <message>
         <source>End it</source>
         <translation>Скончыць</translation>
-    </message>
-    <message>
-        <source>Log in: right click → Log in</source>
-        <translation>Увайдзіце: правы клік → Увайсці</translation>
-    </message>
-    <message>
-        <source>Connecting to Yandex Music…</source>
-        <translation>Падключаюся да Яндэкс Музыкі…</translation>
-    </message>
-    <message>
-        <source>Login failed: %1</source>
-        <translation>Увайсці не ўдалося: %1</translation>
-    </message>
-    <message>
-        <source>Hello, %1!</source>
-        <translation>Прывітанне, %1!</translation>
-    </message>
-    <message>
-        <source>You have logged out</source>
-        <translation>Вы выйшлі з акаўнта</translation>
     </message>
     <message>
         <source>Cannot load the skin: %1</source>

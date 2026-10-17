@@ -17,6 +17,8 @@ HTTP, OAuth and the token file format in [src/yandex](../yandex/README.md); `.ws
 | File | Contains |
 |---|---|
 | `application.h/.cpp` | `App::Application` and its `Options`: ownership, wiring, menus, shortcuts, login, skins, quit |
+| `account.h/.cpp` | `App::Account`: the token at the start, login and logout, the likes after a login |
+| `network_watch.h/.cpp` | `App::NetworkWatch`: the system's view of the network for the `Player` and the jam |
 | `window_set.h/.cpp` | `App::WindowSet`: the windows as one set, one `Spec` each: their places, showing and hiding, minimising, scale, "always on top", skin, saved positions, `snapshot()` |
 | `settings.h/.cpp` | `App::Settings`: every key of `settings.ini` with its default, typed reads and per-key writes; the only owner of `QSettings` |
 | `paths.h/.cpp` | `ConfigDirectory`, `YaampDataDirectories`, `TokenFile`, `YaampTokenFiles`, `SettingsFile`: where settings and tokens live |
@@ -103,15 +105,13 @@ public:
     Jam::HostSession* jamHost() const;                 // null without QIYAA_HAVE_JAM
 
     WindowSet* windows() const;                        // places, shows, scales the windows (below)
+    Account* account() const;                          // login and logout (below)
 
     bool loadSkin(const QString& path);                // false: message in the marquee
 
     Language language() const;
     void setLanguage(Language language);               // applies now and saves `language`
 
-    void login();                                      // modal dialog
-    void logout();
-    void applyToken(const QString& token, bool save);
 
     void saveState();
     void quit();
@@ -136,8 +136,8 @@ manager, the Yandex source after the library, `Player` after the engine and the 
 after the player. The host session is declared after `JamMode` and destroyed before it. The windows
 are declared last, and the `WindowSet` after them, so the set goes first, then the windows, while
 the player, engine and skins they point at still exist. The `Mpris`/`Smtc`/`MacMediaControls` object
-dies before the `MediaControls` it wraps, and `App::Settings` before the temporary directory that may
-hold its file.
+dies before the `MediaControls` it wraps, and `App::Settings` before the temporary directory that
+may hold its file.
 
 **Construction**, in this order:
 
@@ -192,7 +192,8 @@ hold its file.
    volume, raise (`WindowSet::bringToFront()`) and quit (`quit()`). On top of it, `Mpris` in a build
    with `QIYAA_HAVE_MPRIS`, or `Smtc` in a build with `QIYAA_HAVE_SMTC`, or `MacMediaControls` with
    `QIYAA_HAVE_MAC_MEDIA_CONTROLS` on macOS.
-10. With audio on and not offline, `watchNetwork()` (see the traps).
+10. Connects `NetworkWatch::onlineChanged` to `Player::setNetworkOnline` (and in a jam build
+    `back` to `HostSession::networkBack`, HOST-26), and with audio on and not offline starts it.
 11. Connects `QApplication::aboutToQuit` to `saveState()` followed by `Player::stop()`.
 
 The refusals of the jam server, by reason: `server-full` "The jam server is full, try
@@ -209,8 +210,9 @@ stored jam and looks for a token (see [Login, logout and the token](#login-logou
 and "End it". It is not modal (`open()`): playback and the windows work while it waits, and a
 test on the offscreen platform does not block. "Continue" calls `continueStored()` and shows the jam window; "End it"
 calls `discardStored()` and queues the likes like a login does; closing it without an answer keeps
-the jam stored for the next start. While it is open, or a jam is on, `applyToken` does not queue
-the likes.
+the jam stored for the next start. While it is open, or a jam is on, a login does not queue the
+likes (`Account::setLikesOnHold`); "End it" queues them with `Account::queueLikes()`, which does
+not ask the hold, since the question is still open inside its own `finished`.
 
 **`saveState()`** always writes `volume`, `balance`, `vis/mode`, `time/remaining` and
 `equalizer/auto`, then the positions (`WindowSet::savePositions()`, below). It runs on the
@@ -258,7 +260,7 @@ connections are made at the end of the constructor:
 | `error playback/<kind>` | `Core::Player::failed` |
 | `error audio/device`, `audio/undecodable`, `audio/init` | `AudioEngine::errorOccurred`, `streamUndecodable`, a failed `init()` |
 | `error api/<kind>` (+ `httpStatus`) | `Yandex::ApiClient::requestFailed` |
-| `error login/failed`, `skin/load` | `applyToken`'s callback, `loadSkin` |
+| `error login/failed`, `skin/load` | `Account::failed`, `loadSkin` |
 | `error milkdrop/<category>` | `Ui::MilkdropWindow::failed` |
 | `error jam/<reason>`, `jam/gone`, `jam/expired`, `jam/ended-by-server` | `HostSession::refused`, `ended` |
 | `feature vis`, `equalizer`, `skin`, `language`, `milkdrop`, `jam` | `MainWindow::visModeChanged`, the equalizer's `settingsChanged`, `loadSkin`, `setLanguage`, `WindowSet::visibilityChosen` of Milkdrop, `HostSession::activeChanged` |
@@ -279,8 +281,6 @@ session.
   saved positions were taken with the shaded heights.
 - The shortcut shown next to a menu item is only a label; the key that works is the `QAction`
   added by `installShortcuts()`. Change both places together.
-- `applyToken` leaves a rejected token set on `ApiClient`; the library just stays logged out. The
-  result of `Yandex::SaveToken` is ignored.
 - Settings values are converted with `QVariant::toInt`, `toDouble`, `toBool`, `toPoint`, `toSize`.
   A key that is present but malformed does not fall back to the default (a number becomes 0). Only
   `vis/mode` is clamped here before `static_cast<Ui::MainWindow::VisMode>`; saving uses
@@ -292,37 +292,9 @@ session.
 - The playlist's ADD button and right-click open the full main menu. Track rows emit
   `PlaylistWindow::trackMenuRequested`; ADD and clicks outside the rows emit
   `PlaylistWindow::sourcesMenuRequested`.
-- With audio on and not offline, `watchNetwork()` loads a `QNetworkInformation` backend that can
-  tell reachability and passes it to `Player::setNetworkOnline`: Online is true, Disconnected
-  false, anything else (Local, Site, Unknown) "cannot tell". Online also reconnects the jam at
-  once (`HostSession::networkBack`, HOST-26). Without such a backend the `Player`'s
-  retry timer alone ends a wait for the network ([src/core](../core/README.md#failures-during-playback)).
-
-### Login, logout and the token
-
-Unless `offline`, `start()` calls `Yandex::FindToken(TokenFile(), YaampTokenFiles())`, which tries
-`$QIYAA_TOKEN`, then QiYaa's own token file, then the old Yaamp `token.json` files. The order, the
-accepted token formats and the rule that an empty own file means "logged out" are in
-[src/yandex](../yandex/README.md).
-
-- No token: the marquee shows `Log in: right click → Log in`, and `login()` is queued, so it runs
-  once the event loop starts.
-- A token: logs `Using Yandex token from <origin>` and calls `applyToken(token, save)`. `save` is
-  true only when the origin is neither under `ConfigDirectory()` nor the environment variable (an
-  origin starting with `environment`), so a token imported from Yaamp is copied into QiYaa's own
-  token file once the account connects.
-
-`applyToken(token, save)` sets the token on `ApiClient`, shows `Connecting to Yandex Music…`
-and calls `Library::connectAccount`. On error the marquee shows `Login failed: <error>`. On
-success it calls `Yandex::SaveToken(TokenFile(), token)` if `save`, shows
-`Hello, <displayName>!`, and, if the play queue is empty and no jam is on or offered, calls
-`YandexSource::Catalog::playLikes(false)` (queues the liked tracks without starting playback).
-
-`login()` runs `Ui::LoginDialog` modally (`exec()`, a nested event loop) and, on accept, calls
-`applyToken(dialog.token(), true)`. `logout()` first ends a jam being created or on (the guests
-search through this account, HOST-32), then clears the play queue, calls `Library::logout()`
-(which also clears the API token) and `Yandex::ForgetToken(TokenFile())` (leaves an empty token
-file), and shows `You have logged out`.
+- Without a `QNetworkInformation` backend that can tell reachability, `NetworkWatch` says nothing,
+  and the `Player`'s retry timer alone ends a wait for the network
+  ([src/core](../core/README.md#failures-during-playback)).
 
 ### Skins
 
@@ -340,9 +312,9 @@ under the cursor for `trackMenuRequested`, and the current track for the other e
 `showSourcesMenu(globalPosition)` answers the main window's eject button with the current track.
 Both build a `QMenu` parented to the main window, open it with `popup()` and delete it on close.
 
-The sources menu holds the Yandex items from `Ui::AddLibraryActions` (only "Log in to Yandex
-Music…" while logged out; it calls `login()`). The texts here are the English sources; the user sees
-them in the interface language. The main menu, top to bottom:
+The sources menu holds the Yandex items from `Ui::AddLibraryActions` (only "Log in to Yandex Music…"
+while logged out; it calls `Account::login()`). The texts here are the English sources; the user
+sees them in the interface language. The main menu, top to bottom:
 
 - the same Yandex items;
 - in a jam build, Jam: "Start…" (no jam) or "Jam window" (a jam is on or being created), which
@@ -371,7 +343,7 @@ them in the interface language. The main menu, top to bottom:
   English, so that a wrong pick can be undone; "Беларуская", "Русский", "English" (exclusive, each
   in its own language) call `setLanguage()`;
 - Always on top: checkable, checked from the main window's current flag;
-- "Log out (<displayName>)", only while logged in: `logout()`;
+- "Log out (<displayName>)", only while logged in: `Account::logout()`;
 - "Quit QiYaa": `quit()`.
 
 ### Shortcuts
@@ -447,6 +419,68 @@ The `milkdrop/*` keys are read and written only in a build with `QIYAA_HAVE_MILK
 and `jamWindow/*` keys only in a jam build, the `telemetry/*` keys only in a telemetry build. The
 resize steps are clamped to 0..40 per axis by the windows.
 
+## `account.h/.cpp` — `App::Account`
+
+```cpp
+class Account : public QObject {
+public:
+    struct TokenFiles { QString own; QStringList imported; QString ownDirectory; };
+    struct Parts { Yandex::ApiClient* api; Yandex::Library* library; Core::Player* player;
+                   YandexSource::Catalog* catalog; QNetworkAccessManager* network; QWidget* dialogParent; };
+    Account(const Parts& parts, TokenFiles files, QObject* parent = nullptr);
+    void setLikesOnHold(std::function<bool()> onHold);   // asked when a login succeeds
+    void start();                                      // the token, or the login dialog
+    void login();                                      // modal dialog
+    void logout();
+    void applyToken(const QString& token, bool save);
+    void queueLikes();                                 // the likes into an empty queue, when logged in
+Q_SIGNALS:
+    void statusText(const QString& text);              // for the marquee
+    void connected(const QString& displayName);
+    void failed();                                     // the account did not connect
+    void loggingOut();                                 // before anything is cleared
+};
+```
+
+`Application` gives it `TokenFile()`, `YaampTokenFiles()` and `ConfigDirectory()`; a test gives it
+files of its own, so nothing here touches the real token.
+
+`start()` calls `Yandex::FindToken(own, imported)`, which tries `$QIYAA_TOKEN`, then QiYaa's own
+token file, then the old Yaamp `token.json` files. The order, the accepted token formats and the
+rule that an empty own file means "logged out" are in [src/yandex](../yandex/README.md).
+
+- No token: `statusText` `Log in: right click → Log in`, and `login()` is queued, so it runs once
+  the event loop starts.
+- A token: logs `Using Yandex token from <origin>` and calls `applyToken(token, save)`. `save` is
+  true only when the origin is neither under `ownDirectory` nor the environment variable (an
+  origin starting with `environment`), so a token imported from Yaamp is copied into QiYaa's own
+  token file once the account connects.
+
+`applyToken(token, save)` sets the token on `ApiClient`, says `Connecting to Yandex Music…` and
+calls `Library::connectAccount`. On error it says `Login failed: <error>` and emits `failed`. On
+success it calls `Yandex::SaveToken(own, token)` if `save`, says `Hello, <displayName>!`, emits
+`connected`, and, unless the likes are on hold, calls `queueLikes()`:
+`YandexSource::Catalog::playLikes(false)` (the liked tracks without starting playback) if the
+queue is empty and the library logged in.
+
+`login()` runs `Ui::LoginDialog` modally (`exec()`, a nested event loop) and, on accept, calls
+`applyToken(dialog.token(), true)`. `logout()` emits `loggingOut` first, so a jam being created or
+on ends while the account still works (the guests search through it, HOST-32), then clears the
+play queue, calls `Library::logout()` (which also clears the API token) and
+`Yandex::ForgetToken(own)` (leaves an empty token file), and says `You have logged out`.
+
+**Traps:**
+- `applyToken` leaves a rejected token set on `ApiClient`; the library just stays logged out. The
+  result of `Yandex::SaveToken` is ignored.
+- Tests: `tests/account_test.cpp`.
+
+## `network_watch.h/.cpp` — `App::NetworkWatch`
+
+`start()` loads a `QNetworkInformation` backend that can tell reachability; without one it does
+nothing. It then reports the reachability now and at every change: `onlineChanged` with Online as
+true, Disconnected as false and anything else (Local, Site, Unknown) as "cannot tell", and `back()`
+at every Online, the first one too.
+
 ## `window_set.h/.cpp` — `App::WindowSet`
 
 ```cpp
@@ -495,12 +529,13 @@ minimising, its close is the app's `quit()`, and it is the first of `all()`.
 - **`showAtStart()`** shows the main window, then every `shownAtStart` window whose
   `<group>/visible` is true, places them all, sets the EQ and PL buttons to match, and activates the
   main window.
-**Layout**, only in `showAtStart()`: each window at its saved `<group>/pos`, or at its place:
-`Main` (100, 100); `Stacked` right below the previous stacked window's default (the equalizer
-under the main window, the playlist under the equalizer); `RightOfMain` (now-playing, the jam
-window); `BelowRightOfMain` at main position + (main width, main height) (Milkdrop). The defaults use the sizes the windows have at that moment,
-after shade and scale. `SkinnedWindow::placeAt` clamps every position to the screens that exist
-now.
+
+**Layout**, only in `showAtStart()`: each window at its saved `<group>/pos`, or at its place: `Main`
+(100, 100); `Stacked` right below the previous stacked window's default (the equalizer under the
+main window, the playlist under the equalizer); `RightOfMain` (now-playing, the jam window);
+`BelowRightOfMain` at main position + (main width, main height) (Milkdrop). The defaults use the
+sizes the windows have at that moment, after shade and scale. `SkinnedWindow::placeAt` clamps every
+position to the screens that exist now.
 
 **`setScale(scale, scope)`**:
 
