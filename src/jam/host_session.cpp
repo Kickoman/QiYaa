@@ -121,6 +121,7 @@ HostSession::HostSession(
         options.config = [] { return HostConfig{}; };
     }
     stored = store.load();
+    connect(this, &HostSession::changed, this, &HostSession::announce);
     retryTimer.setSingleShot(true);
     connect(&retryTimer, &QTimer::timeout, this, [this] {
         if (session) {
@@ -157,6 +158,21 @@ HostSession::HostSession(
 }
 
 HostSession::~HostSession() = default;
+
+void HostSession::announce() {
+    const bool active = phase() == HostPhase::Active;
+    const bool nowConnected = active && connected;
+    if (active != announcedActive) {
+        announcedActive = active;
+        Q_EMIT activeChanged(active);
+    }
+    if (nowConnected && !announcedConnected) {
+        Q_EMIT connectedChanged(true);
+    } else if (active && announcedConnected && !nowConnected) {
+        Q_EMIT connectedChanged(false);  // HOST-25; the end of the jam is no lost connection
+    }
+    announcedConnected = nowConnected;
+}
 
 HostPhase HostSession::phase() const {
     if (session) {

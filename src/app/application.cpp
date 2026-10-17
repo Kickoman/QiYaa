@@ -652,32 +652,20 @@ void Application::setUpJam() {
             case Jam::HostEnd::ByHost: break;
         }
     });
-    // HOST-25, HOST-26: the status follows the connection while the jam is on.
-    connect(
-        jamHostSession.get(),
-        &Jam::HostSession::changed,
-        this,
-        [this, wasConnected = false, wasActive = false]() mutable {
-            const bool active = jamHostSession->phase() == Jam::HostPhase::Active;
-            const bool connected = active && jamHostSession->isConnected();
-            if (active != wasActive) {
-                wasActive = active;
-                telemetryFeature(QStringLiteral("jam"), active ? QStringLiteral("on") : QStringLiteral("off"));
+    connect(jamHostSession.get(), &Jam::HostSession::changed, this, [this] { playlistWindowInstance->update(); });
+    connect(jamHostSession.get(), &Jam::HostSession::connectedChanged, this, [this](bool connected) {
+        mainWindowInstance->setStatusText(
+            connected ? tr("The jam is connected") : tr("No connection to the jam server · trying again by itself")
+        );
+    });
+    connect(jamHostSession.get(), &Jam::HostSession::activeChanged, this, [this](bool active) {
+        telemetryFeature(QStringLiteral("jam"), active ? QStringLiteral("on") : QStringLiteral("off"));
 #ifdef QIYAA_HAVE_TELEMETRY
-                if (active && telemetryReporter) {
-                    telemetryReporter->countJam();
-                }
-#endif
-            }
-            playlistWindowInstance->update();
-            if (active && wasConnected && !connected) {
-                mainWindowInstance->setStatusText(tr("No connection to the jam server · trying again by itself"));
-            } else if (connected && !wasConnected) {
-                mainWindowInstance->setStatusText(tr("The jam is connected"));
-            }
-            wasConnected = connected;
+        if (active && telemetryReporter) {
+            telemetryReporter->countJam();
         }
-    );
+#endif
+    });
 #endif
 }
 
