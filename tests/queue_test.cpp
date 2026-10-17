@@ -334,6 +334,17 @@ private Q_SLOTS:
         QCOMPARE(PlayOrder(queue), (QList<int>{0, 1, 2, 3}));
     }
 
+    void anotherBaseTakesTheItemsAnEarlierLayerLeft() {  // HOST-21, HOST-36, HOST-32
+        Core::Queue queue;
+        queue.replace(HeadOf(Tracks(3)));
+        queue.setItems(Items({"a", "b"}), Core::SeedHint{});
+        queue.endLayer();
+        queue.setItems(Items({"c"}), Core::SeedHint{});
+        queue.replaceBase({});
+        QCOMPARE(Ids(queue), (QStringList{"0", "c"}));
+        QCOMPARE(PlayOrder(queue), (QList<int>{0, 1}));
+    }
+
     void theLayerEndKeepsTheWaitingItemsFirstAndDropsTheJamWave() {  // HOST-32
         Core::Queue queue;
         queue.replace(HeadOf(Tracks(2)));

@@ -563,6 +563,22 @@ private Q_SLOTS:
         QTRY_COMPARE(stack.lastPlayback().kind, Core::JamPlayback::Kind::Base);
         QCOMPARE(stack.started.size(), 1);
     }
+
+    void clearingTheNextJamsBaseTakesTheItemsTheLastJamLeft() {  // HOST-36, HOST-21, HOST-32
+        Stack stack(&library);
+        noWave();
+        stack.player.setSource(HeadOf({"11", "22"}), false);
+        stack.player.playIndex(0);
+        stack.jam.start(false);
+        stack.jam.setQueue({Item("i1", "55")}, {}, 0);
+        stack.jam.end();
+        stack.jam.start(false);
+        stack.jam.setQueue({Item("i2", "66")}, {}, 0);
+        QCOMPARE(Ids(stack.player), (QStringList{"11", "66", "55", "22"}));
+        stack.player.clear();
+        QCOMPARE(Ids(stack.player), (QStringList{"11", "66"}));
+        QVERIFY(stack.removals.isEmpty());
+    }
 };
 
 QTEST_GUILESS_MAIN(TestJamMode)
