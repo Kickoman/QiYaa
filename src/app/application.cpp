@@ -1,5 +1,6 @@
 #include "app/application.h"
 
+#include "app/account.h"
 #include "app/paths.h"
 #include "app/window_set.h"
 #include "audio/equalizer.h"
@@ -249,6 +250,14 @@ Application::Application(const Options& options, QObject* parent)
     windowSet->add(
         nowPlayingWindowInstance.get(), {.group = QStringLiteral("nowPlaying"), .stepsByDefault = QSize(0, 0)}
     );
+    accountControl = std::make_unique<Account>(
+        Account::Parts{&apiClient, &yandexLibrary, &corePlayer, &catalog, networkManager, mainWindowInstance.get()},
+        Account::TokenFiles{TokenFile(), YaampTokenFiles(), ConfigDirectory()}
+    );
+    connect(accountControl.get(), &Account::statusText, mainWindowInstance.get(), &Ui::MainWindow::setStatusText);
+    connect(accountControl.get(), &Account::failed, this, [this] {
+        telemetryError(QStringLiteral("login"), QStringLiteral("failed"));
+    });
 #if defined(QIYAA_HAVE_MILKDROP)
     {
         const QString userPresets =
@@ -404,8 +413,9 @@ Application::Application(const Options& options, QObject* parent)
 
     // The system's view of the network ends a wait for it at once (spec ERR-02); without a
     // backend that can tell, the Player retries on its timer alone.
+    connect(&networkWatch, &NetworkWatch::onlineChanged, &corePlayer, &Core::Player::setNetworkOnline);
     if (startOptions.audio && !startOptions.offline) {
-        watchNetwork();
+        networkWatch.start();
     }
 
     connect(qApp, &QApplication::aboutToQuit, this, [this] {
@@ -472,34 +482,6 @@ Application::Application(const Options& options, QObject* parent)
 
 Application::~Application() = default;
 
-void Application::watchNetwork() {
-    using Information = QNetworkInformation;
-    if (!Information::loadDefaultBackend() && !Information::loadBackendByFeatures(Information::Feature::Reachability)) {
-        return;
-    }
-    Information* information = Information::instance();
-    if (!information || !information->supports(Information::Feature::Reachability)) {
-        return;
-    }
-    auto apply = [this](Information::Reachability reachability) {
-        // Local and Site say little about the Yandex servers: leave those to the timer.
-        std::optional<bool> online;
-        if (reachability == Information::Reachability::Online) {
-            online = true;
-        } else if (reachability == Information::Reachability::Disconnected) {
-            online = false;
-        }
-        corePlayer.setNetworkOnline(online);
-#ifdef QIYAA_HAVE_JAM
-        if (jamHostSession && reachability == Information::Reachability::Online) {
-            jamHostSession->networkBack();  // HOST-26
-        }
-#endif
-    };
-    connect(information, &Information::reachabilityChanged, this, apply);
-    apply(information->reachability());
-}
-
 void Application::setUpJam() {
 #ifdef QIYAA_HAVE_JAM
     Jam::HostOptions options;
@@ -511,6 +493,12 @@ void Application::setUpJam() {
     // Next to the settings: a test's or a read-only run's jam stays in its own directory.
     const Jam::SessionStore store(settings.directory() + QStringLiteral("/jam-session.json"));
     jamHostSession = std::make_unique<Jam::HostSession>(&jamMode, &yandexLibrary, store, std::move(options));
+    connect(&networkWatch, &NetworkWatch::back, jamHostSession.get(), &Jam::HostSession::networkBack);  // HOST-26
+    connect(accountControl.get(), &Account::loggingOut, jamHostSession.get(), [this] {
+        jamHostSession->cancelCreate();
+        jamHostSession->end();
+    });
+    accountControl->setLikesOnHold([this] { return jamMode.isActive() || storedJamQuestion; });
 
     jamWindowInstance = std::make_unique<Ui::JamWindow>(jamHostSession.get(), &catalog, currentSkin.get());
     installShortcuts(jamWindowInstance.get());
@@ -596,9 +584,7 @@ void Application::offerStoredJam() {
             windowSet->setVisible(jamWindowInstance.get(), true);
         } else if (question->clickedButton() == no) {
             jamHostSession->discardStored();
-            if (corePlayer.entries().isEmpty() && yandexLibrary.isLoggedIn()) {
-                catalog.playLikes(false);
-            }
+            accountControl->queueLikes();
         }
     });
     storedJamQuestion = question;
@@ -614,61 +600,7 @@ void Application::start() {
         return;
     }
     offerStoredJam();
-    const Yandex::TokenSource token = Yandex::FindToken(TokenFile(), YaampTokenFiles());
-    if (token.token.isEmpty()) {
-        mainWindowInstance->setStatusText(tr("Log in: right click → Log in"));
-        QTimer::singleShot(0, this, &Application::login);
-        return;
-    }
-    qInfo("Using Yandex token from %s", qPrintable(token.origin));
-    const bool imported =
-        !token.origin.startsWith(App::ConfigDirectory()) && !token.origin.startsWith(QLatin1String("environment"));
-    applyToken(token.token, imported);
-}
-
-void Application::applyToken(const QString& token, bool save) {
-    apiClient.setToken(token);
-    mainWindowInstance->setStatusText(tr("Connecting to Yandex Music…"));
-    yandexLibrary.connectAccount([this, token, save](const Yandex::Account& account, const QString& error) {
-        if (!error.isEmpty()) {
-            mainWindowInstance->setStatusText(tr("Login failed: %1").arg(error));
-            telemetryError(QStringLiteral("login"), QStringLiteral("failed"));
-            return;
-        }
-        if (save) {
-            Yandex::SaveToken(TokenFile(), token);
-        }
-        mainWindowInstance->setStatusText(tr("Hello, %1!").arg(account.displayName));
-#ifdef QIYAA_HAVE_JAM
-        jamWindowInstance->setHostName(account.displayName);
-#endif
-        const bool jam = jamMode.isActive() || storedJamQuestion;
-        if (corePlayer.entries().isEmpty() && !jam) {
-            catalog.playLikes(false);
-        }
-    });
-}
-
-void Application::login() {
-    Ui::LoginDialog dialog(networkManager, mainWindowInstance.get());
-    if (dialog.exec() != QDialog::Accepted) {
-        return;
-    }
-    applyToken(dialog.token(), true);
-}
-
-void Application::logout() {
-#ifdef QIYAA_HAVE_JAM
-    if (jamHostSession) {
-        // HOST-32: the guests search through this account.
-        jamHostSession->cancelCreate();
-        jamHostSession->end();
-    }
-#endif
-    corePlayer.clear();
-    yandexLibrary.logout();
-    Yandex::ForgetToken(TokenFile());
-    mainWindowInstance->setStatusText(tr("You have logged out"));
+    accountControl->start();
 }
 
 bool Application::loadSkin(const QString& path) {
@@ -1026,7 +958,7 @@ void Application::showSourcesMenu(QPoint globalPosition) {
         &trackSources,
         corePlayer.currentTrack(),
         mainWindowInstance.get(),
-        [this] { login(); }
+        [this] { accountControl->login(); }
     );
     menu->popup(globalPosition);
 }
@@ -1035,14 +967,16 @@ void Application::showMainMenu(QPoint globalPosition, const Core::Track* track) 
     auto* menu = new QMenu(mainWindowInstance.get());
     menu->setAttribute(Qt::WA_DeleteOnClose);
     Ui::AddLibraryActions(menu, &yandexLibrary, &catalog, &trackSources, track, mainWindowInstance.get(), [this] {
-        login();
+        accountControl->login();
     });
     menu->addSeparator();
     addJamMenu(menu);
     fillWindowActions(menu);
     menu->addSeparator();
     if (yandexLibrary.isLoggedIn()) {
-        menu->addAction(tr("Log out (%1)").arg(yandexLibrary.account().displayName), this, &Application::logout);
+        menu->addAction(
+            tr("Log out (%1)").arg(yandexLibrary.account().displayName), accountControl.get(), &Account::logout
+        );
     }
     menu->addAction(tr("Quit QiYaa"), this, &Application::quit);
     menu->popup(globalPosition);
