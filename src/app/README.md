@@ -16,7 +16,8 @@ HTTP, OAuth and the token file format in [src/yandex](../yandex/README.md); `.ws
 
 | File | Contains |
 |---|---|
-| `application.h/.cpp` | `App::Application` and its `Options`: ownership, wiring, layout, menus, shortcuts, settings, login, skins, quit, `snapshot()` |
+| `application.h/.cpp` | `App::Application` and its `Options`: ownership, wiring, menus, shortcuts, login, skins, quit |
+| `window_set.h/.cpp` | `App::WindowSet`: the windows as one set, one `Spec` each: their places, showing and hiding, minimising, scale, "always on top", skin, saved positions, `snapshot()` |
 | `settings.h/.cpp` | `App::Settings`: every key of `settings.ini` with its default, typed reads and per-key writes; the only owner of `QSettings` |
 | `paths.h/.cpp` | `ConfigDirectory`, `YaampDataDirectories`, `TokenFile`, `YaampTokenFiles`, `SettingsFile`: where settings and tokens live |
 | `translations.h/.cpp` | `Language`, `Languages`, `LanguageCode`, `LanguageFromCode`, `LanguageName`, `Translations`: the interface language |
@@ -101,15 +102,9 @@ public:
     Core::JamMode* jam();
     Jam::HostSession* jamHost() const;                 // null without QIYAA_HAVE_JAM
 
+    WindowSet* windows() const;                        // places, shows, scales the windows (below)
+
     bool loadSkin(const QString& path);                // false: message in the marquee
-    enum class ScaleScope { Saved, ThisRun };
-    void setScale(double scale, ScaleScope scope = ScaleScope::Saved);  // ThisRun for --scale
-    void setAlwaysOnTop(bool on);
-    void setEqualizerVisible(bool on);
-    void setPlaylistVisible(bool on);
-    void setNowPlayingVisible(bool on);
-    void setMilkdropVisible(bool on);                  // no-op without Milkdrop
-    void setJamWindowVisible(bool on);                 // no-op without the jam
 
     Language language() const;
     void setLanguage(Language language);               // applies now and saves `language`
@@ -120,29 +115,29 @@ public:
 
     void saveState();
     void quit();
-    QImage snapshot() const;                           // visible windows, as placed on screen
 };
 ```
 
 **Threads and ownership.** Everything runs on the GUI thread: `Application` starts no thread, and
 every method must be called from the GUI thread (the audio engine's decoder thread and device
 callback stay inside [src/audio](../audio/README.md)). `Application` owns everything it wires:
-`QSettings`, the base and the current `Skins::Skin`, `ApiClient`, `Library`, `AudioEngine`,
+`App::Settings`, the base and the current `Skins::Skin`, `ApiClient`, `Library`, `AudioEngine`,
 `YandexSource::Source`, `Core::SourceRegistry` (the Yandex source under `"yandex"`, added first in
 the constructor, before any window), `Player`, `YandexSource::Catalog` and `JamMode` as members; its
 own `QNetworkAccessManager` unless `Options::network` lends one; the `Jam::HostSession`,
 `CoverCache`, `MediaControls`, the `Mpris`, `MacMediaControls` or `Smtc` object (held as
-`std::unique_ptr<QObject>`) and the windows (five, and the jam window in a jam build) through
-`std::unique_ptr`. The accessors return non-owning pointers, valid until the `Application` is
-destroyed.
+`std::unique_ptr<QObject>`), the windows (five, and the jam window in a jam build) and the
+`WindowSet` through `std::unique_ptr`. The accessors return non-owning pointers, valid until the
+`Application` is destroyed.
 
 Member order is load-bearing. Members are constructed in declaration order, and the initialiser list
 relies on it: the settings file after the temporary directory, `ApiClient` after the network
 manager, the Yandex source after the library, `Player` after the engine and the registry, `JamMode`
 after the player. The host session is declared after `JamMode` and destroyed before it. The windows
-are declared last, so they are destroyed first, while the player, engine and skins they point at
-still exist. The `Mpris`/`Smtc`/`MacMediaControls` object dies before the `MediaControls` it wraps,
-and `QSettings` before the temporary directory that may hold its file.
+are declared last, and the `WindowSet` after them, so the set goes first, then the windows, while
+the player, engine and skins they point at still exist. The `Mpris`/`Smtc`/`MacMediaControls` object
+dies before the `MediaControls` it wraps, and `App::Settings` before the temporary directory that may
+hold its file.
 
 **Construction**, in this order:
 
@@ -159,12 +154,13 @@ and `QSettings` before the temporary directory that may hold its file.
    runs without sound; on success it logs `Audio backend: <name>`.
 4. Loads `skinOverride`, or else the `skin` setting. A `Skins::Error` logs
    `Skin: <what>; using the built-in one`.
-5. Creates the main, equalizer, playlist and now-playing windows and the cover cache
-   (`<temp dir>/covers` when `readOnlySettings`, else the default of
-   [src/core](../core/README.md)). With `QIYAA_HAVE_MILKDROP` it also creates the Milkdrop window,
-   with built-in presets from `:/milkdrop` and user presets from `<ConfigDirectory>/milkdrop`
-   (`<temp dir>/milkdrop` when `readOnlySettings`). Every window gets the shortcuts listed below;
-   all but the main window are "secondary" (no taskbar button on Windows).
+5. Creates the main, equalizer, playlist and now-playing windows and the cover cache (`<temp
+   dir>/covers` when `readOnlySettings`, else the default of [src/core](../core/README.md)). With
+   `QIYAA_HAVE_MILKDROP` it also creates the Milkdrop window, with built-in presets from
+   `:/milkdrop` and user presets from `<ConfigDirectory>/milkdrop` (`<temp dir>/milkdrop` when
+   `readOnlySettings`). Every window gets the shortcuts listed below. The `WindowSet` is created on
+   the main window right after it, and each other window joins it with `add()`: it becomes
+   "secondary" (no taskbar button on Windows) and gets its saved steps.
 6. Connects `YandexSource::Catalog::noticed` to the main window's marquee, worded by
    `Ui::SourceNoticeText`. In a jam build (`setUpJam()`) creates the `Jam::HostSession`: the server
    and the wave feedback from the `jam/*` settings at each use, the app's version for `hello`, and
@@ -190,12 +186,11 @@ and `QSettings` before the temporary directory that may hold its file.
    - Milkdrop's `transportKey` (transport keys pressed while the visualization has the focus)
      goes to the same handler as the shortcuts;
    - Milkdrop is told whether the engine state is `Playing`.
-8. Applies the saved shade state of the main, equalizer and playlist windows, then `scale` to every
-   window, then `alwaysOnTop`.
+8. `WindowSet::restore()`: the saved shade state of the main, equalizer and playlist windows, then
+   `scale` to every window, then `alwaysOnTop`; its `saveRequested` goes to `saveState()`.
 9. With `mediaIntegration`, creates `Integrations::MediaControls` with four hooks: volume, set
-   volume, raise (un-minimise the main window, raise every visible window, activate the main one)
-   and quit (`quit()`). On top of it, `Mpris` in a build with `QIYAA_HAVE_MPRIS`, or `Smtc` in a
-   build with `QIYAA_HAVE_SMTC`, or `MacMediaControls` with
+   volume, raise (`WindowSet::bringToFront()`) and quit (`quit()`). On top of it, `Mpris` in a build
+   with `QIYAA_HAVE_MPRIS`, or `Smtc` in a build with `QIYAA_HAVE_SMTC`, or `MacMediaControls` with
    `QIYAA_HAVE_MAC_MEDIA_CONTROLS` on macOS.
 10. With audio on and not offline, `watchNetwork()` (see the traps).
 11. Connects `QApplication::aboutToQuit` to `saveState()` followed by `Player::stop()`.
@@ -206,10 +201,8 @@ QiYaa to work with this jam server", `not-allowed` "The jam server does not allo
 `queue-limit` "The jam queue is full", `duplicate` "This track is already in the jam queue", `stale`
 "This track has already left the queue", any other "The jam server refused". The texts are the Android app's.
 
-**`start()`** shows the main window, then each other window whose `*/visible` setting is true,
-places them all (`layoutWindows()`), sets the main window's EQ and PL buttons to match, and
-activates the main window. Unless `offline`, it then asks about a stored jam and looks for a
-token (see [Login, logout and the token](#login-logout-and-the-token)).
+**`start()`** shows the windows (`WindowSet::showAtStart()`). Unless `offline`, it then asks about a
+stored jam and looks for a token (see [Login, logout and the token](#login-logout-and-the-token)).
 
 **"Continue the jam?"** (HOST-23). When the host session has a stored jam, `start()` opens a
 `QMessageBox` "A jam was on" / "Continue it? The guests' link stays the same." with "Continue"
@@ -219,61 +212,21 @@ calls `discardStored()` and queues the likes like a login does; closing it witho
 the jam stored for the next start. While it is open, or a jam is on, `applyToken` does not queue
 the likes.
 
-**Layout.** `layoutWindows()`, called only from `start()`, places each window at its saved
-`*/pos`, or at the Winamp default: the equalizer right below the main window, the playlist right
-below the equalizer, now-playing to the right of the main window, Milkdrop at main position +
-(main width, main height), the jam window to the right of the main window like now-playing. The defaults use the sizes the windows have at that moment,
-after shade and scale. `SkinnedWindow::placeAt` clamps every position to the screens that exist
-now.
-
-**`setScale(scale, scope)`**:
-
-1. Collects the windows docked to the main window through a chain of touching windows
-   (`Ui::ConnectedGroup`, breadth-first, so nearest first). Hidden windows are included, so they
-   are in place when shown. It records each one's offset from the main window in skin pixels
-   (offset / old scale, rounded).
-2. Calls `setScale` on every window. The window clamps the factor to [1, 4], rounds it to 0.05,
-   and may move itself back onto the screen, so the main window's position is read only after
-   this step.
-3. Puts each docked window back at main position + offset × new scale, snapped with
-   `Ui::SnapToOthers(frame, placed, 4)` to the windows already placed. Window sizes are rounded one
-   by one, and the 4 px snap closes the resulting 1 px gaps.
-4. Moves the visible group as a whole into the screen it is on (`Ui::PickScreen`,
-   `Ui::ClampInside`). If the group is wider or taller than that screen, it calls
-   `ensureVisible()` on every window so each one can still be reached.
-5. With `ScaleScope::Saved`, stores `scale` (the factor the main window ended up with) and calls
-   `saveState()`. Without it (`--scale`), it sets `transientScale`, which stops `saveState()` from
-   writing positions.
-
-Windows not docked to the main window keep their top-left corner and only change size.
-
-**Visibility.** `setEqualizerVisible`, `setPlaylistVisible`, `setNowPlayingVisible` and
-`setMilkdropVisible` show or hide the window, call `ensureVisible()` when showing it, and store
-`*/visible`. The first two also update the main window's EQ/PL button. A window's own close button
-calls the same setter with `false`. Minimising the main window hides the other four; restoring it
-shows those whose `*/visible` is true. `setAlwaysOnTop` sets `Qt::WindowStaysOnTopHint` on every
-window, then shows again those that were visible, because changing window flags hides a window.
-
 **`saveState()`** always writes `volume`, `balance`, `vis/mode`, `time/remaining` and
-`equalizer/auto`. It writes the five `*/pos` keys only when all three hold: the platform lets the
-app place windows (`SkinnedWindow::CanPositionWindows()`, false on native Wayland), the main window
-is visible, and no `--scale` override is active. It runs when any window finishes a move
-(`moveFinished`), on a shade change, on a `setScale` with `ScaleScope::Saved`, on a choice in the
-Visualization submenu, in `quit()` and on `aboutToQuit`. The other settings are written the moment
-they change (see the table).
+`equalizer/auto`, then the positions (`WindowSet::savePositions()`, below). It runs on the
+`WindowSet`'s `saveRequested` (a window finished a move, a shade changed, a `setScale` with
+`ScaleScope::Saved`), on a choice in the Visualization submenu, in `quit()` and on `aboutToQuit`.
+The other settings are written the moment they change (see the table).
 
 **`quit()`** runs once; a second call returns at once. It calls `saveState()`, then
 `Player::shutDown()` (stops playback, which reports the open track to the wave as skipped, and
-ignores anything that would start playback again), hides every window, and then quits the Qt
+ignores anything that would start playback again), hides every window (`WindowSet::hideAll()`),
+and then quits the Qt
 application with a queued call, so that a `quit()` made inside a nested event loop (a menu) ends
 the main loop. The queued quit happens right away if `ApiClient::pendingPosts()` is 0, otherwise
 on `ApiClient::postsSettled` or after 1500 ms, whichever comes first. `quit()` is reached from the
 main window's close button (and the window manager's close), the menu item "Quit QiYaa" and the
 media controls' quit.
-
-**`snapshot()`** paints `grab()` of each visible window into an `ARGB32_Premultiplied` image the
-size of the bounding rectangle of all visible windows, each at its offset in that rectangle. Gaps
-stay transparent. With no visible window the image is null.
 
 `tests/windows_test.cpp` drives a real `Application` with `offline`, `audio = false`,
 `readOnlySettings` and no media integration, on a 2560×1440 offscreen screen (on Windows on Qt's
@@ -282,8 +235,8 @@ default offscreen screen, where the scale tests skip themselves).
 `jam/server` at a real jam server and `Options::network` at the test's MockHttpServer.
 
 **Traps:**
-- Do not reorder the members in `application.h` (see above). A new window goes after the
-  existing ones, and needs `installShortcuts()`, an entry in `windows()` and its settings keys.
+- Do not reorder the members in `application.h` (see above). A new window is one `WindowSet::Spec`
+  in an `add()` after the existing ones (their order is the layout's) and `installShortcuts()`.
 - `Options::offline` only skips the token lookup in `start()`. The menu item "Log in to Yandex
   Music…" still logs in. `readOnlySettings` does not redirect the token file: a login during
   such a run writes the real `<ConfigDirectory>/token`.
@@ -308,7 +261,7 @@ connections are made at the end of the constructor:
 | `error login/failed`, `skin/load` | `applyToken`'s callback, `loadSkin` |
 | `error milkdrop/<category>` | `Ui::MilkdropWindow::failed` |
 | `error jam/<reason>`, `jam/gone`, `jam/expired`, `jam/ended-by-server` | `HostSession::refused`, `ended` |
-| `feature vis`, `equalizer`, `skin`, `language`, `milkdrop`, `jam` | `MainWindow::visModeChanged`, the equalizer's `settingsChanged`, `loadSkin`, `setLanguage`, `setMilkdropVisible`, `HostSession::activeChanged` |
+| `feature vis`, `equalizer`, `skin`, `language`, `milkdrop`, `jam` | `MainWindow::visModeChanged`, the equalizer's `settingsChanged`, `loadSkin`, `setLanguage`, `WindowSet::visibilityChosen` of Milkdrop, `HostSession::activeChanged` |
 
 A skin is `base`, a built-in skin's name or `custom`, never a path. `quit()` records `exit`
 and waits for the last batch within its 1.5 s, like the plays reports. The menu's "Send
@@ -440,8 +393,8 @@ default context is the window, so the keys work while any of the player's window
 ### Settings
 
 `App::Settings` (below) is the only place in `src/` that reads or writes settings; the table
-says who asks it when. "ctor" is the `Application` constructor; "setter" is the matching
-`set*Visible`.
+says who asks it when. "ctor" is the `Application` constructor; "setter" is
+`WindowSet::setVisible`.
 
 | Key | Type | Default | Read | Written |
 |---|---|---|---|---|
@@ -450,31 +403,31 @@ says who asks it when. "ctor" is the `Application` constructor; "setter" is the 
 | `playback/quality` | QString: `standard` or `economy` (`Yandex::QualityKey`) | `standard` (anything else too) | ctor | the Quality menu |
 | `playback/continueWithVibe` | bool: a new queue goes on with a vibe from its history (spec CONT-01) | true | ctor (`Player::setContinueWithVibeByDefault`) | never: only by hand |
 | `language` | QString: `be`, `ru` or `en` | `be` (anything else too) | ctor, unless `Options::language` | `setLanguage()` |
-| `scale` | double | 1.0 | ctor | `setScale(…, ScaleScope::Saved)` |
-| `alwaysOnTop` | bool | false | ctor | `setAlwaysOnTop()` |
+| `scale` | double | 1.0 | ctor | `WindowSet::setScale(…, ScaleScope::Saved)` |
+| `alwaysOnTop` | bool | false | `WindowSet::restore()` | `WindowSet::setAlwaysOnTop()` |
 | `volume` | int, 0..100 | 75 | ctor | `saveState()` |
 | `balance` | int, −100..100 | 0 | ctor | `saveState()` |
 | `vis/mode` | int: 0 spectrum, 1 oscilloscope, 2 off | 0 | ctor (clamped to 0..2) | `saveState()` |
 | `time/remaining` | bool: show remaining time | false | ctor | `saveState()` |
-| `mainWindow/pos` | QPoint | (100, 100) | `start()` | `saveState()` |
-| `mainWindow/shaded` | bool | false | ctor | on `shadeChanged` |
-| `equalizer/visible` | bool | true | `start()`, un-minimise | setter |
-| `equalizer/pos` | QPoint | main position + (0, main height) | `start()` | `saveState()` |
-| `equalizer/shaded` | bool | false | ctor | on `shadeChanged` |
+| `mainWindow/pos` | QPoint | (100, 100) | `WindowSet::showAtStart()` | `WindowSet::savePositions()` |
+| `mainWindow/shaded` | bool | false | `WindowSet::restore()` | on `shadeChanged` |
+| `equalizer/visible` | bool | true | `WindowSet::showAtStart()`, restoring | setter |
+| `equalizer/pos` | QPoint | main position + (0, main height) | `WindowSet::showAtStart()` | `WindowSet::savePositions()` |
+| `equalizer/shaded` | bool | false | `WindowSet::restore()` | on `shadeChanged` |
 | `equalizer/enabled` | bool | true | ctor | on `EqualizerWindow::settingsChanged` |
 | `equalizer/preamp` | double, dB | 0.0 | ctor | on `settingsChanged` |
 | `equalizer/bands` | QStringList: 10 numbers in dB, one decimal, in `Audio::kEqBandHz` order (60 Hz first) | empty = all 0.0 | ctor | on `settingsChanged` |
 | `equalizer/auto` | bool | false | ctor | `saveState()` |
-| `playlist/visible` | bool | true | `start()`, un-minimise | setter |
-| `playlist/pos` | QPoint | equalizer default + (0, equalizer height) | `start()` | `saveState()` |
-| `playlist/shaded` | bool | false | ctor | on `shadeChanged` |
-| `playlist/steps` | QSize: resize steps of 25×29 skin px beyond 275×116 | (0, 4) | ctor | on `sizeStepsChanged` |
-| `nowPlaying/visible` | bool | false | `start()`, un-minimise | setter |
-| `nowPlaying/pos` | QPoint | main position + (main width, 0) | `start()` | `saveState()` |
-| `nowPlaying/steps` | QSize: resize steps of 25×29 skin px | (0, 0) | ctor | on `sizeStepsChanged` |
-| `milkdrop/visible` | bool | false | `start()`, un-minimise | setter |
-| `milkdrop/pos` | QPoint | main position + (main width, main height) | `start()` | `saveState()` |
-| `milkdrop/steps` | QSize: resize steps of 25×29 skin px | (0, 4) | ctor | on `sizeStepsChanged` |
+| `playlist/visible` | bool | true | `WindowSet::showAtStart()`, restoring | setter |
+| `playlist/pos` | QPoint | equalizer default + (0, equalizer height) | `WindowSet::showAtStart()` | `WindowSet::savePositions()` |
+| `playlist/shaded` | bool | false | `WindowSet::restore()` | on `shadeChanged` |
+| `playlist/steps` | QSize: resize steps of 25×29 skin px beyond 275×116 | (0, 4) | `WindowSet::add()` | on `sizeStepsChanged` |
+| `nowPlaying/visible` | bool | false | `WindowSet::showAtStart()`, restoring | setter |
+| `nowPlaying/pos` | QPoint | main position + (main width, 0) | `WindowSet::showAtStart()` | `WindowSet::savePositions()` |
+| `nowPlaying/steps` | QSize: resize steps of 25×29 skin px | (0, 0) | `WindowSet::add()` | on `sizeStepsChanged` |
+| `milkdrop/visible` | bool | false | `WindowSet::showAtStart()`, restoring | setter |
+| `milkdrop/pos` | QPoint | main position + (main width, main height) | `WindowSet::showAtStart()` | `WindowSet::savePositions()` |
+| `milkdrop/steps` | QSize: resize steps of 25×29 skin px | (0, 4) | `WindowSet::add()` | on `sizeStepsChanged` |
 | `milkdrop/shuffle` | bool | true | ctor | on `MilkdropWindow::settingsChanged` |
 | `milkdrop/locked` | bool: keep the current preset | false | ctor | on `settingsChanged` |
 | `milkdrop/seconds` | int, seconds per preset (the window clamps to 5..3600) | 30 | ctor | on `settingsChanged` |
@@ -483,9 +436,9 @@ says who asks it when. "ctor" is the `Application` constructor; "setter" is the 
 | `jam/server` | QString: the jam server's address, `https://…` | `QIYAA_JAM_URL` | each time the host session connects; ctor and the dialog for the jam window | "Server settings…" |
 | `jam/waveFeedback` | bool: the jam wave learns from skips (HOST-12, HOST-16) | true | when a jam starts | "Server settings…" |
 | `jam/shareAudio` | bool: guests may listen along (spec/jam/listen.md) | false | at each `playing` | "Server settings…" |
-| `jamWindow/visible` | bool | false | un-minimise only: the jam window is shown by the menu and by "Continue" | `setJamWindowVisible()` |
-| `jamWindow/pos` | QPoint | main position + (main width, 0) | `start()` | `saveState()` |
-| `jamWindow/steps` | QSize: resize steps of 25×29 skin px | (1, 8): 300×348 | ctor | on `sizeStepsChanged` |
+| `jamWindow/visible` | bool | false | restoring only: the jam window is shown by the menu and by "Continue" | `WindowSet::setVisible()` |
+| `jamWindow/pos` | QPoint | main position + (main width, 0) | `WindowSet::showAtStart()` | `WindowSet::savePositions()` |
+| `jamWindow/steps` | QSize: resize steps of 25×29 skin px | (1, 8): 300×348 | `WindowSet::add()` | on `sizeStepsChanged` |
 | `telemetry/enabled` | bool: "Send statistics" | true | `startTelemetry()`, the menu | `setTelemetryEnabled()`, from the menu |
 | `telemetry/firstStart` | QString: the ISO date of the first start with telemetry | absent | only whether it exists | `startTelemetry()`, once ([Telemetry](#telemetry)) |
 | `telemetry/machine` | QString: a random UUID, the machine id when the OS has none | absent | `startTelemetry()` | `startTelemetry()`, when the OS has no id and the key is absent |
@@ -493,6 +446,107 @@ says who asks it when. "ctor" is the `Application` constructor; "setter" is the 
 The `milkdrop/*` keys are read and written only in a build with `QIYAA_HAVE_MILKDROP`, the `jam/*`
 and `jamWindow/*` keys only in a jam build, the `telemetry/*` keys only in a telemetry build. The
 resize steps are clamped to 0..40 per axis by the windows.
+
+## `window_set.h/.cpp` — `App::WindowSet`
+
+```cpp
+class WindowSet : public QObject {
+public:
+    enum class Place { Main, Stacked, RightOfMain, BelowRightOfMain };
+    enum class Button { None, Equalizer, Playlist };   // the main window's EQ or PL button
+    enum class ScaleScope { Saved, ThisRun };          // ThisRun for --scale
+    struct Spec {
+        QString group;                                 // the settings group: <group>/pos, /visible…
+        Place place = Place::RightOfMain;              // the default place
+        bool visibleByDefault = false;
+        bool shownAtStart = true;                      // false: only menus, "Continue" and restoring
+        bool keepsShade = false;                       // <group>/shaded
+        bool raisedWhenShown = false;
+        QSize stepsByDefault;                          // invalid: no resize steps
+        Button button = Button::None;
+    };
+    WindowSet(Settings* settings, Ui::MainWindow* mainWindow, Spec mainSpec, QObject* parent = nullptr);
+    void add(Ui::SkinnedWindow* window, Spec spec);    // secondary, saved steps, close = hide
+    void restore();                                    // once, after the last add()
+    void showAtStart();
+    void setVisible(Ui::SkinnedWindow* window, bool on);   // nothing for a null or unknown window
+    void toggle(Ui::SkinnedWindow* window);
+    void raise();  void bringToFront();  void hideAll();
+    void setScale(double scale, ScaleScope scope = ScaleScope::Saved);
+    void setAlwaysOnTop(bool on);  void setSkin(const Skins::Skin* skin);  void savePositions();
+    QList<Ui::SkinnedWindow*> all() const;             // the main window first, then the add() order
+    QImage snapshot() const;                           // visible windows, as placed on screen
+Q_SIGNALS:
+    void visibilityChosen(Ui::SkinnedWindow* window, bool on);   // from setVisible() only
+    void saveRequested();
+};
+```
+
+The windows as one set: a window's defaults are its `Spec`, its keys `App::Settings`'s, and what a
+window needs from the app is in `add()` and the `Spec`, so a new window does not touch the code
+below. The main window comes with the constructor, not `add()`: it is shown first, never hidden by
+minimising, its close is the app's `quit()`, and it is the first of `all()`.
+
+- **`add()`** makes the window secondary, restores its steps (when `stepsByDefault` is valid) before
+  it listens for their changes, and hides it on its own close button (`closeRequested`).
+- **`restore()`**, once after the last `add()`, in this order: `moveFinished` of every window to
+  `saveRequested`, the saved shade of the main window and of every `keepsShade` window (each
+  change written and `saveRequested`), `scale` on every window, then `alwaysOnTop`.
+- **`showAtStart()`** shows the main window, then every `shownAtStart` window whose
+  `<group>/visible` is true, places them all, sets the EQ and PL buttons to match, and activates the
+  main window.
+**Layout**, only in `showAtStart()`: each window at its saved `<group>/pos`, or at its place:
+`Main` (100, 100); `Stacked` right below the previous stacked window's default (the equalizer
+under the main window, the playlist under the equalizer); `RightOfMain` (now-playing, the jam
+window); `BelowRightOfMain` at main position + (main width, main height) (Milkdrop). The defaults use the sizes the windows have at that moment,
+after shade and scale. `SkinnedWindow::placeAt` clamps every position to the screens that exist
+now.
+
+**`setScale(scale, scope)`**:
+
+1. Collects the windows docked to the main window through a chain of touching windows
+   (`Ui::ConnectedGroup`, breadth-first, so nearest first). Hidden windows are included, so they
+   are in place when shown. It records each one's offset from the main window in skin pixels
+   (offset / old scale, rounded).
+2. Calls `setScale` on every window. The window clamps the factor to [1, 4], rounds it to 0.05,
+   and may move itself back onto the screen, so the main window's position is read only after
+   this step.
+3. Puts each docked window back at main position + offset × new scale, snapped with
+   `Ui::SnapToOthers(frame, placed, 4)` to the windows already placed. Window sizes are rounded one
+   by one, and the 4 px snap closes the resulting 1 px gaps.
+4. Moves the visible group as a whole into the screen it is on (`Ui::PickScreen`,
+   `Ui::ClampInside`). If the group is wider or taller than that screen, it calls
+   `ensureVisible()` on every window so each one can still be reached.
+5. With `ScaleScope::Saved`, stores `scale` (the factor the main window ended up with) and emits
+   `saveRequested`. Without it (`--scale`), it sets `transientScale`, which stops
+   `savePositions()` from writing.
+
+Windows not docked to the main window keep their top-left corner and only change size.
+
+**Visibility.** `setVisible` shows or hides the window, calls `ensureVisible()` when showing it
+(and `raise()` for `raisedWhenShown`), sets its button, stores `<group>/visible` and emits
+`visibilityChosen`. A window's own close button is `setVisible(false)`. Minimising the main window
+hides all the others; restoring it shows those whose `<group>/visible` is true, the jam window
+too (see the traps), without `ensureVisible()` or the buttons. `raise()`, on the main window's
+`activated`, raises the visible windows and then the main one; `bringToFront()`, the media
+controls' raise, un-minimises the main window, raises the windows and activates the main one.
+`setAlwaysOnTop` sets `Qt::WindowStaysOnTopHint` on every window, then shows again those that were
+visible, because changing window flags hides a window.
+
+**`savePositions()`** writes every window's `<group>/pos` only when all three hold: the platform
+lets the app place windows (`SkinnedWindow::CanPositionWindows()`, false on native Wayland), the
+main window is visible, and no `--scale` override is active.
+
+**`snapshot()`** paints `grab()` of each visible window into an `ARGB32_Premultiplied` image the
+size of the bounding rectangle of all visible windows, each at its offset in that rectangle. Gaps
+stay transparent. With no visible window the image is null.
+
+**Traps:**
+- The jam window is not shown at the start, only by the menu and by "Continue" (HOST-23), but
+  restoring from minimise shows it when `jamWindow/visible` is true. So a jam window left open at
+  the last quit comes back after a minimise even with no jam on.
+- `visibilityChosen` is not emitted by minimising, restoring or the start: telemetry counts what
+  the user chose.
 
 ## `settings.h/.cpp` — `App::Settings`
 
@@ -687,7 +741,7 @@ int main(int argc, char* argv[]);  // Run() inside try/catch
 | `--offline` | `Options::offline` |
 | `--text <text>` | `MainWindow::setStatusText(text)` |
 | `--demo` | `Player::setSource(QueueSource{.title = "Demo", .head = DemoTracks()}, false)` |
-| `--scale <factor>` | `Application::setScale(value.toDouble(), ScaleScope::ThisRun)`: this run only |
+| `--scale <factor>` | `windows()->setScale(value.toDouble(), WindowSet::ScaleScope::ThisRun)`: this run only |
 
 Qt's own arguments (`-platform`, `-style`, …) are taken out by `QApplication` before the parser
 runs. The mapping to `Options` is `offline = --screenshot || --offline || --play-file`,
@@ -708,7 +762,7 @@ snapped together) needs that. So:
 On native Wayland `SkinnedWindow::CanPositionWindows()` is false and window positions are not
 saved.
 
-**Screenshot.** Without `--play-file`: one `QApplication::processEvents()`, then `snapshot()` saved
+**Screenshot.** Without `--play-file`: one `QApplication::processEvents()`, then `windows()->snapshot()` saved
 to `<png>` (format from the extension, by `QImage::save`); `Run` returns `kSuccess`, or `kFailure`
 when saving fails. The event loop never runs. There is no audio device, no network, no media
 integration, and the settings are fresh defaults in a temporary directory deleted at exit, so the

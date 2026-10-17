@@ -27,7 +27,7 @@ public:
     PlaylistWindow(Core::Player* player, const Skins::Skin* skin, QWidget* parent = nullptr);
 
     QSize sizeSteps() const { return resizeSteps; }
-    void setSizeSteps(QSize steps);
+    void setSizeSteps(QSize steps) override;
     void setShaded(bool shaded) override;
 
     int visibleRows() const;
@@ -40,8 +40,6 @@ public:
     void setTrackNote(std::function<QString(int row)> note);
 
 Q_SIGNALS:
-    void closeRequested();
-    void sizeStepsChanged(QSize steps);
     void sourcesMenuRequested(QPoint globalPos);
     void trackMenuRequested(QPoint globalPos, int row);
 

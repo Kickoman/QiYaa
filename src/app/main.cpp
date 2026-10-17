@@ -1,5 +1,6 @@
 #include "app/application.h"
 #include "app/offline_sources.h"
+#include "app/window_set.h"
 #include "ui/main_window.h"
 
 #include <QApplication>
@@ -98,7 +99,7 @@ int Run(int& argc, char* argv[]) {
 
     application.start();
     if (commandLine.isSet(scaleOption)) {
-        application.setScale(commandLine.value(scaleOption).toDouble(), App::Application::ScaleScope::ThisRun);
+        application.windows()->setScale(commandLine.value(scaleOption).toDouble(), App::WindowSet::ScaleScope::ThisRun);
     }
     if (commandLine.isSet(demoOption)) {
         application.player()->setSource(
@@ -111,7 +112,7 @@ int Run(int& argc, char* argv[]) {
 
     if (screenshot && !commandLine.isSet(fileOption)) {
         QApplication::processEvents();
-        return application.snapshot().save(commandLine.value(screenshotOption)) ? kSuccess : kFailure;
+        return application.windows()->snapshot().save(commandLine.value(screenshotOption)) ? kSuccess : kFailure;
     }
 
     if (commandLine.isSet(fileOption)) {
@@ -119,7 +120,7 @@ int Run(int& argc, char* argv[]) {
     }
     if (screenshot) {
         QTimer::singleShot(1500, &qtApplication, [&] {
-            const bool ok = application.snapshot().save(commandLine.value(screenshotOption));
+            const bool ok = application.windows()->snapshot().save(commandLine.value(screenshotOption));
             QApplication::exit(ok ? kSuccess : kFailure);
         });
     }
