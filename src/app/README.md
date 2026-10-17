@@ -18,6 +18,7 @@ HTTP, OAuth and the token file format in [src/yandex](../yandex/README.md); `.ws
 |---|---|
 | `application.h/.cpp` | `App::Application` and its `Options`: ownership, wiring, menus, shortcuts, login, skins, quit |
 | `account.h/.cpp` | `App::Account`: the token at the start, login and logout, the likes after a login |
+| `jam_bridge.h`, `jam_bridge.cpp`, `jam_off.cpp` | `App::JamBridge`: the jam's words and questions in the app (statuses, "Continue the jam?", the Jam submenu, the server settings); `jam_off.cpp` in a build without the jam |
 | `network_watch.h/.cpp` | `App::NetworkWatch`: the system's view of the network for the `Player` and the jam |
 | `window_set.h/.cpp` | `App::WindowSet`: the windows as one set, one `Spec` each: their places, showing and hiding, minimising, scale, "always on top", skin, saved positions, `snapshot()` |
 | `settings.h/.cpp` | `App::Settings`: every key of `settings.ini` with its default, typed reads and per-key writes; the only owner of `QSettings` |
@@ -37,8 +38,9 @@ HTTP, OAuth and the token file format in [src/yandex](../yandex/README.md); `.ws
   `Yandex::ApiClient` and `Yandex::Library` by value.
 - PRIVATE `qiyaa_integrations`, `qiyaa_ui`, `qiyaa_vis`: the header only forward-declares the
   windows, `Core::CoverCache` and `Integrations::MediaControls`.
-- PRIVATE `qiyaa_jam` in a jam build (`QIYAA_HAVE_JAM`). The header forward-declares
-  `Jam::HostSession`; the code that calls it is under `#ifdef QIYAA_HAVE_JAM`.
+- PRIVATE `qiyaa_jam` in a jam build (`QIYAA_HAVE_JAM`), with `jam_bridge.cpp`; a build without
+  the jam takes `jam_off.cpp` instead, whose `JamBridge` does nothing. The header forward-declares
+  `Jam::HostSession`; `Application` creates it and the jam window under `#ifdef QIYAA_HAVE_JAM`.
 - The define `QIYAA_JAM_URL="<the CMake option>"`, the default jam server, in every build:
   `App::Settings` knows the default of `jam/server` whether or not the jam is built.
 - PRIVATE `qiyaa_telemetry` in a telemetry build (`QIYAA_HAVE_TELEMETRY`); the header
@@ -162,21 +164,13 @@ may hold its file.
    the main window right after it, and each other window joins it with `add()`: it becomes
    "secondary" (no taskbar button on Windows) and gets its saved steps.
 6. Connects `YandexSource::Catalog::noticed` to the main window's marquee, worded by
-   `Ui::SourceNoticeText`. In a jam build (`setUpJam()`) creates the `Jam::HostSession`: the server
-   and the wave feedback from the `jam/*` settings at each use, the app's version for `hello`, and
-   the session file `jam-session.json` next to the settings file (so `readOnlySettings` and a test's
-   `settingsFile` keep it in their own folder). Its signals go to the marquee: a refusal by its
-   reason (below), the end of the jam (`The jam is over`, `The jam was ended`, `The jam closed while
-   you were away`, `The jam is over: the server no longer knows it`), and `connectedChanged`, the
-   connection while the jam is on: lost (`No connection to the jam server · trying again by itself`)
-   and back (`The jam is connected`); its `changed` repaints the playlist. Then the jam window
-   (`Ui::JamWindow`, steps `jamWindow/steps`, the server's host from `jam/server`; its `statusText`
-   to the marquee, its "Server settings…" to `showJamServerDialog()`), and the jam's part in the
-   other windows (HOST-34, HOST-36): the playlist's rows and the marquee get `Ui::JamTrackNote` of
-   their entry, and `HostSession::offline` (jam items removed without a connection) says `No
-   connection to the jam server`. A pick during a jam replaces the jam's base (HOST-21), and the
-   playlist's remove and clear go to the `Player` as ever. It is done here, before the loops below
-   over `windows()`, which take the jam window in.
+   `Ui::SourceNoticeText`. In a jam build it creates the `Jam::HostSession` (the server and the
+   wave feedback from `App::Settings::jam()` at each use, the app's version for `hello`, the session
+   file `jam-session.json` next to the settings file, so `readOnlySettings` and a test's
+   `settingsFile` keep it in their own folder; `NetworkWatch::back` reconnects it, HOST-26) and the
+   jam window (`Ui::JamWindow`, `jamWindow` in the `WindowSet`). Then, in every build, the
+   `JamBridge` (below), whose `statusText` goes to the marquee. It is done here, before
+   `WindowSet::restore()`, which takes the jam window in.
 7. Restores the settings listed in [Settings](#settings) and connects the windows:
    - the equalizer's shade mode shows and sets the main window's volume and balance (`setMixer`,
      `volumeRequested`, `balanceRequested`);
@@ -196,23 +190,8 @@ may hold its file.
     `back` to `HostSession::networkBack`, HOST-26), and with audio on and not offline starts it.
 11. Connects `QApplication::aboutToQuit` to `saveState()` followed by `Player::stop()`.
 
-The refusals of the jam server, by reason: `server-full` "The jam server is full, try
-later", `rate-limited` "Too many requests, wait a little", `update-required` "Update
-QiYaa to work with this jam server", `not-allowed` "The jam server does not allow this",
-`queue-limit` "The jam queue is full", `duplicate` "This track is already in the jam queue", `stale`
-"This track has already left the queue", any other "The jam server refused". The texts are the Android app's.
-
 **`start()`** shows the windows (`WindowSet::showAtStart()`). Unless `offline`, it then asks about a
-stored jam and looks for a token (see [Login, logout and the token](#login-logout-and-the-token)).
-
-**"Continue the jam?"** (HOST-23). When the host session has a stored jam, `start()` opens a
-`QMessageBox` "A jam was on" / "Continue it? The guests' link stays the same." with "Continue"
-and "End it". It is not modal (`open()`): playback and the windows work while it waits, and a
-test on the offscreen platform does not block. "Continue" calls `continueStored()` and shows the jam window; "End it"
-calls `discardStored()` and queues the likes like a login does; closing it without an answer keeps
-the jam stored for the next start. While it is open, or a jam is on, a login does not queue the
-likes (`Account::setLikesOnHold`); "End it" queues them with `Account::queueLikes()`, which does
-not ask the hold, since the question is still open inside its own `finished`.
+stored jam (`JamBridge::offerStored()`) and looks for a token (`Account::start()`).
 
 **`saveState()`** always writes `volume`, `balance`, `vis/mode`, `time/remaining` and
 `equalizer/auto`, then the positions (`WindowSet::savePositions()`, below). It runs on the
@@ -317,12 +296,7 @@ while logged out; it calls `Account::login()`). The texts here are the English s
 sees them in the interface language. The main menu, top to bottom:
 
 - the same Yandex items;
-- in a jam build, Jam: "Start…" (no jam) or "Jam window" (a jam is on or being created), which
-  show the jam window; "Join…", disabled until Kickoman/QiYaa#16; "End it", enabled
-  while a jam is on, which asks "End the jam? The guests will see that it is over." in a modal
-  `QMessageBox::question` and then calls `HostSession::end()`; "Server settings…"
-  (`showJamServerDialog()`: `Ui::JamServerDialog`, modal, which writes `jam/server` and
-  `jam/waveFeedback` and `jam/shareAudio` on Save and tells the jam window the server's host);
+- in a jam build, Jam (`JamBridge::addMenu`, below);
 - Equalizer (Alt+G), Playlist (Alt+E), Now playing (no shortcut), Milkdrop (Ctrl+Shift+K, only
   in a Milkdrop build): checkable, checked when the window is visible;
 - Visualization: Spectrum, Oscilloscope, Off (exclusive; a choice calls `saveState()`);
@@ -473,6 +447,66 @@ play queue, calls `Library::logout()` (which also clears the API token) and
 - `applyToken` leaves a rejected token set on `ApiClient`; the library just stays logged out. The
   result of `Yandex::SaveToken` is ignored.
 - Tests: `tests/account_test.cpp`.
+
+## `jam_bridge.h/.cpp` — `App::JamBridge`
+
+```cpp
+class JamBridge : public QObject {
+public:
+    struct Parts { Jam::HostSession* host; Ui::JamWindow* window; Core::JamMode* jamMode; Core::Player* player;
+                   Settings* settings; WindowSet* windows; Account* account;
+                   Ui::MainWindow* mainWindow; Ui::PlaylistWindow* playlistWindow; };
+    explicit JamBridge(const Parts& parts, QObject* parent = nullptr);   // connects it all
+    void offerStored();                                // HOST-23, when a jam is stored
+    void addMenu(QMenu* menu);                         // the Jam submenu and a separator
+    void showServerDialog();
+    QString trackNote(int row) const;                  // HOST-34
+Q_SIGNALS:
+    void statusText(const QString& text);              // for the marquee
+};
+```
+
+The jam's part of the app: the words for what the host session says, the questions it asks, and
+what the account means to the jam. `Application` creates and owns the host session and the jam
+window; the bridge only connects them. A build without the jam compiles `jam_off.cpp` instead of
+`jam_bridge.cpp`: the same class, doing nothing, so `Application` calls it in every build.
+
+- **Statuses**, as `statusText`: a refusal by its reason (below); the end of the jam (`The jam is
+  over`, `The jam was ended`, `The jam closed while you were away`, `The jam is over: the server
+  no longer knows it`); `connectedChanged`, the connection while the jam is on, lost (`No
+  connection to the jam server · trying again by itself`) and back (`The jam is connected`,
+  HOST-25, HOST-26); `offline` (jam items removed without a connection, HOST-36) as `No
+  connection to the jam server`; and the jam window's own `statusText`.
+- **The other windows** (HOST-34, HOST-36): the playlist's rows and the marquee get
+  `Ui::JamTrackNote` of their entry through `trackNote`, and the playlist repaints on the session's
+  `changed`. A pick during a jam replaces the jam's base (HOST-21), and the playlist's remove and
+  clear go to the `Player` as ever.
+- **The account:** `Account::connected` gives the jam window the host's name; `loggingOut` ends a
+  jam being created or on (`cancelCreate()`, `end()`, HOST-32); the likes of a login are on hold
+  while a jam is on or the question below is open.
+- **"Continue the jam?"** (HOST-23). With a stored jam, `offerStored()` opens a `QMessageBox` "A
+  jam was on" / "Continue it? The guests' link stays the same." with "Continue" and "End it". It is
+  not modal (`open()`): playback and the windows work while it waits, and a test on the offscreen
+  platform does not block. "Continue" calls `continueStored()` and shows the jam window; "End it"
+  calls `discardStored()` and `Account::queueLikes()`, which does not ask the hold: the question is
+  still open inside its own `finished`. Closing it without an answer keeps the jam stored for the
+  next start.
+- **The Jam submenu:** "Start…" (no jam) or "Jam window" (a jam is on or being created), which show
+  the jam window; "Join…", disabled until Kickoman/QiYaa#16; "End", enabled while a jam is on,
+  which asks "End the jam? The guests will see that it is over." in a modal `QMessageBox` and then
+  calls `HostSession::end()`; "Server settings…".
+- **"Server settings…"** (`showServerDialog()`, also the jam window's `serverSettingsRequested`):
+  `Ui::JamServerDialog`, modal, which writes `jam/server`, `jam/waveFeedback` and `jam/shareAudio` on
+  Save and tells the jam window the server's host (and a port that is not the default one).
+
+The refusals of the jam server, by reason: `server-full` "The jam server is full, try later",
+`rate-limited` "Too many requests, wait a little", `update-required` "Update QiYaa to work with
+this jam server", `not-allowed` "The jam server does not allow this", `queue-limit` "The jam queue
+is full", `duplicate` "This track is already in the jam queue", `stale` "This track has already
+left the queue", any other "The jam server refused". The texts are the Android app's.
+
+Tests: `tests/jam_bridge_test.cpp`; "Continue the jam?" through the whole app in
+`tests/windows_test.cpp`.
 
 ## `network_watch.h/.cpp` — `App::NetworkWatch`
 
