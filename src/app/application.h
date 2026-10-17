@@ -1,5 +1,7 @@
 #pragma once
 
+#include "app/network_watch.h"
+#include "app/settings.h"
 #include "app/translations.h"
 #include "audio/audio_engine.h"
 #include "core/jam_mode.h"
@@ -15,16 +17,11 @@
 #include <QList>
 #include <QNetworkAccessManager>
 #include <QObject>
-#include <QPointer>
-#include <QSettings>
 #include <QTemporaryDir>
 #include <QUrl>
 
 #include <memory>
 #include <optional>
-
-class QMenu;
-class QMessageBox;
 
 namespace Core {
 class CoverCache;
@@ -38,10 +35,6 @@ namespace Integrations {
 class MediaControls;
 }  // namespace Integrations
 
-namespace Telemetry {
-class Reporter;
-}  // namespace Telemetry
-
 namespace Ui {
 class EqualizerWindow;
 class MainWindow;
@@ -53,6 +46,12 @@ class SkinnedWindow;
 }  // namespace Ui
 
 namespace App {
+
+class Account;
+class JamBridge;
+class MainMenu;
+class TelemetryBridge;
+class WindowSet;
 
 class Application : public QObject {
     Q_OBJECT
@@ -93,60 +92,32 @@ public:
     // Null when the app is built without the jam.
     Jam::HostSession* jamHost() const { return jamHostSession.get(); }
 
+    WindowSet* windows() const { return windowSet.get(); }
+    Account* account() const { return accountControl.get(); }
+
     bool loadSkin(const QString& path);
-    enum class ScaleScope { Saved, ThisRun };
-    void setScale(double scale, ScaleScope scope = ScaleScope::Saved);
-    void setAlwaysOnTop(bool on);
-    void setEqualizerVisible(bool on);
-    void setPlaylistVisible(bool on);
-    void setNowPlayingVisible(bool on);
-    void setMilkdropVisible(bool on);
-    void setJamWindowVisible(bool on);
 
     Language language() const { return translations.language(); }
     void setLanguage(Language language);
 
-    bool telemetryEnabled() const;
-    void setTelemetryEnabled(bool on);
-    // Null without telemetry: not built, no URL, or switched off.
-    Telemetry::Reporter* telemetry() const { return telemetryReporter.get(); }
-
-    void login();
-    void logout();
-    void applyToken(const QString& token, bool save);
+    TelemetryBridge* telemetry() const { return telemetryBridge.get(); }
 
     void saveState();
     void quit();
-    QImage snapshot() const;
+
+Q_SIGNALS:
+    void languageChanged(App::Language language);
+    void skinChanged(const QString& path);
+    void skinFailed();
 
 private:
-    void layoutWindows();
-    void installShortcuts(QWidget* widget);
-    void showMainMenu(QPoint globalPosition, const Core::Track* track);
-    void showSourcesMenu(QPoint globalPosition);
-    void fillWindowActions(QMenu* menu);
-    void transportKey(int key);
-    QList<Ui::SkinnedWindow*> windows() const;
-    void watchNetwork();
-    void raiseWindows();
-    void setUpJam();
-    void offerStoredJam();
-    void addJamMenu(QMenu* menu);
-    void showJamServerDialog();
-    void startTelemetry();
-    QString telemetryDirectory() const;
-    void telemetryError(const QString& area, const QString& kind, int httpStatus = 0);
-    void telemetryFeature(const QString& name, const QString& value);
-
     Options startOptions;
     std::unique_ptr<QTemporaryDir> temporaryDirectory;
-    QSettings settings;
+    Settings settings;
     Translations translations;
     Skins::Skin baseSkin;
     std::unique_ptr<Skins::Skin> currentSkin;
-    bool transientScale = false;
     bool quitting = false;
-    bool firstRun = false;
     bool audioFailed = false;
 
     std::unique_ptr<QNetworkAccessManager> ownNetworkManager;
@@ -160,11 +131,10 @@ private:
     YandexSource::Catalog catalog;
     Core::JamMode jamMode;
     std::unique_ptr<Jam::HostSession> jamHostSession;
-    QPointer<QMessageBox> storedJamQuestion;
     std::unique_ptr<Core::CoverCache> coverCache;
     std::unique_ptr<Integrations::MediaControls> mediaControls;
     std::unique_ptr<QObject> systemMediaControls;
-    std::unique_ptr<Telemetry::Reporter> telemetryReporter;
+    NetworkWatch networkWatch;
 
     // Declared last: destroyed first.
     std::unique_ptr<Ui::MainWindow> mainWindowInstance;
@@ -173,6 +143,11 @@ private:
     std::unique_ptr<Ui::NowPlayingWindow> nowPlayingWindowInstance;
     std::unique_ptr<Ui::MilkdropWindow> milkdropWindowInstance;
     std::unique_ptr<Ui::JamWindow> jamWindowInstance;
+    std::unique_ptr<WindowSet> windowSet;
+    std::unique_ptr<Account> accountControl;
+    std::unique_ptr<JamBridge> jamBridge;
+    std::unique_ptr<TelemetryBridge> telemetryBridge;
+    std::unique_ptr<MainMenu> mainMenu;
 };
 
 }  // namespace App

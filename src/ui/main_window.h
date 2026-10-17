@@ -58,7 +58,6 @@ Q_SIGNALS:
     void playlistToggleRequested();
     void menuRequested(QPoint globalPos);
     void sourcesMenuRequested(QPoint globalPos);
-    void closeRequested();
     void minimizedChanged(bool minimized);
     void activated();
     void volumeChanged(int volume);

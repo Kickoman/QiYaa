@@ -18,11 +18,7 @@ public:
     GenWindow(const Skins::Skin* skin, const QString& title, QWidget* parent = nullptr);
 
     QSize sizeSteps() const { return resizeSteps; }
-    void setSizeSteps(QSize steps);
-
-Q_SIGNALS:
-    void closeRequested();
-    void sizeStepsChanged(QSize steps);
+    void setSizeSteps(QSize steps) override;
 
 protected:
     QRect contentRect() const;

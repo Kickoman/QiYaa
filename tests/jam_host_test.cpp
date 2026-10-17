@@ -357,6 +357,75 @@ private Q_SLOTS:
         QVERIFY(stack.host.pin(QStringLiteral("i2")));
     }
 
+    void theConnectionIsAnnouncedWhileTheJamIsOn() {  // HOST-25, HOST-26
+        Stack stack(&library);
+        QSignalSpy active(&stack.host, &Jam::HostSession::activeChanged);
+        QSignalSpy connection(&stack.host, &Jam::HostSession::connectedChanged);
+        QVERIFY(stack.created());
+        QCOMPARE(active.size(), 1);
+        QVERIFY(active.at(0).at(0).toBool());
+        QCOMPARE(connection.size(), 1);
+        QVERIFY(connection.at(0).at(0).toBool());
+
+        stack.server.last().close();
+        QTRY_COMPARE(connection.size(), 2);
+        QVERIFY(!connection.at(1).at(0).toBool());
+        QVERIFY(stack.open());
+        QTRY_VERIFY(!OfType<Jam::Resume>(stack.sent()).empty());
+        stack.receive(Resumed(QStringLiteral("r2"), true));
+        QTRY_COMPARE(connection.size(), 3);
+        QVERIFY(connection.at(2).at(0).toBool());
+
+        stack.host.end();
+        QCOMPARE(active.size(), 2);
+        QVERIFY(!active.at(1).at(0).toBool());
+        QTest::qWait(100);
+        QCOMPARE(connection.size(), 3);
+    }
+
+    void aRefusedCreateAnnouncesNothing() {  // HOST-25
+        Stack stack(&library);
+        QSignalSpy active(&stack.host, &Jam::HostSession::activeChanged);
+        QSignalSpy connection(&stack.host, &Jam::HostSession::connectedChanged);
+        stack.host.create(QStringLiteral("Маша"));
+        QVERIFY(stack.open());
+        QVERIFY(stack.waitSent(1));
+        stack.receive(Rejected(QStringLiteral("r1"), QStringLiteral("rate-limited")));
+        QTRY_COMPARE(stack.host.connection(), Jam::Status::Stopped);
+        QVERIFY(active.isEmpty());
+        QVERIFY(connection.isEmpty());
+    }
+
+    void aContinuedJamIsOnAtOnceAndConnectedWhenResumed() {  // HOST-23, HOST-26
+        Stack stack(&library, StoredSession());
+        QSignalSpy active(&stack.host, &Jam::HostSession::activeChanged);
+        QSignalSpy connection(&stack.host, &Jam::HostSession::connectedChanged);
+        stack.host.continueStored();
+        QCOMPARE(active.size(), 1);
+        QVERIFY(active.at(0).at(0).toBool());
+        QVERIFY(stack.open());
+        QVERIFY(stack.waitSent(1));
+        QVERIFY(connection.isEmpty());
+        stack.receive(Resumed(QStringLiteral("r1"), true));
+        QTRY_COMPARE(connection.size(), 1);
+        QVERIFY(connection.at(0).at(0).toBool());
+    }
+
+    void discardingAStoredJamAnnouncesNothing() {  // HOST-23
+        Stack stack(&library, StoredSession());
+        QSignalSpy active(&stack.host, &Jam::HostSession::activeChanged);
+        QSignalSpy connection(&stack.host, &Jam::HostSession::connectedChanged);
+        stack.host.discardStored();
+        QVERIFY(stack.open());
+        QVERIFY(stack.waitSent(1));
+        stack.receive(Resumed(QStringLiteral("r1"), false));
+        QVERIFY(stack.waitSent(2));
+        stack.receive(Ack(QStringLiteral("r2")));
+        QTRY_COMPARE(stack.host.connection(), Jam::Status::Stopped);
+        QVERIFY(active.isEmpty());
+        QVERIFY(connection.isEmpty());
+    }
+
     void theLatestSnapshotAndANewLinkAreStored() {  // HOST-22
         Stack stack(&library);
         QVERIFY(stack.created());

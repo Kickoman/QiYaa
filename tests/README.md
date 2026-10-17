@@ -39,17 +39,20 @@ is formatting (the clang-format check in `.github/workflows/ci.yml`).
 | `jam_mode_test.cpp` | `Core::JamMode` over a `Core::Player` with `YandexSource::HistoryWaves` against `spec/jam/host.md` by ID, on the Null output with a `Tests::FakeSource` that opens every track at once and spec fixtures: the queue staying as the base with the items in front of its rest, the jam part following the state with the smallest change, started and playing reports, Previous restarting, an item into a stopped player, the base after the items as base tracks, the jam vibe on the server's seeds or the history's, outdated sessions and their tails and replies dropped but never the head, a base that runs out going idle, a jam vibe that brought nothing waiting for new seeds and the next item, no play reports and feedback only to the jam vibe, a vibe the jam plays over learning nothing, skip by item, a pick becoming the base, the end with the items first and the jam's seeds over, a late reply of the previous jam's vibe, and the host's own Delete and Clear (HOST-01 to HOST-16, HOST-18, HOST-19, HOST-21, HOST-32, HOST-33, HOST-36) |
 | `failures_test.cpp` | What the `Player` does when a track cannot play (`spec/player/errors.md`): the failure policy as a table, `ClassifyReply` and `YandexSource::FailureKindOf` on real replies, and on the Null output a broken and an undecodable track skipped, three in a row stopping, the count reset by a track that plays, a broken last track, a rejected account, no network (pause, then continue the same track), and a download cut short that waits instead of moving on |
 | `main_window_test.cpp` | One `Ui::MainWindow` on the default offscreen screen: position clamping, dragging and edge snapping, shuffle click, the shuffle light off during a wave, volume slider, ×2 and fractional scale; `Ui::NoticeText` giving the `Player`'s former status texts, and "Vibe error"; `Ui::SourceNoticeText` giving the catalogue's |
-| `windows_test.cpp` | The whole `App::Application` window set: docking, detaching, scaling, playlist selection/scroll/resize, track menu targets (including multiple selection, keyboard invocation and queue changes), dislike skipping only the current track, EQ sliders, shade modes, login dialog layout, Milkdrop and Now Playing windows, `snapshot()`; the Quality menu and its setting (QUAL-06); the item "Continue with a vibe", which switches only the current queue and is off for a vibe (CONT-01, CONT-02); during a jam Delete removes a base row at once and sends an item to the server, and Clear keeps the current track and the items (HOST-36) |
+| `windows_test.cpp` | The whole `App::Application` and its `WindowSet`: docking, detaching, scaling, playlist selection/scroll/resize, track menu targets (including multiple selection, keyboard invocation and queue changes), dislike skipping only the current track, EQ sliders, shade modes, login dialog layout, Milkdrop and Now Playing windows, `snapshot()`; the Quality menu and its setting (QUAL-06); the item "Continue with a vibe", which switches only the current queue and is off for a vibe (CONT-01, CONT-02); during a jam Delete removes a base row at once and sends an item to the server, and Clear keeps the current track and the items (HOST-36); what the start does with `settings.ini` (a fresh start writes nothing, a restart brings back shades, steps and positions without writing, minimising and restoring, `--scale` leaves positions unsaved); "Continue the jam?" at the start (HOST-23) |
+| `settings_test.cpp` | `App::Settings`: the defaults of an empty `settings.ini`, a window's defaults until saved, the key each value goes under, the first start on disk at once, the fallbacks for unknown values |
+| `account_test.cpp` | `App::Account` without windows, on a MockHttpServer with token files of its own: a login greets and queues the likes into an empty queue, not into a queue that has tracks nor while they are held, `queueLikes` ignores the hold; a token saved only when asked; a failed login; an old Yaamp token copied into the own file; logout says `loggingOut` before it clears, then forgets the token (HOST-32) |
 | `screenshots_test.cpp` | Golden screenshots of the main window and the equalizer (see **Golden screenshots**) |
 | `jam_test.cpp` | `Jam::` (only with Qt WebSockets): every example of `spec/jam/protocol/examples` through the codec (valid ones pass, `invalid-*` fail) and client examples through encode and decode; the client against a `QWebSocketServer` on localhost — hello with a version the server takes and the clock offset, reconnects after the delays and at once on `networkBack`, the outbox, `ended` stopping it for good, refusing to send what the server would refuse, invalid and unknown-reason messages; the stored session across a restart and broken, foreign or oversized files |
-| `jam_host_test.cpp` | `Jam::HostSession` against `spec/jam/host.md` by ID, with `JamStubServer`, a real `Core::JamMode` on the Null output with a `Tests::FakeSource` that opens every track at once, and the MockHttpServer as Yandex: create and its refusal, states and their versions, started in the stored outbox offline and resume, the stored snapshot and link, "Continue the jam?" yes and no, a resume refused for a gone room or another reason, the guests' search and checks, the skip command, the end by the host (the items play before the rest of the base) and by the server, the names of who added the items, the host's add and play next, `JamTrackOf`, and that only a Yandex track crosses into the jam (`CoreTrackOf`) |
+| `jam_host_test.cpp` | `Jam::HostSession` against `spec/jam/host.md` by ID, with `JamStubServer`, a real `Core::JamMode` on the Null output with a `Tests::FakeSource` that opens every track at once, and the MockHttpServer as Yandex: create and its refusal, the jam on and its connection as `activeChanged` and `connectedChanged` (HOST-25, HOST-26), states and their versions, started in the stored outbox offline and resume, the stored snapshot and link, "Continue the jam?" yes and no, a resume refused for a gone room or another reason, the guests' search and checks, the skip command, the end by the host (the items play before the rest of the base) and by the server, the names of who added the items, the host's add and play next, `JamTrackOf`, and that only a Yandex track crosses into the jam (`CoreTrackOf`) |
 | `jam_window_test.cpp` | `Ui::JamWindow` against `spec/jam/host.md` (HOST-20, HOST-25, HOST-34, HOST-35): `Ui::JamTrackNote`, who added an item and the jam vibe; its controls found by label and clicked like a mouse, driving a `HostSession` on `JamStubServer`: the start with the name given or typed (and typing that does not trigger the app's shortcuts), the settings, kick and new link, copying the link, the end asked twice, what stays enabled without a connection, the search with "To the jam" and "Next"; its pictures, in Belarusian, on every built-in skin and of the start, search and offline pages |
-| `telemetry_test.cpp` | `Telemetry::Reporter` against the mock server (TEL-02 to TEL-08): the start event has the fields of `spec/telemetry/examples/start.json`, what each answer keeps or drops, batches of at most 50, a run that did not close reported with its queue, a running instance left alone, the error cap, forgetting; crash reports of `crash_probe` (SIGSEGV, an uncaught exception, abort) sent by the next run; and a real `App::Application` sending `start` and switched off and on. Built only with telemetry |
+| `jam_bridge_test.cpp` | `App::JamBridge` against `spec/jam/host.md` with `JamStubServer` and real windows: the connection worded while the jam is on and its end (HOST-25, HOST-26), a refusal by its reason, an end by the server, the likes held while the jam is on and the jam ended by a logout (HOST-32) |
+| `telemetry_test.cpp` | `Telemetry::Reporter` against the mock server (TEL-02 to TEL-08): the start event has the fields of `spec/telemetry/examples/start.json`, what each answer keeps or drops, batches of at most 50, a run that did not close reported with its queue, a running instance left alone, the error cap, forgetting; crash reports of `crash_probe` (SIGSEGV, an uncaught exception, abort) sent by the next run; and a real `App::Application` sending `start` through its `TelemetryBridge`, switched off and on, and Milkdrop shown by hand counted once while minimising and restoring are not (skips without Milkdrop). Built only with telemetry |
 | `crash_probe.cpp` | The child `telemetry_test` crashes: installs the crash handler and fails as its arguments say |
 | `jam_e2e_test.cpp` | The jam end to end: the app (offscreen, the Null output) hosts on a real jam server (`QIYAA_JAM_TEST_SERVER`, its `PUBLIC_URL`; CI runs the server's image on Linux, elsewhere the test skips), a guest joins over WebSocket, searches and adds; the track plays with no `/play-audio`, and after the end it is reported again |
 | `translations_test.cpp` | The interface languages: every text of `translations/*.ts` translated with the placeholders of its source and the right number of plural forms, no English text saying "wave", the app starting in Belarusian or in the saved language, another language applied while it runs (a window title, a menu text), and the plural forms of Belarusian, Russian and English |
 | `mpris_test.cpp` | `Integrations::Mpris` over a session bus, driven by `gdbus` as an external client |
-| `milkdrop_test.cpp` | `Vis::MilkdropPresets`, preset switching and black-preset handling in `Ui::MilkdropWindow`; with OpenGL 3.3, projectM rendering, the black-picture detector and fullscreen |
+| `milkdrop_test.cpp` | `Vis::MilkdropPresets`, preset switching (with the marquee text only for a preset picked by hand) and black-preset handling in `Ui::MilkdropWindow`; with OpenGL 3.3, projectM rendering, the black-picture detector and fullscreen |
 | `tsan.supp` | ThreadSanitizer suppressions for Qt's and GLib's own libraries (see **ThreadSanitizer**) |
 | `data/sine440_3s.mp3` | 3 s of a 440 Hz sine: MPEG-1 Layer III, 64 kbps, 44.1 kHz, stereo, ID3v2.4 tag, 24,494 bytes |
 | `data/sine440_3s_heaac.m4a` | The same sine as HE-AAC (SBR) 64 kbps, 44.1 kHz, stereo, in MP4 with `moov` before `mdat`, 25,818 bytes. Encoded by fdk-aac 2.0.3's `aac-enc -t 5 -r 64000` from a generated WAV (amplitude 0.5), muxed by `ffmpeg 4.4 -c copy -movflags +faststart -map_metadata -1 -fflags +bitexact`. Its AudioSpecificConfig signals SBR implicitly (AAC-LC at 22,050 Hz), unlike Yandex's files, which signal it explicitly |
@@ -105,12 +108,15 @@ QT_QPA_PLATFORM=offscreen QIYAA_AUDIO_BACKEND=null build/tests/audio_test queued
 | `jam_mode_test` | audio core sources_yandex yandex (+ `qiyaa_test_core`) | plain |
 | `failures_test` | audio core sources_yandex yandex | plain; `QIYAA_TEST_DATA` |
 | `dsp_test` | audio skins ui vis | plain |
-| `windows_test` | app core ui | 2560×1440 virtual screen (not on Windows) |
+| `windows_test` | app core ui (+ `qiyaa_test_jam` with the jam) | 2560×1440 virtual screen (not on Windows) |
+| `settings_test` | app | plain |
+| `account_test` | app | plain |
 | `screenshots_test` | audio core skins ui | plain; `QIYAA_TEST_DATA` |
 | `translations_test` | app ui | plain; `QIYAA_SOURCE_DIR` (it reads `translations/*.ts`) |
 | `jam_test` | jam (+ `qiyaa_test_jam`) | only with `QIYAA_HAVE_JAM` |
 | `jam_host_test` | audio core jam sources_yandex yandex (+ `qiyaa_test_core`, `qiyaa_test_jam`) | only with `QIYAA_HAVE_JAM` |
 | `jam_window_test` | audio core jam skins ui yandex (+ `qiyaa_test_jam`) | only with `QIYAA_HAVE_JAM`; `QIYAA_TEST_DATA` |
+| `jam_bridge_test` | app audio core jam skins ui yandex (+ `qiyaa_test_jam`) | only with `QIYAA_HAVE_JAM` |
 | `jam_e2e_test` | app audio core jam ui yandex | only with `QIYAA_HAVE_JAM`; `QIYAA_TEST_DATA`; skips without `QIYAA_JAM_TEST_SERVER` |
 | `mpris_test` | core integrations sources_yandex, Qt6::DBus | only with `QIYAA_HAVE_MPRIS`; under `dbus-run-session` |
 | `milkdrop_test` | audio skins ui vis | only with `QIYAA_HAVE_MILKDROP`; offscreen, so the GL functions skip |
@@ -657,16 +663,22 @@ collects `org.freedesktop.DBus.Properties.PropertiesChanged`.
 `mediaIntegration = false`: no Yandex, no audio device, no settings written, no MPRIS or SMTC.
 
 - The default stack is the main window, then the equalizer below it, then the playlist, at
-  275×116, 275×116 and 275×232. `snapshot()` is 275×464.
+  275×116, 275×116 and 275×232. `WindowSet::snapshot()` is 275×464.
 - `Drag(widget, local, delta)` sends a press, one move and a release.
 - The Milkdrop window is off by default. It opens right of the equalizer, at the main window's
   bottom-right corner. Without `QIYAA_HAVE_MILKDROP`, `milkdropWindow()` is null and
-  `setMilkdropVisible` does nothing.
+  `WindowSet::setVisible` does nothing for it.
 - Now Playing is docked right of the main window. Its cover is a red 64×64 PNG served by a
   local `MockHttpServer` at `/cover/400x400`.
 - `loginDialogFitsItsText` points OAuth at `http://127.0.0.1:1`, so the device flow fails fast
   with a long "… failed …" message. At 150 px height, the size GNOME's window manager
   squeezed it to, every visible label must still fit.
+- The functions about the start build their own `Application` on a `settingsFile` in a
+  `QTemporaryDir` and compare what is in it before and after.
+- The HOST-23 functions start one that is not `offline`, so that `start()` reaches the question:
+  the token comes from `QIYAA_TOKEN` (unset again in `cleanup()`), the catalog is a
+  `MockHttpServer`, and `jam/server` points at a `JamStubServer`, so neither the real token nor the
+  real jam server is touched. The stored jam is a `jam-session.json` next to that `settings.ini`.
 
 ## Errors
 
@@ -781,7 +793,7 @@ D-Bus, and OpenGL on a software renderer. This is how they stay stable:
   - [src/skins](../src/skins/README.md): skin loading and `region.txt`;
   - [src/vis](../src/vis/README.md): the analyzer, visualizers, Milkdrop presets and view;
   - [src/integrations](../src/integrations/README.md): MPRIS;
-  - [src/app](../src/app/README.md): `Application::Options` and `snapshot()`.
+  - [src/app](../src/app/README.md): `Application::Options` and `WindowSet::snapshot()`.
 - Build options (`QIYAA_BUILD_TESTS`, `QIYAA_WITH_MILKDROP`, MPRIS detection): the top-level
   [CMakeLists.txt](../CMakeLists.txt).
 - Which packages each CI runner installs, and the clang-format check:

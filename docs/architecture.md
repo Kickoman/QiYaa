@@ -30,7 +30,7 @@ audio, yandex, skins, telemetry  →  vis, core  →  sources/yandex  →  jam  
 | [src/jam](../src/jam/README.md) | `Jam` | The jam: protocol messages and their JSON, the WebSocket connection to a jam server, the host's stored session, and `HostSession` (create, resume, the guests' search and checks, end). Optional (Qt WebSockets) | core, yandex, Qt Core, WebSockets | sources/yandex |
 | [src/ui](../src/ui/README.md) | `Ui` | The skinned windows, snapping and docking, the Yandex menus, the login dialog, the jam window | audio, vis, Qt Widgets (+ jam) | core, skins, sources/yandex, yandex (+ qrcodegen) |
 | [src/integrations](../src/integrations/README.md) | `Integrations` | Media keys and system media panels: MPRIS (Linux), SMTC (Windows) or MediaPlayer (macOS) | Qt Gui (+ DBus) | core |
-| [src/app](../src/app/README.md) | `App` | `Application`: owns and wires everything, menus, shortcuts, settings, login, "Continue the jam?"; `main()` | audio, core, skins, sources/yandex, yandex | integrations, jam, ui, vis (+ telemetry) |
+| [src/app](../src/app/README.md) | `App` | `Application`: owns and wires everything, decides nothing; the controllers `Settings`, `WindowSet`, `MainMenu`, `Account`, `JamBridge`, `TelemetryBridge`, `NetworkWatch`; `main()` | audio, core, skins, sources/yandex, yandex | integrations, jam, ui, vis (+ telemetry) |
 
 Vendored code lives in `contrib/` (miniaudio, miniz, qrcodegen, minimp4, fdk-aac's decoder) and is
 not changed. The interface texts are English sources in the code, translated into Belarusian (the
@@ -43,13 +43,16 @@ MPRIS (`QIYAA_HAVE_MPRIS`) and SMTC (`QIYAA_HAVE_SMTC`) are optional; the macOS 
 
 ## Who owns what
 
-`App::Application` is the composition root. It holds the settings, the skins, the network manager,
-`Yandex::ApiClient`, `Yandex::Library`, `Audio::AudioEngine`, `YandexSource::Source`,
-`Core::SourceRegistry`, `Core::Player`, `YandexSource::Catalog` and `Core::JamMode` as members, and
-the windows, the cover cache and the media integration through `std::unique_ptr`. Member order is
-the construction order and, reversed, the destruction order: the windows go first, while everything
+`App::Application` is the composition root: it creates, owns and connects, and decides nothing. It
+holds `App::Settings`, the skins, the network manager, `Yandex::ApiClient`, `Yandex::Library`,
+`Audio::AudioEngine`, `YandexSource::Source`, `Core::SourceRegistry`, `Core::Player`,
+`YandexSource::Catalog`, `Core::JamMode` and `App::NetworkWatch` as members, and the windows, the
+cover cache, the media integration and the controllers (`WindowSet`, `Account`, `JamBridge`,
+`TelemetryBridge`, `MainMenu`) through `std::unique_ptr`. Member order is the construction order
+and, reversed, the destruction order: the controllers go first, then the windows, while everything
 they point at still exists. Nothing below `app` creates or connects windows, reads `QSettings` or
-knows where files live. Details: [src/app](../src/app/README.md).
+knows where files live, and in `app` only `App::Settings` touches `QSettings`. Details:
+[src/app](../src/app/README.md).
 
 ## Playing a track
 

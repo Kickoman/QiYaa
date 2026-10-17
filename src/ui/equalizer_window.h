@@ -39,7 +39,6 @@ public:
 Q_SIGNALS:
     void settingsChanged(const Audio::EqSettings& settings);
     void statusText(const QString& text);
-    void closeRequested();
     void volumeRequested(int volume);
     void balanceRequested(int balance);
 
