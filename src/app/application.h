@@ -23,8 +23,6 @@
 #include <memory>
 #include <optional>
 
-class QMenu;
-
 namespace Core {
 class CoverCache;
 }  // namespace Core
@@ -51,6 +49,7 @@ namespace App {
 
 class Account;
 class JamBridge;
+class MainMenu;
 class TelemetryBridge;
 class WindowSet;
 
@@ -112,12 +111,6 @@ Q_SIGNALS:
     void skinFailed();
 
 private:
-    void installShortcuts(QWidget* widget);
-    void showMainMenu(QPoint globalPosition, const Core::Track* track);
-    void showSourcesMenu(QPoint globalPosition);
-    void fillWindowActions(QMenu* menu);
-    void transportKey(int key);
-
     Options startOptions;
     std::unique_ptr<QTemporaryDir> temporaryDirectory;
     Settings settings;
@@ -154,6 +147,7 @@ private:
     std::unique_ptr<Account> accountControl;
     std::unique_ptr<JamBridge> jamBridge;
     std::unique_ptr<TelemetryBridge> telemetryBridge;
+    std::unique_ptr<MainMenu> mainMenu;
 };
 
 }  // namespace App

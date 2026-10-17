@@ -30,106 +30,6 @@
         <source>Cannot load the skin: %1</source>
         <translation>Не ўдалося загрузіць скін: %1</translation>
     </message>
-    <message>
-        <source>Equalizer</source>
-        <translation>Эквалайзер</translation>
-    </message>
-    <message>
-        <source>Playlist</source>
-        <translation>Плэйліст</translation>
-    </message>
-    <message>
-        <source>Now playing</source>
-        <translation>Зараз грае</translation>
-    </message>
-    <message>
-        <source>Visualization</source>
-        <translation>Візуалізацыя</translation>
-    </message>
-    <message>
-        <source>Spectrum</source>
-        <translation>Спектр</translation>
-    </message>
-    <message>
-        <source>Oscilloscope</source>
-        <translation>Асцылограф</translation>
-    </message>
-    <message>
-        <source>Off</source>
-        <translation>Выключана</translation>
-    </message>
-    <message>
-        <source>Shuffle</source>
-        <translation>Шафл</translation>
-    </message>
-    <message>
-        <source>Random track</source>
-        <translation>Выпадковы трэк</translation>
-    </message>
-    <message>
-        <source>Without repeats</source>
-        <translation>Без паўтораў</translation>
-    </message>
-    <message>
-        <source>Skins</source>
-        <translation>Скіны</translation>
-    </message>
-    <message>
-        <source>Load a skin…</source>
-        <translation>Загрузіць скін…</translation>
-    </message>
-    <message>
-        <source>Winamp skin</source>
-        <translation>Скін Winamp</translation>
-    </message>
-    <message>
-        <source>Winamp skins (*.wsz *.zip)</source>
-        <translation>Скіны Winamp (*.wsz *.zip)</translation>
-    </message>
-    <message>
-        <source>Size</source>
-        <translation>Памер</translation>
-    </message>
-    <message>
-        <source>Double size</source>
-        <translation>Падвойны памер</translation>
-    </message>
-    <message>
-        <source>Always on top</source>
-        <translation>Па-над усімі вокнамі</translation>
-    </message>
-    <message>
-        <source>Log out (%1)</source>
-        <translation>Выйсці з акаўнта (%1)</translation>
-    </message>
-    <message>
-        <source>Quit QiYaa</source>
-        <translation>Закрыць QiYaa</translation>
-    </message>
-    <message>
-        <source>Language</source>
-        <translation>Мова</translation>
-    </message>
-    <message>
-        <source>Send statistics</source>
-        <translation>Адпраўляць статыстыку</translation>
-    </message>
-    <message>
-        <source>Quality</source>
-        <translation>Якасць</translation>
-    </message>
-    <message>
-        <source>Standard</source>
-        <translation>Стандартная</translation>
-    </message>
-    <message>
-        <source>Economy: a third of the data</source>
-        <translation>Эканомія: утрая менш трафіку</translation>
-    </message>
-    <message>
-        <source>Continue with a vibe</source>
-        <translation>Працягваць хваляй</translation>
-    </message>
 </context>
 <context>
     <name>App::JamBridge</name>
@@ -244,6 +144,113 @@
     <message>
         <source>Server settings…</source>
         <translation>Налады сервера…</translation>
+    </message>
+</context>
+<context>
+    <name>App::MainMenu</name>
+    <message>
+        <source>Equalizer</source>
+        <translation>Эквалайзер</translation>
+    </message>
+    <message>
+        <source>Playlist</source>
+        <translation>Плэйліст</translation>
+    </message>
+    <message>
+        <source>Now playing</source>
+        <translation>Зараз грае</translation>
+    </message>
+    <message>
+        <source>Milkdrop</source>
+        <translation>Milkdrop</translation>
+    </message>
+    <message>
+        <source>Log out (%1)</source>
+        <translation>Выйсці з акаўнта (%1)</translation>
+    </message>
+    <message>
+        <source>Quit QiYaa</source>
+        <translation>Закрыць QiYaa</translation>
+    </message>
+    <message>
+        <source>Visualization</source>
+        <translation>Візуалізацыя</translation>
+    </message>
+    <message>
+        <source>Spectrum</source>
+        <translation>Спектр</translation>
+    </message>
+    <message>
+        <source>Oscilloscope</source>
+        <translation>Асцылограф</translation>
+    </message>
+    <message>
+        <source>Off</source>
+        <translation>Выключана</translation>
+    </message>
+    <message>
+        <source>Shuffle</source>
+        <translation>Шафл</translation>
+    </message>
+    <message>
+        <source>Random track</source>
+        <translation>Выпадковы трэк</translation>
+    </message>
+    <message>
+        <source>Without repeats</source>
+        <translation>Без паўтораў</translation>
+    </message>
+    <message>
+        <source>Continue with a vibe</source>
+        <translation>Працягваць хваляй</translation>
+    </message>
+    <message>
+        <source>Quality</source>
+        <translation>Якасць</translation>
+    </message>
+    <message>
+        <source>Standard</source>
+        <translation>Стандартная</translation>
+    </message>
+    <message>
+        <source>Economy: a third of the data</source>
+        <translation>Эканомія: утрая менш трафіку</translation>
+    </message>
+    <message>
+        <source>Skins</source>
+        <translation>Скіны</translation>
+    </message>
+    <message>
+        <source>Load a skin…</source>
+        <translation>Загрузіць скін…</translation>
+    </message>
+    <message>
+        <source>Winamp skin</source>
+        <translation>Скін Winamp</translation>
+    </message>
+    <message>
+        <source>Winamp skins (*.wsz *.zip)</source>
+        <translation>Скіны Winamp (*.wsz *.zip)</translation>
+    </message>
+    <message>
+        <source>Size</source>
+        <translation>Памер</translation>
+    </message>
+    <message>
+        <source>Double size</source>
+        <translation>Падвойны памер</translation>
+    </message>
+    <message>
+        <source>Language</source>
+        <translation>Мова</translation>
+    </message>
+    <message>
+        <source>Always on top</source>
+        <translation>Па-над усімі вокнамі</translation>
+    </message>
+    <message>
+        <source>Send statistics</source>
+        <translation>Адпраўляць статыстыку</translation>
     </message>
 </context>
 <context>

@@ -734,6 +734,7 @@ public:
 Q_SIGNALS:
     void failed(Vis::MilkdropFailure failure);  // a view could not start (telemetry)
     void presetChanged(const QString& name, Ui::MilkdropWindow::PresetOrigin origin);
+    void statusText(const QString& text);           // "Milkdrop: <name>" for a preset picked by hand
     void settingsChanged();                // preset, shuffle, lock, interval or black list changed
     void transportKey(int key);            // Z, X, C, V, B, Left, Right pressed in the view
 };
@@ -760,8 +761,9 @@ view without blending; hiding the window leaves full screen.
 **Switching.** `selectPreset(index, transition, origin)` ignores an index out of range or a preset
 whose file reads as empty. Otherwise it records the previous index in the history (up to 100
 entries), loads the preset into the active view (blended when `transition` is `Blend`) and emits
-`presetChanged(name, origin)` and `settingsChanged`. `origin` is `Automatic` for every automatic
-switch; the app shows the name in the main window's marquee only when it is `User`.
+`presetChanged(name, origin)`, then, when `origin` is `User`, `statusText("Milkdrop: <name>")` for
+the main window's marquee, then `settingsChanged`. `origin` is `Automatic` for every automatic
+switch.
 `followingPreset()`:
 - shuffle: uniformly at random (`QRandomGenerator::global()`) among the presets that are not black
   and not the current one; drawing from that list, not retrying random picks, is what keeps a

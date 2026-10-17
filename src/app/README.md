@@ -16,9 +16,10 @@ HTTP, OAuth and the token file format in [src/yandex](../yandex/README.md); `.ws
 
 | File | Contains |
 |---|---|
-| `application.h/.cpp` | `App::Application` and its `Options`: ownership, wiring, menus, shortcuts, login, skins, quit |
+| `application.h/.cpp` | `App::Application` and its `Options`: ownership, wiring, skins, the language, saving, quit |
 | `account.h/.cpp` | `App::Account`: the token at the start, login and logout, the likes after a login |
 | `jam_bridge.h`, `jam_bridge.cpp`, `jam_off.cpp` | `App::JamBridge`: the jam's words and questions in the app (statuses, "Continue the jam?", the Jam submenu, the server settings); `jam_off.cpp` in a build without the jam |
+| `main_menu.h/.cpp` | `App::MainMenu` and `App::TransportKey`: the context menus and the keyboard shortcuts |
 | `network_watch.h/.cpp` | `App::NetworkWatch`: the system's view of the network for the `Player` and the jam |
 | `telemetry_bridge.h`, `telemetry_bridge.cpp`, `telemetry_off.cpp` | `App::TelemetryBridge`: all of the app's telemetry; `telemetry_off.cpp` in a build without it |
 | `window_set.h/.cpp` | `App::WindowSet`: the windows as one set, one `Spec` each: their places, showing and hiding, minimising, scale, "always on top", skin, saved positions, `snapshot()` |
@@ -184,10 +185,10 @@ may hold its file.
    - the equalizer's shade mode shows and sets the main window's volume and balance (`setMixer`,
      `volumeRequested`, `balanceRequested`);
    - the equalizer's `statusText` goes to the main window's marquee;
-   - a Milkdrop preset picked by hand (`presetChanged` with `PresetOrigin::User`) shows `Milkdrop:
-     <name>` in the marquee;
+   - Milkdrop's `statusText` (a preset picked by hand: `Milkdrop: <name>`) goes to the marquee,
+     connected after the saved preset is restored;
    - Milkdrop's `transportKey` (transport keys pressed while the visualization has the focus)
-     goes to the same handler as the shortcuts;
+     goes to `App::TransportKey`, like the shortcuts;
    - Milkdrop is told whether the engine state is `Playing`.
 8. `WindowSet::restore()`: the saved shade state of the main, equalizer and playlist windows, then
    `scale` to every window, then `alwaysOnTop`; its `saveRequested` goes to `saveState()`.
@@ -198,6 +199,8 @@ may hold its file.
 10. Connects `NetworkWatch::onlineChanged` to `Player::setNetworkOnline` (and in a jam build
     `back` to `HostSession::networkBack`, HOST-26), and with audio on and not offline starts it.
 11. Connects `QApplication::aboutToQuit` to `saveState()` followed by `Player::stop()`.
+12. Last, the `TelemetryBridge` and the `MainMenu`, which take in every window; the menu's choices
+    go to `loadSkin()`, `setLanguage()`, `saveState()` and `quit()`.
 
 **`start()`** shows the windows (`WindowSet::showAtStart()`). Unless `offline`, it then asks about a
 stored jam (`JamBridge::offerStored()`) and looks for a token (`Account::start()`).
@@ -226,7 +229,8 @@ default offscreen screen, where the scale tests skip themselves).
 
 **Traps:**
 - Do not reorder the members in `application.h` (see above). A new window is one `WindowSet::Spec`
-  in an `add()` after the existing ones (their order is the layout's) and `installShortcuts()`.
+  in an `add()` after the existing ones (their order is the layout's and the menu's); the menu, the
+  keys, the layout and the settings take it from there.
 - `Options::offline` only skips the token lookup in `start()`. The menu item "Log in to Yandex
   Music…" still logs in. `readOnlySettings` does not redirect the token file: a login during
   such a run writes the real `<ConfigDirectory>/token`.
@@ -241,8 +245,6 @@ default offscreen screen, where the scale tests skip themselves).
   the report for the open track is started, but the process may exit before it leaves.
 - The shade state is applied in the constructor, before `start()` places the windows, because the
   saved positions were taken with the shaded heights.
-- The shortcut shown next to a menu item is only a label; the key that works is the `QAction`
-  added by `installShortcuts()`. Change both places together.
 - Settings values are converted with `QVariant::toInt`, `toDouble`, `toBool`, `toPoint`, `toSize`.
   A key that is present but malformed does not fall back to the default (a number becomes 0). Only
   `vis/mode` is clamped here before `static_cast<Ui::MainWindow::VisMode>`; saving uses
@@ -251,9 +253,6 @@ default offscreen screen, where the scale tests skip themselves).
   window draws an out-of-range value as stored.
 - A `skin` setting that fails to load is not cleared: the warning repeats at every start until
   another skin is loaded.
-- The playlist's ADD button and right-click open the full main menu. Track rows emit
-  `PlaylistWindow::trackMenuRequested`; ADD and clicks outside the rows emit
-  `PlaylistWindow::sourcesMenuRequested`.
 - Without a `QNetworkInformation` backend that can tell reachability, `NetworkWatch` says nothing,
   and the `Player`'s retry timer alone ends a wait for the network
   ([src/core](../core/README.md#failures-during-playback)).
@@ -265,59 +264,6 @@ default offscreen screen, where the scale tests skip themselves).
 success it points every window at the new skin first, and only then replaces (and frees) the old
 one; it stores `skin` = `path` and returns true. The Skins submenu passes `:/skins/<file>.wsz` for a
 bundled skin, or the path picked in the file dialog.
-
-### Menus
-
-`showMainMenu(globalPosition, track)` (a `const Core::Track*`) answers the main window's options
-button and right-click, and the playlist's ADD button and right-click. The track is the playlist row
-under the cursor for `trackMenuRequested`, and the current track for the other entry points.
-`showSourcesMenu(globalPosition)` answers the main window's eject button with the current track.
-Both build a `QMenu` parented to the main window, open it with `popup()` and delete it on close.
-
-The sources menu holds the Yandex items from `Ui::AddLibraryActions` (only "Log in to Yandex Music…"
-while logged out; it calls `Account::login()`). The texts here are the English sources; the user
-sees them in the interface language. The main menu, top to bottom:
-
-- the same Yandex items;
-- in a jam build, Jam (`JamBridge::addMenu`, below);
-- Equalizer (Alt+G), Playlist (Alt+E), Now playing (no shortcut), Milkdrop (Ctrl+Shift+K, only
-  in a Milkdrop build): checkable, checked when the window is visible;
-- Visualization: Spectrum, Oscilloscope, Off (exclusive; a choice calls `saveState()`);
-- Shuffle: "Random track" or "Without repeats" (exclusive); chooses the preferred algorithm
-  and saves `shuffle/algorithm`. It does not toggle the shuffle button or restart audio.
-- "Continue with a vibe" (`continueWithVibe`): checkable, checked when the current queue goes on
-  with a vibe from its history (`Player::continuesWithVibe`), disabled when its source has a
-  continuation of its own (My Vibe, a station). It switches the current queue only (spec CONT-02),
-  never the `playback/continueWithVibe` setting.
-- Quality (`qualityMenu`): "Standard" or "Economy: a third of the data" (exclusive); calls
-  `YandexSource::Source::setQuality` and saves `playback/quality` (spec/player/quality.md). The
-  track that plays goes on; the next one is fetched in the new quality.
-- Skins: every `*.wsz` in `:/skins`, sorted by name, shown without the extension; then "Load a
-  skin…" (file dialog starting in the home directory, filter `*.wsz *.zip`);
-- Size: 100 %, 125 %, 150 %, 175 %, 200 %, 250 %, 300 % (exclusive, checked when the current
-  scale is within 1e-6), then "Double size" (Ctrl+D);
-- the language: "Мова (Language)" in Belarusian, "Язык (Language)" in Russian, "Language" in
-  English, so that a wrong pick can be undone; "Беларуская", "Русский", "English" (exclusive, each
-  in its own language) call `setLanguage()`;
-- Always on top: checkable, checked from the main window's current flag;
-- "Log out (<displayName>)", only while logged in: `Account::logout()`;
-- "Quit QiYaa": `quit()`.
-
-### Shortcuts
-
-`installShortcuts(widget)` adds one `QAction` per key to each window (the jam window's fields
-take the keys while they have the focus). `QAction`'s
-default context is the window, so the keys work while any of the player's windows is active.
-
-| Key | Action |
-|---|---|
-| Z, X, C, V, B | previous, play, pause, stop, next |
-| Left, Right | seek 5 s back or forward from `AudioEngine::positionSeconds()` |
-| Alt+G | show or hide the equalizer |
-| Alt+E | show or hide the playlist |
-| Ctrl+D | scale 2.0, or 1.0 when it is already 2.0 (saved) |
-| Ctrl+W | shade or unshade the main window |
-| Ctrl+Shift+K | show or hide Milkdrop (nothing without Milkdrop) |
 
 ### Settings
 
@@ -491,6 +437,89 @@ left the queue", any other "The jam server refused". The texts are the Android a
 Tests: `tests/jam_bridge_test.cpp`; "Continue the jam?" through the whole app in
 `tests/windows_test.cpp`.
 
+## `main_menu.h/.cpp` — `App::MainMenu`
+
+```cpp
+void TransportKey(Core::Player* player, Audio::AudioEngine* engine, int key);   // Z X C V B, Left, Right
+
+class MainMenu : public QObject {
+public:
+    struct Parts { Core::Player* player; Audio::AudioEngine* engine; Yandex::Library* library;
+                   YandexSource::Catalog* catalog; Core::SourceRegistry* sources; YandexSource::Source* yandex;
+                   Settings* settings; WindowSet* windows; Account* account; JamBridge* jam;
+                   TelemetryBridge* telemetry; const Translations* translations;
+                   Ui::MainWindow* mainWindow; Ui::PlaylistWindow* playlistWindow; };
+    explicit MainMenu(const Parts& parts, QObject* parent = nullptr);   // shortcuts, menu requests
+    void showMain(QPoint globalPosition, const Core::Track* track);
+    void showSources(QPoint globalPosition);
+Q_SIGNALS:
+    void skinChosen(const QString& path);  void languageChosen(App::Language language);
+    void visModeChosen();  void quitChosen();
+};
+```
+
+The menus and the keys. What the `Application` owns (skins, the language, saving, quitting) the
+menu asks for with a signal; the rest it does through the parts. Built last, after every window
+joined the `WindowSet`.
+
+**Menus.** `showMain(globalPosition, track)` (a `const Core::Track*`) answers the main window's
+options button and right-click, and the playlist's ADD button and right-click. The track is the
+playlist row under the cursor for `trackMenuRequested`, and the current track for the other entry
+points. `showSources(globalPosition)` answers the main window's eject button with the current
+track. Both build a `QMenu` parented to the main window, open it with `popup()` and delete it on
+close. The playlist's ADD button and right-click open the full main menu: track rows emit
+`PlaylistWindow::trackMenuRequested`; ADD and clicks outside the rows emit
+`PlaylistWindow::sourcesMenuRequested`.
+
+The sources menu holds the Yandex items from `Ui::AddLibraryActions` (only "Log in to Yandex Music…"
+while logged out; it calls `Account::login()`). The texts here are the English sources; the user
+sees them in the interface language. The main menu, top to bottom:
+
+- the same Yandex items;
+- in a jam build, Jam (`JamBridge::addMenu`, below);
+- every window whose `WindowSet::Spec` has a `menuText`, with its `key`: Equalizer (Alt+G),
+  Playlist (Alt+E), Now playing (no shortcut), Milkdrop (Ctrl+Shift+K, only in a Milkdrop build);
+  checkable, checked when the window is visible;
+- Visualization: Spectrum, Oscilloscope, Off (exclusive; a choice emits `visModeChosen`, which
+  saves);
+- Shuffle: "Random track" or "Without repeats" (exclusive); chooses the preferred algorithm
+  and saves `shuffle/algorithm`. It does not toggle the shuffle button or restart audio.
+- "Continue with a vibe" (`continueWithVibe`): checkable, checked when the current queue goes on
+  with a vibe from its history (`Player::continuesWithVibe`), disabled when its source has a
+  continuation of its own (My Vibe, a station). It switches the current queue only (spec CONT-02),
+  never the `playback/continueWithVibe` setting.
+- Quality (`qualityMenu`): "Standard" or "Economy: a third of the data" (exclusive); calls
+  `YandexSource::Source::setQuality` and saves `playback/quality` (spec/player/quality.md). The
+  track that plays goes on; the next one is fetched in the new quality.
+- Skins: every `*.wsz` in `:/skins`, sorted by name, shown without the extension; then "Load a
+  skin…" (file dialog starting in the home directory, filter `*.wsz *.zip`); a choice emits
+  `skinChosen(path)`;
+- Size: 100 %, 125 %, 150 %, 175 %, 200 %, 250 %, 300 % (exclusive, checked when the current
+  scale is within 1e-6), then "Double size" (Ctrl+D);
+- the language: "Мова (Language)" in Belarusian, "Язык (Language)" in Russian, "Language" in
+  English, so that a wrong pick can be undone; "Беларуская", "Русский", "English" (exclusive, each
+  in its own language) emit `languageChosen`;
+- Always on top: checkable, checked from the main window's current flag;
+- "Send statistics", only when `TelemetryBridge::available()`;
+- "Log out (<displayName>)", only while logged in: `Account::logout()`;
+- "Quit QiYaa": `quitChosen`.
+
+**Shortcuts.** The constructor adds one `QAction` per key to every window of the `WindowSet` (the
+jam window's fields take the keys while they have the focus). `QAction`'s default context is the
+window, so the keys work while any of the player's windows is active. A window's key is its
+`Spec::key`; the transport keys, Ctrl+D and Ctrl+W are named once in `main_menu.cpp`. A menu item
+shows the same key, so the label and the key that works cannot drift apart.
+
+| Key | Action |
+|---|---|
+| Z, X, C, V, B | previous, play, pause, stop, next |
+| Left, Right | seek 5 s back or forward from `AudioEngine::positionSeconds()` |
+| Alt+G | show or hide the equalizer |
+| Alt+E | show or hide the playlist |
+| Ctrl+D | scale 2.0, or 1.0 when it is already 2.0 (saved) |
+| Ctrl+W | shade or unshade the main window |
+| Ctrl+Shift+K | show or hide Milkdrop (only in a Milkdrop build) |
+
 ## `network_watch.h/.cpp` — `App::NetworkWatch`
 
 `start()` loads a `QNetworkInformation` backend that can tell reachability; without one it does
@@ -568,6 +597,8 @@ public:
         bool raisedWhenShown = false;
         QSize stepsByDefault;                          // invalid: no resize steps
         Button button = Button::None;
+        const char* menuText = nullptr;                // QT_TRANSLATE_NOOP("App::MainMenu", …); none: no item
+        QKeySequence key;                              // toggles the window; shown in the menu
     };
     WindowSet(Settings* settings, Ui::MainWindow* mainWindow, Spec mainSpec, QObject* parent = nullptr);
     void add(Ui::SkinnedWindow* window, Spec spec);    // secondary, saved steps, close = hide
@@ -579,6 +610,7 @@ public:
     void setScale(double scale, ScaleScope scope = ScaleScope::Saved);
     void setAlwaysOnTop(bool on);  void setSkin(const Skins::Skin* skin);  void savePositions();
     QList<Ui::SkinnedWindow*> all() const;             // the main window first, then the add() order
+    const Spec& spec(const Ui::SkinnedWindow* window) const;   // the main window's for an unknown one
     QImage snapshot() const;                           // visible windows, as placed on screen
 Q_SIGNALS:
     void visibilityChosen(Ui::SkinnedWindow* window, bool on);   // from setVisible() only

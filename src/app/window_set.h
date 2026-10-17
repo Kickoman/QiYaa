@@ -1,6 +1,7 @@
 #pragma once
 
 #include <QImage>
+#include <QKeySequence>
 #include <QList>
 #include <QObject>
 #include <QSize>
@@ -37,6 +38,8 @@ public:
         bool raisedWhenShown = false;
         QSize stepsByDefault = {};
         Button button = Button::None;
+        const char* menuText = nullptr;
+        QKeySequence key = {};
     };
 
     WindowSet(Settings* settings, Ui::MainWindow* mainWindow, Spec mainSpec, QObject* parent = nullptr);
@@ -57,6 +60,7 @@ public:
     void savePositions();
 
     QList<Ui::SkinnedWindow*> all() const;
+    const Spec& spec(const Ui::SkinnedWindow* window) const;
     QImage snapshot() const;
 
 Q_SIGNALS:
