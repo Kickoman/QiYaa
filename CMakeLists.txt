@@ -327,13 +327,15 @@ qiyaa_add_module(app
     src/app/application.cpp     src/app/application.h
     src/app/offline_sources.cpp src/app/offline_sources.h
     src/app/paths.cpp           src/app/paths.h
+    src/app/settings.cpp        src/app/settings.h
     src/app/translations.cpp    src/app/translations.h)
 target_link_libraries(qiyaa_app
     PUBLIC qiyaa_audio qiyaa_core qiyaa_skins qiyaa_sources_yandex qiyaa_yandex
     PRIVATE qiyaa_integrations qiyaa_ui qiyaa_vis)
+# App::Settings holds the default of jam/server, also in a build without the jam.
+target_compile_definitions(qiyaa_app PRIVATE QIYAA_JAM_URL="${QIYAA_JAM_URL}")
 if(QIYAA_HAVE_JAM)
     target_link_libraries(qiyaa_app PRIVATE qiyaa_jam)
-    target_compile_definitions(qiyaa_app PRIVATE QIYAA_JAM_URL="${QIYAA_JAM_URL}")
 endif()
 if(QIYAA_HAVE_TELEMETRY)
     target_link_libraries(qiyaa_app PRIVATE qiyaa_telemetry)
