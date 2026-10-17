@@ -331,6 +331,7 @@ qiyaa_add_module(app
     src/app/offline_sources.cpp src/app/offline_sources.h
     src/app/paths.cpp           src/app/paths.h
     src/app/settings.cpp        src/app/settings.h
+    src/app/telemetry_bridge.h
     src/app/translations.cpp    src/app/translations.h
     src/app/window_set.cpp      src/app/window_set.h)
 target_link_libraries(qiyaa_app
@@ -345,8 +346,12 @@ if(QIYAA_HAVE_JAM)
 else()
     target_sources(qiyaa_app PRIVATE src/app/jam_off.cpp)
 endif()
+# Telemetry: telemetry_bridge.cpp in a telemetry build, else telemetry_off.cpp, which does nothing.
 if(QIYAA_HAVE_TELEMETRY)
+    target_sources(qiyaa_app PRIVATE src/app/telemetry_bridge.cpp)
     target_link_libraries(qiyaa_app PRIVATE qiyaa_telemetry)
+else()
+    target_sources(qiyaa_app PRIVATE src/app/telemetry_off.cpp)
 endif()
 # The interface in Belarusian, Russian and English (the source language; its file holds the
 # plural forms). translations/README.md says how to update the .ts files.

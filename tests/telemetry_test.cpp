@@ -1,15 +1,20 @@
 #include "app/application.h"
+#include "app/telemetry_bridge.h"
+#include "app/window_set.h"
 #include "support/mock_http_server.h"
 #include "support/spec_fixtures.h"
 #include "telemetry/machine_id.h"
 #include "telemetry/reporter.h"
 #include "telemetry/system_info.h"
+#include "ui/main_window.h"
+#include "ui/milkdrop_window.h"
 
 #include <QDir>
 #include <QFile>
 #include <QJsonArray>
 #include <QJsonDocument>
 #include <QJsonObject>
+#include <QLatin1String>
 #include <QNetworkAccessManager>
 #include <QProcess>
 #include <QRegularExpression>
@@ -359,19 +364,49 @@ private Q_SLOTS:
         options.telemetryUrl = QUrl(server->baseUrl() + kPath);
         App::Application application(options);
         application.start();
-        QVERIFY(application.telemetry());
+        QVERIFY(application.telemetry()->available());
+        QVERIFY(application.telemetry()->reporter());
         QTRY_COMPARE(posts(), 1);
         const QJsonObject start = Events(lastPost()).at(0).toObject();
         QCOMPARE(start.value(QStringLiteral("type")).toString(), QStringLiteral("start"));
         QCOMPARE(start.value(QStringLiteral("skin")).toString(), QStringLiteral("base"));
         QCOMPARE(start.value(QStringLiteral("firstRun")).toBool(), true);
 
-        application.setTelemetryEnabled(false);
-        QVERIFY(!application.telemetry());
+        application.telemetry()->setEnabled(false);
+        QVERIFY(!application.telemetry()->reporter());
         QCOMPARE(QDir(directory->filePath(QStringLiteral("telemetry"))).entryList(QDir::Files), QStringList());
-        application.setTelemetryEnabled(true);
-        QVERIFY(application.telemetry());
+        application.telemetry()->setEnabled(true);
+        QVERIFY(application.telemetry()->reporter());
         QTRY_COMPARE(posts(), 2);
+    }
+
+    void milkdropShownByHandIsAFeatureAndMinimisingIsNot() {
+        App::Application::Options options;
+        options.offline = true;
+        options.audio = false;
+        options.mediaIntegration = false;
+        options.settingsFile = directory->filePath(QStringLiteral("settings.ini"));
+        options.network = network.get();
+        options.telemetryUrl = QUrl(server->baseUrl() + kPath);
+        App::Application application(options);
+        application.start();
+        if (!application.milkdropWindow()) {
+            QSKIP("built without Milkdrop");
+        }
+        QTRY_COMPARE(posts(), 1);
+        application.windows()->setVisible(application.milkdropWindow(), true);
+        application.mainWindow()->minimizedChanged(true);
+        application.mainWindow()->minimizedChanged(false);
+        application.telemetry()->reporter()->send();
+        QTRY_COMPARE(posts(), 2);
+        QStringList milkdrop;
+        for (const QJsonValue& event : Events(lastPost())) {
+            const QJsonObject fields = event.toObject();
+            if (fields.value(QStringLiteral("name")).toString() == QLatin1String("milkdrop")) {
+                milkdrop << fields.value(QStringLiteral("value")).toString();
+            }
+        }
+        QCOMPARE(milkdrop, QStringList{QStringLiteral("on")});
     }
 };
 

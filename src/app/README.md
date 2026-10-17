@@ -20,6 +20,7 @@ HTTP, OAuth and the token file format in [src/yandex](../yandex/README.md); `.ws
 | `account.h/.cpp` | `App::Account`: the token at the start, login and logout, the likes after a login |
 | `jam_bridge.h`, `jam_bridge.cpp`, `jam_off.cpp` | `App::JamBridge`: the jam's words and questions in the app (statuses, "Continue the jam?", the Jam submenu, the server settings); `jam_off.cpp` in a build without the jam |
 | `network_watch.h/.cpp` | `App::NetworkWatch`: the system's view of the network for the `Player` and the jam |
+| `telemetry_bridge.h`, `telemetry_bridge.cpp`, `telemetry_off.cpp` | `App::TelemetryBridge`: all of the app's telemetry; `telemetry_off.cpp` in a build without it |
 | `window_set.h/.cpp` | `App::WindowSet`: the windows as one set, one `Spec` each: their places, showing and hiding, minimising, scale, "always on top", skin, saved positions, `snapshot()` |
 | `settings.h/.cpp` | `App::Settings`: every key of `settings.ini` with its default, typed reads and per-key writes; the only owner of `QSettings` |
 | `paths.h/.cpp` | `ConfigDirectory`, `YaampDataDirectories`, `TokenFile`, `YaampTokenFiles`, `SettingsFile`: where settings and tokens live |
@@ -43,8 +44,9 @@ HTTP, OAuth and the token file format in [src/yandex](../yandex/README.md); `.ws
   `Jam::HostSession`; `Application` creates it and the jam window under `#ifdef QIYAA_HAVE_JAM`.
 - The define `QIYAA_JAM_URL="<the CMake option>"`, the default jam server, in every build:
   `App::Settings` knows the default of `jam/server` whether or not the jam is built.
-- PRIVATE `qiyaa_telemetry` in a telemetry build (`QIYAA_HAVE_TELEMETRY`); the header
-  forward-declares `Telemetry::Reporter`, the calls are under `#ifdef QIYAA_HAVE_TELEMETRY`.
+- PRIVATE `qiyaa_telemetry` in a telemetry build (`QIYAA_HAVE_TELEMETRY`), with
+  `telemetry_bridge.cpp`; any other build takes `telemetry_off.cpp`. No header changes with the
+  build, and nothing in `src/` tests `QIYAA_HAVE_TELEMETRY` (the checks below).
 - Resources `:/icons` (`qiyaa-16.png` … `qiyaa-256.png`, seven sizes), used by `main.cpp` for the
   window icon, and `:/i18n/qiyaa_be.qm`, `qiyaa_en.qm`, `qiyaa_ru.qm`, built from
   [translations](../../translations/README.md) by `qt_add_translations` (Qt LinguistTools is
@@ -68,6 +70,8 @@ reaches them only through `audio`, `skins` and `vis`), nor Qt D-Bus or WinRT (on
 grep -rln --include='*.h' --include='*.cpp' '#include "app/' src/ | grep -v '^src/app/'   # must print nothing
 grep -rln --include='*.h' --include='*.cpp' 'QSettings' src/ | grep -v '^src/app/settings\.'   # must print nothing: only App::Settings keeps settings
 grep -rnw --include='*.h' --include='*.cpp' 'throw' src/app/                               # must print nothing: app only catches
+grep -rn --include='*.h' --include='*.cpp' 'QIYAA_HAVE_TELEMETRY' src/                      # must print nothing: CMake picks telemetry_bridge.cpp or telemetry_off.cpp
+grep -rln --include='*.h' --include='*.cpp' 'Telemetry::' src/app/ | grep -v '^src/app/telemetry_'   # must print nothing: telemetry lives in its bridge
 ```
 
 ## `application.h/.cpp` — `App::Application`
@@ -108,6 +112,7 @@ public:
 
     WindowSet* windows() const;                        // places, shows, scales the windows (below)
     Account* account() const;                          // login and logout (below)
+    TelemetryBridge* telemetry() const;                // never null; does nothing without telemetry
 
     bool loadSkin(const QString& path);                // false: message in the marquee
 
@@ -117,6 +122,10 @@ public:
 
     void saveState();
     void quit();
+Q_SIGNALS:
+    void languageChanged(App::Language language);      // setLanguage()
+    void skinChanged(const QString& path);             // loadSkin() succeeded
+    void skinFailed();                                 // loadSkin() failed
 };
 ```
 
@@ -201,13 +210,13 @@ The other settings are written the moment they change (see the table).
 
 **`quit()`** runs once; a second call returns at once. It calls `saveState()`, then
 `Player::shutDown()` (stops playback, which reports the open track to the wave as skipped, and
-ignores anything that would start playback again), hides every window (`WindowSet::hideAll()`),
-and then quits the Qt
-application with a queued call, so that a `quit()` made inside a nested event loop (a menu) ends
-the main loop. The queued quit happens right away if `ApiClient::pendingPosts()` is 0, otherwise
-on `ApiClient::postsSettled` or after 1500 ms, whichever comes first. `quit()` is reached from the
-main window's close button (and the window manager's close), the menu item "Quit QiYaa" and the
-media controls' quit.
+ignores anything that would start playback again), hides every window (`WindowSet::hideAll()`), and
+then quits the Qt application with a queued call, so that a `quit()` made inside a nested event loop
+(a menu) ends the main loop. Before that it calls `TelemetryBridge::finish()`. The queued quit
+happens right away if `ApiClient::pendingPosts()` is 0 and the telemetry is not sending, otherwise
+when both have settled (`ApiClient::postsSettled`, `TelemetryBridge::sent`) or after 1500 ms,
+whichever comes first. `quit()` is reached from the main window's close button (and the window
+manager's close), the menu item "Quit QiYaa" and the media controls' quit.
 
 `tests/windows_test.cpp` drives a real `Application` with `offline`, `audio = false`,
 `readOnlySettings` and no media integration, on a 2560×1440 offscreen screen (on Windows on Qt's
@@ -223,32 +232,6 @@ default offscreen screen, where the scale tests skip themselves).
   such a run writes the real `<ConfigDirectory>/token`.
 - `Options::settingsFile` is set by `jam_e2e_test`, to point `jam/server` at its server, and by
   `telemetry_test`, whose telemetry folder sits next to that file.
-
-## Telemetry
-
-In a telemetry build ([src/telemetry](../telemetry/README.md), spec/telemetry) with
-`Options::telemetryUrl` set and the `telemetry/enabled` setting on (the default), `start()`
-creates the `Telemetry::Reporter` in `telemetry/` next to `settings.ini` and records `start`. Its
-fields are the system's (`Telemetry::SystemFields`), the state the windows start in, and
-`firstRun`: the settings were empty when the app was built. `telemetry/firstStart` is written
-and synced at once, so a first run that gets killed does not make the next one first too. The
-connections are made at the end of the constructor:
-
-| Event | From |
-|---|---|
-| `error playback/<kind>` | `Core::Player::failed` |
-| `error audio/device`, `audio/undecodable`, `audio/init` | `AudioEngine::errorOccurred`, `streamUndecodable`, a failed `init()` |
-| `error api/<kind>` (+ `httpStatus`) | `Yandex::ApiClient::requestFailed` |
-| `error login/failed`, `skin/load` | `Account::failed`, `loadSkin` |
-| `error milkdrop/<category>` | `Ui::MilkdropWindow::failed` |
-| `error jam/<reason>`, `jam/gone`, `jam/expired`, `jam/ended-by-server` | `HostSession::refused`, `ended` |
-| `feature vis`, `equalizer`, `skin`, `language`, `milkdrop`, `jam` | `MainWindow::visModeChanged`, the equalizer's `settingsChanged`, `loadSkin`, `setLanguage`, `WindowSet::visibilityChosen` of Milkdrop, `HostSession::activeChanged` |
-
-A skin is `base`, a built-in skin's name or `custom`, never a path. `quit()` records `exit`
-and waits for the last batch within its 1.5 s, like the plays reports. The menu's "Send
-statistics" (`setTelemetryEnabled`) is shown only in a telemetry build with a URL. Off:
-`Reporter::forget()` and `ForgetAll` delete what waits. On: `startTelemetry()` again, as a new
-session.
 - After `--scale`, window positions are not saved for the rest of the run, unless the user picks a
   size from the menu (a `setScale` with `ScaleScope::Saved` clears `transientScale`).
 - `saveState()` skips positions while the main window is hidden, which is why `quit()` saves before
@@ -385,9 +368,9 @@ says who asks it when. "ctor" is the `Application` constructor; "setter" is
 | `jamWindow/visible` | bool | false | restoring only: the jam window is shown by the menu and by "Continue" | `WindowSet::setVisible()` |
 | `jamWindow/pos` | QPoint | main position + (main width, 0) | `WindowSet::showAtStart()` | `WindowSet::savePositions()` |
 | `jamWindow/steps` | QSize: resize steps of 25×29 skin px | (1, 8): 300×348 | `WindowSet::add()` | on `sizeStepsChanged` |
-| `telemetry/enabled` | bool: "Send statistics" | true | `startTelemetry()`, the menu | `setTelemetryEnabled()`, from the menu |
-| `telemetry/firstStart` | QString: the ISO date of the first start with telemetry | absent | only whether it exists | `startTelemetry()`, once ([Telemetry](#telemetry)) |
-| `telemetry/machine` | QString: a random UUID, the machine id when the OS has none | absent | `startTelemetry()` | `startTelemetry()`, when the OS has no id and the key is absent |
+| `telemetry/enabled` | bool: "Send statistics" | true | `TelemetryBridge::start()`, the menu | `TelemetryBridge::setEnabled()`, from the menu |
+| `telemetry/firstStart` | QString: the ISO date of the first start with telemetry | absent | only whether it exists | `TelemetryBridge::start()`, once |
+| `telemetry/machine` | QString: a random UUID, the machine id when the OS has none | absent | `TelemetryBridge::start()` | `TelemetryBridge::start()`, when the OS has no id and the key is absent |
 
 The `milkdrop/*` keys are read and written only in a build with `QIYAA_HAVE_MILKDROP`, the `jam/*`
 and `jamWindow/*` keys only in a jam build, the `telemetry/*` keys only in a telemetry build. The
@@ -514,6 +497,59 @@ Tests: `tests/jam_bridge_test.cpp`; "Continue the jam?" through the whole app in
 nothing. It then reports the reachability now and at every change: `onlineChanged` with Online as
 true, Disconnected as false and anything else (Local, Site, Unknown) as "cannot tell", and `back()`
 at every Online, the first one too.
+
+## `telemetry_bridge.h/.cpp` — `App::TelemetryBridge`
+
+```cpp
+class TelemetryBridge : public QObject {
+public:
+    struct Sources { Application* application; Settings* settings; Account* account; WindowSet* windows;
+                     Core::Player* player; Audio::AudioEngine* engine; Yandex::ApiClient* api;
+                     Ui::MainWindow* mainWindow; Ui::EqualizerWindow* equalizer;
+                     Ui::MilkdropWindow* milkdrop; Jam::HostSession* jamHost; };   // the last two may be null
+    struct Config { QUrl url; QNetworkAccessManager* network; QString skinOverride; bool audio; bool audioFailed; };
+    TelemetryBridge(const Sources& sources, Config config, QObject* parent = nullptr);
+    bool available() const;                            // a telemetry build with a URL
+    bool enabled() const;  void setEnabled(bool on);   // telemetry/enabled
+    void start();                                      // from Application::start()
+    void finish();  bool isSending() const;            // for quit()
+    Telemetry::Reporter* reporter() const;             // null while off; for the tests
+Q_SIGNALS:
+    void sent();                                       // the reporter's batch went
+};
+```
+
+All of the app's telemetry ([src/telemetry](../telemetry/README.md), spec/telemetry). The bridge
+subscribes itself to what it reports, so nothing else in `src/app` knows telemetry.
+`telemetry_bridge.cpp` is built only with `QIYAA_WITH_TELEMETRY`; any other build compiles
+`telemetry_off.cpp`, whose bridge is never `available()` and does nothing. Inside
+`telemetry_bridge.cpp` the subscriptions to the host session and to the Milkdrop window are under
+`#ifdef QIYAA_HAVE_JAM` and `#ifdef QIYAA_HAVE_MILKDROP`, since those classes exist only in their
+builds.
+
+With a URL and `telemetry/enabled` on (the default), `start()` creates the `Telemetry::Reporter`
+in `telemetry/` next to `settings.ini` and records `start`. Its fields are the system's
+(`Telemetry::SystemFields`), the state the windows start in, and `firstRun`: the settings were
+empty when the app opened them. `telemetry/firstStart` is written and synced at once, so a first
+run that gets killed does not make the next one first too. Without a reporter every event is
+dropped.
+
+| Event | From |
+|---|---|
+| `error playback/<kind>` | `Core::Player::failed` |
+| `error audio/device`, `audio/undecodable`, `audio/init` | `AudioEngine::errorOccurred`, `streamUndecodable`, a failed `init()` (`Config::audioFailed`, at `start()`) |
+| `error api/<kind>` (+ `httpStatus`) | `Yandex::ApiClient::requestFailed` |
+| `error login/failed`, `skin/load` | `Account::failed`, `Application::skinFailed` |
+| `error milkdrop/<category>` | `Ui::MilkdropWindow::failed` |
+| `error jam/<reason>`, `jam/gone`, `jam/expired`, `jam/ended-by-server` | `HostSession::refused`, `ended` |
+| `feature vis`, `equalizer`, `skin`, `language`, `milkdrop`, `jam` | `MainWindow::visModeChanged`, the equalizer's `settingsChanged`, `Application::skinChanged`, `Application::languageChanged`, `WindowSet::visibilityChosen` of Milkdrop, `HostSession::activeChanged` |
+
+A skin is `base`, a built-in skin's name or `custom`, never a path. `quit()` calls `finish()`
+(`exit`) and waits for the last batch (`sent`) within its 1.5 s, like the plays reports. The menu's
+"Send statistics" is shown only when `available()`. Off (`setEnabled(false)`):
+`Reporter::forget()` and `ForgetAll` delete what waits. On: `start()` again, as a new session.
+
+Tests: `tests/telemetry_test.cpp`.
 
 ## `window_set.h/.cpp` — `App::WindowSet`
 
