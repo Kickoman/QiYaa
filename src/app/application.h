@@ -54,6 +54,8 @@ class SkinnedWindow;
 
 namespace App {
 
+class WindowSet;
+
 class Application : public QObject {
     Q_OBJECT
 public:
@@ -93,15 +95,9 @@ public:
     // Null when the app is built without the jam.
     Jam::HostSession* jamHost() const { return jamHostSession.get(); }
 
+    WindowSet* windows() const { return windowSet.get(); }
+
     bool loadSkin(const QString& path);
-    enum class ScaleScope { Saved, ThisRun };
-    void setScale(double scale, ScaleScope scope = ScaleScope::Saved);
-    void setAlwaysOnTop(bool on);
-    void setEqualizerVisible(bool on);
-    void setPlaylistVisible(bool on);
-    void setNowPlayingVisible(bool on);
-    void setMilkdropVisible(bool on);
-    void setJamWindowVisible(bool on);
 
     Language language() const { return translations.language(); }
     void setLanguage(Language language);
@@ -117,18 +113,14 @@ public:
 
     void saveState();
     void quit();
-    QImage snapshot() const;
 
 private:
-    void layoutWindows();
     void installShortcuts(QWidget* widget);
     void showMainMenu(QPoint globalPosition, const Core::Track* track);
     void showSourcesMenu(QPoint globalPosition);
     void fillWindowActions(QMenu* menu);
     void transportKey(int key);
-    QList<Ui::SkinnedWindow*> windows() const;
     void watchNetwork();
-    void raiseWindows();
     void setUpJam();
     void offerStoredJam();
     void addJamMenu(QMenu* menu);
@@ -144,7 +136,6 @@ private:
     Translations translations;
     Skins::Skin baseSkin;
     std::unique_ptr<Skins::Skin> currentSkin;
-    bool transientScale = false;
     bool quitting = false;
     bool firstRun = false;
     bool audioFailed = false;
@@ -173,6 +164,7 @@ private:
     std::unique_ptr<Ui::NowPlayingWindow> nowPlayingWindowInstance;
     std::unique_ptr<Ui::MilkdropWindow> milkdropWindowInstance;
     std::unique_ptr<Ui::JamWindow> jamWindowInstance;
+    std::unique_ptr<WindowSet> windowSet;
 };
 
 }  // namespace App

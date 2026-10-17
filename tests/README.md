@@ -39,7 +39,7 @@ is formatting (the clang-format check in `.github/workflows/ci.yml`).
 | `jam_mode_test.cpp` | `Core::JamMode` over a `Core::Player` with `YandexSource::HistoryWaves` against `spec/jam/host.md` by ID, on the Null output with a `Tests::FakeSource` that opens every track at once and spec fixtures: the queue staying as the base with the items in front of its rest, the jam part following the state with the smallest change, started and playing reports, Previous restarting, an item into a stopped player, the base after the items as base tracks, the jam vibe on the server's seeds or the history's, outdated sessions and their tails and replies dropped but never the head, a base that runs out going idle, a jam vibe that brought nothing waiting for new seeds and the next item, no play reports and feedback only to the jam vibe, a vibe the jam plays over learning nothing, skip by item, a pick becoming the base, the end with the items first and the jam's seeds over, a late reply of the previous jam's vibe, and the host's own Delete and Clear (HOST-01 to HOST-16, HOST-18, HOST-19, HOST-21, HOST-32, HOST-33, HOST-36) |
 | `failures_test.cpp` | What the `Player` does when a track cannot play (`spec/player/errors.md`): the failure policy as a table, `ClassifyReply` and `YandexSource::FailureKindOf` on real replies, and on the Null output a broken and an undecodable track skipped, three in a row stopping, the count reset by a track that plays, a broken last track, a rejected account, no network (pause, then continue the same track), and a download cut short that waits instead of moving on |
 | `main_window_test.cpp` | One `Ui::MainWindow` on the default offscreen screen: position clamping, dragging and edge snapping, shuffle click, the shuffle light off during a wave, volume slider, ×2 and fractional scale; `Ui::NoticeText` giving the `Player`'s former status texts, and "Vibe error"; `Ui::SourceNoticeText` giving the catalogue's |
-| `windows_test.cpp` | The whole `App::Application` window set: docking, detaching, scaling, playlist selection/scroll/resize, track menu targets (including multiple selection, keyboard invocation and queue changes), dislike skipping only the current track, EQ sliders, shade modes, login dialog layout, Milkdrop and Now Playing windows, `snapshot()`; the Quality menu and its setting (QUAL-06); the item "Continue with a vibe", which switches only the current queue and is off for a vibe (CONT-01, CONT-02); during a jam Delete removes a base row at once and sends an item to the server, and Clear keeps the current track and the items (HOST-36); what the start does with `settings.ini` (a fresh start writes nothing, a restart brings back shades, steps and positions without writing, minimising and restoring, `--scale` leaves positions unsaved); "Continue the jam?" at the start (HOST-23) |
+| `windows_test.cpp` | The whole `App::Application` and its `WindowSet`: docking, detaching, scaling, playlist selection/scroll/resize, track menu targets (including multiple selection, keyboard invocation and queue changes), dislike skipping only the current track, EQ sliders, shade modes, login dialog layout, Milkdrop and Now Playing windows, `snapshot()`; the Quality menu and its setting (QUAL-06); the item "Continue with a vibe", which switches only the current queue and is off for a vibe (CONT-01, CONT-02); during a jam Delete removes a base row at once and sends an item to the server, and Clear keeps the current track and the items (HOST-36); what the start does with `settings.ini` (a fresh start writes nothing, a restart brings back shades, steps and positions without writing, minimising and restoring, `--scale` leaves positions unsaved); "Continue the jam?" at the start (HOST-23) |
 | `settings_test.cpp` | `App::Settings`: the defaults of an empty `settings.ini`, a window's defaults until saved, the key each value goes under, the first start on disk at once, the fallbacks for unknown values |
 | `screenshots_test.cpp` | Golden screenshots of the main window and the equalizer (see **Golden screenshots**) |
 | `jam_test.cpp` | `Jam::` (only with Qt WebSockets): every example of `spec/jam/protocol/examples` through the codec (valid ones pass, `invalid-*` fail) and client examples through encode and decode; the client against a `QWebSocketServer` on localhost — hello with a version the server takes and the clock offset, reconnects after the delays and at once on `networkBack`, the outbox, `ended` stopping it for good, refusing to send what the server would refuse, invalid and unknown-reason messages; the stored session across a restart and broken, foreign or oversized files |
@@ -659,11 +659,11 @@ collects `org.freedesktop.DBus.Properties.PropertiesChanged`.
 `mediaIntegration = false`: no Yandex, no audio device, no settings written, no MPRIS or SMTC.
 
 - The default stack is the main window, then the equalizer below it, then the playlist, at
-  275×116, 275×116 and 275×232. `snapshot()` is 275×464.
+  275×116, 275×116 and 275×232. `WindowSet::snapshot()` is 275×464.
 - `Drag(widget, local, delta)` sends a press, one move and a release.
 - The Milkdrop window is off by default. It opens right of the equalizer, at the main window's
   bottom-right corner. Without `QIYAA_HAVE_MILKDROP`, `milkdropWindow()` is null and
-  `setMilkdropVisible` does nothing.
+  `WindowSet::setVisible` does nothing for it.
 - Now Playing is docked right of the main window. Its cover is a red 64×64 PNG served by a
   local `MockHttpServer` at `/cover/400x400`.
 - `loginDialogFitsItsText` points OAuth at `http://127.0.0.1:1`, so the device flow fails fast
@@ -789,7 +789,7 @@ D-Bus, and OpenGL on a software renderer. This is how they stay stable:
   - [src/skins](../src/skins/README.md): skin loading and `region.txt`;
   - [src/vis](../src/vis/README.md): the analyzer, visualizers, Milkdrop presets and view;
   - [src/integrations](../src/integrations/README.md): MPRIS;
-  - [src/app](../src/app/README.md): `Application::Options` and `snapshot()`.
+  - [src/app](../src/app/README.md): `Application::Options` and `WindowSet::snapshot()`.
 - Build options (`QIYAA_BUILD_TESTS`, `QIYAA_WITH_MILKDROP`, MPRIS detection): the top-level
   [CMakeLists.txt](../CMakeLists.txt).
 - Which packages each CI runner installs, and the clang-format check:

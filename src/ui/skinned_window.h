@@ -46,6 +46,7 @@ public:
 
     bool isShaded() const { return shadeEnabled; }
     virtual void setShaded(bool shaded) { Q_UNUSED(shaded); }
+    virtual void setSizeSteps(QSize steps) { Q_UNUSED(steps); }
 
     static bool CanPositionWindows();
 
@@ -54,6 +55,8 @@ public:
 Q_SIGNALS:
     void moveFinished();
     void shadeChanged(bool shaded);
+    void closeRequested();
+    void sizeStepsChanged(QSize steps);
 
 protected:
     virtual void paintSkin(QPainter& painter) = 0;

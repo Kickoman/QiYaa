@@ -100,7 +100,9 @@ owned; replaced through `setSkin`) and connects their signals. The windows never
 the equalizer's shade-mode volume, the EQ/PL lights, closing and the menus all go through the app.
 Everything runs on the GUI thread; nothing here locks. `MainWindow`'s `closeEvent` accepts and emits
 `closeRequested` (the app quits); every other window ignores the close event and emits
-`closeRequested` (the app hides it and updates the matching light).
+`closeRequested` (the app hides it and updates the matching light). `closeRequested`,
+`setSizeSteps` and `sizeStepsChanged` are `SkinnedWindow`'s, so the app's `WindowSet` treats every
+window alike.
 
 Tests: `tests/snap_test.cpp` (Snap), `tests/main_window_test.cpp` (drag, snap, clamp, scale),
 `tests/windows_test.cpp` (docking, shade stack, scaling, playlist, equalizer, login dialog height,
@@ -132,6 +134,7 @@ public:
 
     bool isShaded() const;
     virtual void setShaded(bool shaded);             // base: does nothing
+    virtual void setSizeSteps(QSize steps);          // base: does nothing; the resizable windows
 
     static bool CanPositionWindows();                // false on native Wayland
     static const QList<SkinnedWindow*>& AllWindows();  // every live instance, hidden ones too
@@ -139,6 +142,8 @@ public:
 Q_SIGNALS:
     void moveFinished();                             // left button released after a drag done here
     void shadeChanged(bool shaded);                  // after the resize and the stack move
+    void closeRequested();                           // its close button or the window-manager close
+    void sizeStepsChanged(QSize steps);              // resizable windows, only on a change
 
 protected:
     virtual void paintSkin(QPainter& painter) = 0;   // skin coordinates, painter already scaled
@@ -322,7 +327,6 @@ Q_SIGNALS:
     void playlistToggleRequested();
     void menuRequested(QPoint globalPos);          // options button or right click
     void sourcesMenuRequested(QPoint globalPos);   // eject button
-    void closeRequested();                         // close button or window-manager close
     void minimizedChanged(bool minimized);
     void volumeChanged(int volume);                // only when the value changed
     void balanceChanged(int balance);
@@ -416,7 +420,6 @@ public:
 Q_SIGNALS:
     void settingsChanged(const Audio::EqSettings& settings);
     void statusText(const QString& text);        // "EQ: 60HZ +3.0 DB", "EQ: ON", file errors
-    void closeRequested();
     void volumeRequested(int volume);            // shade-mode slider, 0..100
     void balanceRequested(int balance);          // shade-mode slider, -100..100
 };
@@ -462,7 +465,7 @@ public:
     PlaylistWindow(Core::Player* player, const Skins::Skin* skin, QWidget* parent = nullptr);
 
     QSize sizeSteps() const;                // (0, 4) at start: 275x232
-    void setSizeSteps(QSize steps);         // each clamped to 0..40; 275x116 + steps × 25x29
+    void setSizeSteps(QSize steps) override;  // each clamped to 0..40; 275x116 + steps × 25x29
     void setShaded(bool shaded) override;   // full width, 14 px high
 
     int visibleRows() const;                // max(1, list height / 13)
@@ -473,8 +476,6 @@ public:
     int rowAt(QPoint skinPos) const;        // -1 outside the rows
 
 Q_SIGNALS:
-    void closeRequested();
-    void sizeStepsChanged(QSize steps);     // only on a change
     void sourcesMenuRequested(QPoint globalPos);  // ADD button or right click outside a row
     void trackMenuRequested(QPoint globalPos, int row);  // right click on a track
 };
@@ -530,11 +531,7 @@ public:
     GenWindow(const Skins::Skin* skin, const QString& title, QWidget* parent = nullptr);
 
     QSize sizeSteps() const;
-    void setSizeSteps(QSize steps);        // each clamped to 0..40; 275x116 + steps × 25x29
-
-Q_SIGNALS:
-    void closeRequested();
-    void sizeStepsChanged(QSize steps);    // only on a change
+    void setSizeSteps(QSize steps) override;  // each clamped to 0..40; 275x116 + steps × 25x29
 
 protected:
     QRect contentRect() const;             // skin pixels inside the frame: (11, 20, w − 19, h − 34)

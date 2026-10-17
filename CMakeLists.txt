@@ -328,7 +328,8 @@ qiyaa_add_module(app
     src/app/offline_sources.cpp src/app/offline_sources.h
     src/app/paths.cpp           src/app/paths.h
     src/app/settings.cpp        src/app/settings.h
-    src/app/translations.cpp    src/app/translations.h)
+    src/app/translations.cpp    src/app/translations.h
+    src/app/window_set.cpp      src/app/window_set.h)
 target_link_libraries(qiyaa_app
     PUBLIC qiyaa_audio qiyaa_core qiyaa_skins qiyaa_sources_yandex qiyaa_yandex
     PRIVATE qiyaa_integrations qiyaa_ui qiyaa_vis)

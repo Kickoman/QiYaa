@@ -1,4 +1,5 @@
 #include "app/application.h"
+#include "app/window_set.h"
 #include "core/continuation.h"
 #include "core/cover_cache.h"
 #include "core/jam_mode.h"
@@ -428,7 +429,7 @@ private Q_SLOTS:
 
     void scalingKeepsTheStack() {
         requireBigScreen();
-        application->setScale(1.5);
+        application->windows()->setScale(1.5);
         QCOMPARE(main->size(), QSize(413, 174));
         QCOMPARE(eq->pos(), main->pos() + QPoint(0, main->height()));
         QCOMPARE(playlist->pos(), eq->pos() + QPoint(0, eq->height()));
@@ -437,7 +438,7 @@ private Q_SLOTS:
     void scalingRoundTripsStayDocked() {
         requireBigScreen();
         for (double scaleFactor : {1.25, 1.75, 1.35, 1.0, 2.5, 1.5}) {
-            application->setScale(scaleFactor);
+            application->windows()->setScale(scaleFactor);
             QCOMPARE(eq->pos(), main->pos() + QPoint(0, main->height()));
             QCOMPARE(playlist->pos(), eq->pos() + QPoint(0, eq->height()));
             QCOMPARE(main->dockedWindows().size(), 2);
@@ -446,7 +447,7 @@ private Q_SLOTS:
 
     void hugeScaleKeepsEveryWindowReachable() {
         // Stack at 400% is 1856 px tall: taller than the 1440 px test screen.
-        application->setScale(4.0);
+        application->windows()->setScale(4.0);
         const QRect screen = QGuiApplication::primaryScreen()->availableGeometry();
         for (QWidget* widget :
              {static_cast<QWidget*>(main), static_cast<QWidget*>(eq), static_cast<QWidget*>(playlist)}) {
@@ -460,9 +461,9 @@ private Q_SLOTS:
 
     void hiddenWindowFollowsScale() {
         requireBigScreen();
-        application->setEqualizerVisible(false);
-        application->setScale(2.0);
-        application->setEqualizerVisible(true);
+        application->windows()->setVisible(application->equalizerWindow(), false);
+        application->windows()->setScale(2.0);
+        application->windows()->setVisible(application->equalizerWindow(), true);
         QCOMPARE(eq->pos(), main->pos() + QPoint(0, main->height()));
     }
 
@@ -602,7 +603,7 @@ private Q_SLOTS:
         application->player()->setSource(
             Core::QueueSource{.title = QStringLiteral("Test"), .head = YandexSource::TracksOf(tracks)}, false
         );
-        application->setScale(1.5);
+        application->windows()->setScale(1.5);
         playlist->setScrollOffset(10);
         QDesktopServices::setUrlHandler(QStringLiteral("https"), this, "recordTrackUrl");
         QMenu* menu = OpenContextMenu(playlist, {90, qRound((20 + 3 + 2 * 13 + 6) * 1.5)});
@@ -858,7 +859,7 @@ private Q_SLOTS:
         playlist->setShaded(true);
         QCOMPARE(playlist->size(), QSize(275, 14));
         if (!qEnvironmentVariableIsEmpty("QIYAA_TEST_SHOTS")) {
-            application->snapshot().save(qEnvironmentVariable("QIYAA_TEST_SHOTS") + "/shaded.png");
+            application->windows()->snapshot().save(qEnvironmentVariable("QIYAA_TEST_SHOTS") + "/shaded.png");
         }
         main->setShaded(false);
         eq->setShaded(false);
@@ -881,9 +882,9 @@ private Q_SLOTS:
     }
 
     void hiddenWindowFollowsShade() {
-        application->setPlaylistVisible(false);
+        application->windows()->setVisible(application->playlistWindow(), false);
         main->setShaded(true);
-        application->setPlaylistVisible(true);
+        application->windows()->setVisible(application->playlistWindow(), true);
         QCOMPARE(eq->pos(), main->pos() + QPoint(0, 14));
         QCOMPARE(playlist->pos(), eq->pos() + QPoint(0, eq->height()));
     }
@@ -935,18 +936,18 @@ private Q_SLOTS:
 #if defined(QIYAA_HAVE_MILKDROP)
         QVERIFY(milkdrop);
         QVERIFY(!milkdrop->isVisible());
-        application->setMilkdropVisible(true);
+        application->windows()->setVisible(application->milkdropWindow(), true);
         QVERIFY(milkdrop->isVisible());
         QCOMPARE(milkdrop->pos(), main->pos() + QPoint(main->width(), main->height()));  // right of the equalizer
         QVERIFY(milkdrop->presets().size() >= 50);
         if (!qEnvironmentVariableIsEmpty("QIYAA_TEST_SHOTS")) {
-            application->snapshot().save(qEnvironmentVariable("QIYAA_TEST_SHOTS") + "/milkdrop-window.png");
+            application->windows()->snapshot().save(qEnvironmentVariable("QIYAA_TEST_SHOTS") + "/milkdrop-window.png");
         }
-        application->setMilkdropVisible(false);
+        application->windows()->setVisible(application->milkdropWindow(), false);
         QVERIFY(!milkdrop->isVisible());
 #else
         QVERIFY(!milkdrop);
-        application->setMilkdropVisible(true);  // no-op
+        application->windows()->setVisible(application->milkdropWindow(), true);  // no-op
 #endif
     }
 
@@ -1015,7 +1016,7 @@ private Q_SLOTS:
         application->player()->setSource(
             Core::QueueSource{.title = QStringLiteral("A"), .head = YandexSource::TracksOf(tracks)}, false
         );
-        application->setNowPlayingVisible(true);
+        application->windows()->setVisible(application->nowPlayingWindow(), true);
         Ui::NowPlayingWindow* nowPlaying = application->nowPlayingWindow();
         QVERIFY(QTest::qWaitForWindowExposed(nowPlaying));
         QVERIFY(
@@ -1026,13 +1027,13 @@ private Q_SLOTS:
         const QRect coverArea = nowPlaying->coverRect();
         QCOMPARE(QColor(shot.pixel(coverArea.center())), QColor(Qt::red));
         if (!qEnvironmentVariableIsEmpty("QIYAA_TEST_SHOTS")) {
-            application->snapshot().save(qEnvironmentVariable("QIYAA_TEST_SHOTS") + "/nowplaying.png");
+            application->windows()->snapshot().save(qEnvironmentVariable("QIYAA_TEST_SHOTS") + "/nowplaying.png");
         }
         QCOMPARE(nowPlaying->pos(), main->pos() + QPoint(main->width(), 0));
     }
 
     void snapshotContainsAllWindows() {
-        const QImage image = application->snapshot();
+        const QImage image = application->windows()->snapshot();
         QCOMPARE(image.width(), 275);
         QCOMPARE(image.height(), 116 + 116 + 232);
     }
@@ -1108,12 +1109,12 @@ private Q_SLOTS:
         const QString settingsFile = directory.filePath(QStringLiteral("settings.ini"));
         App::Application started(OptionsWithSettings(settingsFile));
         started.start();
-        started.setScale(1.5, App::Application::ScaleScope::ThisRun);
+        started.windows()->setScale(1.5, App::WindowSet::ScaleScope::ThisRun);
         started.saveState();
         const QSettings saved(settingsFile, QSettings::IniFormat);
         QVERIFY(!saved.contains(QStringLiteral("scale")));
         QVERIFY(!saved.contains(QStringLiteral("mainWindow/pos")));
-        started.setScale(1.5);
+        started.windows()->setScale(1.5);
         QCOMPARE(saved.value(QStringLiteral("scale")).toDouble(), 1.5);
         QVERIFY(saved.contains(QStringLiteral("mainWindow/pos")));
         QVERIFY(saved.contains(QStringLiteral("equalizer/pos")));
@@ -1124,13 +1125,13 @@ private Q_SLOTS:
         Ui::JamWindow* jam = application->jamWindow();
         QVERIFY(jam);
         QVERIFY(!jam->isVisible());
-        application->setJamWindowVisible(true);
+        application->windows()->setVisible(application->jamWindow(), true);
         QVERIFY(jam->isVisible());
         QCOMPARE(jam->skinSize(), QSize(300, 348));
-        application->setScale(2.0);
+        application->windows()->setScale(2.0);
         QCOMPARE(jam->scale(), 2.0);
-        application->setScale(1.0);
-        application->setJamWindowVisible(false);
+        application->windows()->setScale(1.0);
+        application->windows()->setVisible(application->jamWindow(), false);
         QVERIFY(!jam->isVisible());
 #else
         QSKIP("built without the jam");

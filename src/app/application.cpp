@@ -1,6 +1,7 @@
 #include "app/application.h"
 
 #include "app/paths.h"
+#include "app/window_set.h"
 #include "audio/equalizer.h"
 #include "core/cover_cache.h"
 #include "integrations/media_controls.h"
@@ -21,7 +22,6 @@
 #include "ui/milkdrop_window.h"
 #include "ui/now_playing_window.h"
 #include "ui/playlist_window.h"
-#include "ui/snap.h"
 #include "ui/source_notices.h"
 #include "yandex/file_info.h"
 #include "yandex/token.h"
@@ -43,9 +43,7 @@
 #include <QDialog>
 #include <QDir>
 #include <QFileDialog>
-#include <QGuiApplication>
 #include <QHash>
-#include <QImage>
 #include <QJsonObject>
 #include <QKeySequence>
 #include <QLatin1String>
@@ -53,12 +51,9 @@
 #include <QMenu>
 #include <QMessageBox>
 #include <QNetworkInformation>
-#include <QPainter>
 #include <QPoint>
-#include <QPointF>
 #include <QPushButton>
 #include <QRegularExpression>
-#include <QScreen>
 #include <QString>
 #include <QStringList>
 #include <QTimer>
@@ -229,16 +224,31 @@ Application::Application(const Options& options, QObject* parent)
     for (QWidget* widget : windowsWithShortcuts) {
         installShortcuts(widget);
     }
-    equalizerWindowInstance->setSecondary();
-    playlistWindowInstance->setSecondary();
-    nowPlayingWindowInstance->setSecondary();
-    nowPlayingWindowInstance->setSizeSteps(settings.window(QStringLiteral("nowPlaying"), false, QSize(0, 0)).steps);
-    connect(nowPlayingWindowInstance.get(), &Ui::NowPlayingWindow::closeRequested, this, [this] {
-        setNowPlayingVisible(false);
-    });
-    connect(nowPlayingWindowInstance.get(), &Ui::GenWindow::sizeStepsChanged, this, [this](QSize steps) {
-        settings.setWindowSteps(QStringLiteral("nowPlaying"), steps);
-    });
+    windowSet = std::make_unique<WindowSet>(
+        &settings,
+        mainWindowInstance.get(),
+        WindowSet::Spec{.group = QStringLiteral("mainWindow"), .place = WindowSet::Place::Main, .keepsShade = true}
+    );
+    windowSet->add(
+        equalizerWindowInstance.get(),
+        {.group = QStringLiteral("equalizer"),
+         .place = WindowSet::Place::Stacked,
+         .visibleByDefault = true,
+         .keepsShade = true,
+         .button = WindowSet::Button::Equalizer}
+    );
+    windowSet->add(
+        playlistWindowInstance.get(),
+        {.group = QStringLiteral("playlist"),
+         .place = WindowSet::Place::Stacked,
+         .visibleByDefault = true,
+         .keepsShade = true,
+         .stepsByDefault = QSize(0, 4),
+         .button = WindowSet::Button::Playlist}
+    );
+    windowSet->add(
+        nowPlayingWindowInstance.get(), {.group = QStringLiteral("nowPlaying"), .stepsByDefault = QSize(0, 0)}
+    );
 #if defined(QIYAA_HAVE_MILKDROP)
     {
         const QString userPresets =
@@ -247,20 +257,18 @@ Application::Application(const Options& options, QObject* parent)
             &audioEngine, QStringLiteral(":/milkdrop"), userPresets, currentSkin.get()
         );
         installShortcuts(milkdropWindowInstance.get());
-        milkdropWindowInstance->setSecondary();
-        milkdropWindowInstance->setSizeSteps(settings.window(QStringLiteral("milkdrop"), false, QSize(0, 4)).steps);
+        windowSet->add(
+            milkdropWindowInstance.get(),
+            {.group = QStringLiteral("milkdrop"),
+             .place = WindowSet::Place::BelowRightOfMain,
+             .stepsByDefault = QSize(0, 4)}
+        );
         const MilkdropSettings milkdrop = settings.milkdrop();
         milkdropWindowInstance->setShuffle(milkdrop.shuffle);
         milkdropWindowInstance->setLocked(milkdrop.locked);
         milkdropWindowInstance->setPresetSeconds(milkdrop.seconds);
         milkdropWindowInstance->setBlackPresets(milkdrop.black);
         milkdropWindowInstance->selectPreset(milkdrop.preset);
-        connect(milkdropWindowInstance.get(), &Ui::MilkdropWindow::closeRequested, this, [this] {
-            setMilkdropVisible(false);
-        });
-        connect(milkdropWindowInstance.get(), &Ui::GenWindow::sizeStepsChanged, this, [this](QSize steps) {
-            settings.setWindowSteps(QStringLiteral("milkdrop"), steps);
-        });
         connect(milkdropWindowInstance.get(), &Ui::MilkdropWindow::settingsChanged, this, [this] {
             settings.setMilkdrop(MilkdropSettings{
                 milkdropWindowInstance->shuffle(),
@@ -295,7 +303,7 @@ Application::Application(const Options& options, QObject* parent)
     connect(&catalog, &YandexSource::Catalog::noticed, this, [this](const Core::SourceNotice& notice) {
         mainWindowInstance->setStatusText(Ui::SourceNoticeText(notice));
     });
-    // Before the loops over windows() below, which take in the jam window.
+    // Before WindowSet::restore() below, which takes in the jam window.
     setUpJam();
 
     const MainWindowState mainState = settings.mainWindow();
@@ -304,46 +312,16 @@ Application::Application(const Options& options, QObject* parent)
     mainWindowInstance->setVisMode(static_cast<Ui::MainWindow::VisMode>(mainState.visMode));
     mainWindowInstance->setShowsRemainingTime(mainState.remainingTime);
     connect(mainWindowInstance.get(), &Ui::MainWindow::eqToggleRequested, this, [this] {
-        setEqualizerVisible(!equalizerWindowInstance->isVisible());
+        windowSet->toggle(equalizerWindowInstance.get());
     });
     connect(mainWindowInstance.get(), &Ui::MainWindow::playlistToggleRequested, this, [this] {
-        setPlaylistVisible(!playlistWindowInstance->isVisible());
+        windowSet->toggle(playlistWindowInstance.get());
     });
     connect(mainWindowInstance.get(), &Ui::MainWindow::menuRequested, this, [this](QPoint pos) {
         showMainMenu(pos, corePlayer.currentTrack());
     });
     connect(mainWindowInstance.get(), &Ui::MainWindow::sourcesMenuRequested, this, &Application::showSourcesMenu);
     connect(mainWindowInstance.get(), &Ui::MainWindow::closeRequested, this, &Application::quit);
-    connect(mainWindowInstance.get(), &Ui::MainWindow::minimizedChanged, this, [this](bool minimized) {
-        if (minimized) {
-            equalizerWindowInstance->hide();
-            playlistWindowInstance->hide();
-            nowPlayingWindowInstance->hide();
-            if (milkdropWindowInstance) {
-                milkdropWindowInstance->hide();
-            }
-            if (jamWindowInstance) {
-                jamWindowInstance->hide();
-            }
-        } else {
-            if (settings.window(QStringLiteral("equalizer"), true).visible) {
-                equalizerWindowInstance->show();
-            }
-            if (settings.window(QStringLiteral("playlist"), true).visible) {
-                playlistWindowInstance->show();
-            }
-            if (settings.window(QStringLiteral("nowPlaying"), false).visible) {
-                nowPlayingWindowInstance->show();
-            }
-            if (milkdropWindowInstance && settings.window(QStringLiteral("milkdrop"), false).visible) {
-                milkdropWindowInstance->show();
-            }
-            if (jamWindowInstance && settings.window(QStringLiteral("jamWindow"), false).visible) {
-                jamWindowInstance->show();
-            }
-        }
-    });
-    connect(mainWindowInstance.get(), &Ui::MainWindow::activated, this, &Application::raiseWindows);
 
     const Audio::EqSettings eq = settings.equalizer();
     equalizerWindowInstance->setSettings(eq);
@@ -389,14 +367,7 @@ Application::Application(const Options& options, QObject* parent)
         mainWindowInstance.get(),
         &Ui::MainWindow::setBalance
     );
-    connect(equalizerWindowInstance.get(), &Ui::EqualizerWindow::closeRequested, this, [this] {
-        setEqualizerVisible(false);
-    });
 
-    playlistWindowInstance->setSizeSteps(settings.window(QStringLiteral("playlist"), true, QSize(0, 4)).steps);
-    connect(playlistWindowInstance.get(), &Ui::PlaylistWindow::closeRequested, this, [this] {
-        setPlaylistVisible(false);
-    });
     connect(playlistWindowInstance.get(), &Ui::PlaylistWindow::sourcesMenuRequested, this, [this](QPoint pos) {
         showMainMenu(pos, corePlayer.currentTrack());
     });
@@ -404,46 +375,15 @@ Application::Application(const Options& options, QObject* parent)
         const auto& entries = corePlayer.entries();
         showMainMenu(pos, row >= 0 && row < entries.size() ? &entries[row].track : nullptr);
     });
-    connect(playlistWindowInstance.get(), &Ui::PlaylistWindow::sizeStepsChanged, this, [this](QSize steps) {
-        settings.setWindowSteps(QStringLiteral("playlist"), steps);
-    });
 
-    for (Ui::SkinnedWindow* window : windows()) {
-        connect(window, &Ui::SkinnedWindow::moveFinished, this, &Application::saveState);
-    }
-
-    const std::pair<Ui::SkinnedWindow*, QString> shades[] = {
-        {mainWindowInstance.get(), QStringLiteral("mainWindow")},
-        {equalizerWindowInstance.get(), QStringLiteral("equalizer")},
-        {playlistWindowInstance.get(), QStringLiteral("playlist")}
-    };
-    for (const auto& [window, group] : shades) {
-        window->setShaded(settings.window(group, true).shaded);
-        connect(window, &Ui::SkinnedWindow::shadeChanged, this, [this, group](bool on) {
-            settings.setWindowShaded(group, on);
-            saveState();
-        });
-    }
-
-    const double scale = settings.scale();
-    for (Ui::SkinnedWindow* window : windows()) {
-        window->setScale(scale);
-    }
-    if (settings.alwaysOnTop()) {
-        setAlwaysOnTop(true);
-    }
+    connect(windowSet.get(), &WindowSet::saveRequested, this, &Application::saveState);
+    windowSet->restore();
 
     if (startOptions.mediaIntegration) {
         Integrations::MediaControls::Hooks hooks;
         hooks.volume = [this] { return mainWindowInstance->volume(); };
         hooks.setVolume = [this](int volume) { mainWindowInstance->setVolume(volume); };
-        hooks.raise = [this] {
-            if (mainWindowInstance->isMinimized()) {
-                mainWindowInstance->showNormal();
-            }
-            raiseWindows();
-            mainWindowInstance->activateWindow();
-        };
+        hooks.raise = [this] { windowSet->bringToFront(); };
         hooks.quit = [this] { quit(); };
         mediaControls =
             std::make_unique<Integrations::MediaControls>(&corePlayer, &trackSources, coverCache.get(), hooks);
@@ -510,6 +450,17 @@ Application::Application(const Options& options, QObject* parent)
         }
     });
 #endif
+    connect(windowSet.get(), &WindowSet::visibilityChosen, this, [this](Ui::SkinnedWindow* window, bool on) {
+        if (window != milkdropWindowInstance.get()) {
+            return;
+        }
+        telemetryFeature(QStringLiteral("milkdrop"), on ? QStringLiteral("on") : QStringLiteral("off"));
+#ifdef QIYAA_HAVE_TELEMETRY
+        if (telemetryReporter) {
+            telemetryReporter->setMilkdropShown(on);
+        }
+#endif
+    });
 #ifdef QIYAA_HAVE_MILKDROP
     if (milkdropWindowInstance) {
         connect(milkdropWindowInstance.get(), &Ui::MilkdropWindow::failed, this, [this](Vis::MilkdropFailure failure) {
@@ -563,13 +514,14 @@ void Application::setUpJam() {
 
     jamWindowInstance = std::make_unique<Ui::JamWindow>(jamHostSession.get(), &catalog, currentSkin.get());
     installShortcuts(jamWindowInstance.get());
-    jamWindowInstance->setSecondary();
-    jamWindowInstance->setSizeSteps(settings.window(QStringLiteral("jamWindow"), false, QSize(1, 8)).steps);
+    windowSet->add(
+        jamWindowInstance.get(),
+        {.group = QStringLiteral("jamWindow"),
+         .shownAtStart = false,
+         .raisedWhenShown = true,
+         .stepsByDefault = QSize(1, 8)}
+    );
     jamWindowInstance->setServerName(JamServerName(settings.jam().server));
-    connect(jamWindowInstance.get(), &Ui::JamWindow::closeRequested, this, [this] { setJamWindowVisible(false); });
-    connect(jamWindowInstance.get(), &Ui::GenWindow::sizeStepsChanged, this, [this](QSize steps) {
-        settings.setWindowSteps(QStringLiteral("jamWindow"), steps);
-    });
     connect(
         jamWindowInstance.get(), &Ui::JamWindow::statusText, mainWindowInstance.get(), &Ui::MainWindow::setStatusText
     );
@@ -641,7 +593,7 @@ void Application::offerStoredJam() {
         // Closed without an answer: the jam stays stored, and the next start asks again.
         if (question->clickedButton() == yes) {
             jamHostSession->continueStored();
-            setJamWindowVisible(true);
+            windowSet->setVisible(jamWindowInstance.get(), true);
         } else if (question->clickedButton() == no) {
             jamHostSession->discardStored();
             if (corePlayer.entries().isEmpty() && yandexLibrary.isLoggedIn()) {
@@ -654,70 +606,8 @@ void Application::offerStoredJam() {
 #endif
 }
 
-QList<Ui::SkinnedWindow*> Application::windows() const {
-    QList<Ui::SkinnedWindow*> out{
-        mainWindowInstance.get(),
-        equalizerWindowInstance.get(),
-        playlistWindowInstance.get(),
-        nowPlayingWindowInstance.get()
-    };
-    if (milkdropWindowInstance) {
-        out << milkdropWindowInstance.get();
-    }
-    if (jamWindowInstance) {
-        out << jamWindowInstance.get();
-    }
-    return out;
-}
-
-void Application::raiseWindows() {
-    for (Ui::SkinnedWindow* window : windows()) {
-        if (window != mainWindowInstance.get() && window->isVisible()) {
-            window->raise();
-        }
-    }
-    mainWindowInstance->raise();
-}
-
-void Application::layoutWindows() {
-    const QPoint mainPosition = settings.window(QStringLiteral("mainWindow"), true).pos.value_or(QPoint(100, 100));
-    const QPoint equalizerDefault = mainPosition + QPoint(0, mainWindowInstance->height());
-    const QPoint playlistDefault = equalizerDefault + QPoint(0, equalizerWindowInstance->height());
-    mainWindowInstance->placeAt(mainPosition);
-    equalizerWindowInstance->placeAt(settings.window(QStringLiteral("equalizer"), false).pos.value_or(equalizerDefault)
-    );
-    playlistWindowInstance->placeAt(settings.window(QStringLiteral("playlist"), false).pos.value_or(playlistDefault));
-    const QPoint rightOfMain = mainPosition + QPoint(mainWindowInstance->width(), 0);
-    const QPoint belowRightOfMain = rightOfMain + QPoint(0, mainWindowInstance->height());
-    nowPlayingWindowInstance->placeAt(settings.window(QStringLiteral("nowPlaying"), false).pos.value_or(rightOfMain));
-    if (milkdropWindowInstance) {
-        milkdropWindowInstance->placeAt(
-            settings.window(QStringLiteral("milkdrop"), false).pos.value_or(belowRightOfMain)
-        );
-    }
-    if (jamWindowInstance) {
-        jamWindowInstance->placeAt(settings.window(QStringLiteral("jamWindow"), false).pos.value_or(rightOfMain));
-    }
-}
-
 void Application::start() {
-    mainWindowInstance->show();
-    if (settings.window(QStringLiteral("equalizer"), true).visible) {
-        equalizerWindowInstance->show();
-    }
-    if (settings.window(QStringLiteral("playlist"), true).visible) {
-        playlistWindowInstance->show();
-    }
-    if (settings.window(QStringLiteral("nowPlaying"), false).visible) {
-        nowPlayingWindowInstance->show();
-    }
-    if (milkdropWindowInstance && settings.window(QStringLiteral("milkdrop"), false).visible) {
-        milkdropWindowInstance->show();
-    }
-    layoutWindows();
-    mainWindowInstance->setEqButton(equalizerWindowInstance->isVisible());
-    mainWindowInstance->setPlaylistButton(playlistWindowInstance->isVisible());
-    mainWindowInstance->activateWindow();
+    windowSet->showAtStart();
     startTelemetry();
 
     if (startOptions.offline) {
@@ -791,72 +681,11 @@ bool Application::loadSkin(const QString& path) {
         return false;
     }
     // Swap after the windows point at the new skin.
-    for (Ui::SkinnedWindow* window : windows()) {
-        window->setSkin(skin.get());
-    }
+    windowSet->setSkin(skin.get());
     currentSkin = std::move(skin);
     settings.setSkin(path);
     telemetryFeature(QStringLiteral("skin"), SkinName(path));
     return true;
-}
-
-void Application::setScale(double scale, ScaleScope scope) {
-    const double oldScale = mainWindowInstance->scale();
-    const QList<Ui::SkinnedWindow*> all = windows();
-    QList<QRect> frames;
-    for (Ui::SkinnedWindow* window : all) {
-        frames << window->frameGeometry();
-    }
-    QList<std::pair<Ui::SkinnedWindow*, QPoint>> docked;
-    for (int i : Ui::ConnectedGroup(0, frames)) {
-        const QPointF offset = QPointF(all[i]->pos() - mainWindowInstance->pos()) / oldScale;
-        docked.append({all[i], QPoint(qRound(offset.x()), qRound(offset.y()))});
-    }
-
-    for (Ui::SkinnedWindow* window : all) {
-        window->setScale(scale);
-    }
-    const double newScale = mainWindowInstance->scale();
-    const QPoint mainPosition = mainWindowInstance->pos();
-
-    QList<QRect> placed{mainWindowInstance->frameGeometry()};
-    for (const auto& [window, offset] : docked) {
-        QRect frame(
-            mainPosition + QPoint(qRound(offset.x() * newScale), qRound(offset.y() * newScale)), window->size()
-        );
-        frame.moveTopLeft(Ui::SnapToOthers(frame, placed, 4));
-        window->move(frame.topLeft());
-        placed << frame;
-    }
-    QRect bounds = mainWindowInstance->frameGeometry();
-    for (const auto& [window, offset] : docked) {
-        if (window->isVisible()) {
-            bounds |= window->frameGeometry();
-        }
-    }
-    QList<QRect> screens;
-    for (QScreen* monitor : QGuiApplication::screens()) {
-        screens << monitor->availableGeometry();
-    }
-    const QRect screen = Ui::PickScreen(bounds, screens);
-    const QPoint shift = Ui::ClampInside(bounds, screen) - bounds.topLeft();
-    if (!shift.isNull()) {
-        mainWindowInstance->move(mainWindowInstance->pos() + shift);
-        for (const auto& [window, offset] : docked) {
-            window->move(window->pos() + shift);
-        }
-    }
-    if (!screen.isEmpty() && (bounds.width() > screen.width() || bounds.height() > screen.height())) {
-        for (Ui::SkinnedWindow* window : all) {
-            window->ensureVisible();
-        }
-    }
-
-    transientScale = scope == ScaleScope::ThisRun;
-    if (scope == ScaleScope::Saved) {
-        settings.setScale(newScale);
-        saveState();
-    }
 }
 
 void Application::setLanguage(Language language) {
@@ -864,17 +693,6 @@ void Application::setLanguage(Language language) {
     translations.apply(language);
     settings.setLanguage(language);
     telemetryFeature(QStringLiteral("language"), LanguageCode(language));
-}
-
-void Application::setAlwaysOnTop(bool on) {
-    for (Ui::SkinnedWindow* window : windows()) {
-        const bool visible = window->isVisible();
-        window->setWindowFlag(Qt::WindowStaysOnTopHint, on);
-        if (visible) {
-            window->show();  // changing flags hides the window
-        }
-    }
-    settings.setAlwaysOnTop(on);
 }
 
 bool Application::telemetryEnabled() const {
@@ -970,61 +788,6 @@ void Application::telemetryFeature([[maybe_unused]] const QString& name, [[maybe
 #endif
 }
 
-void Application::setEqualizerVisible(bool on) {
-    equalizerWindowInstance->setVisible(on);
-    if (on) {
-        equalizerWindowInstance->ensureVisible();
-    }
-    mainWindowInstance->setEqButton(on);
-    settings.setWindowVisible(QStringLiteral("equalizer"), on);
-}
-
-void Application::setPlaylistVisible(bool on) {
-    playlistWindowInstance->setVisible(on);
-    if (on) {
-        playlistWindowInstance->ensureVisible();
-    }
-    mainWindowInstance->setPlaylistButton(on);
-    settings.setWindowVisible(QStringLiteral("playlist"), on);
-}
-
-void Application::setMilkdropVisible(bool on) {
-    if (!milkdropWindowInstance) {
-        return;
-    }
-    milkdropWindowInstance->setVisible(on);
-    if (on) {
-        milkdropWindowInstance->ensureVisible();
-    }
-    settings.setWindowVisible(QStringLiteral("milkdrop"), on);
-    telemetryFeature(QStringLiteral("milkdrop"), on ? QStringLiteral("on") : QStringLiteral("off"));
-#ifdef QIYAA_HAVE_TELEMETRY
-    if (telemetryReporter) {
-        telemetryReporter->setMilkdropShown(on);
-    }
-#endif
-}
-
-void Application::setJamWindowVisible(bool on) {
-    if (!jamWindowInstance) {
-        return;
-    }
-    jamWindowInstance->setVisible(on);
-    if (on) {
-        jamWindowInstance->ensureVisible();
-        jamWindowInstance->raise();
-    }
-    settings.setWindowVisible(QStringLiteral("jamWindow"), on);
-}
-
-void Application::setNowPlayingVisible(bool on) {
-    nowPlayingWindowInstance->setVisible(on);
-    if (on) {
-        nowPlayingWindowInstance->ensureVisible();
-    }
-    settings.setWindowVisible(QStringLiteral("nowPlaying"), on);
-}
-
 void Application::quit() {
     if (quitting) {
         return;
@@ -1032,9 +795,7 @@ void Application::quit() {
     quitting = true;
     saveState();
     corePlayer.shutDown();
-    for (Ui::SkinnedWindow* window : windows()) {
-        window->hide();
-    }
+    windowSet->hideAll();
     // Queued, so a quit() from inside a nested loop (a menu) lands in the main one.
     const auto finish = [] { QMetaObject::invokeMethod(qApp, &QApplication::quit, Qt::QueuedConnection); };
     bool telemetrySending = false;
@@ -1071,19 +832,7 @@ void Application::saveState() {
         mainWindowInstance->showsRemainingTime()
     });
     settings.setEqualizerAuto(equalizerWindowInstance->autoOn());
-    if (!Ui::SkinnedWindow::CanPositionWindows() || !mainWindowInstance->isVisible() || transientScale) {
-        return;
-    }
-    settings.setWindowPos(QStringLiteral("mainWindow"), mainWindowInstance->pos());
-    settings.setWindowPos(QStringLiteral("equalizer"), equalizerWindowInstance->pos());
-    settings.setWindowPos(QStringLiteral("playlist"), playlistWindowInstance->pos());
-    settings.setWindowPos(QStringLiteral("nowPlaying"), nowPlayingWindowInstance->pos());
-    if (milkdropWindowInstance) {
-        settings.setWindowPos(QStringLiteral("milkdrop"), milkdropWindowInstance->pos());
-    }
-    if (jamWindowInstance) {
-        settings.setWindowPos(QStringLiteral("jamWindow"), jamWindowInstance->pos());
-    }
+    windowSet->savePositions();
 }
 
 void Application::installShortcuts(QWidget* widget) {
@@ -1096,15 +845,13 @@ void Application::installShortcuts(QWidget* widget) {
     for (int key : {Qt::Key_Z, Qt::Key_X, Qt::Key_C, Qt::Key_V, Qt::Key_B, Qt::Key_Left, Qt::Key_Right}) {
         add(QKeySequence(key), [this, key] { transportKey(key); });
     }
-    add(QKeySequence(Qt::ALT | Qt::Key_G), [this] { setEqualizerVisible(!equalizerWindowInstance->isVisible()); });
-    add(QKeySequence(Qt::ALT | Qt::Key_E), [this] { setPlaylistVisible(!playlistWindowInstance->isVisible()); });
+    add(QKeySequence(Qt::ALT | Qt::Key_G), [this] { windowSet->toggle(equalizerWindowInstance.get()); });
+    add(QKeySequence(Qt::ALT | Qt::Key_E), [this] { windowSet->toggle(playlistWindowInstance.get()); });
     add(QKeySequence(Qt::CTRL | Qt::Key_D), [this] {
-        setScale(std::abs(mainWindowInstance->scale() - 2.0) < 1e-6 ? 1.0 : 2.0);
+        windowSet->setScale(std::abs(mainWindowInstance->scale() - 2.0) < 1e-6 ? 1.0 : 2.0);
     });
     add(QKeySequence(Qt::CTRL | Qt::Key_W), [this] { mainWindowInstance->setShaded(!mainWindowInstance->isShaded()); });
-    add(QKeySequence(Qt::CTRL | Qt::SHIFT | Qt::Key_K), [this] {
-        setMilkdropVisible(milkdropWindowInstance && !milkdropWindowInstance->isVisible());
-    });
+    add(QKeySequence(Qt::CTRL | Qt::SHIFT | Qt::Key_K), [this] { windowSet->toggle(milkdropWindowInstance.get()); });
 }
 
 void Application::transportKey(int key) {
@@ -1121,20 +868,26 @@ void Application::transportKey(int key) {
 }
 
 void Application::fillWindowActions(QMenu* menu) {
-    QAction* equalizerAction = menu->addAction(tr("Equalizer"), this, [this](bool on) { setEqualizerVisible(on); });
+    QAction* equalizerAction = menu->addAction(tr("Equalizer"), this, [this](bool on) {
+        windowSet->setVisible(equalizerWindowInstance.get(), on);
+    });
     equalizerAction->setCheckable(true);
     equalizerAction->setChecked(equalizerWindowInstance->isVisible());
     equalizerAction->setShortcut(QKeySequence(Qt::ALT | Qt::Key_G));
-    QAction* playlistAction = menu->addAction(tr("Playlist"), this, [this](bool on) { setPlaylistVisible(on); });
+    QAction* playlistAction = menu->addAction(tr("Playlist"), this, [this](bool on) {
+        windowSet->setVisible(playlistWindowInstance.get(), on);
+    });
     playlistAction->setCheckable(true);
     playlistAction->setChecked(playlistWindowInstance->isVisible());
     playlistAction->setShortcut(QKeySequence(Qt::ALT | Qt::Key_E));
-    QAction* nowPlayingAction = menu->addAction(tr("Now playing"), this, [this](bool on) { setNowPlayingVisible(on); });
+    QAction* nowPlayingAction = menu->addAction(tr("Now playing"), this, [this](bool on) {
+        windowSet->setVisible(nowPlayingWindowInstance.get(), on);
+    });
     nowPlayingAction->setCheckable(true);
     nowPlayingAction->setChecked(nowPlayingWindowInstance->isVisible());
     if (milkdropWindowInstance) {
         QAction* milkdropAction = menu->addAction(QStringLiteral("Milkdrop"), this, [this](bool on) {
-            setMilkdropVisible(on);
+            windowSet->setVisible(milkdropWindowInstance.get(), on);
         });
         milkdropAction->setCheckable(true);
         milkdropAction->setChecked(milkdropWindowInstance->isVisible());
@@ -1217,16 +970,17 @@ void Application::fillWindowActions(QMenu* menu) {
     QMenu* sizeMenu = menu->addMenu(tr("Size"));
     auto* sizeGroup = new QActionGroup(sizeMenu);
     for (double scaleFactor : {1.0, 1.25, 1.5, 1.75, 2.0, 2.5, 3.0}) {
-        QAction* action = sizeMenu->addAction(
-            QStringLiteral("%1%").arg(qRound(scaleFactor * 100)), this, [this, scaleFactor] { setScale(scaleFactor); }
-        );
+        QAction* action =
+            sizeMenu->addAction(QStringLiteral("%1%").arg(qRound(scaleFactor * 100)), this, [this, scaleFactor] {
+                windowSet->setScale(scaleFactor);
+            });
         action->setCheckable(true);
         action->setChecked(std::abs(mainWindowInstance->scale() - scaleFactor) < 1e-6);
         sizeGroup->addAction(action);
     }
     sizeMenu->addSeparator();
     QAction* doubleSizeAction = sizeMenu->addAction(tr("Double size"), this, [this] {
-        setScale(std::abs(mainWindowInstance->scale() - 2.0) < 1e-6 ? 1.0 : 2.0);
+        windowSet->setScale(std::abs(mainWindowInstance->scale() - 2.0) < 1e-6 ? 1.0 : 2.0);
     });
     doubleSizeAction->setShortcut(QKeySequence(Qt::CTRL | Qt::Key_D));
 
@@ -1246,7 +1000,9 @@ void Application::fillWindowActions(QMenu* menu) {
         languageGroup->addAction(action);
     }
 
-    QAction* alwaysOnTopAction = menu->addAction(tr("Always on top"), this, [this](bool on) { setAlwaysOnTop(on); });
+    QAction* alwaysOnTopAction = menu->addAction(tr("Always on top"), this, [this](bool on) {
+        windowSet->setAlwaysOnTop(on);
+    });
     alwaysOnTopAction->setCheckable(true);
     alwaysOnTopAction->setChecked(mainWindowInstance->windowFlags().testFlag(Qt::WindowStaysOnTopHint));
 #ifdef QIYAA_HAVE_TELEMETRY
@@ -1297,7 +1053,7 @@ void Application::addJamMenu(QMenu* menu) {
     QMenu* jam = menu->addMenu(tr("Jam"));
     const Jam::HostPhase phase = jamHostSession->phase();
     jam->addAction(phase == Jam::HostPhase::None ? tr("Start…") : tr("Jam window"), this, [this] {
-        setJamWindowVisible(true);
+        windowSet->setVisible(jamWindowInstance.get(), true);
     });
     jam->addAction(tr("Join…"))->setEnabled(false);  // Kickoman/QiYaa#16
     QAction* end = jam->addAction(tr("End"), this, [this] {
@@ -1336,24 +1092,6 @@ void Application::showJamServerDialog() {
     settings.setJam(JamSettings{dialog.server(), dialog.waveFeedback(), dialog.shareAudio()});
     jamWindowInstance->setServerName(JamServerName(dialog.server()));
 #endif
-}
-
-QImage Application::snapshot() const {
-    QRect bounds;
-    for (Ui::SkinnedWindow* window : windows()) {
-        if (window->isVisible()) {
-            bounds |= window->frameGeometry();
-        }
-    }
-    QImage image(bounds.size(), QImage::Format_ARGB32_Premultiplied);
-    image.fill(Qt::transparent);
-    QPainter painter(&image);
-    for (Ui::SkinnedWindow* window : windows()) {
-        if (window->isVisible()) {
-            painter.drawPixmap(window->pos() - bounds.topLeft(), window->grab());
-        }
-    }
-    return image;
 }
 
 }  // namespace App
