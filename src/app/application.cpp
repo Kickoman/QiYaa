@@ -3,6 +3,7 @@
 #include "app/account.h"
 #include "app/jam_bridge.h"
 #include "app/paths.h"
+#include "app/telemetry_bridge.h"
 #include "app/window_set.h"
 #include "audio/equalizer.h"
 #include "core/cover_cache.h"
@@ -11,9 +12,6 @@
 #include "skins/error.h"
 #include "sources/yandex/history_wave.h"
 #include "sources/yandex/tracks.h"
-#include "telemetry/machine_id.h"
-#include "telemetry/reporter.h"
-#include "telemetry/system_info.h"
 #include "ui/equalizer_window.h"
 #include "ui/gen_window.h"
 #include "ui/jam_window.h"
@@ -40,22 +38,18 @@
 #include <QActionGroup>
 #include <QApplication>
 #include <QCoreApplication>
-#include <QDate>
 #include <QDir>
 #include <QFileDialog>
-#include <QJsonObject>
 #include <QKeySequence>
 #include <QLatin1String>
 #include <QList>
 #include <QMenu>
 #include <QNetworkInformation>
 #include <QPoint>
-#include <QRegularExpression>
 #include <QString>
 #include <QStringList>
 #include <QTimer>
 
-#include <algorithm>
 #include <cmath>
 #include <initializer_list>
 #include <optional>
@@ -65,61 +59,7 @@ namespace App {
 
 using Audio::EqSettings;
 
-namespace {
-
-// The names telemetry gives (spec/telemetry): codes, never a path or a text.
-QString SkinName(const QString& path) {
-    const QString prefix = QStringLiteral(":/skins/");
-    if (path.isEmpty() || path == prefix + QStringLiteral("base-2.91.wsz")) {
-        return QStringLiteral("base");
-    }
-    if (path.startsWith(prefix) && path.endsWith(QLatin1String(".wsz"))) {
-        return path.mid(prefix.size()).chopped(4);
-    }
-    return QStringLiteral("custom");
-}
-
-QString VisModeCode(Ui::MainWindow::VisMode mode) {
-    switch (mode) {
-        case Ui::MainWindow::VisMode::Spectrum: return QStringLiteral("spectrum");
-        case Ui::MainWindow::VisMode::Oscilloscope: return QStringLiteral("oscilloscope");
-        case Ui::MainWindow::VisMode::Off: break;
-    }
-    return QStringLiteral("off");
-}
-
-QString FailureCode(Core::FailureKind kind) {
-    switch (kind) {
-        case Core::FailureKind::Network: return QStringLiteral("network");
-        case Core::FailureKind::Auth: return QStringLiteral("auth");
-        case Core::FailureKind::Track: break;
-    }
-    return QStringLiteral("track");
-}
-
-QString RequestFailureCode(Yandex::RequestError::Kind kind) {
-    switch (kind) {
-        case Yandex::RequestError::Kind::Network: return QStringLiteral("network");
-        case Yandex::RequestError::Kind::Http: return QStringLiteral("http");
-        case Yandex::RequestError::Kind::Content:
-        case Yandex::RequestError::Kind::None: break;
-    }
-    return QStringLiteral("content");
-}
-
-#ifdef QIYAA_HAVE_MILKDROP
-QString MilkdropFailureCode(Vis::MilkdropFailure failure) {
-    switch (failure) {
-        case Vis::MilkdropFailure::NoOpenGl: return QStringLiteral("no-opengl");
-        case Vis::MilkdropFailure::OpenGlEs: return QStringLiteral("gles");
-        case Vis::MilkdropFailure::OldOpenGl: return QStringLiteral("old-opengl");
-        case Vis::MilkdropFailure::ProjectM: break;
-    }
-    return QStringLiteral("projectm");
-}
-#endif
-
-}  // namespace
+namespace { }  // namespace
 
 Application::Application(const Options& options, QObject* parent)
     : QObject(parent)
@@ -137,7 +77,6 @@ Application::Application(const Options& options, QObject* parent)
     , catalog(&corePlayer, &yandexLibrary)
     , jamMode(&corePlayer) {
     trackSources.add(YandexSource::kSourceName, &yandexSource);
-    firstRun = settings.wasEmpty();
     // Before any window: they take their texts from the translation.
     translations.apply(options.language.value_or(settings.language().value_or(kDefaultLanguage)));
     corePlayer.setShuffleAlgorithm(settings.shuffleAlgorithm());
@@ -213,9 +152,6 @@ Application::Application(const Options& options, QObject* parent)
         Account::TokenFiles{TokenFile(), YaampTokenFiles(), ConfigDirectory()}
     );
     connect(accountControl.get(), &Account::statusText, mainWindowInstance.get(), &Ui::MainWindow::setStatusText);
-    connect(accountControl.get(), &Account::failed, this, [this] {
-        telemetryError(QStringLiteral("login"), QStringLiteral("failed"));
-    });
 #if defined(QIYAA_HAVE_MILKDROP)
     {
         const QString userPresets =
@@ -291,28 +227,6 @@ Application::Application(const Options& options, QObject* parent)
          .raisedWhenShown = true,
          .stepsByDefault = QSize(1, 8)}
     );
-    connect(jamHostSession.get(), &Jam::HostSession::refused, this, [this](const QString& reason) {
-        static const QRegularExpression code(QStringLiteral("^[a-z0-9-]{1,32}$"));
-        telemetryError(QStringLiteral("jam"), code.match(reason).hasMatch() ? reason : QStringLiteral("other"));
-    });
-    connect(jamHostSession.get(), &Jam::HostSession::ended, this, [this](Jam::HostEnd why) {
-        switch (why) {
-            case Jam::HostEnd::Gone: telemetryError(QStringLiteral("jam"), QStringLiteral("gone")); break;
-            case Jam::HostEnd::Expired: telemetryError(QStringLiteral("jam"), QStringLiteral("expired")); break;
-            case Jam::HostEnd::ByServer:
-                telemetryError(QStringLiteral("jam"), QStringLiteral("ended-by-server"));
-                break;
-            case Jam::HostEnd::ByHost: break;
-        }
-    });
-    connect(jamHostSession.get(), &Jam::HostSession::activeChanged, this, [this](bool active) {
-        telemetryFeature(QStringLiteral("jam"), active ? QStringLiteral("on") : QStringLiteral("off"));
-#ifdef QIYAA_HAVE_TELEMETRY
-        if (active && telemetryReporter) {
-            telemetryReporter->countJam();
-        }
-#endif
-    });
 #endif
     jamBridge = std::make_unique<JamBridge>(JamBridge::Parts{
         jamHostSession.get(),
@@ -352,15 +266,9 @@ Application::Application(const Options& options, QObject* parent)
         equalizerWindowInstance.get(),
         &Ui::EqualizerWindow::settingsChanged,
         this,
-        [this, wasEnabled = eq.enabled](const Audio::EqSettings& equalizerSettings) mutable {
+        [this](const Audio::EqSettings& equalizerSettings) {
             audioEngine.setEqualizer(equalizerSettings);
             settings.setEqualizer(equalizerSettings);
-            if (equalizerSettings.enabled != wasEnabled) {
-                wasEnabled = equalizerSettings.enabled;
-                telemetryFeature(
-                    QStringLiteral("equalizer"), wasEnabled ? QStringLiteral("on") : QStringLiteral("off")
-                );
-            }
         }
     );
     connect(
@@ -435,68 +343,31 @@ Application::Application(const Options& options, QObject* parent)
         corePlayer.stop();
     });
 
-    // Telemetry (spec/telemetry): categories only; nothing happens without a reporter.
-    connect(&corePlayer, &Core::Player::failed, this, [this](Core::FailureKind kind) {
-        telemetryError(QStringLiteral("playback"), FailureCode(kind));
-    });
-    connect(&audioEngine, &Audio::AudioEngine::errorOccurred, this, [this] {
-        telemetryError(QStringLiteral("audio"), QStringLiteral("device"));
-    });
-    connect(&audioEngine, &Audio::AudioEngine::streamUndecodable, this, [this] {
-        telemetryError(QStringLiteral("audio"), QStringLiteral("undecodable"));
-    });
-    connect(
-        &apiClient,
-        &Yandex::ApiClient::requestFailed,
-        this,
-        [this](Yandex::RequestError::Kind kind, int httpStatus) {
-            telemetryError(
-                QStringLiteral("api"),
-                RequestFailureCode(kind),
-                kind == Yandex::RequestError::Kind::Http ? httpStatus : 0
-            );
+    telemetryBridge = std::make_unique<TelemetryBridge>(
+        TelemetryBridge::Sources{
+            this,
+            &settings,
+            accountControl.get(),
+            windowSet.get(),
+            &corePlayer,
+            &audioEngine,
+            &apiClient,
+            mainWindowInstance.get(),
+            equalizerWindowInstance.get(),
+            milkdropWindowInstance.get(),
+            jamHostSession.get()
+        },
+        TelemetryBridge::Config{
+            startOptions.telemetryUrl, networkManager, startOptions.skinOverride, startOptions.audio, audioFailed
         }
     );
-    connect(mainWindowInstance.get(), &Ui::MainWindow::visModeChanged, this, [this](Ui::MainWindow::VisMode mode) {
-        telemetryFeature(QStringLiteral("vis"), VisModeCode(mode));
-    });
-#ifdef QIYAA_HAVE_TELEMETRY
-    connect(&corePlayer, &Core::Player::currentTrackChanged, this, [this] {
-        if (telemetryReporter && corePlayer.currentTrack()) {
-            telemetryReporter->countTrack();
-        }
-    });
-    connect(&audioEngine, &Audio::AudioEngine::stateChanged, this, [this](Audio::AudioEngine::State state) {
-        if (telemetryReporter) {
-            telemetryReporter->setPlaying(state == Audio::AudioEngine::State::Playing);
-        }
-    });
-#endif
-    connect(windowSet.get(), &WindowSet::visibilityChosen, this, [this](Ui::SkinnedWindow* window, bool on) {
-        if (window != milkdropWindowInstance.get()) {
-            return;
-        }
-        telemetryFeature(QStringLiteral("milkdrop"), on ? QStringLiteral("on") : QStringLiteral("off"));
-#ifdef QIYAA_HAVE_TELEMETRY
-        if (telemetryReporter) {
-            telemetryReporter->setMilkdropShown(on);
-        }
-#endif
-    });
-#ifdef QIYAA_HAVE_MILKDROP
-    if (milkdropWindowInstance) {
-        connect(milkdropWindowInstance.get(), &Ui::MilkdropWindow::failed, this, [this](Vis::MilkdropFailure failure) {
-            telemetryError(QStringLiteral("milkdrop"), MilkdropFailureCode(failure));
-        });
-    }
-#endif
 }
 
 Application::~Application() = default;
 
 void Application::start() {
     windowSet->showAtStart();
-    startTelemetry();
+    telemetryBridge->start();
 
     if (startOptions.offline) {
         return;
@@ -511,14 +382,14 @@ bool Application::loadSkin(const QString& path) {
         skin = std::make_unique<Skins::Skin>(Skins::Skin::LoadFile(path, &baseSkin));
     } catch (const Skins::Error& error) {
         mainWindowInstance->setStatusText(tr("Cannot load the skin: %1").arg(QString::fromUtf8(error.what())));
-        telemetryError(QStringLiteral("skin"), QStringLiteral("load"));
+        Q_EMIT skinFailed();
         return false;
     }
     // Swap after the windows point at the new skin.
     windowSet->setSkin(skin.get());
     currentSkin = std::move(skin);
     settings.setSkin(path);
-    telemetryFeature(QStringLiteral("skin"), SkinName(path));
+    Q_EMIT skinChanged(path);
     return true;
 }
 
@@ -526,100 +397,7 @@ void Application::setLanguage(Language language) {
     // Qt sends LanguageChange to every widget; the windows draw their texts again.
     translations.apply(language);
     settings.setLanguage(language);
-    telemetryFeature(QStringLiteral("language"), LanguageCode(language));
-}
-
-bool Application::telemetryEnabled() const {
-    return settings.telemetryEnabled();
-}
-
-void Application::setTelemetryEnabled(bool on) {
-    settings.setTelemetryEnabled(on);
-#ifdef QIYAA_HAVE_TELEMETRY
-    if (on) {
-        startTelemetry();
-        return;
-    }
-    if (telemetryReporter) {
-        telemetryReporter->forget();
-        telemetryReporter.reset();
-    }
-    Telemetry::Reporter::ForgetAll(telemetryDirectory());
-#endif
-}
-
-QString Application::telemetryDirectory() const {
-    return settings.directory() + QStringLiteral("/telemetry");
-}
-
-void Application::startTelemetry() {
-#ifdef QIYAA_HAVE_TELEMETRY
-    if (telemetryReporter || startOptions.telemetryUrl.isEmpty()) {
-        return;
-    }
-    if (!telemetryEnabled()) {
-        Telemetry::Reporter::ForgetAll(telemetryDirectory());  // TEL-02: nothing left to send
-        return;
-    }
-    const QString version = QCoreApplication::applicationVersion();
-    const auto storeMachine = [this](const QString& id) { settings.setMachine(id); };
-    telemetryReporter = std::make_unique<Telemetry::Reporter>(Telemetry::Reporter::Config{
-        startOptions.telemetryUrl,
-        telemetryDirectory(),
-        version.isEmpty() ? QStringLiteral("dev") : version,
-        Telemetry::MachineIdFor(settings.machine(), storeMachine),
-        networkManager
-    });
-    static const QRegularExpression notBackend(QStringLiteral("[^A-Za-z0-9 _-]"));
-    const bool milkdropVisible = milkdropWindowInstance && milkdropWindowInstance->isVisible();
-    QJsonObject fields = Telemetry::SystemFields();
-    fields.insert(QStringLiteral("language"), LanguageCode(language()));
-    fields.insert(QStringLiteral("scale"), std::clamp(mainWindowInstance->scale(), 1.0, 4.0));
-    fields.insert(
-        QStringLiteral("skin"),
-        SkinName(startOptions.skinOverride.isEmpty() ? settings.skin() : startOptions.skinOverride)
-    );
-    fields.insert(QStringLiteral("vis"), VisModeCode(mainWindowInstance->visMode()));
-    fields.insert(QStringLiteral("equalizer"), equalizerWindowInstance->settings().enabled);
-    fields.insert(QStringLiteral("milkdropBuilt"), milkdropWindowInstance != nullptr);
-    fields.insert(QStringLiteral("milkdropVisible"), milkdropVisible);
-    fields.insert(QStringLiteral("jamBuilt"), jamHostSession != nullptr);
-    fields.insert(
-        QStringLiteral("audioBackend"),
-        audioFailed || !startOptions.audio ? QString() : audioEngine.backendName().remove(notBackend).left(24)
-    );
-    fields.insert(QStringLiteral("loggedIn"), !Yandex::FindToken(TokenFile(), YaampTokenFiles()).token.isEmpty());
-    fields.insert(QStringLiteral("firstRun"), firstRun);
-    if (!settings.hasFirstStart()) {
-        settings.setFirstStart(QDate::currentDate());
-    }
-    telemetryReporter->begin(fields);
-    telemetryReporter->setMilkdropShown(milkdropVisible);
-    telemetryReporter->setPlaying(audioEngine.state() == Audio::AudioEngine::State::Playing);
-    if (audioFailed) {
-        telemetryError(QStringLiteral("audio"), QStringLiteral("init"));
-    }
-#endif
-}
-
-void Application::telemetryError(
-    [[maybe_unused]] const QString& area,
-    [[maybe_unused]] const QString& kind,
-    [[maybe_unused]] int httpStatus
-) {
-#ifdef QIYAA_HAVE_TELEMETRY
-    if (telemetryReporter) {
-        telemetryReporter->recordError(area, kind, httpStatus);
-    }
-#endif
-}
-
-void Application::telemetryFeature([[maybe_unused]] const QString& name, [[maybe_unused]] const QString& value) {
-#ifdef QIYAA_HAVE_TELEMETRY
-    if (telemetryReporter) {
-        telemetryReporter->recordFeature(name, value);
-    }
-#endif
+    Q_EMIT languageChanged(language);
 }
 
 void Application::quit() {
@@ -632,28 +410,19 @@ void Application::quit() {
     windowSet->hideAll();
     // Queued, so a quit() from inside a nested loop (a menu) lands in the main one.
     const auto finish = [] { QMetaObject::invokeMethod(qApp, &QApplication::quit, Qt::QueuedConnection); };
-    bool telemetrySending = false;
-#ifdef QIYAA_HAVE_TELEMETRY
-    if (telemetryReporter) {
-        telemetryReporter->finish();
-        telemetrySending = telemetryReporter->isSending();
-        connect(telemetryReporter.get(), &Telemetry::Reporter::sendingDone, this, [this, finish] {
-            if (apiClient.pendingPosts() == 0) {
-                finish();
-            }
-        });
-    }
-#endif
-    if (apiClient.pendingPosts() == 0 && !telemetrySending) {
+    telemetryBridge->finish();
+    if (apiClient.pendingPosts() == 0 && !telemetryBridge->isSending()) {
         return finish();
     }
-    connect(&apiClient, &Yandex::ApiClient::postsSettled, this, [this, finish] {
-#ifdef QIYAA_HAVE_TELEMETRY
-        if (telemetryReporter && telemetryReporter->isSending()) {
-            return;
+    connect(telemetryBridge.get(), &TelemetryBridge::sent, this, [this, finish] {
+        if (apiClient.pendingPosts() == 0) {
+            finish();
         }
-#endif
-        finish();
+    });
+    connect(&apiClient, &Yandex::ApiClient::postsSettled, this, [this, finish] {
+        if (!telemetryBridge->isSending()) {
+            finish();
+        }
     });
     QTimer::singleShot(1500, this, finish);
 }
@@ -839,15 +608,13 @@ void Application::fillWindowActions(QMenu* menu) {
     });
     alwaysOnTopAction->setCheckable(true);
     alwaysOnTopAction->setChecked(mainWindowInstance->windowFlags().testFlag(Qt::WindowStaysOnTopHint));
-#ifdef QIYAA_HAVE_TELEMETRY
-    if (!startOptions.telemetryUrl.isEmpty()) {
+    if (telemetryBridge->available()) {
         QAction* telemetryAction = menu->addAction(tr("Send statistics"), this, [this](bool on) {
-            setTelemetryEnabled(on);
+            telemetryBridge->setEnabled(on);
         });
         telemetryAction->setCheckable(true);
-        telemetryAction->setChecked(telemetryEnabled());
+        telemetryAction->setChecked(telemetryBridge->enabled());
     }
-#endif
 }
 
 void Application::showSourcesMenu(QPoint globalPosition) {

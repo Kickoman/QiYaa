@@ -37,10 +37,6 @@ namespace Integrations {
 class MediaControls;
 }  // namespace Integrations
 
-namespace Telemetry {
-class Reporter;
-}  // namespace Telemetry
-
 namespace Ui {
 class EqualizerWindow;
 class MainWindow;
@@ -55,6 +51,7 @@ namespace App {
 
 class Account;
 class JamBridge;
+class TelemetryBridge;
 class WindowSet;
 
 class Application : public QObject {
@@ -104,13 +101,15 @@ public:
     Language language() const { return translations.language(); }
     void setLanguage(Language language);
 
-    bool telemetryEnabled() const;
-    void setTelemetryEnabled(bool on);
-    // Null without telemetry: not built, no URL, or switched off.
-    Telemetry::Reporter* telemetry() const { return telemetryReporter.get(); }
+    TelemetryBridge* telemetry() const { return telemetryBridge.get(); }
 
     void saveState();
     void quit();
+
+Q_SIGNALS:
+    void languageChanged(App::Language language);
+    void skinChanged(const QString& path);
+    void skinFailed();
 
 private:
     void installShortcuts(QWidget* widget);
@@ -118,10 +117,6 @@ private:
     void showSourcesMenu(QPoint globalPosition);
     void fillWindowActions(QMenu* menu);
     void transportKey(int key);
-    void startTelemetry();
-    QString telemetryDirectory() const;
-    void telemetryError(const QString& area, const QString& kind, int httpStatus = 0);
-    void telemetryFeature(const QString& name, const QString& value);
 
     Options startOptions;
     std::unique_ptr<QTemporaryDir> temporaryDirectory;
@@ -130,7 +125,6 @@ private:
     Skins::Skin baseSkin;
     std::unique_ptr<Skins::Skin> currentSkin;
     bool quitting = false;
-    bool firstRun = false;
     bool audioFailed = false;
 
     std::unique_ptr<QNetworkAccessManager> ownNetworkManager;
@@ -147,7 +141,6 @@ private:
     std::unique_ptr<Core::CoverCache> coverCache;
     std::unique_ptr<Integrations::MediaControls> mediaControls;
     std::unique_ptr<QObject> systemMediaControls;
-    std::unique_ptr<Telemetry::Reporter> telemetryReporter;
     NetworkWatch networkWatch;
 
     // Declared last: destroyed first.
@@ -160,6 +153,7 @@ private:
     std::unique_ptr<WindowSet> windowSet;
     std::unique_ptr<Account> accountControl;
     std::unique_ptr<JamBridge> jamBridge;
+    std::unique_ptr<TelemetryBridge> telemetryBridge;
 };
 
 }  // namespace App
