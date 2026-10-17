@@ -4,9 +4,12 @@
 #include "core/jam_mode.h"
 #ifdef QIYAA_HAVE_JAM
 #include "jam/host_session.h"
+#include "jam/session_store.h"
+#include "support/jam_stub_server.h"
 #endif
 #include "sources/yandex/tracks.h"
 #include "support/mock_http_server.h"
+#include "support/spec_fixtures.h"
 #include "ui/equalizer_window.h"
 #include "ui/jam_window.h"
 #include "ui/login_dialog.h"
@@ -30,10 +33,13 @@
 #include <QLabel>
 #include <QList>
 #include <QMenu>
+#include <QMessageBox>
 #include <QMouseEvent>
 #include <QNetworkAccessManager>
 #include <QPoint>
 #include <QPointF>
+#include <QPointer>
+#include <QPushButton>
 #include <QScreen>
 #include <QSet>
 #include <QSettings>
@@ -43,8 +49,10 @@
 #include <QTest>
 #include <QUrl>
 #include <QVariant>
+#include <QVariantMap>
 #include <QWidget>
 
+#include <algorithm>
 #include <memory>
 
 using Yandex::Track;
@@ -112,6 +120,25 @@ QList<Yandex::Track> MakeTracks(int count) {
     return tracks;
 }
 
+App::Application::Options OptionsWithSettings(const QString& settingsFile) {
+    App::Application::Options options;
+    options.offline = true;
+    options.audio = false;
+    options.mediaIntegration = false;
+    options.language = App::Language::English;
+    options.settingsFile = settingsFile;
+    return options;
+}
+
+QVariantMap AllSettings(const QString& settingsFile) {
+    const QSettings settings(settingsFile, QSettings::IniFormat);
+    QVariantMap values;
+    for (const QString& key : settings.allKeys()) {
+        values.insert(key, settings.value(key));
+    }
+    return values;
+}
+
 }  // namespace
 
 class TestWindows : public QObject {
@@ -135,6 +162,77 @@ private:
         return QTest::qWaitFor([&] { return done; }, 5000) && application->library()->isLoggedIn();
     }
 
+#ifdef QIYAA_HAVE_JAM
+    // HOST-23: an app that starts logged in (QIYAA_TOKEN, the catalog on a MockHttpServer) with a
+    // jam stored from the last run, on a stub jam server.
+    struct StoredJamStart {
+        QTemporaryDir directory;
+        Tests::JamStubServer jamServer;
+        Tests::MockHttpServer catalog;
+        int likesAsked = 0;
+        std::unique_ptr<App::Application> application;
+        QPointer<QMessageBox> question;
+
+        StoredJamStart() {
+            const QString settingsFile = directory.filePath(QStringLiteral("settings.ini"));
+            QSettings settings(settingsFile, QSettings::IniFormat);
+            settings.setValue(QStringLiteral("jam/server"), jamServer.serverUrl());
+            settings.sync();
+            const Jam::SessionStore store(directory.filePath(QStringLiteral("jam-session.json")));
+            store.save(Jam::Session{
+                QStringLiteral("7k3m9q2x"),
+                QStringLiteral("R0CuY0ewFywBJU_1W65a_1GZ9ERuf21kPUAYWz9HUUU"),
+                QStringLiteral("https://jam.example.org/j/7k3m9q2x#WDkyFgMr5iV3hKwManPvsg"),
+                std::nullopt,
+                {}
+            });
+            catalog.fixture("GET", "/account/status", "account-status/ok");
+            catalog.fixture("POST", "/tracks/", "tracks/two-tracks");
+            catalog.on("GET", "/users/42/likes/tracks", [this](const Tests::MockRequest&) {
+                ++likesAsked;
+                return Tests::MockResponse{200, Tests::Fixture(QStringLiteral("users-likes-tracks/string-ids"))};
+            });
+            qputenv("QIYAA_TOKEN", "test-token");
+            App::Application::Options options = OptionsWithSettings(settingsFile);
+            options.offline = false;
+            application = std::make_unique<App::Application>(options);
+            application->api()->setBaseUrl(catalog.baseUrl());
+            application->start();
+            question = application->mainWindow()->findChild<QMessageBox*>();
+        }
+
+        bool loggedIn() const {
+            return QTest::qWaitFor([this] { return application->library()->isLoggedIn(); }, 5000);
+        }
+
+        void answer(const QString& text) const {
+            const QList<QAbstractButton*> buttons = question->buttons();
+            const auto button = std::find_if(buttons.cbegin(), buttons.cend(), [&text](QAbstractButton* candidate) {
+                return candidate->text() == text;
+            });
+            if (button != buttons.cend()) {
+                (*button)->click();
+            }
+        }
+
+        bool resumed() {
+            if (!QTest::qWaitFor([this] { return jamServer.count() == 1 && !jamServer.received().isEmpty(); }, 5000)) {
+                return false;
+            }
+            jamServer.welcome();
+            return QTest::qWaitFor(
+                [this] {
+                    const std::vector<Jam::ClientMessage> messages = jamServer.messages();
+                    return std::any_of(messages.cbegin(), messages.cend(), [](const Jam::ClientMessage& message) {
+                        return std::holds_alternative<Jam::Resume>(message);
+                    });
+                },
+                5000
+            );
+        }
+    };
+#endif
+
     void requireBigScreen() {
         if (QGuiApplication::primaryScreen()->availableGeometry().height() < 1200) {
             QSKIP("needs a 2560x1440 virtual screen");
@@ -157,6 +255,7 @@ private Q_SLOTS:
         QVERIFY(QTest::qWaitForWindowExposed(main));
     }
     void cleanup() {
+        qunsetenv("QIYAA_TOKEN");
         QDesktopServices::unsetUrlHandler(QStringLiteral("https"));
         openedUrl.clear();
         application.reset();
@@ -938,6 +1037,88 @@ private Q_SLOTS:
         QCOMPARE(image.height(), 116 + 116 + 232);
     }
 
+    void aFreshStartWritesNoSetting() {
+        QTemporaryDir directory;
+        QVERIFY(directory.isValid());
+        const QString settingsFile = directory.filePath(QStringLiteral("settings.ini"));
+        {
+            App::Application fresh(OptionsWithSettings(settingsFile));
+            fresh.start();
+            QVERIFY(QTest::qWaitForWindowExposed(fresh.mainWindow()));
+        }
+        QVERIFY(AllSettings(settingsFile).isEmpty());
+    }
+
+    void aRestartBringsBackShadesStepsAndPositions() {
+        QTemporaryDir directory;
+        QVERIFY(directory.isValid());
+        const QString settingsFile = directory.filePath(QStringLiteral("settings.ini"));
+        {
+            QSettings saved(settingsFile, QSettings::IniFormat);
+            saved.setValue(QStringLiteral("mainWindow/pos"), QPoint(40, 30));
+            saved.setValue(QStringLiteral("equalizer/pos"), QPoint(315, 30));
+            saved.setValue(QStringLiteral("equalizer/shaded"), true);
+            saved.setValue(QStringLiteral("playlist/pos"), QPoint(40, 146));
+            saved.setValue(QStringLiteral("playlist/steps"), QSize(1, 2));
+        }
+        const QVariantMap before = AllSettings(settingsFile);
+        {
+            App::Application restarted(OptionsWithSettings(settingsFile));
+            restarted.start();
+            QCOMPARE(restarted.mainWindow()->pos(), QPoint(40, 30));
+            QCOMPARE(restarted.equalizerWindow()->pos(), QPoint(315, 30));
+            QVERIFY(restarted.equalizerWindow()->isShaded());
+            QCOMPARE(restarted.equalizerWindow()->height(), 14);
+            QCOMPARE(restarted.playlistWindow()->pos(), QPoint(40, 146));
+            QCOMPARE(restarted.playlistWindow()->size(), QSize(300, 174));
+        }
+        QCOMPARE(AllSettings(settingsFile), before);
+    }
+
+    void minimisingHidesTheOtherWindowsAndRestoringShowsTheChosenOnes() {
+        QTemporaryDir directory;
+        QVERIFY(directory.isValid());
+        const QString settingsFile = directory.filePath(QStringLiteral("settings.ini"));
+        {
+            QSettings saved(settingsFile, QSettings::IniFormat);
+            saved.setValue(QStringLiteral("playlist/visible"), false);
+            saved.setValue(QStringLiteral("nowPlaying/visible"), true);
+            saved.setValue(QStringLiteral("jamWindow/visible"), true);
+        }
+        App::Application started(OptionsWithSettings(settingsFile));
+        started.start();
+        const auto jamWindowShown = [&started] { return started.jamWindow() && started.jamWindow()->isVisible(); };
+        QVERIFY(started.equalizerWindow()->isVisible());
+        QVERIFY(!started.playlistWindow()->isVisible());
+        QVERIFY(started.nowPlayingWindow()->isVisible());
+        QVERIFY(!jamWindowShown());  // the start leaves it to the menu and to "Continue"
+        started.mainWindow()->minimizedChanged(true);
+        QVERIFY(!started.equalizerWindow()->isVisible());
+        QVERIFY(!started.nowPlayingWindow()->isVisible());
+        started.mainWindow()->minimizedChanged(false);
+        QVERIFY(started.equalizerWindow()->isVisible());
+        QVERIFY(!started.playlistWindow()->isVisible());
+        QVERIFY(started.nowPlayingWindow()->isVisible());
+        QCOMPARE(jamWindowShown(), started.jamWindow() != nullptr);  // restoring does show it
+    }
+
+    void aScaleForThisRunLeavesThePositionsUnsaved() {
+        QTemporaryDir directory;
+        QVERIFY(directory.isValid());
+        const QString settingsFile = directory.filePath(QStringLiteral("settings.ini"));
+        App::Application started(OptionsWithSettings(settingsFile));
+        started.start();
+        started.setScale(1.5, App::Application::ScaleScope::ThisRun);
+        started.saveState();
+        const QSettings saved(settingsFile, QSettings::IniFormat);
+        QVERIFY(!saved.contains(QStringLiteral("scale")));
+        QVERIFY(!saved.contains(QStringLiteral("mainWindow/pos")));
+        started.setScale(1.5);
+        QCOMPARE(saved.value(QStringLiteral("scale")).toDouble(), 1.5);
+        QVERIFY(saved.contains(QStringLiteral("mainWindow/pos")));
+        QVERIFY(saved.contains(QStringLiteral("equalizer/pos")));
+    }
+
     void theJamWindowIsOneOfTheWindows() {
 #ifdef QIYAA_HAVE_JAM
         Ui::JamWindow* jam = application->jamWindow();
@@ -985,6 +1166,55 @@ private Q_SLOTS:
         QCOMPARE(ids(), (QStringList{"1", "5"}));
         QCOMPARE(player->currentIndex(), 0);
         application->jam()->end();
+#else
+        QSKIP("built without the jam");
+#endif
+    }
+
+    void continuingAStoredJamResumesItAndShowsTheJamWindow() {  // HOST-23
+#ifdef QIYAA_HAVE_JAM
+        StoredJamStart start;
+        QVERIFY(start.question);
+        QCOMPARE(start.question->text(), QStringLiteral("Continue it? The guests' link stays the same."));
+        QVERIFY(start.loggedIn());
+        start.answer(QStringLiteral("Continue"));
+        QCOMPARE(start.application->jamHost()->phase(), Jam::HostPhase::Active);
+        QVERIFY(start.application->jamWindow()->isVisible());
+        QVERIFY(start.resumed());
+        QCOMPARE(start.likesAsked, 0);  // the base stays empty
+        QVERIFY(start.application->player()->entries().isEmpty());
+#else
+        QSKIP("built without the jam");
+#endif
+    }
+
+    void endingAStoredJamQueuesTheLikes() {  // HOST-23
+#ifdef QIYAA_HAVE_JAM
+        StoredJamStart start;
+        QVERIFY(start.question);
+        QVERIFY(start.loggedIn());
+        QCOMPARE(start.likesAsked, 0);  // not while the question waits
+        start.answer(QStringLiteral("End it"));
+        QVERIFY(!start.application->jamHost()->hasStoredSession());
+        QVERIFY(!start.application->jam()->isActive());
+        QTRY_COMPARE(start.application->player()->entries().size(), 2);
+        QCOMPARE(start.likesAsked, 1);
+        QVERIFY(start.resumed());  // only to end it
+#else
+        QSKIP("built without the jam");
+#endif
+    }
+
+    void aStoredJamClosedWithoutAnAnswerStaysStored() {  // HOST-23
+#ifdef QIYAA_HAVE_JAM
+        StoredJamStart start;
+        QVERIFY(start.question);
+        QVERIFY(start.loggedIn());
+        start.question->reject();
+        QTRY_VERIFY(!start.question);
+        QVERIFY(start.application->jamHost()->hasStoredSession());
+        QCOMPARE(start.application->jamHost()->phase(), Jam::HostPhase::None);
+        QCOMPARE(start.jamServer.count(), 0);
 #else
         QSKIP("built without the jam");
 #endif
