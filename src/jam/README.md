@@ -67,13 +67,26 @@ itemId does not match …`).
   refuse.
 
 The numbers are a copy of `spec/jam/protocol/schemas/defs.schema.json` and `spec/jam/limits.md`.
-`jam_test` decodes every file of `spec/jam/protocol/examples`: the valid ones must pass and the
-`invalid-*` ones must fail, so a change in the spec that the codec does not follow fails a test.
+The patterns are copied as the schemas write them and read as Ajv reads them, as ECMAScript with
+the `u` flag: over the whole text, with `\s` as ECMAScript's white space (U+00A0 and U+FEFF
+included, U+0085 not). `jam_test` decodes every file of `spec/jam/protocol/examples`: the valid
+ones must pass and the `invalid-*` ones must fail, so a change in the spec that the codec does not
+follow fails a test.
+
+**Checked by hand, not by the schemas** (#32). Checking by the schemas with a library was tried
+with valijson: on 50,000 messages it agreed with the server's Ajv, but it needed two patches of its
+own and a translation of the patterns anyway, and added about 400 KB to the app. The schemas change
+seldom, and the examples catch a codec that does not follow them.
 
 **Traps:**
-- `\s` in these `QRegularExpression`s is ASCII whitespace only (no `UseUnicodePropertiesOption`),
-  as in the Android codec, while Ajv on the server also counts Unicode spaces. A name that ends
-  in a non-breaking space passes here and is refused by the server.
+- `QRegularExpression` (PCRE2) reads a pattern differently from ECMAScript: its `$` also matches
+  before a final line feed, and its `\s` is ASCII only, or, with `UseUnicodePropertiesOption`,
+  misses U+FEFF and takes U+0085. So `Pattern()` matches the whole text (`anchoredPattern`) and
+  writes `\s` and `\S` out as ECMAScript's white space (`kSpace`). `\S` inside a class would need
+  more; no schema has one.
+- Where a schema sets no upper limit, the codec stops where its field ends: `protocol`,
+  `serverProtocol` and `seedsVersion` at `INT_MAX`, `pending` at the queue's 300, `version`,
+  positions and times at 2^53 − 1. The server never sends more; Ajv would take it.
 - A number must be whole: JSON has no integer type, so `2.5` for `positionMs` reads as a number and
   is refused here. `Reader::integer` checks the range before `static_cast<qint64>`.
 
