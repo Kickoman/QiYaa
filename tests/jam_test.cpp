@@ -10,6 +10,7 @@
 #include <QFile>
 #include <QJsonArray>
 #include <QJsonDocument>
+#include <QJsonObject>
 #include <QRegularExpression>
 #include <QSignalSpy>
 #include <QSslSocket>
@@ -83,6 +84,8 @@ class JamTest : public QObject {
 private Q_SLOTS:
     void everyProtocolExampleDecodesAsTheSpecSays();
     void clientExamplesSurviveEncodingAndDecoding();
+    void patternsMatchTheWholeTextAsEcmaScriptDoes_data();
+    void patternsMatchTheWholeTextAsEcmaScriptDoes();
     void resumeWithoutSnapshotSendsAnExplicitNull();
     void anUnknownTypeIsNotAnError();
     void socketUrlFollowsTheServerAddress();
@@ -136,6 +139,57 @@ void JamTest::clientExamplesSurviveEncodingAndDecoding() {
             QVERIFY2(*again.message == *first.message, qPrintable(type + QLatin1Char('/') + name));
         }
     }
+}
+
+void JamTest::patternsMatchTheWholeTextAsEcmaScriptDoes_data() {
+    QTest::addColumn<QByteArray>("text");
+    QTest::addColumn<bool>("client");
+    QTest::addColumn<bool>("valid");
+    auto row = [](const char* name, const QJsonObject& message, bool client, bool valid) {
+        QTest::newRow(name) << QJsonDocument(message).toJson(QJsonDocument::Compact) << client << valid;
+    };
+    auto with = [](const QString& example, const QString& field, const QString& value) {
+        QJsonObject message = QJsonDocument::fromJson(Example(example)).object();
+        message[field] = value;
+        return message;
+    };
+    auto ending = [&with](const QString& example, const QString& field, const QString& end) {
+        const QString value = QJsonDocument::fromJson(Example(example)).object()[field].toString();
+        return with(example, field, value + end);
+    };
+    const QString create = QStringLiteral("create/ok");
+    const QString hostName = QStringLiteral("hostName");
+    const QString search = QStringLiteral("search/ok");
+    const QString text = QStringLiteral("text");
+    const QString lineFeed = QStringLiteral("\n");
+    const QString noBreak(QChar(0x00A0));
+    const QJsonObject innerNoBreak = with(create, hostName, QStringLiteral("Ма") + noBreak + QStringLiteral("ша"));
+    const QJsonObject nextLine = ending(create, hostName, QString(QChar(0x0085)));
+    const QJsonObject itemId = ending(QStringLiteral("started/ok"), QStringLiteral("itemId"), lineFeed);
+    const QJsonObject joinUrl = ending(QStringLiteral("created/ok"), QStringLiteral("joinUrl"), lineFeed);
+    const QJsonObject listenUrl = ending(QStringLiteral("playing/item-listen"), QStringLiteral("listenUrl"), lineFeed);
+    row("a name ending in U+00A0", ending(create, hostName, noBreak), true, false);
+    row("a name starting with U+3000", with(create, hostName, QChar(0x3000) + QStringLiteral("Маша")), true, false);
+    row("a name ending in U+FEFF", ending(create, hostName, QString(QChar(0xFEFF))), true, false);
+    row("U+00A0 inside a name", innerNoBreak, true, true);
+    row("a name ending in U+0085, no white space to ECMAScript", nextLine, true, true);
+    row("an item id ending in a line feed", itemId, true, false);
+    row("a join link ending in a line feed", joinUrl, false, false);
+    row("a listen link ending in a line feed", listenUrl, true, false);
+    row("a search text with a control character", ending(search, text, QString(QChar(0x0001))), true, false);
+    row("a search text with spaces at its ends", with(search, text, QStringLiteral(" кино ")), true, true);
+    QJsonObject add = QJsonDocument::fromJson(Example(QStringLiteral("add/track"))).object();
+    QJsonObject track = add[QStringLiteral("track")].toObject();
+    track[QStringLiteral("coverUri")] = track[QStringLiteral("coverUri")].toString() + noBreak;
+    add[QStringLiteral("track")] = track;
+    row("a cover template ending in U+00A0", add, true, false);
+}
+
+void JamTest::patternsMatchTheWholeTextAsEcmaScriptDoes() {
+    QFETCH(QByteArray, text);
+    QFETCH(bool, client);
+    QFETCH(bool, valid);
+    QCOMPARE(client ? Jam::DecodeClient(text).isValid() : Jam::DecodeServer(text).isValid(), valid);
 }
 
 void JamTest::resumeWithoutSnapshotSendsAnExplicitNull() {
@@ -316,6 +370,9 @@ void JamTest::neverSendsWhatTheServerWouldRefuse() {
     QTRY_COMPARE(client.status(), Jam::Status::Online);
     QTest::ignoreMessage(QtWarningMsg, QRegularExpression(QStringLiteral("not sending a create")));
     QVERIFY(!client.send(Jam::Create{QStringLiteral("c1"), QStringLiteral("  "), std::nullopt}));
+    // HostSession trims a name with QString::trimmed(), and U+FEFF is no white space to Qt.
+    QTest::ignoreMessage(QtWarningMsg, QRegularExpression(QStringLiteral("not sending a create")));
+    QVERIFY(!client.send(Jam::Create{QStringLiteral("c3"), QStringLiteral("Маша") + QChar(0xFEFF), std::nullopt}));
     QVERIFY(client.send(Jam::Create{QStringLiteral("c2"), QStringLiteral("Маша"), std::nullopt}));
     QTRY_COMPARE(server.received().size(), 2);
     QVERIFY(

@@ -64,11 +64,46 @@ const QStringList kSecretFields = {
     QStringLiteral("participantId"),
 };
 
+// ECMAScript's white space: what \s means in the schemas' patterns, which Ajv runs with the u flag.
+const QString kSpace =
+    QStringLiteral("\\t-\\r \\x{A0}\\x{1680}\\x{2000}-\\x{200A}\\x{2028}\\x{2029}\\x{202F}\\x{205F}\\x{3000}\\x{FEFF}");
+
+// A pattern of the schemas as ECMAScript reads it: \s and \S by kSpace, and over the whole text, since
+// PCRE2's $ also matches before a final line feed.
+QRegularExpression EcmaScriptPattern(const char* pattern) {
+    const QString text = QString::fromLatin1(pattern);
+    QString translated;
+    bool inClass = false;
+    for (qsizetype i = 0; i < text.size(); ++i) {
+        const QChar character = text.at(i);
+        if (character == QLatin1Char('\\') && i + 1 < text.size()) {
+            const QChar escaped = text.at(++i);
+            if (escaped == QLatin1Char('s')) {
+                translated += inClass ? kSpace : QLatin1Char('[') + kSpace + QLatin1Char(']');
+            } else if (escaped == QLatin1Char('S')) {
+                Q_ASSERT(!inClass);
+                translated += QStringLiteral("[^") + kSpace + QLatin1Char(']');
+            } else {
+                translated += character;
+                translated += escaped;
+            }
+            continue;
+        }
+        if (character == QLatin1Char('[')) {
+            inClass = true;
+        } else if (character == QLatin1Char(']')) {
+            inClass = false;
+        }
+        translated += character;
+    }
+    return QRegularExpression(QRegularExpression::anchoredPattern(translated));
+}
+
 const QRegularExpression& Pattern(const char* pattern) {
     static QHash<const char*, QRegularExpression> compiled;
     auto found = compiled.find(pattern);
     if (found == compiled.end()) {
-        found = compiled.insert(pattern, QRegularExpression(QString::fromLatin1(pattern)));
+        found = compiled.insert(pattern, EcmaScriptPattern(pattern));
     }
     return *found;
 }
@@ -89,6 +124,7 @@ const char* const kListenUrl =
     "^https://[A-Za-z0-9-]+\\.storage\\.yandex\\.net/get-mp3/"
     "[0-9a-f]{32}/[0-9a-f]{1,32}/[^\\s#?]+$";
 const char* const kName = "^[^\\s\\x00-\\x1F\\x7F](?:[^\\x00-\\x1F\\x7F]*[^\\s\\x00-\\x1F\\x7F])?$";
+const char* const kSearchText = "^[^\\x00-\\x1F\\x7F]*[^\\s\\x00-\\x1F\\x7F][^\\x00-\\x1F\\x7F]*$";
 
 qsizetype CodePoints(const QString& text) {
     return text.toUcs4().size();
@@ -251,7 +287,7 @@ QString SearchTextIn(Reader& reader, const QString& key) {
     if (reader.ok()) {
         const qsizetype length = CodePoints(value);
         reader.require(
-            length >= 1 && length <= kMaxSearchLength && !HasControl(value) && !value.trimmed().isEmpty(),
+            length >= 1 && length <= kMaxSearchLength && Pattern(kSearchText).match(value).hasMatch(),
             key + QStringLiteral(" is not a search text of 1 to 100 characters")
         );
     }
