@@ -25,7 +25,7 @@ class Settings;
 class WindowSet : public QObject {
     Q_OBJECT
 public:
-    enum class Place { Main, Stacked, RightOfMain, BelowRightOfMain };
+    enum class Place { Stacked, RightOfMain, BelowRightOfMain };
     enum class Button { None, Equalizer, Playlist };
     enum class ScaleScope { Saved, ThisRun };
 

@@ -90,7 +90,6 @@ void WindowSet::layout() {
                 stackBottom = place + QPoint(0, window->height());
                 break;
             case Place::BelowRightOfMain: place = rightOfMain + QPoint(0, mainWindow->height()); break;
-            case Place::Main:
             case Place::RightOfMain: break;
         }
         window->placeAt(settings->window(spec.group, spec.visibleByDefault).pos.value_or(place));

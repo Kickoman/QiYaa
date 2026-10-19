@@ -40,8 +40,10 @@ MPRIS, SMTC and macOS MediaPlayer in [src/integrations](../integrations/README.m
 
 ## Dependencies
 
-`qiyaa_app` is built from `application.*`, `offline_sources.*`, `paths.*`, `settings.*` and
-`translations.*`:
+`qiyaa_app` is built from `account.*`, `application.*`, `main_menu.*`, `network_watch.*`,
+`offline_sources.*`, `paths.*`, `settings.*`, `translations.*`, `window_set.*`, the headers
+`jam_bridge.h` and `telemetry_bridge.h`, and one of each pair `jam_bridge.cpp`/`jam_off.cpp` and
+`telemetry_bridge.cpp`/`telemetry_off.cpp`, as the build has the jam and telemetry or not:
 
 - PUBLIC `qiyaa_audio`, `qiyaa_core`, `qiyaa_skins`, `qiyaa_sources_yandex`, `qiyaa_yandex`:
   `application.h` holds `Audio::AudioEngine`, `Core::Player`, `Core::SourceRegistry`,
@@ -132,7 +134,6 @@ public:
     Language language() const;
     void setLanguage(Language language);               // applies now and saves `language`
 
-
     void saveState();
     void quit();
 Q_SIGNALS:
@@ -183,9 +184,9 @@ exist. The `Mpris`/`Smtc`/`MacMediaControls` object dies before the `MediaContro
    dir>/covers` when `readOnlySettings`, else the default of [src/core](../core/README.md)). With
    `QIYAA_HAVE_MILKDROP` it also creates the Milkdrop window, with built-in presets from
    `:/milkdrop` and user presets from `<ConfigDirectory>/milkdrop` (`<temp dir>/milkdrop` when
-   `readOnlySettings`). Every window gets the shortcuts listed below. The `WindowSet` is created on
-   the main window right after it, and each other window joins it with `add()`: it becomes
-   "secondary" (no taskbar button on Windows) and gets its saved steps.
+   `readOnlySettings`). The `WindowSet` is created on the main window right after it, and each other
+   window joins it with `add()`: it becomes "secondary" (no taskbar button on Windows) and gets its
+   saved steps.
 6. Connects `YandexSource::Catalog::noticed` to the main window's marquee, worded by
    `Ui::SourceNoticeText`. In a jam build it creates the `Jam::HostSession` (the server and the
    wave feedback from `App::Settings::jam()` at each use, the app's version for `hello`, the session
@@ -209,11 +210,12 @@ exist. The `Mpris`/`Smtc`/`MacMediaControls` object dies before the `MediaContro
    volume, raise (`WindowSet::bringToFront()`) and quit (`quit()`). On top of it, `Mpris` in a build
    with `QIYAA_HAVE_MPRIS`, or `Smtc` in a build with `QIYAA_HAVE_SMTC`, or `MacMediaControls` with
    `QIYAA_HAVE_MAC_MEDIA_CONTROLS` on macOS.
-10. Connects `NetworkWatch::onlineChanged` to `Player::setNetworkOnline` (and in a jam build
-    `back` to `HostSession::networkBack`, HOST-26), and with audio on and not offline starts it.
+10. Connects `NetworkWatch::onlineChanged` to `Player::setNetworkOnline`, and with audio on and not
+    offline starts it (its `back` went to the host session in step 6).
 11. Connects `QApplication::aboutToQuit` to `saveState()` followed by `Player::stop()`.
-12. Last, the `TelemetryBridge` and the `MainMenu`, which take in every window; the menu's choices
-    go to `loadSkin()`, `setLanguage()`, `saveState()` and `quit()`.
+12. Last, the `TelemetryBridge` and the `MainMenu`, which take in every window: the menu puts the
+    shortcuts listed below on each of them, and its choices go to `loadSkin()`, `setLanguage()`,
+    `saveState()` and `quit()`.
 
 **`start()`** shows the windows (`WindowSet::showAtStart()`). Unless `offline`, it then asks about a
 stored jam (`JamBridge::offerStored()`) and looks for a token (`Account::start()`).
@@ -598,7 +600,7 @@ Tests: `tests/telemetry_test.cpp`.
 ```cpp
 class WindowSet : public QObject {
 public:
-    enum class Place { Main, Stacked, RightOfMain, BelowRightOfMain };
+    enum class Place { Stacked, RightOfMain, BelowRightOfMain };
     enum class Button { None, Equalizer, Playlist };   // the main window's EQ or PL button
     enum class ScaleScope { Saved, ThisRun };          // ThisRun for --scale
     struct Spec {
@@ -633,8 +635,9 @@ Q_SIGNALS:
 
 The windows as one set: a window's defaults are its `Spec`, its keys `App::Settings`'s, and what a
 window needs from the app is in `add()` and the `Spec`, so a new window does not touch the code
-below. The main window comes with the constructor, not `add()`: it is shown first, never hidden by
-minimising, its close is the app's `quit()`, and it is the first of `all()`.
+below. The main window comes with the constructor, not `add()`, and its `Spec` gives only its
+group: it always keeps its shade, starts at (100, 100) without a saved place, is shown first, never
+hidden by minimising, its close is the app's `quit()`, and it is the first of `all()`.
 
 - **`add()`** makes the window secondary, restores its steps (when `stepsByDefault` is valid) before
   it listens for their changes, and hides it on its own close button (`closeRequested`).
@@ -645,12 +648,12 @@ minimising, its close is the app's `quit()`, and it is the first of `all()`.
   `<group>/visible` is true, places them all, sets the EQ and PL buttons to match, and activates the
   main window.
 
-**Layout**, only in `showAtStart()`: each window at its saved `<group>/pos`, or at its place: `Main`
-(100, 100); `Stacked` right below the previous stacked window's default (the equalizer under the
-main window, the playlist under the equalizer); `RightOfMain` (now-playing, the jam window);
-`BelowRightOfMain` at main position + (main width, main height) (Milkdrop). The defaults use the
-sizes the windows have at that moment, after shade and scale. `SkinnedWindow::placeAt` clamps every
-position to the screens that exist now.
+**Layout**, only in `showAtStart()`: each window at its saved `<group>/pos`, or at its place: the
+main window at (100, 100); `Stacked` right below the previous stacked window's default (the
+equalizer under the main window, the playlist under the equalizer); `RightOfMain` (now-playing, the
+jam window); `BelowRightOfMain` at main position + (main width, main height) (Milkdrop). The
+defaults use the sizes the windows have at that moment, after shade and scale.
+`SkinnedWindow::placeAt` clamps every position to the screens that exist now.
 
 **`setScale(scale, scope)`**:
 

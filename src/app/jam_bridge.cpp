@@ -71,7 +71,7 @@ JamBridge::JamBridge(const Parts& bridgeParts, QObject* parent)
     const auto note = [this](int row) { return trackNote(row); };
     parts.mainWindow->setTrackNote(note);
     parts.playlistWindow->setTrackNote(note);
-    connect(parts.host, &Jam::HostSession::changed, parts.playlistWindow, [this] { parts.playlistWindow->update(); });
+    connect(parts.host, &Jam::HostSession::changed, this, [this] { parts.playlistWindow->update(); });
     connect(parts.host, &Jam::HostSession::offline, this, [this] {
         Q_EMIT statusText(tr("No connection to the jam server"));
     });
@@ -86,7 +86,7 @@ JamBridge::JamBridge(const Parts& bridgeParts, QObject* parent)
     });
 
     connect(parts.account, &Account::connected, parts.window, &Ui::JamWindow::setHostName);
-    connect(parts.account, &Account::loggingOut, parts.host, [this] {
+    connect(parts.account, &Account::loggingOut, this, [this] {
         parts.host->cancelCreate();
         parts.host->end();
     });

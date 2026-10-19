@@ -93,9 +93,7 @@ Application::Application(const Options& options, QObject* parent)
         &corePlayer, &catalog, &trackSources, coverCache.get(), currentSkin.get()
     );
     windowSet = std::make_unique<WindowSet>(
-        &settings,
-        mainWindowInstance.get(),
-        WindowSet::Spec{.group = QStringLiteral("mainWindow"), .place = WindowSet::Place::Main, .keepsShade = true}
+        &settings, mainWindowInstance.get(), WindowSet::Spec{.group = QStringLiteral("mainWindow")}
     );
     windowSet->add(
         equalizerWindowInstance.get(),
