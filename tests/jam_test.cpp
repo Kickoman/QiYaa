@@ -2,6 +2,7 @@
 #include "jam/codec.h"
 #include "jam/session_store.h"
 #include "support/jam_stub_server.h"
+#include "support/silent_wss_server.h"
 #include "support/spec_fixtures.h"
 
 #include <QDir>
@@ -11,10 +12,12 @@
 #include <QJsonDocument>
 #include <QRegularExpression>
 #include <QSignalSpy>
+#include <QSslSocket>
 #include <QTemporaryDir>
 #include <QTest>
 #include <QWebSocket>
 
+#include <algorithm>
 #include <vector>
 
 namespace {
@@ -87,6 +90,7 @@ private Q_SLOTS:
     void helloCarriesAVersionTheServerTakes();
     void reconnectsAfterTheDelaysAndAtOnceWhenTheNetworkIsBack();
     void aServerThatIsDownIsOfflineAndTriedAgain();
+    void aSilentConnectionOverTlsIsDroppedAndTriedAgain();
     void startedWaitsInTheOutboxUntilItCanBeSent();
     void endedStopsTheClientForGood();
     void neverSendsWhatTheServerWouldRefuse();
@@ -237,6 +241,29 @@ void JamTest::aServerThatIsDownIsOfflineAndTriedAgain() {
     QTRY_COMPARE(client.status(), Jam::Status::Offline);
     QTRY_VERIFY(statuses.count() >= 3);
     QCOMPARE(statuses.at(2).at(0).value<Jam::Status>(), Jam::Status::Connecting);
+}
+
+void JamTest::aSilentConnectionOverTlsIsDroppedAndTriedAgain() {
+    if (!QSslSocket::supportsSsl()) {
+        QSKIP("no TLS backend");
+    }
+    using Answers = Tests::SilentWssServer::Answers;
+    for (const Answers answers : {Answers::Nothing, Answers::TheUpgradeOnly}) {
+        Tests::SilentWssServer server(answers);
+        Jam::ClientOptions options = FastOptions();
+        options.pingIntervalMs = 200;
+        Jam::Client client(options);
+        QSignalSpy statuses(&client, &Jam::Client::statusChanged);
+        client.start(server.url());
+        if (answers == Answers::TheUpgradeOnly) {
+            QTRY_VERIFY(server.upgrades() >= 1);
+        }
+        QTRY_VERIFY(server.connections() >= 2);
+        const auto wentOffline = std::any_of(statuses.cbegin(), statuses.cend(), [](const QList<QVariant>& arguments) {
+            return arguments.at(0).value<Jam::Status>() == Jam::Status::Offline;
+        });
+        QVERIFY(wentOffline);
+    }
 }
 
 void JamTest::startedWaitsInTheOutboxUntilItCanBeSent() {

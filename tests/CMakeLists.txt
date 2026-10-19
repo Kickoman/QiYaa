@@ -82,10 +82,14 @@ if(NOT WIN32)
         "QT_QPA_PLATFORM=offscreen:configfile=${CMAKE_CURRENT_SOURCE_DIR}/data/screen-2560x1440.json;QIYAA_AUDIO_BACKEND=null")
 endif()
 
-# The jam: only where it's built (Qt WebSockets). The client talks to a QWebSocketServer on localhost.
+# The jam: only where it's built (Qt WebSockets). The client talks to a QWebSocketServer on localhost, and over
+# TLS to a server that goes silent.
 if(QIYAA_HAVE_JAM)
-    add_library(qiyaa_test_jam STATIC support/jam_stub_server.cpp support/jam_stub_server.h)
+    add_library(qiyaa_test_jam STATIC
+        support/jam_stub_server.cpp support/jam_stub_server.h
+        support/silent_wss_server.cpp support/silent_wss_server.h)
     target_link_libraries(qiyaa_test_jam PUBLIC qiyaa_test_support qiyaa_jam)
+    target_compile_definitions(qiyaa_test_jam PRIVATE QIYAA_TEST_DATA="${CMAKE_CURRENT_SOURCE_DIR}/data")
     qiyaa_target_defaults(qiyaa_test_jam)
     qiyaa_add_test(jam_test jam)
     target_link_libraries(jam_test PRIVATE qiyaa_test_jam)

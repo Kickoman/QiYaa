@@ -169,7 +169,9 @@ void Client::dropSocket() {
     }
     QWebSocket* old = std::exchange(socket, nullptr);
     old->disconnect(this);
-    old->close(kNormalClose);
+    if (old->state() != QAbstractSocket::UnconnectedState) {
+        old->close(kNormalClose);
+    }
     old->deleteLater();
 }
 

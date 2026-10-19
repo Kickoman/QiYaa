@@ -106,7 +106,9 @@ Q_SIGNALS:
   1, 2, 4, 8, 16, 30, 30 … s (`reconnectDelaysMs`); `welcome` starts the count over.
   `networkBack()` (in the app, from `QNetworkInformation`) reconnects at once.
 - The client pings every `pingIntervalMs` and drops a connection that did not answer the previous
-  ping: a dead network then shows as `Offline` in seconds, not when TCP gives up.
+  ping: a dead network then shows as `Offline` in seconds, not when TCP gives up. The pings start
+  with the attempt, not at `connected`: a connection that hangs in TCP, TLS or the upgrade is
+  dropped after two intervals too, and this is the only timeout it has.
 - After `ended`, `kicked` and `rejected{update-required}` the message is emitted first, then the
   client stops: `Stopped`, no more reconnects.
 - A message that does not decode is skipped with a warning; an unknown `type` silently.
@@ -124,6 +126,10 @@ Q_SIGNALS:
   to the socket outside the client.
 - `messageReceived` is emitted synchronously from the socket's signal: a slot that calls `stop()`
   or `start()` is fine, but must not delete the client.
+- Never `close()` a `QWebSocket` that is already `UnconnectedState`, as in its own
+  `stateChanged`. After `abort()` over TLS, `QSslSocket` has dropped its write buffer but is still
+  open while it tells of the disconnect, and the close frame is written into nothing: SIGSEGV in
+  `QRingBuffer` (#38). Plain `ws://` only warns, so only a `wss://` test catches it.
 
 ## `session_store.h`
 
