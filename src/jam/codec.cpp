@@ -328,6 +328,11 @@ QString JoinUrlIn(Reader& reader, const QString& key) {
 Track ReadTrack(Reader reader) {
     Track track;
     track.id = reader.matching(QStringLiteral("id"), kCatalogId);
+    if (reader.has(QStringLiteral("source"))) {
+        track.source = reader.choice<TrackSource>(
+            QStringLiteral("source"), {{"yandex", TrackSource::Yandex}, {"host", TrackSource::Host}}
+        );
+    }
     track.albumId = reader.optionalMatching(QStringLiteral("albumId"), kCatalogId);
     track.title = reader.string(QStringLiteral("title"));
     if (reader.ok()) {
@@ -354,16 +359,44 @@ Track ReadTrack(Reader reader) {
             QStringLiteral("coverUri is not a %% template of up to 300 characters")
         );
     }
+    if (reader.ok() && track.source == TrackSource::Host) {
+        reader.require(
+            !reader.has(QStringLiteral("albumId")) && !reader.has(QStringLiteral("coverUri")),
+            QStringLiteral("a track only the host can play has no albumId or coverUri")
+        );
+    }
     return track;
 }
 
-std::vector<Track> ReadTracks(Reader& reader, const QString& key, qsizetype maximum) {
+// Items, recent items, search and check results: CatalogTrack in the schemas (ROOM-66).
+Track ReadCatalogTrack(Reader reader) {
+    const Track track = ReadTrack(reader);
+    reader.require(track.source == TrackSource::Yandex, QStringLiteral("is a track only the host can play"));
+    return track;
+}
+
+std::vector<Track> ReadCatalogTracks(Reader& reader, const QString& key, qsizetype maximum) {
     std::vector<Track> tracks;
     const QJsonArray items = reader.array(key, 0, maximum);
     for (qsizetype index = 0; index < items.size() && reader.ok(); ++index) {
-        tracks.push_back(ReadTrack(reader.child(ObjectAt(items, index, reader, key), key)));
+        tracks.push_back(ReadCatalogTrack(reader.child(ObjectAt(items, index, reader, key), key)));
     }
     return tracks;
+}
+
+// A track only the host can play has no file a guest could fetch (LISTEN-14).
+void RequireNoLinksBesideAHostTrack(
+    Reader& reader,
+    const std::optional<Track>& track,
+    const QString& listenUrl,
+    const QString& listenNextUrl
+) {
+    if (reader.ok() && track && track->source == TrackSource::Host) {
+        reader.require(
+            listenUrl.isEmpty() && listenNextUrl.isEmpty(),
+            QStringLiteral("a track only the host can play comes with no listen links")
+        );
+    }
 }
 
 int ReadMaxPending(Reader& reader) {
@@ -421,6 +454,7 @@ NowPlaying ReadNowPlaying(Reader reader) {
     nowPlaying.reportedAt = reader.time(QStringLiteral("reportedAt"));
     nowPlaying.listenUrl = ListenUrlIn(reader, QStringLiteral("listenUrl"));
     nowPlaying.listenNextUrl = ListenUrlIn(reader, QStringLiteral("listenNextUrl"));
+    RequireNoLinksBesideAHostTrack(reader, nowPlaying.track, nowPlaying.listenUrl, nowPlaying.listenNextUrl);
     if (reader.ok() && nowPlaying.source == Source::Item) {
         reader.require(
             !nowPlaying.itemId.isEmpty() && nowPlaying.track && !nowPlaying.addedBy.isEmpty(),
@@ -493,7 +527,7 @@ Room ReadRoom(Reader reader) {
         Reader item = reader.child(ObjectAt(items, index, reader, queue), queue);
         QueueItem entry;
         entry.itemId = item.matching(QStringLiteral("itemId"), kItemId);
-        entry.track = ReadTrack(item.child(item.object(QStringLiteral("track")), QStringLiteral("track")));
+        entry.track = ReadCatalogTrack(item.child(item.object(QStringLiteral("track")), QStringLiteral("track")));
         entry.addedBy = item.matching(QStringLiteral("addedBy"), kPublicId);
         entry.addedAt = item.time(QStringLiteral("addedAt"));
         entry.pinned = item.boolean(QStringLiteral("pinned"));
@@ -506,7 +540,7 @@ Room ReadRoom(Reader reader) {
         Reader item = reader.child(ObjectAt(played, index, reader, recent), recent);
         RecentItem entry;
         entry.itemId = item.matching(QStringLiteral("itemId"), kItemId);
-        entry.track = ReadTrack(item.child(item.object(QStringLiteral("track")), QStringLiteral("track")));
+        entry.track = ReadCatalogTrack(item.child(item.object(QStringLiteral("track")), QStringLiteral("track")));
         entry.addedBy = item.matching(QStringLiteral("addedBy"), kPublicId);
         entry.playedAt = item.time(QStringLiteral("playedAt"));
         room.recent.push_back(entry);
@@ -579,7 +613,7 @@ std::optional<ServerMessage> ReadServer(const QString& type, const QJsonObject& 
     if (type == QLatin1String("searchResults")) {
         SearchResults message;
         message.id = reader.matching(QStringLiteral("id"), kRequestId);
-        message.tracks = ReadTracks(reader, QStringLiteral("tracks"), kMaxTracksPerReply);
+        message.tracks = ReadCatalogTracks(reader, QStringLiteral("tracks"), kMaxTracksPerReply);
         return message;
     }
     if (type == QLatin1String("linkRotated")) {
@@ -704,6 +738,7 @@ std::optional<ClientMessage> ReadClient(const QString& type, const QJsonObject& 
         message.paused = reader.boolean(QStringLiteral("paused"));
         message.listenUrl = ListenUrlIn(reader, QStringLiteral("listenUrl"));
         message.listenNextUrl = ListenUrlIn(reader, QStringLiteral("listenNextUrl"));
+        RequireNoLinksBesideAHostTrack(reader, message.track, message.listenUrl, message.listenNextUrl);
         if (reader.ok()) {
             reader.require(
                 message.source != Source::Item || !message.itemId.isEmpty(), QStringLiteral("an item needs itemId")
@@ -766,7 +801,7 @@ std::optional<ClientMessage> ReadClient(const QString& type, const QJsonObject& 
         SearchResult message;
         message.requestId = reader.matching(QStringLiteral("requestId"), kRequestId);
         if (reader.has(QStringLiteral("tracks"))) {
-            message.tracks = ReadTracks(reader, QStringLiteral("tracks"), kMaxTracksPerReply);
+            message.tracks = ReadCatalogTracks(reader, QStringLiteral("tracks"), kMaxTracksPerReply);
         }
         if (reader.has(QStringLiteral("error"))) {
             message.error = reader.choice<SearchError>(
@@ -789,7 +824,8 @@ std::optional<ClientMessage> ReadClient(const QString& type, const QJsonObject& 
             ValidateEntry entry;
             entry.trackId = item.matching(QStringLiteral("trackId"), kCatalogId);
             if (item.has(QStringLiteral("track"))) {
-                entry.track = ReadTrack(item.child(item.object(QStringLiteral("track")), QStringLiteral("track")));
+                entry.track = ReadCatalogTrack(item.child(item.object(QStringLiteral("track")), QStringLiteral("track"))
+                );
             }
             if (item.has(QStringLiteral("reason"))) {
                 entry.reason = item.choice<ValidateReason>(
@@ -885,6 +921,9 @@ QJsonObject TrackJson(const Track& track) {
     }
     if (!track.coverUri.isEmpty()) {
         json.insert(QStringLiteral("coverUri"), track.coverUri);
+    }
+    if (track.source == TrackSource::Host) {
+        json.insert(QStringLiteral("source"), QStringLiteral("host"));
     }
     return json;
 }

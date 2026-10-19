@@ -36,6 +36,10 @@ compare with `==`. Names that the protocol uses for something else in C++: `sett
   an empty `QString` when absent; optional objects and enums are `std::optional`.
 - `Track::coverUri` is Yandex's template with `%%` for the size and no scheme, the same as
   `Yandex::Track::coverUri`.
+- `Track::source` is `TrackSource::Yandex` unless the JSON says `host`: a track that only the host
+  can play, a local file for one (HOST-37), with no `albumId` or `coverUri`. Such a track is valid
+  only in `playing`, `nowPlaying` and `add` (which the server refuses, ROOM-66); queue and recent
+  items, search and check results are tracks of the catalog (`CatalogTrack` in the schemas).
 - `Resume::outbox` and `Session::outbox` hold the item ids of `started` events in order; the codec
   writes them as `{"type": "started", "itemId": …}`.
 - `Resume::snapshot` and `Snapshot::data` are `QJsonObject`: the host stores the snapshot and sends
@@ -55,10 +59,11 @@ QString TypeOf(const ClientMessage&);  QString TypeOf(const ServerMessage&);
 Decoding checks what the schemas check: required fields and their JSON types, enum values, the
 patterns of ids and secrets, lengths of names, titles and texts (in code points), limits of
 numbers and lists, "exactly one of" (`add`, `searchResult`, `validateResult` entries), the
-conditional fields of `playing` and `nowPlaying`, an outbox of `started` only, the snapshot's
-`format` 1, and **no field named like a secret** at any depth of a `state`'s room or a snapshot.
-Unknown fields are ignored. `problem` names the first failure with its place (`state.room.queue
-itemId does not match …`).
+conditional fields of `playing` and `nowPlaying` (no listen links beside a track only the host
+can play, LISTEN-14), tracks of the catalog where the schemas say so, an outbox of `started`
+only, the snapshot's `format` 1, and **no field named like a secret** at any depth of a `state`'s
+room or a snapshot. Unknown fields are ignored. `problem` names the first failure with its place
+(`state.room.queue itemId does not match …`).
 
 - An unknown `type` gives `unknownType` and no message: the client skips it.
 - A `rejected` with a reason the app does not know is not valid (`problem` says so), but its
