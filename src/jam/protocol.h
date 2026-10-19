@@ -12,6 +12,9 @@ namespace Jam {
 
 inline constexpr int kProtocol = 1;
 
+// Yandex: a track of the catalog. Host: one only the host can play, a local file for one (HOST-37).
+enum class TrackSource { Yandex, Host };
+
 struct Track {
     QString id;
     QString albumId;
@@ -19,6 +22,7 @@ struct Track {
     QStringList artists;
     qint64 durationMs = 0;
     QString coverUri;
+    TrackSource source = TrackSource::Yandex;
 
     bool operator==(const Track&) const = default;
 };
