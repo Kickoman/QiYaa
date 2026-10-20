@@ -15,7 +15,7 @@ source is a module `src/sources/<name>` with the namespace `<Name>Source` and th
 module to its right:
 
 ```
-audio, yandex, skins, telemetry  →  vis, core  →  sources/yandex  →  jam  →  ui, integrations  →  app  →  qiyaa (src/app/main.cpp)
+audio, yandex, skins, telemetry  →  vis, core  →  sources/yandex, sources/local  →  jam  →  ui, integrations  →  app  →  qiyaa (src/app/main.cpp)
 ```
 
 | Module | Namespace | What it does | Links PUBLIC | Links PRIVATE |
@@ -27,14 +27,16 @@ audio, yandex, skins, telemetry  →  vis, core  →  sources/yandex  →  jam  
 | [src/vis](../src/vis/README.md) | `Vis` | Spectrum, oscilloscope, FFT; Milkdrop through projectM in a `QOpenGLWindow` | Qt Gui (+ OpenGL) | audio, skins (+ projectM) |
 | [src/core](../src/core/README.md) | `Core` | `Track` and `TrackKey` (a track of any source), `TrackSource` and `SourceRegistry` (what a source answers about its tracks, and how it opens their files), `Player` (queue, transport, downloads, preload, track events), `JamMode` (the jam over the host's queue, as the queue's layer) and `CoverCache` | audio, Qt Gui, Network | |
 | [src/sources/yandex](../src/sources/yandex/README.md) | `YandexSource` | Yandex Music as a source: `Yandex::Track` ↔ `Core::Track`, its `TrackSource` (cover, web page, the file and its quality, the play report), `Catalog` (what a pick plays, likes), and the continuations `Vibe` (a vibe or station) and `HistoryWave` (the vibe after a queue's head, the jam vibe during a jam) | core, yandex, Qt Core | |
+| [src/sources/local](../src/sources/local/README.md) | `LocalSource` | The user's own files as a source: their tags and covers through TagLib, read with every size bounded | core, Qt Core | TagLib |
 | [src/jam](../src/jam/README.md) | `Jam` | The jam: protocol messages and their JSON, the WebSocket connection to a jam server, the host's stored session, and `HostSession` (create, resume, the guests' search and checks, end). Optional (Qt WebSockets) | core, yandex, Qt Core, WebSockets | sources/yandex |
 | [src/ui](../src/ui/README.md) | `Ui` | The skinned windows, snapping and docking, the Yandex menus, the login dialog, the jam window | audio, vis, Qt Widgets (+ jam) | core, skins, sources/yandex, yandex (+ qrcodegen) |
 | [src/integrations](../src/integrations/README.md) | `Integrations` | Media keys and system media panels: MPRIS (Linux), SMTC (Windows) or MediaPlayer (macOS) | Qt Gui (+ DBus) | core |
 | [src/app](../src/app/README.md) | `App` | `Application`: owns and wires everything, decides nothing; the controllers `Settings`, `WindowSet`, `MainMenu`, `Account`, `JamBridge`, `TelemetryBridge`, `NetworkWatch`; `main()` | audio, core, skins, sources/yandex, yandex | integrations, jam, ui, vis (+ telemetry) |
 
 Vendored code lives in `contrib/` (miniaudio, miniz, qrcodegen, minimp4, fdk-aac's decoder) and is
-not changed. The interface texts are English sources in the code, translated into Belarusian (the
-default) and Russian in [translations/](../translations/README.md). `spec/` is a submodule
+not changed. TagLib is fetched at configure time and linked statically
+([THIRD_PARTY.md](../THIRD_PARTY.md)). The interface texts are English sources in the code,
+translated into Belarusian (the default) and Russian in [translations/](../translations/README.md). `spec/` is a submodule
 with the behaviour and test data shared with the Android app ([spec/README.md](../spec/README.md)).
 Milkdrop (`QIYAA_HAVE_MILKDROP`), the jam (`QIYAA_HAVE_JAM`), telemetry (`QIYAA_HAVE_TELEMETRY`),
 MPRIS (`QIYAA_HAVE_MPRIS`) and SMTC (`QIYAA_HAVE_SMTC`) are optional; the macOS media controls

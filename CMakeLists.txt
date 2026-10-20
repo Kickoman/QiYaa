@@ -62,7 +62,7 @@ add_subdirectory(contrib/fdk-aac)
 
 # One static library per module: a folder of src/ with sources in it (src/sources/yandex is qiyaa_sources_yandex).
 # Dependencies point one way:
-#   audio, yandex, skins  ->  vis, core  ->  sources/yandex  ->  jam  ->  ui, integrations  ->  app  ->  qiyaa (main)
+#   audio, yandex, skins  ->  vis, core  ->  sources/yandex, sources/local  ->  jam  ->  ui, integrations  ->  app  ->  qiyaa (main)
 function(qiyaa_target_defaults target)
     target_compile_definitions(${target} PUBLIC QT_NO_KEYWORDS)
     if(MSVC)
@@ -182,6 +182,10 @@ get_target_property(_qiyaa_taglib_includes tag INCLUDE_DIRECTORIES)
 target_include_directories(tag SYSTEM INTERFACE
     "$<BUILD_INTERFACE:${taglib_SOURCE_DIR}/taglib;${_qiyaa_taglib_includes}>")
 add_library(TagLib::tag ALIAS tag)
+
+qiyaa_add_module(sources_local
+    src/sources/local/tags.cpp      src/sources/local/tags.h)
+target_link_libraries(qiyaa_sources_local PUBLIC qiyaa_core Qt6::Core PRIVATE TagLib::tag)
 
 # Jam: a shared queue the app hosts for guests (spec/jam). Needs Qt WebSockets; without it the
 # app builds without the jam, like without Milkdrop.
