@@ -50,7 +50,7 @@ is formatting (the clang-format check in `.github/workflows/ci.yml`).
 | `jam_bridge_test.cpp` | `App::JamBridge` against `spec/jam/host.md` with `JamStubServer` and real windows: the connection worded while the jam is on and its end (HOST-25, HOST-26), a refusal by its reason, an end by the server, the likes held while the jam is on and the jam ended by a logout (HOST-32) |
 | `telemetry_test.cpp` | `Telemetry::Reporter` against the mock server (TEL-02 to TEL-08): the start event has the fields of `spec/telemetry/examples/start.json`, what each answer keeps or drops, batches of at most 50, a run that did not close reported with its queue, a running instance left alone, the error cap, forgetting; crash reports of `crash_probe` (SIGSEGV, an uncaught exception, abort) sent by the next run; and a real `App::Application` sending `start` through its `TelemetryBridge`, switched off and on, and Milkdrop shown by hand counted once while minimising and restoring are not (skips without Milkdrop). Built only with telemetry |
 | `crash_probe.cpp` | The child `telemetry_test` crashes: installs the crash handler and fails as its arguments say |
-| `jam_e2e_test.cpp` | The jam end to end: the app (offscreen, the Null output) hosts on a real jam server (`QIYAA_JAM_TEST_SERVER`, its `PUBLIC_URL`; CI runs the server's image on Linux, elsewhere the test skips), a guest joins over WebSocket, searches and adds; the track plays with no `/play-audio`, and after the end it is reported again |
+| `jam_e2e_test.cpp` | The jam end to end: the app (offscreen, the Null output) hosts on a real jam server (`QIYAA_JAM_TEST_SERVER`, its `PUBLIC_URL`; CI runs the server's image on Linux, elsewhere the test skips), a guest joins over WebSocket, searches and adds; the track plays with no `/play-audio`, and after the end it is reported again. Then a base track of another source (`Tests::FakeSource` as `fake`, sharing on) plays in a new jam, and the guest sees it as the host's own by its title and artists, with no cover, album or listen links (HOST-37, LISTEN-14) |
 | `translations_test.cpp` | The interface languages: every text of `translations/*.ts` translated with the placeholders of its source and the right number of plural forms, no English text saying "wave", the app starting in Belarusian or in the saved language, another language applied while it runs (a window title, a menu text), and the plural forms of Belarusian, Russian and English |
 | `mpris_test.cpp` | `Integrations::Mpris` over a session bus, driven by `gdbus` as an external client |
 | `milkdrop_test.cpp` | `Vis::MilkdropPresets`, preset switching (with the marquee text only for a preset picked by hand) and black-preset handling in `Ui::MilkdropWindow`; with OpenGL 3.3, projectM rendering, the black-picture detector and fullscreen |
@@ -119,7 +119,7 @@ QT_QPA_PLATFORM=offscreen QIYAA_AUDIO_BACKEND=null build/tests/audio_test queued
 | `jam_host_test` | audio core jam sources_yandex yandex (+ `qiyaa_test_core`, `qiyaa_test_jam`) | only with `QIYAA_HAVE_JAM` |
 | `jam_window_test` | audio core jam skins ui yandex (+ `qiyaa_test_jam`) | only with `QIYAA_HAVE_JAM`; `QIYAA_TEST_DATA` |
 | `jam_bridge_test` | app audio core jam skins ui yandex (+ `qiyaa_test_jam`) | only with `QIYAA_HAVE_JAM` |
-| `jam_e2e_test` | app audio core jam ui yandex | only with `QIYAA_HAVE_JAM`; `QIYAA_TEST_DATA`; skips without `QIYAA_JAM_TEST_SERVER` |
+| `jam_e2e_test` | app audio core jam ui yandex (+ `qiyaa_test_core`) | only with `QIYAA_HAVE_JAM`; `QIYAA_TEST_DATA`; skips without `QIYAA_JAM_TEST_SERVER` |
 | `mpris_test` | core integrations sources_yandex, Qt6::DBus | only with `QIYAA_HAVE_MPRIS`; under `dbus-run-session` |
 | `milkdrop_test` | audio skins ui vis | only with `QIYAA_HAVE_MILKDROP`; offscreen, so the GL functions skip |
 | `milkdrop_gl_test` | the `milkdrop_test` binary | only with `xvfb-run` and Qt's xcb plugin; three GL functions |
@@ -160,8 +160,9 @@ docker run -d --rm -p 8090:8090 -e PUBLIC_URL=http://localhost:8090 ghcr.io/kick
 QIYAA_JAM_TEST_SERVER=http://localhost:8090 ctest --test-dir build -R jam_e2e_test --output-on-failure
 ```
 
-The server allows two live rooms and five new ones an hour from one address (ROOM-02): a run
-ends its room even when it fails, but more than five runs an hour need a fresh server.
+The server allows two live rooms and five new ones an hour from one address (ROOM-02). A run
+creates two rooms, one after the other, and ends each even when it fails, but more than two runs an
+hour need a fresh server (the limit lives in its memory: a restart clears it).
 
 **Languages.** A test without an `App::Application` has no translation installed and sees the
 English source texts; `windows_test` sets `Options::language` to English. `jam_window_test`
@@ -231,7 +232,7 @@ audio decoder and races that are not there. CI's GCC 13 has it. With GCC 11, lin
   it.
 - `qiyaa_test_core`: `support/fake_source.cpp` and `support/fake_continuation.cpp`. It
   PUBLIC-links `qiyaa_test_support` and `qiyaa_core`. Only `queue_test`, `player_test`,
-  `main_window_test`, `library_test`, `jam_mode_test` and `jam_host_test` link it.
+  `main_window_test`, `library_test`, `jam_mode_test`, `jam_host_test` and `jam_e2e_test` link it.
 - `support/yandex_sources.h` is a header with no library: a suite that includes it links
   `qiyaa_sources_yandex` itself.
 - Each suite links the modules in the table above, plus what those modules link PUBLIC. For

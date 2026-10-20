@@ -122,6 +122,7 @@ public:
     Yandex::ApiClient* api();
     Yandex::Library* library();
     YandexSource::Source* yandex();                  // the Yandex source: its quality
+    Core::SourceRegistry* sources();                 // the player's sources by name
     Core::JamMode* jam();
     Jam::HostSession* jamHost() const;                 // null without QIYAA_HAVE_JAM
 
