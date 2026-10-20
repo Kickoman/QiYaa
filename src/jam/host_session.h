@@ -46,6 +46,7 @@ inline constexpr int kMaxOutboxEvents = 500;
 
 std::optional<Track> JamTrackOf(const Yandex::Track& track);
 std::optional<Track> JamTrackOf(const Core::Track& track);
+std::optional<Track> BaseTrackOf(const Core::Track& track, const QString& hostSecret);
 Core::Track CoreTrackOf(const Track& track);
 
 // The host's side of a jam (spec/jam/host.md): the Client to the server, the jam mode of the
@@ -76,6 +77,7 @@ public:
     void discardStored();
     void end();
 
+    bool canAdd(const Core::Track& track) const;
     bool add(const Core::Track& track);
     bool playNext(const Core::Track& track);
     bool pin(const QString& itemId);

@@ -17,6 +17,7 @@
 #include <QJsonArray>
 #include <QJsonDocument>
 #include <QJsonObject>
+#include <QRegularExpression>
 #include <QSignalSpy>
 #include <QTemporaryDir>
 #include <QTest>
@@ -132,6 +133,26 @@ Core::Track BaseTrack(const QString& id) {
     return YandexSource::TrackOf(track);
 }
 
+const QString kLocalFile = QStringLiteral("/home/маша/Music/Наш гурт/Купалінка.mp3");
+
+Core::Track LocalTrack(const QString& file = kLocalFile, const QString& title = QStringLiteral("Купалінка")) {
+    Core::Track track;
+    track.key = {QStringLiteral("local"), file};
+    track.title = title;
+    track.artists = {QStringLiteral("Наш гурт")};
+    track.album = QStringLiteral("Песні");
+    track.durationMs = 180'000;
+    track.cover = {QStringLiteral("/home/маша/Music/Наш гурт/cover.jpg")};
+    return track;
+}
+
+const QString kStorageFolder =
+    QStringLiteral("https://s1.storage.yandex.net/get-mp3/0123456789abcdef0123456789abcdef/65cd937b03427/");
+
+QUrl StorageFile(const QString& name) {
+    return QUrl(kStorageFolder + name);
+}
+
 QStringList Ids(const Core::Player& player) {
     QStringList ids;
     for (const Core::QueueEntry& entry : player.entries()) {
@@ -172,6 +193,7 @@ private:
         bool share = false;
         Audio::AudioEngine engine;
         Tests::FakeSource files;
+        Tests::FakeSource localFiles;
         Core::SourceRegistry registry;
         Core::Player player;
         Core::JamMode jam;
@@ -187,6 +209,8 @@ private:
             , ended(&host, &Jam::HostSession::ended) {
             files.setAnswersAtOnce(true);
             registry.add(YandexSource::kSourceName, &files);
+            localFiles.setAnswersAtOnce(true);
+            registry.add(QStringLiteral("local"), &localFiles);
             engine.setVolume(0);
             engine.init();
         }
@@ -251,6 +275,13 @@ private:
         }
 
         Jam::HostEnd lastEnd() const { return ended.last().at(0).value<Jam::HostEnd>(); }
+
+        std::vector<Jam::Playing> playing() const { return OfType<Jam::Playing>(sent()); }
+
+        void playBase(const QList<Core::Track>& tracks) {
+            player.setSource(Core::QueueSource{.title = QStringLiteral("Base"), .head = tracks}, false);
+            player.playIndex(0);
+        }
     };
 
 private Q_SLOTS:
@@ -757,6 +788,105 @@ private Q_SLOTS:
         QCOMPARE(lastPlaying().listenUrl, QString());
     }
 
+    void aBaseTrackOnlyTheHostCanPlayGoesAsATrackOfTheHost() {  // HOST-37, HOST-10, HOST-06
+        Stack stack(&library);
+        const Core::Track first = LocalTrack();
+        const Core::Track second =
+            LocalTrack(QStringLiteral("/home/маша/Music/Наш гурт/Ой рана на Івана.mp3"), QStringLiteral("Ой рана"));
+        stack.playBase({first, second});
+        QVERIFY(stack.created());
+        QTRY_VERIFY(!stack.playing().empty());
+        const Jam::Playing reported = stack.playing().back();
+        QCOMPARE(reported.source, Jam::Source::Wave);
+        QVERIFY(reported.track);
+        const Jam::Track& track = *reported.track;
+        QCOMPARE(track.source, Jam::TrackSource::Host);
+        QCOMPARE(track.title, first.title);
+        QCOMPARE(track.artists, first.artists);
+        QCOMPARE(track.durationMs, first.durationMs);
+        QCOMPARE(track.albumId, QString());
+        QCOMPARE(track.coverUri, QString());
+        QVERIFY2(QRegularExpression(QStringLiteral("^[0-9a-f]{16}$")).match(track.id).hasMatch(), qPrintable(track.id));
+        const QString wire = QString::fromUtf8(Jam::Encode(reported));
+        QVERIFY2(!wire.contains(QStringLiteral("/home")) && !wire.contains(QStringLiteral(".mp3")), qPrintable(wire));
+
+        const size_t reports = stack.playing().size();
+        stack.jam.reportPlayback();
+        QTRY_COMPARE(stack.playing().size(), reports + 1);
+        QCOMPARE(stack.playing().back().track, reported.track);
+        stack.player.next();
+        QTRY_VERIFY(stack.playing().back().track && stack.playing().back().track->title == second.title);
+        QVERIFY(stack.playing().back().track->id != track.id);
+    }
+
+    void aTrackOfTheHostKeepsItsIdAcrossAResume() {  // HOST-37, HOST-23, HOST-26
+        QString id;
+        {
+            Stack stack(&library);
+            stack.playBase({LocalTrack()});
+            QVERIFY(stack.created());
+            QTRY_VERIFY(!stack.playing().empty() && stack.playing().back().track);
+            id = stack.playing().back().track->id;
+        }
+        Stack stack(&library, StoredSession());
+        stack.playBase({LocalTrack()});
+        stack.host.continueStored();
+        QVERIFY(stack.open());
+        QVERIFY(stack.waitSent(1));
+        stack.receive(Resumed(QStringLiteral("r1"), true));
+        QTRY_VERIFY(!stack.playing().empty());
+        QVERIFY(stack.playing().back().track);
+        QCOMPARE(stack.playing().back().track->id, id);
+    }
+
+    void aTrackOnlyTheHostCanPlayHasNoFileForTheGuests() {  // LISTEN-14, LISTEN-02, LISTEN-03
+        Stack stack(&library);
+        QVERIFY(stack.created());
+        stack.share = true;
+        Core::JamPlayback playback;
+        playback.kind = Core::JamPlayback::Kind::Base;
+        playback.track = LocalTrack();
+        playback.paused = false;
+        playback.link = StorageFile(QStringLiteral("t.mp3"));  // even files of Yandex's storage
+        playback.nextLink = StorageFile(QStringLiteral("n.mp3"));
+        Q_EMIT stack.jam.playback(playback);
+        QTRY_COMPARE(stack.playing().size(), static_cast<size_t>(2));
+        QCOMPARE(stack.playing().back().track->source, Jam::TrackSource::Host);
+        QCOMPARE(stack.playing().back().listenUrl, QString());
+        QCOMPARE(stack.playing().back().listenNextUrl, QString());
+
+        playback.track = BaseTrack("44");
+        playback.nextLink = Tests::FakeSource::LinkOf(kLocalFile);  // the next one is another source's
+        Q_EMIT stack.jam.playback(playback);
+        QTRY_COMPARE(stack.playing().size(), static_cast<size_t>(3));
+        QCOMPARE(stack.playing().back().track->source, Jam::TrackSource::Yandex);
+        QCOMPARE(stack.playing().back().listenUrl, playback.link.toString());
+        QCOMPARE(stack.playing().back().listenNextUrl, QString());
+        playback.nextLink = QUrl::fromLocalFile(kLocalFile);
+        Q_EMIT stack.jam.playback(playback);
+        QTRY_COMPARE(stack.playing().size(), static_cast<size_t>(4));
+        QCOMPARE(stack.playing().back().listenUrl, playback.link.toString());
+        QCOMPARE(stack.playing().back().listenNextUrl, QString());
+    }
+
+    void aTrackOnlyTheHostCanPlayCannotBeAdded() {  // HOST-37, HOST-20, ROOM-66
+        Stack stack(&library);
+        const Core::Track yandex = BaseTrack("44");
+        QVERIFY(!stack.host.canAdd(yandex));
+        QVERIFY(stack.created());
+        QVERIFY(stack.host.canAdd(yandex));
+        Core::Track untitled = yandex;
+        untitled.title = QStringLiteral(" ");
+        QVERIFY(!stack.host.canAdd(untitled));
+        const Core::Track local = LocalTrack();
+        QVERIFY(!stack.host.canAdd(local));
+        QVERIFY(!stack.host.add(local));
+        QVERIFY(!stack.host.playNext(local));
+        QTest::qWait(50);
+        QVERIFY(OfType<Jam::Add>(stack.sent()).empty());
+        QVERIFY(OfType<Jam::Pin>(stack.sent()).empty());
+    }
+
     void aRefusedPlayNextTellsTheReason() {  // HOST-20
         Stack stack(&library);
         QVERIFY(stack.created());
@@ -773,7 +903,7 @@ private Q_SLOTS:
         QVERIFY(OfType<Jam::Pin>(stack.sent()).empty());
     }
 
-    void onlyAYandexTrackCrossesIntoTheJam() {
+    void onlyACatalogTrackBecomesAJamItem() {
         Core::Track local;
         local.key = {QStringLiteral("local"), QStringLiteral("/music/a.mp3")};
         local.title = QStringLiteral("A");
@@ -825,6 +955,37 @@ private Q_SLOTS:
         track.title = QStringLiteral("T");
         track.id = QStringLiteral("123:456");
         QVERIFY(!Jam::JamTrackOf(track));
+    }
+
+    void aTrackOfTheHostKeepsOnlyWhatTheProtocolTakes() {  // HOST-37
+        Core::Track local = LocalTrack();
+        local.title = QStringLiteral(" Купалінка\t") + QString(200, u'x');
+        local.artists.clear();
+        for (int i = 0; i < 12; ++i) {
+            local.artists << (i == 3 ? QStringLiteral("  ") : QStringLiteral("A%1").arg(i));
+        }
+        local.durationMs = 90'000'000;
+        const std::optional<Jam::Track> track = Jam::BaseTrackOf(local, kHostSecret);
+        QVERIFY(track);
+        QCOMPARE(track->source, Jam::TrackSource::Host);
+        QCOMPARE(track->title.size(), 150);
+        QVERIFY(track->title.startsWith(QStringLiteral("Купалінка x")));
+        QCOMPARE(track->artists.size(), 10);
+        QCOMPARE(track->artists.at(3), QStringLiteral("A4"));
+        QCOMPARE(track->durationMs, 86'400'000);
+        QCOMPARE(track->albumId, QString());
+        QCOMPARE(track->coverUri, QString());
+        QCOMPARE(Jam::BaseTrackOf(LocalTrack(), kHostSecret)->id, track->id);
+        QVERIFY(Jam::BaseTrackOf(local, QStringLiteral("another room's secret"))->id != track->id);
+        QVERIFY(Jam::DecodeClient(Jam::Encode(Jam::Playing{Jam::Source::Wave, {}, track, 0, false, {}, {}})).isValid());
+        local.title = QStringLiteral("\n");
+        QVERIFY(!Jam::BaseTrackOf(local, kHostSecret));
+
+        const Core::Track yandex = BaseTrack("44");
+        QCOMPARE(Jam::BaseTrackOf(yandex, kHostSecret), Jam::JamTrackOf(yandex));
+        Core::Track notInTheCatalog = yandex;
+        notInTheCatalog.key.id = QStringLiteral("not an id");
+        QVERIFY(!Jam::BaseTrackOf(notInTheCatalog, kHostSecret));
     }
 };
 

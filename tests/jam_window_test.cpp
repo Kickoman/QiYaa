@@ -3,6 +3,7 @@
 #include "core/jam_mode.h"
 #include "core/player.h"
 #include "core/queue_source.h"
+#include "core/track.h"
 #include "jam/host_session.h"
 #include "jam/session_store.h"
 #include "skins/skin.h"
@@ -223,7 +224,7 @@ private Q_SLOTS:
         QVERIFY(QTest::qWaitFor([&] { return done; }, 5000));
     }
 
-    void theNoteSaysWhoAddedAnItemAndMarksTheJamVibe() {  // HOST-34
+    void theNoteSaysWhoAddedAnItemAndMarksTheJamVibe() {  // HOST-34, HOST-37
         Stack stack(&library, &baseSkin, pixelFont);
         QVERIFY(stack.created());
         const Core::QueueEntry item{
@@ -244,6 +245,10 @@ private Q_SLOTS:
              {Core::EntryPart::Head, Core::EntryPart::Continuation, Core::EntryPart::Other}) {
             QCOMPARE(Ui::JamTrackNote(Core::QueueEntry{.part = part}, true, &stack.host), QString());
         }
+        Core::Track local;
+        local.key = {QStringLiteral("local"), QStringLiteral("/home/маша/Music/Наш гурт/Купалінка.mp3")};
+        local.title = QStringLiteral("Купалінка");
+        QCOMPARE(Ui::JamTrackNote(Core::QueueEntry{.track = local}, true, &stack.host), QString());
     }
 
     void theStartPageStartsAJamWithTheGivenName() {
