@@ -442,7 +442,6 @@ void JamWindow::renderJam(Canvas& canvas) {
 }
 
 void JamWindow::renderSearch(Canvas& canvas) {
-    const bool connected = jamHost->isConnected();
     const QString find = tr("Search");
     const int findX = canvas.right - canvas.buttonWidth(find);
     field(
@@ -488,10 +487,11 @@ void JamWindow::renderSearch(Canvas& canvas) {
         canvas.text(
             QRect(canvas.left, canvas.y, addX - kGap - canvas.left, canvas.buttonHeight()), title, canvas.normal
         );
-        canvas.button(addX, canvas.y, add, connected, [this, track] {
+        const bool addable = jamHost->canAdd(track);
+        canvas.button(addX, canvas.y, add, addable, [this, track] {
             send(jamHost->add(track), tr("Sent to the jam"));
         });
-        canvas.button(nextX, canvas.y, next, connected, [this, track] {
+        canvas.button(nextX, canvas.y, next, addable, [this, track] {
             send(jamHost->playNext(track), tr("Sent to the jam, plays next"));
         });
         canvas.y += rowHeight;

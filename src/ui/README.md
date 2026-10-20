@@ -613,7 +613,8 @@ Q_SIGNALS:
 `JamTrackNote` is the word after a row's title while the jam is on (HOST-34): `+ <name>` for one of
 the jam's items, with the name `HostSession::participantName` gives for its `addedBy` (nothing when
 the room does not list it), and "jam vibe" (context `Ui::JamWindow`) for a track of the vibe from
-history; nothing for any other row, and nothing at all without a jam.
+history; nothing for any other row (a base track only the host can play too, HOST-37), and nothing
+at all without a jam.
 
 The host's side of the jam on screen (spec/jam/host.md HOST-20, HOST-25, HOST-35), title `JAM`,
 in the PLEDIT.TXT colours and font like the "Now playing" window. What it shows follows
@@ -638,10 +639,11 @@ in the PLEDIT.TXT colours and font like the "Now playing" window. What it shows 
   - **Search page:** a field and "Search" (Enter too), then `Catalog::searchTracks`: the available
     tracks, 20 at most, each with "To the jam" (`add`) and "Next" (`playNext`), and their
     `statusText`; "Searching…", "Nothing found", "The search failed: …". A newer search replaces an
-    older one's answer.
-- Without a connection (`!isConnected()`) "New link", the settings, "Remove", "To the jam" and
-  "Next" are drawn dim and do nothing (HOST-25); the link, the tabs, the search and the end work.
-  An action the session refuses says `No connection to the jam server`.
+    older one's answer. "To the jam" and "Next" follow `HostSession::canAdd(track)`: dim for a
+    track only the host can play (HOST-37), though for now the search gives only the catalog's.
+- Without a connection (`!isConnected()`, and so `!canAdd`) "New link", the settings, "Remove",
+  "To the jam" and "Next" are drawn dim and do nothing (HOST-25); the link, the tabs, the search
+  and the end work. An action the session refuses says `No connection to the jam server`.
 
 **How it is drawn.** One pass, `render(QPainter*)`, both paints the page (with a painter) and
 lists its controls (without one), so a click always finds what is drawn. Controls are boxes in the

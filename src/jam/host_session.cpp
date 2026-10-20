@@ -7,7 +7,10 @@
 #include "yandex/api_client.h"
 #include "yandex/library.h"
 
+#include <QByteArray>
+#include <QCryptographicHash>
 #include <QHash>
+#include <QMessageAuthenticationCode>
 #include <QPointer>
 #include <QRegularExpression>
 #include <QStringList>
@@ -25,6 +28,7 @@ constexpr int kMaxArtists = 10;
 constexpr int kMaxArtistLength = 64;
 constexpr int kMaxCoverLength = 300;
 constexpr qint64 kMaxDurationMs = 86'400'000;
+constexpr int kHostTrackIdBytes = 8;
 
 const QStringList kGoneReasons = {QStringLiteral("room-not-found"), QStringLiteral("bad-secret")};
 
@@ -60,28 +64,43 @@ QString Cut(const QString& text, int maximum) {
     return text.left(end).trimmed();
 }
 
+std::optional<Track> TrackWithin(const QString& title, const QStringList& artists, qint64 durationMs) {
+    Track track;
+    track.title = Cut(Clean(title), kMaxTitleLength);
+    if (track.title.isEmpty()) {
+        return std::nullopt;
+    }
+    for (const QString& artist : artists) {
+        const QString name = Cut(Clean(artist), kMaxArtistLength);
+        if (!name.isEmpty() && track.artists.size() < kMaxArtists) {
+            track.artists << name;
+        }
+    }
+    track.durationMs = std::clamp<qint64>(durationMs, 0, kMaxDurationMs);
+    return track;
+}
+
+QString HostTrackId(const Core::TrackKey& key, const QString& hostSecret) {
+    const QByteArray mac = QMessageAuthenticationCode::hash(
+        (key.source + u'\n' + key.id).toUtf8(), hostSecret.toUtf8(), QCryptographicHash::Sha256
+    );
+    return QString::fromLatin1(mac.left(kHostTrackIdBytes).toHex());
+}
+
 }  // namespace
 
 std::optional<Track> JamTrackOf(const Yandex::Track& track) {
     if (!CatalogIdPattern().match(track.id).hasMatch()) {
         return std::nullopt;
     }
-    Track jamTrack;
-    jamTrack.id = track.id;
-    jamTrack.albumId = CatalogIdPattern().match(track.albumId).hasMatch() ? track.albumId : QString();
-    jamTrack.title = Cut(Clean(track.title), kMaxTitleLength);
-    if (jamTrack.title.isEmpty()) {
+    std::optional<Track> jamTrack = TrackWithin(track.title, track.artists, track.durationMs);
+    if (!jamTrack) {
         return std::nullopt;
     }
-    for (const QString& artist : track.artists) {
-        const QString name = Cut(Clean(artist), kMaxArtistLength);
-        if (!name.isEmpty() && jamTrack.artists.size() < kMaxArtists) {
-            jamTrack.artists << name;
-        }
-    }
-    jamTrack.durationMs = std::clamp<qint64>(track.durationMs, 0, kMaxDurationMs);
+    jamTrack->id = track.id;
+    jamTrack->albumId = CatalogIdPattern().match(track.albumId).hasMatch() ? track.albumId : QString();
     if (IsCoverTemplate(track.coverUri)) {
-        jamTrack.coverUri = track.coverUri;
+        jamTrack->coverUri = track.coverUri;
     }
     return jamTrack;
 }
@@ -89,6 +108,18 @@ std::optional<Track> JamTrackOf(const Yandex::Track& track) {
 std::optional<Track> JamTrackOf(const Core::Track& track) {
     const std::optional<Yandex::Track> yandexTrack = YandexSource::YandexTrackOf(track);
     return yandexTrack ? JamTrackOf(*yandexTrack) : std::nullopt;
+}
+
+std::optional<Track> BaseTrackOf(const Core::Track& track, const QString& hostSecret) {
+    if (const std::optional<Yandex::Track> yandexTrack = YandexSource::YandexTrackOf(track)) {
+        return JamTrackOf(*yandexTrack);
+    }
+    std::optional<Track> hostTrack = TrackWithin(track.title, track.artists, track.durationMs);
+    if (hostTrack) {
+        hostTrack->id = HostTrackId(track.key, hostSecret);
+        hostTrack->source = TrackSource::Host;
+    }
+    return hostTrack;
 }
 
 Core::Track CoreTrackOf(const Track& track) {
@@ -250,6 +281,10 @@ void HostSession::end() {
         client.send(End{nextId()});
     }
     endLocally(HostEnd::ByHost);
+}
+
+bool HostSession::canAdd(const Core::Track& track) const {
+    return connected && JamTrackOf(track).has_value();
 }
 
 bool HostSession::add(const Core::Track& track) {
@@ -535,9 +570,9 @@ void HostSession::sendPlaying(const Core::JamPlayback& playback) {
             break;
         case Core::JamPlayback::Kind::Base:
             message.source = Source::Wave;  // HOST-10: the protocol's name for a base track
-            message.track = playback.track ? JamTrackOf(*playback.track) : std::nullopt;
+            message.track = playback.track ? BaseTrackOf(*playback.track, session->hostSecret) : std::nullopt;
             if (!message.track) {
-                return;  // a base track the protocol cannot carry is not reported (Kickoman/QiYaa-spec#4)
+                return;  // a Yandex track the protocol cannot carry, or a track without a title
             }
             break;
         case Core::JamPlayback::Kind::Idle:
@@ -546,8 +581,10 @@ void HostSession::sendPlaying(const Core::JamPlayback& playback) {
             message.paused = true;
             break;
     }
-    // Listening along (LISTEN-01 to LISTEN-04): only Yandex files, which the server takes.
-    if (message.source != Source::Idle && options.config().shareAudio) {
+    // Listening along (LISTEN-01 to LISTEN-04): only Yandex files, which the server takes, and none
+    // while a track only the host can play is current (LISTEN-14).
+    const bool hostTrack = message.track && message.track->source == TrackSource::Host;
+    if (message.source != Source::Idle && options.config().shareAudio && !hostTrack) {
         const QString link = playback.link.toString();
         const QString next = playback.nextLink.toString();
         message.listenUrl = IsListenUrl(link) ? link : QString();

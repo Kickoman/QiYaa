@@ -24,7 +24,7 @@ grep -ln 'include "\(core\|yandex\|sources\)/' src/jam/* | grep -vx 'src/jam/hos
 | `codec.h/.cpp` | `Encode`, `DecodeServer`, `DecodeClient`, `Decoded<T>`, `IsKnownReason`, `TypeOf` |
 | `client.h/.cpp` | `Client`, `ClientOptions`, `Status` — one connection to the server at a time |
 | `session_store.h/.cpp` | `Session`, `SessionStore`, `EncodeSession`, `DecodeSession` |
-| `host_session.h/.cpp` | `HostSession`, `HostOptions`, `HostConfig`, `HostPhase`, `HostEnd`, `JamTrackOf`, `CoreTrackOf` |
+| `host_session.h/.cpp` | `HostSession`, `HostOptions`, `HostConfig`, `HostPhase`, `HostEnd`, `JamTrackOf`, `BaseTrackOf`, `CoreTrackOf` |
 
 ## `protocol.h`
 
@@ -173,6 +173,7 @@ enum class HostPhase { None, Creating, Active };
 enum class HostEnd { ByHost, ByServer, Expired, Gone };
 std::optional<Track> JamTrackOf(const Yandex::Track& track);   // nullopt: the protocol cannot carry it
 std::optional<Track> JamTrackOf(const Core::Track& track);     // nullopt also for another source's track
+std::optional<Track> BaseTrackOf(const Core::Track& track, const QString& hostSecret);  // any source
 Core::Track CoreTrackOf(const Track& track);                   // a Yandex track: {"yandex", "<id>:<albumId>"}
 class HostSession : public QObject {
     HostSession(Core::JamMode*, Yandex::Library*, SessionStore, HostOptions, QObject* parent = nullptr);
@@ -181,6 +182,7 @@ class HostSession : public QObject {
     QString participantName(const QString& publicId) const;   // empty for one the room does not list
     bool create(const QString& hostName, const std::optional<SettingsPatch>& settings = {});
     void cancelCreate();  void continueStored();  void discardStored();  void end();
+    bool canAdd(const Core::Track&) const;              // connected, and a track of the catalog
     bool add(const Core::Track&);  bool playNext(const Core::Track&);  bool pin(const QString& itemId);
     bool remove(const QString& itemId);  bool kick(const QString& publicId);
     bool changeSettings(const SettingsPatch&);  bool rotateLink();
@@ -216,9 +218,10 @@ server, `Core::JamMode` for the queue, `Yandex::Library` for the guests' search 
   a `welcome` is taken whatever its version. It goes to `JamMode::setQueue`, and to `room()`.
 - **The queue's events.** `JamMode::itemStarted` → `Client::started` (to the outbox while not
   connected, HOST-25); `JamMode::playback` → `playing`, only while connected, a base track as
-  `source: wave` (HOST-10). A base track the protocol cannot carry is not reported
-  (Kickoman/QiYaa-spec#4). `JamMode::removeRequested` → `remove` for each item; without a
-  connection that fails, and `offline()` lets the app say so (HOST-25, HOST-36).
+  `source: wave` with `BaseTrackOf` and the session's `hostSecret` (HOST-10, HOST-37). A base track
+  that gives nullopt is not reported, and the guests go on seeing the last one.
+  `JamMode::removeRequested` → `remove` for each item; without a connection that fails, and
+  `offline()` lets the app say so (HOST-25, HOST-36).
 - **Names.** `participantName(publicId)` is the name of a participant of `room()`, for the line
   that says who added an item (HOST-34).
 - **Guests.** `searchRequest` → `Library::searchTracks` (`type=track`), the available tracks that
@@ -226,9 +229,13 @@ server, `Core::JamMode` for the queue, `Yandex::Library` for the guests' search 
   (HOST-28, HOST-29). `validateRequest` → `Library::tracksByIds`: an entry per id in order, a track
   or `track-unavailable`; a failed request fails them all (HOST-30). Answers go only while
   connected.
-- **The host's actions** (HOST-20) return false without a connection. `playNext` pins a track
-  already waiting; otherwise it adds it and pins the item when a `state` brings it (added by the
-  host), unless it came pinned. A refused add of `playNext` is `refused` and nothing is pinned.
+- **The host's actions** (HOST-20) return false without a connection. `add` and `playNext` take
+  only a track of the catalog (`JamTrackOf`) and return false for any other: a track only the host
+  can play is not added (HOST-37, ROOM-66), and the codec would let such an `add` through, since
+  the refusal is the server's. `canAdd` says beforehand whether they can work, so a window disables
+  the action instead of failing it. `playNext` pins a track already waiting; otherwise it adds it
+  and pins the item when a `state` brings it (added by the host), unless it came pinned. A refused
+  add of `playNext` is `refused` and nothing is pinned.
 - **End.** `end()` sends `end` when connected, then ends here: the file is cleared, `JamMode::end`
   keeps the waiting jam items as ordinary tracks that play first (HOST-32), the client stops,
   `ended(ByHost)`. `ended` from the server does the same without `end` (`ByServer`, `Expired`).
@@ -237,6 +244,10 @@ server, `Core::JamMode` for the queue, `Yandex::Library` for the guests' search 
   (`JamPlayback::link`), and `listenNextUrl`, the preloaded next one (`JamPlayback::nextLink`),
   each when it is a file of Yandex Music's storage (`IsListenUrl`); any other link (a test's mock
   server) is left out, so the server takes the report. Guests on the jam page may then play it.
+  While a track only the host can play is current, `playing` carries neither link, whatever the
+  player has: the codec would drop the whole message (LISTEN-14). For such a track next,
+  `IsListenUrl` is the whole rule: only the Yandex source gives files of Yandex's storage, so the
+  next file of another source (a path, a test's `https://fake.example/…`) never passes.
 - `changed()` follows any change of `phase()`, the connection, `room()` or `joinUrl()`.
 - **The jam on and its connection** (HOST-25, HOST-26), for the app's status and telemetry:
   - `activeChanged` gives the edges of `phase() == Active`: `true` after `created` and at once in
@@ -252,9 +263,22 @@ spaces, the title cut to 150 characters (nullopt when empty), up to 10 non-empty
 characters, the duration within 0 … 24 h, and the cover only as a template with `%%`, no scheme
 and no spaces, 300 characters at most. Cutting never splits a surrogate pair.
 
-The jam carries only Yandex tracks. `JamTrackOf(Core::Track)` goes through
-`YandexSource::YandexTrackOf`, so another source's track is nullopt and `add` and `playNext`
-refuse it. `CoreTrackOf` is how a room's items reach `Core::JamMode`: the key from
+A track of the catalog is one of the Yandex source (`YandexSource::YandexTrackOf`, by
+`TrackKey::source`); any other source's track is one that only the host can play. Jam items, the
+guests' search and checks, `add` and `playNext` take only the catalog: `JamTrackOf(Core::Track)`
+is nullopt for another source's track. `BaseTrackOf` is for what the host reports as its base
+(HOST-37):
+- a track of the catalog is `JamTrackOf`'s, and nullopt stays nullopt: a Yandex track the protocol
+  cannot carry is never turned into the host's own;
+- any other is `{id, source: Host, title, artists, durationMs}` under `JamTrackOf`'s limits, with
+  no `albumId` or `coverUri`. The `id` is the first 16 hex digits of HMAC-SHA256 with the
+  `hostSecret` as the key over `source + "\n" + id` of its `TrackKey`: the same for that track all
+  the jam session (the `hostSecret` survives a new link and a resume, HOST-22), another in another
+  room, and nothing a guest could tell a path or a file name by;
+- a title that is empty after the cleaning gives nullopt, and the track is not reported. A source
+  of such tracks must always give one (a local file: its name without the extension).
+
+`CoreTrackOf` is how a room's items reach `Core::JamMode`: the key from
 `YandexSource::KeyOf(id, albumId)`, the title, artists, duration and cover, `available`. `playNext`
 looks for the track in the room by its catalog id (`YandexSource::CatalogId`), since a room's items
 carry the track id alone.
