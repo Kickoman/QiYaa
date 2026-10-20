@@ -1,5 +1,6 @@
 #pragma once
 
+#include "audio/byte_source.h"
 #include "core/failure_policy.h"
 #include "core/track.h"
 #include "core/track_source.h"
@@ -11,6 +12,7 @@
 #include <QStringList>
 #include <QUrl>
 
+#include <memory>
 #include <optional>
 
 namespace Tests {
@@ -54,6 +56,7 @@ public:
 
     void setAnswersAtOnce(bool on) { answersAtOnce = on; }
     QPointer<FakeDownload> complete(qsizetype request, int bitrateKbps = 320);
+    void completeWithFile(qsizetype request, std::shared_ptr<Audio::ByteSource> file);
     void fail(qsizetype request, Core::FailureKind kind, const QString& text = QStringLiteral("broken"));
     void changeFiles();
     static QUrl LinkOf(const QString& id);

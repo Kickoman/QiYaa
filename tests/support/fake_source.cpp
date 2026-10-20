@@ -77,6 +77,11 @@ QPointer<FakeDownload> FakeSource::complete(qsizetype request, int bitrateKbps) 
     return handle;
 }
 
+void FakeSource::completeWithFile(qsizetype request, std::shared_ptr<Audio::ByteSource> file) {
+    const TOpened done = std::exchange(answers[request], {});
+    done(Core::OpenedTrack{.link = LinkOf(askedIds[request]), .file = std::move(file)});
+}
+
 void FakeSource::fail(qsizetype request, Core::FailureKind kind, const QString& text) {
     const TOpened done = std::exchange(answers[request], {});
     done(Core::TrackFailure{kind, text});

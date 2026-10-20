@@ -1,8 +1,9 @@
 # `src/audio` — playback engine, equalizer and Winamp EQ presets
 
-Plays one audio file while it is still downloading: the bytes the caller appends go into an
-in-memory `StreamBuffer`, a decoder thread turns them into float stereo PCM at the output device's
-rate, a 2-second queue of blocks carries that PCM to the miniaudio device callback together with
+Plays one audio file while it is still downloading, or from the disk: the bytes the caller appends
+go into an in-memory `StreamBuffer`, or the caller hands it a `FileByteSource`; a decoder thread
+turns them into float stereo PCM at the output device's rate, a 2-second queue of blocks carries
+that PCM to the miniaudio device callback together with
 what it is (track, position, start or seek), and the callback applies the equalizer, feeds the
 visualization tap and applies volume and balance. A second stream can be queued; it follows the
 current one in the same queue without a gap. It reads mp3, FLAC,
@@ -17,7 +18,9 @@ equalizer window ([src/ui](../ui/README.md)). Namespace `Audio`, library `qiyaa_
 | `audio_engine.h/.cpp` | `AudioEngine` — streams, state, seeking, volume, balance, `poll()`. Only in the `.cpp`: `AudioEngine::Implementation` (miniaudio context and device, the device callback) |
 | `blocks.h` | `Block`, `BlockQueue` (decoder → callback), `PlaybackSnapshot`, `PlaybackState` (callback → UI), `Older` |
 | `decoder.h/.cpp` | `Decoder` — the decoder thread: its commands and events, every `ma_decoder`, gapless chaining. Only in the `.cpp`: `Decoder::Source` |
-| `stream_buffer.h/.cpp` | `ByteSource`, `StreamBuffer` — what the decoder reads, one downloading file |
+| `byte_source.h` | `ByteSource` — what the decoder reads |
+| `stream_buffer.h/.cpp` | `StreamBuffer` — one downloading file |
+| `file_byte_source.h/.cpp` | `FileByteSource` — one file on disk |
 | `equalizer.h/.cpp` | `EqSettings`, `EqualizerDsp` — preamp and 10 peaking biquads per channel, coefficients handed to the audio thread through a triple buffer; `kEqBands`, `kEqBandHz`, `kEqMaxDb` |
 | `eq_presets.h/.cpp` | `EqPreset`; `ParseEqf`, `WriteEqf` (`.eqf` and `.q1`); `EqfToDb`, `DbToEqf`; `BuiltinEqPresets` — Winamp's 17 presets |
 | `mp4_aac_backend.h/.cpp` | `IsMp4`, `Mp4AacBackend` — a miniaudio decoding backend for AAC in MP4 over minimp4 and fdk-aac. Only in the `.cpp`: `Mp4AacDecoder` and the `DataSource` miniaudio holds |
@@ -53,10 +56,11 @@ equalizer window ([src/ui](../ui/README.md)). Namespace `Audio`, library `qiyaa_
   in `mp4_aac_backend.cpp`. miniaudio itself: `audio_engine.cpp` (the device), `decoder.cpp` (the
   decoders), `mp4_aac_backend.*` and `miniaudio_impl.c`.
 - Inside the module: `audio_engine.h` and `eq_presets.h` include `equalizer.h`; `decoder.h`
-  includes `blocks.h` and `stream_buffer.h`; `audio_engine.cpp` includes `blocks.h`, `decoder.h`,
-  `equalizer.h`, `stream_buffer.h` and `vis_tap.h`; `decoder.cpp` includes `mp4_aac_backend.h`;
-  `eq_presets.cpp` includes `error.h`. `blocks.h`, `stream_buffer.h`, `equalizer.h`, `vis_tap.h`
-  and `error.h` include no file of the module.
+  includes `blocks.h` and `byte_source.h`; `stream_buffer.h` and `file_byte_source.h` include
+  `byte_source.h`; `audio_engine.cpp` includes `blocks.h`, `decoder.h`, `equalizer.h`,
+  `stream_buffer.h` and `vis_tap.h`; `decoder.cpp` includes `mp4_aac_backend.h`; `eq_presets.cpp`
+  includes `error.h`. `blocks.h`, `byte_source.h`, `equalizer.h`, `vis_tap.h` and `error.h` include
+  no file of the module.
 
 ```bash
 grep -rnE '#include "(app|core|integrations|skins|ui|vis|yandex)/' src/audio/ --include='*.h' --include='*.cpp'   # must print nothing
@@ -72,8 +76,9 @@ grep -rnw 'throw' src/audio/ --include='*.h' --include='*.cpp' | grep -v '^src/a
 ```
 
 The tests are `tests/audio_test.cpp` (the real engine on `tests/data/sine440_3s.mp3`,
-`sine440_3s_heaac.m4a`, `sine440_1s.flac` and `sine440_1s.wav`), `tests/mp4_aac_test.cpp` (the MP4 backend through an `ma_decoder` over
-memory) and `tests/dsp_test.cpp` (equalizer response, presets, `.eqf`). CTest runs every test with
+`sine440_3s_heaac.m4a`, `sine440_1s.flac` and `sine440_1s.wav`, streamed or as files on disk),
+`tests/mp4_aac_test.cpp` (the MP4 backend through an `ma_decoder` over memory) and
+`tests/dsp_test.cpp` (equalizer response, presets, `.eqf`). CTest runs every test with
 `QIYAA_AUDIO_BACKEND=null`.
 
 ## `audio_engine.h` — `AudioEngine`
@@ -94,7 +99,8 @@ public:
     using TStreamId = quint64;         // 0 = none
 
     TStreamId beginStream(double startSeconds = 0);   // drops current and queued; 0 without a device
-    TStreamId queueStream();           // 0 without a current stream
+    bool attachSource(TStreamId stream, std::shared_ptr<ByteSource> source);   // see Streams
+    TStreamId queueStream(std::shared_ptr<ByteSource> source = nullptr);       // 0: no current
     void clearQueued();
     TStreamId queuedStream() const;    // 0 when none, or the decoder could not open it
     TStreamId playQueuedNow();         // 0 when queuedStream() is 0
@@ -161,12 +167,22 @@ report the file's own format, for display.
   way `finishData()` does: the engine plays up to the last byte received and reports
   `trackFinished` as usual. Telling the user is the caller's job.
 - `queueStream()` replaces the queued stream (it calls `clearQueued()` first) and returns 0 without
-  a current stream, i.e. before `beginStream()`/`playQueuedNow()` and after `stop()`.
+  a current stream, i.e. before `beginStream()`/`playQueuedNow()` and after `stop()`. With a
+  `source` the queued stream reads it instead of a new `StreamBuffer`.
+- `attachSource(stream, source)` makes the current stream read `source` instead of its
+  `StreamBuffer`. Called before any `appendData()`, it is as if the stream had begun with it: the
+  decoder starts it again in the same generation, from the frame the position shows (the start of
+  `beginStream(startSeconds)`, or a seek made meanwhile). After `appendData()`, blocks already
+  decoded from the buffer would play first. It returns false, and changes nothing, for another
+  stream, for no source, and while a stream is queued: the decoder's `Start` drops its queued
+  stream. It is how the `Player` plays a file it opens after `beginStream()`.
+- `appendData()` and `finishData()` feed only a stream that reads a `StreamBuffer`.
 - `playQueuedNow()` makes the queued stream current and plays it from byte 0 (`Buffering`, no
   `trackAdvanced`).
 - `stop()` drops every stream, stops the device, resets the position to 0 and sets `Stopped`.
-- Streams are held whole in memory: the current and the queued file. After a gapless advance the
-  decoder releases the previous file when it hears of the advance.
+- A streamed file is held whole in memory, the current and the queued one; a `FileByteSource` is
+  read from the disk. After a gapless advance the decoder releases the previous source when it
+  hears of the advance.
 
 ### State and signals
 
@@ -224,6 +240,7 @@ what a block of audio is travels with it.
 | callback → UI | `PlaybackState`: one writer, a sequence lock | `{generation, stream, frame, ended}` |
 | UI → callback | atomics | `generation`, `allowedNext` (the stream the callback may go on to), the gains; the equalizer through its triple buffer |
 | UI → decoder | `StreamBuffer`, its own mutex | the downloaded bytes; `append` and `finish` wake the decoder |
+| disk → decoder | `FileByteSource`, its own mutex | reads only; its size is fixed when it opens |
 
 The block, in `blocks.h`:
 
@@ -269,7 +286,9 @@ it, and the decoder stamps it on every block. Older blocks are never heard.
 - `poll()` reads the callback's state before the decoder's events: an `Opened` or `OpenFailed`
   sent before the blocks the callback has played is then already among them.
 - Lock order: the decoder's mutex, then a `StreamBuffer`'s. `StreamBuffer` wakes the decoder after
-  it has released its own.
+  it has released its own. `FileByteSource` takes its mutex only in `read`, which the decoder calls
+  outside its own; `available()` and `complete()`, which it calls under its mutex, touch no lock and
+  no disk.
 
 ### Decoder thread
 
@@ -381,7 +400,7 @@ the target; a newer command interrupts it. A seek past the end of the file ends 
 target. Until audio from the target plays the position shows the target and the state does not
 change.
 
-### `ByteSource`, `StreamBuffer` (`stream_buffer.h`)
+### `ByteSource` (`byte_source.h`), `StreamBuffer`, `FileByteSource`
 
 ```cpp
 class ByteSource {
@@ -398,16 +417,36 @@ public:
     void append(const char* data, size_t byteCount);
     void finish();                                          // whole or cut short
 };
+
+class FileByteSource : public ByteSource {
+public:
+    static std::shared_ptr<FileByteSource> Open(const std::filesystem::path& path);   // or null
+};
 ```
 
 - What the decoder reads. Nothing in it waits: the decoder waits for bytes on its own terms, and
-  stops waiting when a command needs it. A file on disk (#30) is another `ByteSource`.
+  stops waiting when a command needs it.
 - Each decoder source keeps its own read offset, so a stream opened again (chained again after an
   undo, `playQueuedNow()`) starts at byte 0 by itself.
 - `StreamBuffer`: a download as it arrives, the whole file in one growing `std::vector<char>` with
   its own mutex. No size limit. `append` and `finish` come from the UI thread, the reads from the
   decoder thread; `onChange` (the engine passes the decoder's wake-up) runs outside the buffer's
   lock.
+- `FileByteSource`: a file on disk, opened with the standard library (a `std::filesystem::path`,
+  so a path from a `QString` goes through `toStdU16String()` and keeps its Cyrillic on Windows).
+  `Open` gives null for a missing file, a folder or one it cannot read. Its size is taken once
+  when it opens, so `available()` is that size and `complete()` is true from the start: a seek
+  never waits. Nothing is held in memory but the stream's own buffer, and no file is mapped (a
+  mapped file cut short would crash the process). `read` seeks and reads under its own mutex and
+  gives fewer bytes once the file is shorter than it was: a file cut short while it plays ends the
+  track there, with `trackFinished` and no error. It can be destroyed on any thread: the decoder
+  may hold the last reference.
+
+**Traps:**
+- The MP3 decoder reads ahead in chunks of 64 KiB, and the block queue holds 2 s: a change to a
+  file under a playing stream shows only after both, more than 8 s later for a 64 kbps mp3.
+- On Windows the standard library opens a file without `FILE_SHARE_DELETE`: the current and the
+  queued file cannot be deleted or renamed while they play.
 
 ### Output device and `QIYAA_AUDIO_BACKEND`
 
@@ -653,7 +692,8 @@ Everything else is data:
 - `beginStream()` without a device returns 0, sets `Stopped` and emits
   `errorOccurred("no audio output device")`.
 - A first stream that cannot be decoded: `poll()` calls `stop()` and emits
-  `errorOccurred("cannot decode the audio stream: <n> bytes received, not mp3, AAC in MP4, flac or wav")`.
+  `errorOccurred("cannot decode the audio stream: <n> bytes, not mp3, AAC in MP4, flac or wav")`:
+  the bytes received so far, or the size of a file on disk.
 - A queued stream that cannot be decoded is dropped silently: `queuedStream()` returns 0 and the
   current track ends with `trackFinished`.
 - A failed download (`failData()`) is not an error for the engine: the stream ends where its data

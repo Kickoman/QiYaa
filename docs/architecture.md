@@ -77,7 +77,8 @@ Ui (menu)  ──source──▶  Core::Player  ──open──▶  Core::Sourc
    chosen quality (a signed mp3 link, or AAC in MP4 at the economy quality) and hands back a
    download that has not started yet. The `Player` starts it and appends it to the stream chunk by
    chunk. When the download completes, it opens and downloads the next track into a queued stream,
-   so the engine continues without a gap.
+   so the engine continues without a gap. A source may hand back a file on disk instead
+   (`Audio::FileByteSource`): the engine reads it in place, and the next track is opened at once.
 3. The engine decodes on its own thread into a queue of blocks, each saying which track, where in
    it and for which start or seek it is; miniaudio's device thread plays them, applies the
    equalizer, copies the frames into `VisTap` and applies volume and balance.

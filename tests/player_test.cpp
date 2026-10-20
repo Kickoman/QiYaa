@@ -1,4 +1,5 @@
 #include "audio/audio_engine.h"
+#include "audio/file_byte_source.h"
 #include "core/player.h"
 #include "core/track.h"
 #include "core/track_source.h"
@@ -14,8 +15,10 @@
 #include <QSignalSpy>
 #include <QString>
 #include <QStringList>
+#include <QTemporaryDir>
 #include <QTest>
 
+#include <filesystem>
 #include <memory>
 
 namespace {
@@ -171,6 +174,25 @@ private Q_SLOTS:
         QCOMPARE(stack.source.started(), (QStringList{"1", "2"}));
         QCOMPARE(stack.player.preloadedIndex(), 1);
         QCOMPARE(stack.player.nextLink(), Tests::FakeSource::LinkOf("2"));
+    }
+
+    void aTrackFromAFileOnDiskPlaysAndTheNextOneIsPreloadedAtOnce() {  // LOCAL-06
+        QTemporaryDir directory;
+        QFile file(directory.filePath(QStringLiteral("track.mp3")));
+        QVERIFY(file.open(QIODevice::WriteOnly) && file.write(mp3) == mp3.size());
+        file.close();
+        const std::filesystem::path path(file.fileName().toStdU16String());
+        Stack stack;
+        QVERIFY(stack.start(3));
+        stack.player.playIndex(0);
+        stack.source.completeWithFile(0, Audio::FileByteSource::Open(path));
+        QCOMPARE(stack.events, QStringList{"started:1"});
+        QCOMPARE(stack.source.asked(), (QStringList{"1", "2"}));
+        stack.source.completeWithFile(1, Audio::FileByteSource::Open(path));
+        QCOMPARE(stack.player.preloadedIndex(), 1);
+        QVERIFY(stack.engine.queuedStream() != 0);
+        QTRY_COMPARE(stack.engine.state(), Audio::AudioEngine::State::Playing);
+        QVERIFY(stack.source.started().isEmpty());
     }
 
     void anotherSourcesFilesLeaveThePreloadAlone() {

@@ -14,7 +14,7 @@
 
 namespace Audio {
 
-class StreamBuffer;
+class ByteSource;
 
 class AudioEngine : public QObject {
     Q_OBJECT
@@ -38,7 +38,8 @@ public:
     // A new current stream. With `startSeconds`, decoding starts there and the position shows it
     // from the start: how a track that lost its download resumes.
     TStreamId beginStream(double startSeconds = 0);
-    TStreamId queueStream();
+    bool attachSource(TStreamId stream, std::shared_ptr<ByteSource> source);
+    TStreamId queueStream(std::shared_ptr<ByteSource> source = nullptr);
     void clearQueued();
     TStreamId queuedStream() const;
     TStreamId playQueuedNow();
@@ -87,7 +88,7 @@ private:
     void newGeneration(int64_t frame);
     void startDevice();
 
-    QHash<TStreamId, std::shared_ptr<StreamBuffer>> streams;
+    QHash<TStreamId, std::shared_ptr<ByteSource>> streams;
     TStreamId lastId = 0;
     TStreamId currentId = 0;
     TStreamId queuedId = 0;

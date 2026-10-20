@@ -278,17 +278,31 @@ AudioEngine::TStreamId AudioEngine::beginStream(double startSeconds) {
     return currentId;
 }
 
-AudioEngine::TStreamId AudioEngine::queueStream() {
+bool AudioEngine::attachSource(TStreamId stream, std::shared_ptr<ByteSource> source) {
+    if (!stream || stream != currentId || queuedId || !source) {
+        return false;
+    }
+    streams.insert(stream, source);
+    const uint32_t current = implementation->generation.load();
+    implementation->decoder->send(
+        Decoder::Command::Start(stream, std::move(source), current, implementation->shownFrame)
+    );
+    return true;
+}
+
+AudioEngine::TStreamId AudioEngine::queueStream(std::shared_ptr<ByteSource> source) {
     clearQueued();
     if (!currentId) {
         return 0;
     }
     queuedId = ++lastId;
     Decoder* decoder = implementation->decoder.get();
-    auto buffer = std::make_shared<StreamBuffer>([decoder] { decoder->wake(); });
-    streams.insert(queuedId, buffer);
+    if (!source) {
+        source = std::make_shared<StreamBuffer>([decoder] { decoder->wake(); });
+    }
+    streams.insert(queuedId, source);
     implementation->allowedNext.store(queuedId, std::memory_order_release);
-    decoder->send(Decoder::Command::Queue(queuedId, buffer));
+    decoder->send(Decoder::Command::Queue(queuedId, std::move(source)));
     return queuedId;
 }
 
@@ -312,29 +326,29 @@ AudioEngine::TStreamId AudioEngine::playQueuedNow() {
     if (!id) {
         return 0;
     }
-    const std::shared_ptr<StreamBuffer> buffer = streams.value(id);
+    const std::shared_ptr<ByteSource> source = streams.value(id);
     streams.clear();
-    streams.insert(id, buffer);
+    streams.insert(id, source);
     currentId = id;
     queuedId = 0;
     implementation->allowedNext.store(0, std::memory_order_release);
     implementation->queuedFormat.reset();
     newGeneration(0);
     sourceRate = sourceChannelCount = 0;
-    implementation->decoder->send(Decoder::Command::Start(id, buffer, implementation->generation.load(), 0));
+    implementation->decoder->send(Decoder::Command::Start(id, source, implementation->generation.load(), 0));
     startDevice();
     setState(State::Buffering);
     return id;
 }
 
 void AudioEngine::appendData(TStreamId stream, const QByteArray& bytes) {
-    if (const auto buffer = streams.value(stream)) {
+    if (const auto buffer = std::dynamic_pointer_cast<StreamBuffer>(streams.value(stream))) {
         buffer->append(bytes.constData(), static_cast<size_t>(bytes.size()));
     }
 }
 
 void AudioEngine::finishData(TStreamId stream) {
-    if (const auto buffer = streams.value(stream)) {
+    if (const auto buffer = std::dynamic_pointer_cast<StreamBuffer>(streams.value(stream))) {
         buffer->finish();
     }
 }
@@ -459,13 +473,11 @@ void AudioEngine::poll() {
             }
         } else if (event.stream == currentId) {
             const TStreamId failedId = currentId;
-            const std::shared_ptr<StreamBuffer> buffer = streams.value(failedId);
-            const qulonglong received = buffer ? buffer->available() : 0;
+            const std::shared_ptr<ByteSource> source = streams.value(failedId);
+            const qulonglong bytes = source ? source->available() : 0;
             stop();
             Q_EMIT errorOccurred(
-                QStringLiteral("cannot decode the audio stream: %1 bytes received, "
-                               "not mp3, AAC in MP4, flac or wav")
-                    .arg(received)
+                QStringLiteral("cannot decode the audio stream: %1 bytes, not mp3, AAC in MP4, flac or wav").arg(bytes)
             );
             Q_EMIT streamUndecodable(failedId);
             return;

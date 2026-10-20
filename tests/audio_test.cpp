@@ -1,4 +1,5 @@
 #include "audio/audio_engine.h"
+#include "audio/file_byte_source.h"
 #include "core/player.h"
 #include "core/track_source.h"
 
@@ -12,10 +13,13 @@
 #include <QRandomGenerator>
 #include <QSignalSpy>
 #include <QString>
+#include <QTemporaryDir>
 #include <QTest>
 
 #include <algorithm>
+#include <filesystem>
 #include <functional>
+#include <system_error>
 
 using Audio::AudioEngine;
 
@@ -43,6 +47,10 @@ QByteArray BareMp3Frames(const QByteArray& file) {
     return file.mid(offset);
 }
 
+std::filesystem::path PathOf(const QString& path) {
+    return std::filesystem::path(path.toStdU16String());
+}
+
 QByteArray Id3Prefix(int paddingBytes) {
     QByteArray tag("ID3\x04\x00\x00", 6);
     for (const int shift : {21, 14, 7, 0}) {
@@ -58,6 +66,16 @@ class TestAudio : public QObject {
 private:
     Audio::AudioEngine engine;
     QByteArray mp3;
+    QTemporaryDir files;
+
+    QString written(const QString& name, const QByteArray& bytes) const {
+        const QString path = files.filePath(name);
+        QFile file(path);
+        if (!file.open(QIODevice::WriteOnly) || file.write(bytes) != bytes.size()) {
+            return {};
+        }
+        return path;
+    }
 
     static QByteArray Fixture(const QString& name) {
         QFile file(QStringLiteral(QIYAA_TEST_DATA "/") + name);
@@ -333,6 +351,97 @@ private Q_SLOTS:
         const double position = engine.positionSeconds();
         QVERIFY2(position >= 1.5 && position < 2.3, qPrintable(QString::number(position)));
         engine.stop();
+    }
+
+    void aFileOnDiskKnowsItsSizeAndReadsAnyPart() {  // LOCAL-06
+        const QString path = written(QStringLiteral("Наш гурт — Купалінка.mp3"), mp3);
+        QVERIFY(!path.isEmpty());
+        const std::shared_ptr<Audio::FileByteSource> file = Audio::FileByteSource::Open(PathOf(path));
+        QVERIFY(file);
+        QCOMPARE(file->available(), static_cast<uint64_t>(mp3.size()));
+        QVERIFY(file->complete());
+        QByteArray head(10, '\0');
+        QCOMPARE(file->read(0, head.data(), 10), static_cast<size_t>(10));
+        QCOMPARE(head, mp3.left(10));
+        QByteArray tail(100, '\0');
+        QCOMPARE(file->read(static_cast<uint64_t>(mp3.size() - 4), tail.data(), 100), static_cast<size_t>(4));
+        QCOMPARE(tail.left(4), mp3.right(4));
+        QCOMPARE(file->read(static_cast<uint64_t>(mp3.size()), tail.data(), 100), static_cast<size_t>(0));
+        QCOMPARE(file->read(0, head.data(), 10), static_cast<size_t>(10));
+        QCOMPARE(head, mp3.left(10));
+        QVERIFY(!Audio::FileByteSource::Open(PathOf(files.filePath(QStringLiteral("none.mp3")))));
+        QVERIFY(!Audio::FileByteSource::Open(PathOf(files.path())));
+    }
+
+    void aFileOnDiskPlaysAndSeeksWithoutWaiting() {  // LOCAL-06, TR-09
+        const QString path = written(QStringLiteral("long.mp3"), repeatedMp3(4));
+        QVERIFY(!path.isEmpty());
+        const auto stream = engine.beginStream();
+        QVERIFY(engine.attachSource(stream, Audio::FileByteSource::Open(PathOf(path))));
+        pumpUntil([&] { return engine.state() == Audio::AudioEngine::State::Playing; }, 3000);
+        QCOMPARE(engine.state(), Audio::AudioEngine::State::Playing);
+        QVERIFY(engine.seek(10.0));
+        pumpFor(300);
+        const double early = engine.positionSeconds();
+        pumpFor(300);
+        const double later = engine.positionSeconds();
+        engine.stop();
+        QVERIFY2(
+            early >= 10.0 && later > early + 0.15,
+            qPrintable(QStringLiteral("%1 s, then %2 s").arg(early, 0, 'f', 2).arg(later, 0, 'f', 2))
+        );
+    }
+
+    void aSeekBeforeTheFileComesIsKept() {
+        const QString path = written(QStringLiteral("seek.mp3"), mp3);
+        const auto stream = engine.beginStream();
+        QVERIFY(engine.seek(1.5));
+        QVERIFY(engine.attachSource(stream, Audio::FileByteSource::Open(PathOf(path))));
+        QVERIFY(!engine.attachSource(stream + 1, Audio::FileByteSource::Open(PathOf(path))));
+        pumpUntil([&] { return engine.state() == Audio::AudioEngine::State::Playing; }, 3000);
+        pumpFor(200);
+        const double position = engine.positionSeconds();
+        engine.stop();
+        QVERIFY2(position >= 1.5 && position < 2.3, qPrintable(QString::number(position)));
+    }
+
+    void aQueuedFileFollowsWithoutGap() {  // LOCAL-06
+        const QString path = written(QStringLiteral("next.mp3"), mp3);
+        QSignalSpy finished(&engine, &Audio::AudioEngine::trackFinished);
+        QSignalSpy advanced(&engine, &Audio::AudioEngine::trackAdvanced);
+        startNearEnd();
+        const auto nextStream = engine.queueStream(Audio::FileByteSource::Open(PathOf(path)));
+        QVERIFY(nextStream != 0);
+        QVERIFY(!engine.attachSource(engine.currentStream(), Audio::FileByteSource::Open(PathOf(path))));
+        pumpUntil([&] { return advanced.count() > 0 || finished.count() > 0; }, 3000);
+        QVERIFY2(advanced.count() == 1, qPrintable(describeEngine(advanced.count(), finished.count())));
+        QCOMPARE(engine.currentStream(), nextStream);
+        engine.stop();
+    }
+
+    void aFileCutShortWhileItPlaysEndsTheTrackEarly() {  // LOCAL-06
+        const QByteArray longMp3 = repeatedMp3(14);
+        const QString path = written(QStringLiteral("cut.mp3"), longMp3);
+        QSignalSpy finished(&engine, &Audio::AudioEngine::trackFinished);
+        QSignalSpy errors(&engine, &Audio::AudioEngine::errorOccurred);
+        const auto stream = engine.beginStream();
+        QVERIFY(engine.attachSource(stream, Audio::FileByteSource::Open(PathOf(path))));
+        pumpUntil([&] { return engine.state() == Audio::AudioEngine::State::Playing; }, 3000);
+        std::error_code error;
+        std::filesystem::resize_file(PathOf(path), static_cast<uintmax_t>(longMp3.size() / 2), error);
+        if (error) {
+            engine.stop();
+            QSKIP(
+                qPrintable(QStringLiteral("cannot cut a file that is open: ") + QString::fromStdString(error.message()))
+            );
+        }
+        QVERIFY(engine.seek(19.0));
+        pumpUntil([&] { return finished.count() > 0; }, 5000);
+        const double position = engine.positionSeconds();
+        engine.stop();
+        QCOMPARE(finished.count(), 1);
+        QVERIFY(errors.isEmpty());
+        QVERIFY2(position > 19.0 && position < 23.0, qPrintable(QString::number(position)));
     }
 
     void flacAndWavPlayBeforeTheirDownloadEnds_data() {
