@@ -1,5 +1,7 @@
 #pragma once
 
+#include "audio/byte_source.h"
+
 #include <cstddef>
 #include <cstdint>
 #include <functional>
@@ -7,15 +9,6 @@
 #include <vector>
 
 namespace Audio {
-
-class ByteSource {
-public:
-    virtual ~ByteSource() = default;
-
-    virtual size_t read(uint64_t offset, void* destination, size_t size) const = 0;
-    virtual uint64_t available() const = 0;
-    virtual bool complete() const = 0;
-};
 
 class StreamBuffer : public ByteSource {
 public:

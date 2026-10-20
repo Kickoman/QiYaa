@@ -1,7 +1,7 @@
 #pragma once
 
 #include "audio/blocks.h"
-#include "audio/stream_buffer.h"
+#include "audio/byte_source.h"
 
 #include <chrono>
 #include <condition_variable>

@@ -1,5 +1,6 @@
 #pragma once
 
+#include "audio/byte_source.h"
 #include "core/failure_policy.h"
 #include "core/track.h"
 
@@ -32,10 +33,11 @@ Q_SIGNALS:
 };
 
 struct OpenedTrack {
-    std::unique_ptr<TrackDownload> download;
-    QUrl link;
+    std::unique_ptr<TrackDownload> download{};
+    QUrl link{};
     int bitrateKbps = 0;
-    QString codec;
+    QString codec{};
+    std::shared_ptr<Audio::ByteSource> file{};
 };
 
 using TOpenResult = std::variant<OpenedTrack, TrackFailure>;

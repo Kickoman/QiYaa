@@ -44,7 +44,7 @@ user: the `Player` says what happened as `PlayerNotice` codes, and `src/ui` word
   `player.h` declares `Queue` and holds it through a `std::unique_ptr`, so nothing outside the
   `Player` reaches the queue but through it.
 - No file includes `yandex/`. The only HTTP of `core` is `CoverCache`'s: a track's file comes
-  through its source's `TrackDownload`.
+  through its source's `TrackDownload`, or as the `Audio::ByteSource` of a file on disk.
 - `Player` is the only caller of `AudioEngine::poll()` in `src/`. Everything the engine reports
   asynchronously therefore arrives through `Player`'s timer (see [Threads and
   lifetime](#threads-and-lifetime)).
@@ -463,10 +463,14 @@ A layer lies over the queue's own source, the base, while it is on: the jam
 
 - The file comes from the `TrackDownload` the source opened. The `Player` connects it to its
   stream before it calls `start()`.
+- A source may open a file on disk instead (`OpenedTrack::file`). The `Player` then hands it to
+  the engine, `AudioEngine::attachSource` for the current track and `queueStream(file)` for a
+  preload, and takes it as downloaded at once: a preload is asked for as soon as the track starts.
 - Every `received` passes the bytes to `AudioEngine::appendData(stream, …)`, with the stream id
   captured at the start. `finished` calls `finishData(stream)`, or `failData(stream)` with a
   `TrackFailure`. The engine ignores data for streams it has dropped.
-- `Player` sets no byte limit. Every byte goes to the engine, which keeps the stream in memory.
+- `Player` sets no byte limit. Every byte goes to the engine, which keeps the stream in memory; a
+  file on disk is read from the disk.
 - At most one track download is in flight. A preload is asked for only after the current track's
   download has finished without error. A dropped download is deleted, which aborts it without
   signals.
@@ -742,10 +746,11 @@ Q_SIGNALS:
 };
 
 struct OpenedTrack {
-    std::unique_ptr<TrackDownload> download;      // not started yet
-    QUrl link;                                    // what a jam's guests may fetch (about an hour)
+    std::unique_ptr<TrackDownload> download{};    // not started yet
+    QUrl link{};                                  // what a jam's guests may fetch (about an hour)
     int bitrateKbps = 0;
-    QString codec;                                // "mp3", "he-aac-mp4"…
+    QString codec{};                              // "mp3", "he-aac-mp4"…
+    std::shared_ptr<Audio::ByteSource> file{};    // or this instead of a download: a file on disk
 };
 using TOpenResult = std::variant<OpenedTrack, TrackFailure>;
 
@@ -779,6 +784,8 @@ Q_SIGNALS:
 - `open` calls `done` exactly once, from the event loop and never inside `open` itself. A port
   that is destroyed first may drop it. The download in an `OpenedTrack` sends nothing until
   `start()`, so a reply that comes too late is dropped at no cost.
+- An `OpenedTrack` carries exactly one of `download` and `file`; with a `file` the `Player` does
+  not look at `download`.
 - A `TrackDownload` emits nothing before `start()` and never inside it. `finished` comes once and
   last; a `TrackFailure` there is the download's (a cut connection is `Network`). Deleting a
   download aborts it, and nothing is emitted after that. The `Player` never deletes one inside its

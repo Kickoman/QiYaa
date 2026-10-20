@@ -650,7 +650,12 @@ void Player::openCurrent() {
         const std::optional<NetworkWait> wait = std::exchange(current->networkWait, std::nullopt);
         noteState();
         current->link = opened.link;
-        startFeed(current->feed, std::move(opened.download));
+        if (opened.file) {
+            audioEngine->attachSource(current->feed.stream, std::move(opened.file));
+            current->feed.downloaded = true;
+        } else {
+            startFeed(current->feed, std::move(opened.download));
+        }
         if (current->started) {
             current->bitrate = opened.bitrateKbps;
             Q_EMIT currentTrackChanged();
@@ -880,7 +885,7 @@ void Player::maybePreload() {
                 return;
             }
             auto* opened = std::get_if<OpenedTrack>(&result);
-            const TStreamId stream = opened ? self->audioEngine->queueStream() : 0;
+            const TStreamId stream = opened ? self->audioEngine->queueStream(opened->file) : 0;
             if (!stream) {
                 self->preload.reset();
                 return;
@@ -888,7 +893,11 @@ void Player::maybePreload() {
             self->preload->feed.stream = stream;
             self->preload->bitrate = opened->bitrateKbps;
             self->preload->link = opened->link;
-            self->startFeed(self->preload->feed, std::move(opened->download));
+            if (opened->file) {
+                self->preload->feed.downloaded = true;
+            } else {
+                self->startFeed(self->preload->feed, std::move(opened->download));
+            }
         });
 }
 
