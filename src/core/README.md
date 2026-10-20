@@ -84,6 +84,7 @@ public:
     void setContinueWithVibe(bool on);                // the current queue's flag only (CONT-02)
     bool continuesWithVibe() const;
     bool hasOwnContinuation() const;                  // the source has one (My Vibe, a station)
+    bool canSwitchVibe() const;                       // the flag applies: no own continuation, a vibe allowed
 
     void play();                                      // resume / restart while playing / start
     void pause();                                     // toggles
@@ -356,6 +357,11 @@ next step of [#23](https://github.com/Kickoman/QiYaa/issues/23) makes the phases
   the stall, and gets a new vibe from history. `setContinueWithVibe` changes the current queue's
   flag only and emits `modesChanged`; switched on, it ends the stall and runs the check at once
   (CONT-02, CONT-03).
+- A source with `QueueSource::waveFromHistory = false` (local files, CONT-12) gets no vibe from
+  history at all, also under a layer: the flag is off whatever the setting, and
+  `setContinueWithVibe` does nothing. `canSwitchVibe()` is false for it, as for a source with a
+  continuation of its own, and the menu item follows it. A later queue, a cleared base included
+  (`QueueSource{}`), takes the flag and the vibe again.
 - The load-more check (`maybeLoadMore`) asks that continuation when all of these hold: there is
   one, no request is in flight for it, and `Queue::remaining() <= kLoadMoreWhenLeft` (2).
   `remaining()` counts in play order: the current entry, the waiting items, what is left of the
@@ -860,6 +866,7 @@ struct QueueSource {
     QList<Track> head;                        // the fixed tracks; may be empty
     std::shared_ptr<Continuation> continuation;   // may be null
     QList<Track> given;                       // the continuation's tracks so far (a vibe's first batch)
+    bool waveFromHistory = true;              // false: never a vibe from history (CONT-12)
 };
 enum class EntryPart { Head, Continuation, Item, Other };
 struct QueueEntry {

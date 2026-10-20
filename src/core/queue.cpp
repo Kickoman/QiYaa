@@ -41,6 +41,7 @@ const QueueEntry* Queue::currentEntry() const {
 
 void Queue::replace(QueueSource source) {
     ownContinuation = std::move(source.continuation);
+    historyAllowed = source.waveFromHistory;
     queued = EntriesOf(source.head, EntryPart::Head, nullptr);
     queued << EntriesOf(source.given, EntryPart::Continuation, ownContinuation);
     titleText = source.title;
@@ -62,6 +63,7 @@ void Queue::replaceBase(QueueSource source) {
     std::copy_if(queued.cbegin(), queued.cend(), std::back_inserter(kept), IsWaitingItem);  // HOST-21, HOST-36
     playingIndex = currentEntry() ? 0 : -1;
     ownContinuation = std::move(source.continuation);
+    historyAllowed = source.waveFromHistory;
     kept << EntriesOf(source.head, EntryPart::Head, nullptr);
     kept << EntriesOf(source.given, EntryPart::Continuation, ownContinuation);
     queued = std::move(kept);

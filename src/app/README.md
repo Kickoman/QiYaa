@@ -438,9 +438,10 @@ sees them in the interface language. The main menu, top to bottom:
 - Shuffle: "Random track" or "Without repeats" (exclusive); chooses the preferred algorithm
   and saves `shuffle/algorithm`. It does not toggle the shuffle button or restart audio.
 - "Continue with a vibe" (`continueWithVibe`): checkable, checked when the current queue goes on
-  with a vibe from its history (`Player::continuesWithVibe`), disabled when its source has a
-  continuation of its own (My Vibe, a station). It switches the current queue only (spec CONT-02),
-  never the `playback/continueWithVibe` setting.
+  with a vibe from its history (`Player::continuesWithVibe`), disabled unless
+  `Player::canSwitchVibe()`: a source with a continuation of its own (My Vibe, a station), or local
+  files (CONT-12). It switches the current queue only (spec CONT-02), never the
+  `playback/continueWithVibe` setting.
 - Quality (`qualityMenu`): "Standard" or "Economy: a third of the data" (exclusive); calls
   `YandexSource::Source::setQuality` and saves `playback/quality` (spec/player/quality.md). The
   track that plays goes on; the next one is fetched in the new quality.

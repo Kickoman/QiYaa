@@ -183,7 +183,7 @@ void MainMenu::addModes(QMenu* menu) {
     vibeAction->setObjectName(QStringLiteral("continueWithVibe"));
     vibeAction->setCheckable(true);
     vibeAction->setChecked(parts.player->continuesWithVibe());
-    vibeAction->setEnabled(!parts.player->hasOwnContinuation());
+    vibeAction->setEnabled(parts.player->canSwitchVibe());
 
     QMenu* qualityMenu = menu->addMenu(tr("Quality"));
     qualityMenu->setObjectName(QStringLiteral("qualityMenu"));

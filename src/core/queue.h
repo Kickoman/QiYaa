@@ -29,6 +29,7 @@ public:
     bool historyWaveGave() const { return historyGave; }
     void setContinueWithVibe(bool on) { continueWithVibe = on; }
     bool continuesWithVibe() const { return continueWithVibe; }
+    bool takesHistoryWave() const { return historyAllowed; }
     const QList<Track>& history() const { return startedTracks; }
     void noteStarted(const QueueEntry& entry);
     void setStalled(bool on) { stalled = on; }
@@ -83,6 +84,7 @@ private:
     std::shared_ptr<Continuation> historyContinuation;
     bool historyGave = false;
     bool continueWithVibe = true;
+    bool historyAllowed = true;
     QList<Track> startedTracks;
     bool stalled = false;
     int playingIndex = -1;
