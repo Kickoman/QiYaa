@@ -150,6 +150,39 @@ qiyaa_add_module(sources_yandex
     src/sources/yandex/wave_origins.cpp src/sources/yandex/wave_origins.h)
 target_link_libraries(qiyaa_sources_yandex PUBLIC qiyaa_core qiyaa_yandex Qt6::Core)
 
+# TagLib reads the tags and covers of local files. It is our own build on every platform, linked
+# statically under its MPL-1.1 (THIRD_PARTY.md), so that its limits are the same everywhere: no zlib
+# (a compressed ID3v2 frame is never inflated) and only the formats the engine plays. It installs
+# nothing of its own.
+include(FetchContent)
+if(POLICY CMP0135)
+    cmake_policy(SET CMP0135 NEW)
+endif()
+FetchContent_Declare(taglib
+    URL https://github.com/taglib/taglib/releases/download/v2.3.2/taglib-2.3.2.tar.gz
+    URL_HASH SHA256=3ca2d8afaa7f1cf7f6ed10e511ebc368bfacd6dcaa3dbfa690b89e502e8963dc)
+set(BUILD_SHARED_LIBS OFF)
+set(BUILD_TESTING OFF)
+set(BUILD_EXAMPLES OFF)
+set(BUILD_BINDINGS OFF)
+set(WITH_ZLIB OFF)
+foreach(format APE ASF DSF MATROSKA MOD SHORTEN TRUEAUDIO)
+    set(WITH_${format} OFF)
+endforeach()
+FetchContent_MakeAvailable(taglib)
+foreach(variable BUILD_SHARED_LIBS BUILD_TESTING BUILD_EXAMPLES BUILD_BINDINGS WITH_ZLIB)
+    unset(${variable})
+endforeach()
+foreach(format APE ASF DSF MATROSKA MOD SHORTEN TRUEAUDIO)
+    unset(WITH_${format})
+endforeach()
+set_property(DIRECTORY ${taglib_SOURCE_DIR} PROPERTY EXCLUDE_FROM_ALL TRUE)
+configure_file(${taglib_SOURCE_DIR}/COPYING.MPL ${CMAKE_BINARY_DIR}/taglib-LICENSE.txt COPYONLY)
+get_target_property(_qiyaa_taglib_includes tag INCLUDE_DIRECTORIES)
+target_include_directories(tag SYSTEM INTERFACE
+    "$<BUILD_INTERFACE:${taglib_SOURCE_DIR}/taglib;${_qiyaa_taglib_includes}>")
+add_library(TagLib::tag ALIAS tag)
+
 # Jam: a shared queue the app hosts for guests (spec/jam). Needs Qt WebSockets; without it the
 # app builds without the jam, like without Milkdrop.
 option(QIYAA_WITH_JAM "Jam: host a shared queue for guests (needs Qt WebSockets)" ON)
@@ -278,6 +311,7 @@ if(QIYAA_WITH_MILKDROP)
         set(CMAKE_PROJECT_VERSION ${_qiyaa_version})
         unset(BUILD_SHARED_LIBS CACHE)  # projectM's option; keep it from applying to anything else
         set(QIYAA_PROJECTM_FETCHED ON)
+        configure_file(${projectm_SOURCE_DIR}/LICENSE.txt ${CMAKE_BINARY_DIR}/projectM-LICENSE.txt COPYONLY)
     endif()
     if(TARGET Qt6::OpenGL AND TARGET libprojectM::projectM)
         target_sources(qiyaa_vis PRIVATE src/vis/milkdrop_view.cpp src/vis/milkdrop_view.h)
@@ -453,6 +487,7 @@ and Milkdrop visualizations, media keys (MPRIS).")
     # Its license must come with every binary (THIRD_PARTY.md).
     install(FILES contrib/fdk-aac/LICENSE DESTINATION ${CMAKE_INSTALL_DATADIR}/doc/qiyaa
             RENAME fdk-aac-LICENSE.txt)
+    install(FILES ${CMAKE_BINARY_DIR}/taglib-LICENSE.txt DESTINATION ${CMAKE_INSTALL_DATADIR}/doc/qiyaa)
 else()
     install(TARGETS qiyaa BUNDLE DESTINATION . RUNTIME DESTINATION bin)
 endif()

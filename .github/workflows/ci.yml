@@ -224,6 +224,9 @@ jobs:
           # dpkg-shlibdeps must have found Qt (and not asked for a projectM package).
           dpkg-deb -f "$DEB" Depends | tee /dev/stderr | grep -q libqt6widgets6
           if dpkg-deb -f "$DEB" Depends | grep -qi projectm; then echo "depends on a projectM package"; exit 1; fi
+          # TagLib is linked statically and installs nothing of its own, only its license.
+          if dpkg-deb -c "$DEB" | grep -E 'include/taglib|libtag|taglib-config|taglib\.pc'; then echo "TagLib files in the package"; exit 1; fi
+          dpkg-deb -c "$DEB" | grep -q 'doc/qiyaa/taglib-LICENSE.txt'
           # It must install with its dependencies and start from /usr/bin with its own projectM.
           sudo apt-get install -y "./$DEB"
           # ldd shows the path as found through $ORIGIN (/usr/bin/../lib/...): normalise it.
@@ -240,6 +243,11 @@ jobs:
           EXTRA_PLATFORM_PLUGINS: libqoffscreen.so  # for --screenshot (and the check below)
         run: |
           DESTDIR="$PWD/AppDir" cmake --install build --prefix /usr
+          # TagLib is linked statically and installs nothing of its own, only its license.
+          if find AppDir -path '*include/taglib*' -o -name 'libtag*' -o -name 'taglib-config*' -o -name 'taglib.pc' | grep .; then
+            echo "TagLib files in the AppDir"; exit 1
+          fi
+          ls AppDir/usr/share/doc/qiyaa/taglib-LICENSE.txt
           base=https://github.com/linuxdeploy
           curl -sSLf -o linuxdeploy "$base/linuxdeploy/releases/download/continuous/linuxdeploy-x86_64.AppImage"
           curl -sSLf -o linuxdeploy-plugin-qt "$base/linuxdeploy-plugin-qt/releases/download/continuous/linuxdeploy-plugin-qt-x86_64.AppImage"
@@ -263,8 +271,9 @@ jobs:
           windeployqt --release --no-translations --no-system-d3d-compiler --no-opengl-sw --no-compiler-runtime dist/QiYaa/QiYaa.exe
           # App-local MSVC runtime: runs without installing the VC++ redistributable.
           cp "$(cygpath -u "$VCToolsRedistDir")"/x64/Microsoft.VC14*.CRT/*.dll dist/QiYaa/
-          cp LICENSE THIRD_PARTY.md dist/QiYaa/
+          cp LICENSE THIRD_PARTY.md build/taglib-LICENSE.txt dist/QiYaa/
           cp contrib/fdk-aac/LICENSE dist/QiYaa/fdk-aac-LICENSE.txt
+          cp "$(cygpath -u "$RUNNER_TEMP")/vcpkg/installed/x64-windows-release/share/projectm/copyright" dist/QiYaa/projectM-LICENSE.txt
           (cd dist && 7z a -bd "QiYaa-$VERSION-windows-x64.zip" QiYaa > /dev/null)
 
       - name: Package (Windows installer)
@@ -286,7 +295,7 @@ jobs:
           # a broken signature is "damaged and can't be opened". -codesign=- signs
           # every binary and then the bundle again, ad hoc (no Apple ID needed).
           # The license texts, fdk-aac's among them (its license asks for it with every binary).
-          cp LICENSE THIRD_PARTY.md build/QiYaa.app/Contents/Resources/
+          cp LICENSE THIRD_PARTY.md build/taglib-LICENSE.txt build/projectM-LICENSE.txt build/QiYaa.app/Contents/Resources/
           cp contrib/fdk-aac/LICENSE build/QiYaa.app/Contents/Resources/fdk-aac-LICENSE.txt
           macdeployqt build/QiYaa.app -codesign=-
           codesign --verify --deep --strict --verbose=2 build/QiYaa.app
