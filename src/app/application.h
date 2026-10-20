@@ -88,6 +88,7 @@ public:
     Yandex::ApiClient* api() { return &apiClient; }
     Yandex::Library* library() { return &yandexLibrary; }
     YandexSource::Source* yandex() { return &yandexSource; }
+    Core::SourceRegistry* sources() { return &trackSources; }
     Core::JamMode* jam() { return &jamMode; }
     // Null when the app is built without the jam.
     Jam::HostSession* jamHost() const { return jamHostSession.get(); }

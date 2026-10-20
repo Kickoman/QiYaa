@@ -1,14 +1,18 @@
 #include "app/application.h"
+#include "core/queue_source.h"
+#include "core/track.h"
 #include "jam/client.h"
 #include "jam/codec.h"
 #include "jam/host_session.h"
 #include "sources/yandex/tracks.h"
+#include "support/fake_source.h"
 #include "support/mock_http_server.h"
 
 #include <QFile>
 #include <QJsonArray>
 #include <QJsonDocument>
 #include <QJsonObject>
+#include <QPointer>
 #include <QSettings>
 #include <QTemporaryDir>
 #include <QTest>
@@ -65,6 +69,24 @@ public:
 
     void send(const Jam::ClientMessage& message) { socket.sendTextMessage(QString::fromUtf8(Jam::Encode(message))); }
 
+    bool join(const QUrl& joinUrl) {
+        if (!connected()) {
+            return false;
+        }
+        send(Jam::Hello{Jam::kProtocol, Jam::App::Web, QStringLiteral("e2e")});
+        if (!waitFor<Jam::Welcome>()) {
+            return false;
+        }
+        send(Jam::Join{
+            QStringLiteral("g1"),
+            joinUrl.path().section(u'/', -1),
+            joinUrl.fragment(),
+            QStringLiteral("3f6c1a2e-8b4d-4c7a-9e21-5d0b7f3a1c64"),
+            QStringLiteral("Аня")
+        });
+        return waitFor<Jam::Joined>().has_value();
+    }
+
     template <typename T>
     std::optional<T> waitFor(std::function<bool(const T&)> matches = [](const T&) { return true; }) {
         std::optional<T> found;
@@ -96,6 +118,8 @@ private:
     Tests::MockHttpServer yandex;
     Tests::LocalNetworkAccessManager network;
     QTemporaryDir directory;
+    QByteArray mp3;
+    Tests::FakeSource hostFiles;
     std::unique_ptr<App::Application> application;
 
 private Q_SLOTS:
@@ -105,6 +129,7 @@ private Q_SLOTS:
         }
         QSettings settings(directory.filePath(QStringLiteral("settings.ini")), QSettings::IniFormat);
         settings.setValue(QStringLiteral("jam/server"), serverUrl);
+        settings.setValue(QStringLiteral("jam/shareAudio"), true);
         settings.sync();
 
         yandex.fixture("GET", "/account/status", "account-status/ok");
@@ -120,7 +145,8 @@ private Q_SLOTS:
         );
         QFile file(QStringLiteral(QIYAA_TEST_DATA "/sine440_3s.mp3"));
         QVERIFY(file.open(QIODevice::ReadOnly));
-        yandex.audioTracks({kTrack}, file.readAll());
+        mp3 = file.readAll();
+        yandex.audioTracks({kTrack}, mp3);
 
         App::Application::Options options;
         options.settingsFile = directory.filePath(QStringLiteral("settings.ini"));
@@ -129,6 +155,7 @@ private Q_SLOTS:
         options.network = &network;
         application = std::make_unique<App::Application>(options);
         application->start();
+        application->sources()->add(QStringLiteral("fake"), &hostFiles);
         application->api()->setBaseUrl(yandex.baseUrl());
         application->api()->setToken(QStringLiteral("test-token"));
         bool connected = false;
@@ -155,19 +182,8 @@ private Q_SLOTS:
         QTRY_VERIFY_WITH_TIMEOUT(host->isConnected(), 15'000);
         QVERIFY(application->jam()->isActive());
 
-        const QUrl joinUrl(host->joinUrl());
         Guest guest(serverUrl);
-        QVERIFY(guest.connected());
-        guest.send(Jam::Hello{Jam::kProtocol, Jam::App::Web, QStringLiteral("e2e")});
-        QVERIFY(guest.waitFor<Jam::Welcome>());
-        guest.send(Jam::Join{
-            QStringLiteral("g1"),
-            joinUrl.path().section(u'/', -1),
-            joinUrl.fragment(),
-            QStringLiteral("3f6c1a2e-8b4d-4c7a-9e21-5d0b7f3a1c64"),
-            QStringLiteral("Аня")
-        });
-        QVERIFY(guest.waitFor<Jam::Joined>());
+        QVERIFY(guest.join(QUrl(host->joinUrl())));
 
         guest.send(Jam::Search{QStringLiteral("g2"), QStringLiteral("кино")});
         const std::optional<Jam::SearchResults> found = guest.waitFor<Jam::SearchResults>();
@@ -202,6 +218,47 @@ private Q_SLOTS:
         // HOST-33: without the jam the same track is reported, so the check above means something.
         player->playIndex(player->currentIndex());
         QTRY_VERIFY_WITH_TIMEOUT(yandex.last(QStringLiteral("/play-audio")), 15'000);
+    }
+
+    void aBaseTrackOnlyTheHostCanPlayReachesTheGuestByItsTitleAlone() {  // HOST-37, LISTEN-14
+        Core::Track local;
+        local.key = {QStringLiteral("fake"), QStringLiteral("/home/host/Music/Наш гурт/Купалінка.mp3")};
+        local.title = QStringLiteral("Купалінка");
+        local.artists = {QStringLiteral("Наш гурт")};
+        local.album = QStringLiteral("Песні");
+        local.durationMs = 3'000;
+        local.cover = {QStringLiteral("/home/host/Music/Наш гурт/cover.jpg")};
+        Core::Player* player = application->player();
+        player->setSource(Core::QueueSource{.title = QStringLiteral("Мае файлы"), .head = {local}}, true);
+        QTRY_COMPARE_WITH_TIMEOUT(hostFiles.pending(), 1, 5000);
+
+        Jam::HostSession* host = application->jamHost();
+        QVERIFY(host->create(QStringLiteral("Хозяин")));
+        QTRY_VERIFY_WITH_TIMEOUT(host->isConnected(), 15'000);
+        Guest guest(serverUrl);
+        QVERIFY(guest.join(QUrl(host->joinUrl())));
+
+        const QPointer<Tests::FakeDownload> download = hostFiles.complete(0);
+        QVERIFY(download);
+        download->feed(mp3);
+        download->finish();
+        QTRY_COMPARE_WITH_TIMEOUT(application->engine()->state(), Audio::AudioEngine::State::Playing, 15'000);
+        const auto playing = guest.waitFor<Jam::State>([](const Jam::State& state) {
+            const Jam::NowPlaying& now = state.room.nowPlaying;
+            return now.source == Jam::Source::Wave && now.track && !now.paused;
+        });
+        QVERIFY(playing);
+        const Jam::NowPlaying& now = playing->room.nowPlaying;
+        QCOMPARE(now.track->source, Jam::TrackSource::Host);
+        QCOMPARE(now.track->title, local.title);
+        QCOMPARE(now.track->artists, local.artists);
+        QCOMPARE(now.track->albumId, QString());
+        QCOMPARE(now.track->coverUri, QString());
+        QCOMPARE(now.listenUrl, QString());
+        QCOMPARE(now.listenNextUrl, QString());
+
+        host->end();
+        QVERIFY(guest.waitFor<Jam::Ended>());
     }
 };
 
