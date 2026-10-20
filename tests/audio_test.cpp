@@ -43,6 +43,14 @@ QByteArray BareMp3Frames(const QByteArray& file) {
     return file.mid(offset);
 }
 
+QByteArray Id3Prefix(int paddingBytes) {
+    QByteArray tag("ID3\x04\x00\x00", 6);
+    for (const int shift : {21, 14, 7, 0}) {
+        tag += static_cast<char>((paddingBytes >> shift) & 0x7f);
+    }
+    return tag + QByteArray(paddingBytes, '\0');
+}
+
 }  // namespace
 
 class TestAudio : public QObject {
@@ -50,6 +58,11 @@ class TestAudio : public QObject {
 private:
     Audio::AudioEngine engine;
     QByteArray mp3;
+
+    static QByteArray Fixture(const QString& name) {
+        QFile file(QStringLiteral(QIYAA_TEST_DATA "/") + name);
+        return file.open(QIODevice::ReadOnly) ? file.readAll() : QByteArray();
+    }
 
     QString describeEngine(qsizetype advancedCount, qsizetype finishedCount = -1) const {
         return QStringLiteral("advanced %1, finished %2, at %3 s, %4, current %5, queued %6")
@@ -320,6 +333,29 @@ private Q_SLOTS:
         const double position = engine.positionSeconds();
         QVERIFY2(position >= 1.5 && position < 2.3, qPrintable(QString::number(position)));
         engine.stop();
+    }
+
+    void flacAndWavPlayBeforeTheirDownloadEnds_data() {
+        QTest::addColumn<QByteArray>("file");
+        const QByteArray flac = Fixture(QStringLiteral("sine440_1s.flac"));
+        QTest::newRow("flac") << flac;
+        QTest::newRow("wav") << Fixture(QStringLiteral("sine440_1s.wav"));
+        QTest::newRow("flac after ID3v2") << Id3Prefix(4096) + flac;
+    }
+
+    void flacAndWavPlayBeforeTheirDownloadEnds() {
+        QFETCH(QByteArray, file);
+        QVERIFY(file.size() > 20'000);
+        engine.beginStream();
+        engine.appendData(file.left(file.size() * 3 / 5));
+        pumpUntil([&] { return engine.state() == Audio::AudioEngine::State::Playing; }, 3000);
+        const Audio::AudioEngine::State state = engine.state();
+        const int rate = engine.sourceSampleRate();
+        const int channels = engine.sourceChannels();
+        engine.stop();
+        QCOMPARE(state, Audio::AudioEngine::State::Playing);
+        QCOMPARE(rate, 22'050);
+        QCOMPARE(channels, 1);
     }
 
     void playerPollsTheEngine() {

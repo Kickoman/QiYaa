@@ -71,8 +71,8 @@ grep -rnE '#include <Q' src/audio/ --include='*.h' --include='*.cpp' \
 grep -rnw 'throw' src/audio/ --include='*.h' --include='*.cpp' | grep -v '^src/audio/eq_presets.cpp:'   # must print nothing
 ```
 
-The tests are `tests/audio_test.cpp` (the real engine on `tests/data/sine440_3s.mp3` and
-`sine440_3s_heaac.m4a`), `tests/mp4_aac_test.cpp` (the MP4 backend through an `ma_decoder` over
+The tests are `tests/audio_test.cpp` (the real engine on `tests/data/sine440_3s.mp3`,
+`sine440_3s_heaac.m4a`, `sine440_1s.flac` and `sine440_1s.wav`), `tests/mp4_aac_test.cpp` (the MP4 backend through an `ma_decoder` over
 memory) and `tests/dsp_test.cpp` (equalizer response, presets, `.eqf`). CTest runs every test with
 `QIYAA_AUDIO_BACKEND=null`.
 
@@ -273,12 +273,18 @@ it, and the decoder stamps it on every block. Older blocks are never heard.
 
 ### Decoder thread
 
-It opens a source on its own: it reads the first 8 bytes (waiting for them). An MP4 file
+It opens a source on its own: it reads the first 12 bytes (waiting for them). An MP4 file
 (`IsMp4`: `ftyp` at offset 4) gets `Mp4AacBackend()` as miniaudio's only custom backend, and the
 decoder is kept only if that backend opened it: miniaudio would otherwise go on to its MP3
-decoder, which finds "frames" in an MP4 it does not understand. Anything else first forces the MP3
-decoder, then miniaudio's format detection (WAV, FLAC, MP3). When none opens it the current
-stream gets `OpenFailed`, and `poll()` stops the engine and reports the error.
+decoder, which finds "frames" in an MP4 it does not understand. `RIFF…WAVE` forces the WAV decoder
+and `fLaC` the FLAC decoder. A FLAC is also recognised behind an ID3v2 tag: the decoder steps over
+the tag (10 bytes, its syncsafe size, and a footer when its flag says so) and looks for `fLaC`
+after it, and dr_flac steps over the tag itself. dr_wav does not, so a WAV behind such a tag does
+not open at all. Anything else forces the MP3 decoder. When the forced decoder does not open the
+file, miniaudio's format detection (WAV, FLAC, MP3) has a go. Forcing matters: the MP3 decoder
+looks for a frame through the whole file, so a FLAC or WAV given to it first would start only once
+all of it is there. When none opens it, the current stream gets `OpenFailed`, and `poll()` stops
+the engine and reports the error.
 
 Reads and byte seeks wait for bytes on the decoder's condition variable. A command that seeks or
 drops the source being read (`Start`, `Seek`, `Stop`, shutting down) makes them return

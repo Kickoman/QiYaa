@@ -5,6 +5,7 @@
 #include <miniaudio.h>
 
 #include <algorithm>
+#include <cstring>
 #include <utility>
 
 namespace Audio {
@@ -12,6 +13,28 @@ namespace Audio {
 namespace {
 
 constexpr auto kRecheck = std::chrono::milliseconds(10);
+constexpr size_t kId3HeaderBytes = 10;
+
+enum class Container { Mp4, Flac, Wav, Other };
+
+ma_encoding_format EncodingOf(Container container) {
+    switch (container) {
+        case Container::Flac: return ma_encoding_format_flac;
+        case Container::Wav: return ma_encoding_format_wav;
+        case Container::Mp4:
+        case Container::Other: break;
+    }
+    return ma_encoding_format_mp3;
+}
+
+uint64_t Id3TagBytes(const char* header) {
+    uint64_t size = 0;
+    for (int i = 6; i < 10; ++i) {
+        size = (size << 7) | (static_cast<unsigned char>(header[i]) & 0x7F);
+    }
+    const bool footer = (static_cast<unsigned char>(header[5]) & 0x10) != 0;
+    return kId3HeaderBytes + size + (footer ? kId3HeaderBytes : 0);
+}
 
 bool IsUrgent(Decoder::Command::Kind kind) {
     switch (kind) {
@@ -97,18 +120,37 @@ struct Decoder::Source {
         }
     }
 
-    bool startsAsMp4() {
-        char head[8];
+    size_t fill(uint64_t from, char* head, size_t size) {
+        offset = from;
         size_t filled = 0;
-        while (filled < sizeof(head)) {
+        while (filled < size) {
             size_t bytesRead = 0;
-            if (OnRead(&decoder, head + filled, sizeof(head) - filled, &bytesRead) != MA_SUCCESS) {
+            if (OnRead(&decoder, head + filled, size - filled, &bytesRead) != MA_SUCCESS) {
                 break;
             }
             filled += bytesRead;
         }
+        return filled;
+    }
+
+    Container sniff() {
+        char head[12];
+        size_t filled = fill(0, head, sizeof(head));
+        Container found = Container::Other;
+        if (IsMp4(head, filled)) {
+            found = Container::Mp4;
+        } else if (filled >= 12 && std::memcmp(head, "RIFF", 4) == 0 && std::memcmp(head + 8, "WAVE", 4) == 0) {
+            found = Container::Wav;
+        } else {
+            if (filled >= kId3HeaderBytes && std::memcmp(head, "ID3", 3) == 0) {
+                filled = fill(Id3TagBytes(head), head, 4);
+            }
+            if (filled >= 4 && std::memcmp(head, "fLaC", 4) == 0) {
+                found = Container::Flac;
+            }
+        }
         offset = 0;
-        return IsMp4(head, filled);
+        return found;
     }
 };
 
@@ -298,7 +340,8 @@ bool Decoder::open(Source& source) {
     source.decoder.pUserData = &source;
     ma_decoder_config config = ma_decoder_config_init(ma_format_f32, kBlockChannels, outputRate);
     ma_result result = MA_NO_BACKEND;
-    if (source.startsAsMp4()) {
+    const Container container = source.sniff();
+    if (container == Container::Mp4) {
         ma_decoding_backend_vtable* mp4Backends[] = {Mp4AacBackend()};
         config.ppCustomBackendVTables = mp4Backends;
         config.customBackendCount = 1;
@@ -309,7 +352,7 @@ bool Decoder::open(Source& source) {
             result = MA_NO_BACKEND;
         }
     } else if (!source.interrupted) {
-        config.encodingFormat = ma_encoding_format_mp3;
+        config.encodingFormat = EncodingOf(container);
         result = ma_decoder_init(&Source::OnRead, &Source::OnSeek, &source, &config, &source.decoder);
         if (result != MA_SUCCESS && !source.interrupted) {
             source.offset = 0;
