@@ -196,7 +196,7 @@ exist. The `Mpris`/`Smtc`/`MacMediaControls` object dies before the `MediaContro
    jam window (`Ui::JamWindow`, `jamWindow` in the `WindowSet`). Then, in every build, the
    `JamBridge` (below), whose `statusText` goes to the marquee. It is done here, before
    `WindowSet::restore()`, which takes the jam window in.
-7. Restores the settings listed in [Settings](#settings) and connects the windows:
+7. Restores the settings (`App::Settings`, below) and connects the windows:
    - the equalizer's shade mode shows and sets the main window's volume and balance (`setMixer`,
      `volumeRequested`, `balanceRequested`);
    - the equalizer's `statusText` goes to the main window's marquee;
@@ -225,7 +225,7 @@ stored jam (`JamBridge::offerStored()`) and looks for a token (`Account::start()
 `equalizer/auto`, then the positions (`WindowSet::savePositions()`, below). It runs on the
 `WindowSet`'s `saveRequested` (a window finished a move, a shade changed, a `setScale` with
 `ScaleScope::Saved`), on a choice in the Visualization submenu, in `quit()` and on `aboutToQuit`.
-The other settings are written the moment they change (see the table).
+The other settings are written the moment they change, each by its setter of `App::Settings`.
 
 **`quit()`** runs once; a second call returns at once. It calls `saveState()`, then
 `Player::shutDown()` (stops playback, which reports the open track to the wave as skipped, and
@@ -261,12 +261,6 @@ default offscreen screen, where the scale tests skip themselves).
   the report for the open track is started, but the process may exit before it leaves.
 - The shade state is applied in the constructor, before `start()` places the windows, because the
   saved positions were taken with the shaded heights.
-- Settings values are converted with `QVariant::toInt`, `toDouble`, `toBool`, `toPoint`, `toSize`.
-  A key that is present but malformed does not fall back to the default (a number becomes 0). Only
-  `vis/mode` is clamped here before `static_cast<Ui::MainWindow::VisMode>`; saving uses
-  `static_cast<int>`. Volume, balance, scale, resize steps and Milkdrop seconds are clamped
-  by the windows. Equalizer values are clamped to ±12 dB by the engine only, so the equalizer
-  window draws an out-of-range value as stored.
 - A `skin` setting that fails to load is not cleared: the warning repeats at every start until
   another skin is loaded.
 - Without a `QNetworkInformation` backend that can tell reachability, `NetworkWatch` says nothing,
@@ -280,63 +274,6 @@ default offscreen screen, where the scale tests skip themselves).
 success it points every window at the new skin first, and only then replaces (and frees) the old
 one; it stores `skin` = `path` and returns true. The Skins submenu passes `:/skins/<file>.wsz` for a
 bundled skin, or the path picked in the file dialog.
-
-### Settings
-
-`App::Settings` (below) is the only place in `src/` that reads or writes settings; the table
-says who asks it when. "ctor" is the `Application` constructor; "setter" is
-`WindowSet::setVisible`.
-
-| Key | Type | Default | Read | Written |
-|---|---|---|---|---|
-| `skin` | QString: a file path or `:/skins/<file>.wsz` | empty = built-in `base-2.91.wsz` | ctor, unless `--skin` | `loadSkin()` on success |
-| `shuffle/algorithm` | QString: `random` or `without-repeats` | `without-repeats` (anything else too) | ctor | on `Player::modesChanged` |
-| `playback/quality` | QString: `standard` or `economy` (`Yandex::QualityKey`) | `standard` (anything else too) | ctor | the Quality menu |
-| `playback/continueWithVibe` | bool: a new queue goes on with a vibe from its history (spec CONT-01) | true | ctor (`Player::setContinueWithVibeByDefault`) | never: only by hand |
-| `language` | QString: `be`, `ru` or `en` | `be` (anything else too) | ctor, unless `Options::language` | `setLanguage()` |
-| `scale` | double | 1.0 | ctor | `WindowSet::setScale(…, ScaleScope::Saved)` |
-| `alwaysOnTop` | bool | false | `WindowSet::restore()` | `WindowSet::setAlwaysOnTop()` |
-| `volume` | int, 0..100 | 75 | ctor | `saveState()` |
-| `balance` | int, −100..100 | 0 | ctor | `saveState()` |
-| `vis/mode` | int: 0 spectrum, 1 oscilloscope, 2 off | 0 | ctor (clamped to 0..2) | `saveState()` |
-| `time/remaining` | bool: show remaining time | false | ctor | `saveState()` |
-| `mainWindow/pos` | QPoint | (100, 100) | `WindowSet::showAtStart()` | `WindowSet::savePositions()` |
-| `mainWindow/shaded` | bool | false | `WindowSet::restore()` | on `shadeChanged` |
-| `equalizer/visible` | bool | true | `WindowSet::showAtStart()`, restoring | setter |
-| `equalizer/pos` | QPoint | main position + (0, main height) | `WindowSet::showAtStart()` | `WindowSet::savePositions()` |
-| `equalizer/shaded` | bool | false | `WindowSet::restore()` | on `shadeChanged` |
-| `equalizer/enabled` | bool | true | ctor | on `EqualizerWindow::settingsChanged` |
-| `equalizer/preamp` | double, dB | 0.0 | ctor | on `settingsChanged` |
-| `equalizer/bands` | QStringList: 10 numbers in dB, one decimal, in `Audio::kEqBandHz` order (60 Hz first) | empty = all 0.0 | ctor | on `settingsChanged` |
-| `equalizer/auto` | bool | false | ctor | `saveState()` |
-| `playlist/visible` | bool | true | `WindowSet::showAtStart()`, restoring | setter |
-| `playlist/pos` | QPoint | equalizer default + (0, equalizer height) | `WindowSet::showAtStart()` | `WindowSet::savePositions()` |
-| `playlist/shaded` | bool | false | `WindowSet::restore()` | on `shadeChanged` |
-| `playlist/steps` | QSize: resize steps of 25×29 skin px beyond 275×116 | (0, 4) | `WindowSet::add()` | on `sizeStepsChanged` |
-| `nowPlaying/visible` | bool | false | `WindowSet::showAtStart()`, restoring | setter |
-| `nowPlaying/pos` | QPoint | main position + (main width, 0) | `WindowSet::showAtStart()` | `WindowSet::savePositions()` |
-| `nowPlaying/steps` | QSize: resize steps of 25×29 skin px | (0, 0) | `WindowSet::add()` | on `sizeStepsChanged` |
-| `milkdrop/visible` | bool | false | `WindowSet::showAtStart()`, restoring | setter |
-| `milkdrop/pos` | QPoint | main position + (main width, main height) | `WindowSet::showAtStart()` | `WindowSet::savePositions()` |
-| `milkdrop/steps` | QSize: resize steps of 25×29 skin px | (0, 4) | `WindowSet::add()` | on `sizeStepsChanged` |
-| `milkdrop/shuffle` | bool | true | ctor | on `MilkdropWindow::settingsChanged` |
-| `milkdrop/locked` | bool: keep the current preset | false | ctor | on `settingsChanged` |
-| `milkdrop/seconds` | int, seconds per preset (the window clamps to 5..3600) | 30 | ctor | on `settingsChanged` |
-| `milkdrop/preset` | QString: preset name | empty = the window's own pick | ctor | on `settingsChanged` |
-| `milkdrop/black` | QStringList: names of blacklisted presets | empty | ctor | on `settingsChanged` |
-| `jam/server` | QString: the jam server's address, `https://…` | `QIYAA_JAM_URL` | each time the host session connects; ctor and the dialog for the jam window | "Server settings…" |
-| `jam/waveFeedback` | bool: the jam wave learns from skips (HOST-12, HOST-16) | true | when a jam starts | "Server settings…" |
-| `jam/shareAudio` | bool: guests may listen along (spec/jam/listen.md) | false | at each `playing` | "Server settings…" |
-| `jamWindow/visible` | bool | false | restoring only: the jam window is shown by the menu and by "Continue" | `WindowSet::setVisible()` |
-| `jamWindow/pos` | QPoint | main position + (main width, 0) | `WindowSet::showAtStart()` | `WindowSet::savePositions()` |
-| `jamWindow/steps` | QSize: resize steps of 25×29 skin px | (1, 8): 300×348 | `WindowSet::add()` | on `sizeStepsChanged` |
-| `telemetry/enabled` | bool: "Send statistics" | true | `TelemetryBridge::start()`, the menu | `TelemetryBridge::setEnabled()`, from the menu |
-| `telemetry/firstStart` | QString: the ISO date of the first start with telemetry | absent | only whether it exists | `TelemetryBridge::start()`, once |
-| `telemetry/machine` | QString: a random UUID, the machine id when the OS has none | absent | `TelemetryBridge::start()` | `TelemetryBridge::start()`, when the OS has no id and the key is absent |
-
-The `milkdrop/*` keys are read and written only in a build with `QIYAA_HAVE_MILKDROP`, the `jam/*`
-and `jamWindow/*` keys only in a jam build, the `telemetry/*` keys only in a telemetry build. The
-resize steps are clamped to 0..40 per axis by the windows.
 
 ## `account.h/.cpp` — `App::Account`
 
@@ -717,7 +654,7 @@ public:
     bool wasEmpty() const;                            // no key when it was opened: the first run
     // language, skin, scale, alwaysOnTop, shuffleAlgorithm, quality, continueWithVibe (read only),
     // mainWindow, equalizer, equalizerAuto, milkdrop, jam, telemetryEnabled, machine: a getter
-    // with the default of the table above, and a setter that writes the key(s) at once
+    // with the key's default, and a setter that writes the key(s) at once
     WindowState window(const QString& group, bool visibleByDefault, QSize stepsByDefault = {}) const;
     void setWindowPos(const QString& group, QPoint pos);   // and setWindowVisible, setWindowShaded,
                                                             // setWindowSteps: one key each
@@ -727,16 +664,29 @@ public:
 };
 ```
 
-- Every key and its default is written once, here. The defaults of a window (`visible`, `steps`,
-  the place) are the caller's, a key is `<group>/<field>`.
-- Reads convert like `QSettings` always did (see the traps in [Settings](#settings)): a present
-  but malformed value is not the default. `vis/mode` is clamped to 0..2; `shuffle/algorithm`,
-  `playback/quality` and `language` fall back for anything they do not know; `jam/server` is
-  trimmed. `WindowState::pos` is empty when the key is absent.
+- Every key and its default is written once, here: `settings.cpp` is the list of the keys of
+  `settings.ini`, one getter each. The defaults of a window (`visible`, `steps`, the place) are
+  its `WindowSet::Spec`'s, a key is `<group>/<field>`. `WindowState::pos` is empty when the key is
+  absent.
+- `playback/continueWithVibe` has no setter: the app never writes it, the user sets it by hand
+  ([docs/features.md](../../docs/features.md)).
+- The `milkdrop/*` keys are read and written only in a build with `QIYAA_HAVE_MILKDROP`, the
+  `jam/*` and `jamWindow/*` keys only in a jam build, the `telemetry/*` keys only in a telemetry
+  build. Another build leaves them as they are.
 - Writes go key by key, at the moment the value changes, so nothing writes a key the app has
   not chosen yet: a fresh start writes nothing.
 - `setMainWindow`, `setEqualizer`, `setMilkdrop` and `setJam` write all their keys.
 - Tests: `tests/settings_test.cpp`.
+
+**Traps:**
+- Reads convert with `QVariant::toInt`, `toDouble`, `toBool`, `toPoint` and `toSize`, as
+  `QSettings` always did: a key that is present but malformed does not fall back to the default (a
+  number becomes 0). Only a few are checked here: `vis/mode` is clamped to 0..2, since
+  `Application` casts it to `Ui::MainWindow::VisMode`; `shuffle/algorithm`, `playback/quality` and
+  `language` fall back for anything they do not know; `jam/server` is trimmed.
+- The rest is clamped by whoever uses it. Volume, balance, scale, the resize steps (0..40 per axis)
+  and the Milkdrop seconds are clamped by the windows. The equalizer's values are clamped to
+  ±12 dB by the engine only, so the equalizer window draws an out-of-range value as stored.
 
 ## File format: `settings.ini`
 
@@ -760,11 +710,12 @@ visible=true
 steps=@Size(0 4)
 ```
 
-The loader refuses nothing. Unknown keys are ignored (and kept), missing keys take the defaults
-from the table, and malformed values are converted as described in the traps above. For
-`equalizer/bands`, the first 10 entries are used, and bands without an entry stay at 0.0 dB. The
-module reads no other file itself: the token files are read by [src/yandex](../yandex/README.md),
-skins by [src/skins](../skins/README.md).
+Which keys there are and their defaults: `settings.cpp` (above). The loader refuses nothing.
+Unknown keys are ignored (and kept), missing keys take their defaults, and malformed values are
+converted as the traps of `App::Settings` say. `equalizer/bands` is written as 10 numbers in dB
+with one decimal, 60 Hz first (`Audio::kEqBandHz`); the first 10 entries are read, and bands
+without an entry stay at 0.0 dB. The module reads no other file itself: the token files are read by
+[src/yandex](../yandex/README.md), skins by [src/skins](../skins/README.md).
 
 ## `translations.h/.cpp`
 
