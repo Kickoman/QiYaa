@@ -25,6 +25,8 @@ class Player;
 
 namespace Ui {
 
+QString BitrateText(int kbps);
+
 class MainWindow : public SkinnedWindow {
     Q_OBJECT
 public:

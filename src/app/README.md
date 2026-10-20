@@ -33,7 +33,7 @@ MPRIS, SMTC and macOS MediaPlayer in [src/integrations](../integrations/README.m
 | `telemetry_bridge.h`, `telemetry_bridge.cpp`, `telemetry_off.cpp` | `App::TelemetryBridge`: all of the app's telemetry; `telemetry_off.cpp` in a build without it |
 | `window_set.h/.cpp` | `App::WindowSet`: the windows as one set, one `Spec` each: their places, showing and hiding, minimising, scale, "always on top", skin, saved positions, `snapshot()` |
 | `settings.h/.cpp` | `App::Settings`: every key of `settings.ini` with its default, typed reads and per-key writes; the only owner of `QSettings` |
-| `paths.h/.cpp` | `ConfigDirectory`, `YaampDataDirectories`, `TokenFile`, `YaampTokenFiles`, `SettingsFile`: where settings and tokens live |
+| `paths.h/.cpp` | `ConfigDirectory`, `YaampDataDirectories`, `TokenFile`, `YaampTokenFiles`, `SettingsFile`, `LocalCoversDirectory`: where settings, tokens and the local files' covers live |
 | `translations.h/.cpp` | `Language`, `Languages`, `LanguageCode`, `LanguageFromCode`, `LanguageName`, `Translations`: the interface language |
 | `offline_sources.h/.cpp` | `StreamLocalFile` (a local file fed to the engine like a download) and `DemoTracks` (nine sample entries) |
 | `main.cpp` | `main()` of the `qiyaa` executable: platform choice, command-line options, `--screenshot`, exit codes |
@@ -148,8 +148,9 @@ Q_SIGNALS:
 every method must be called from the GUI thread (the audio engine's decoder thread and device
 callback stay inside [src/audio](../audio/README.md)). `Application` owns everything it wires:
 `App::Settings`, the base and the current `Skins::Skin`, `ApiClient`, `Library`, `AudioEngine`,
-`YandexSource::Source`, `Core::SourceRegistry` (the Yandex source under `"yandex"`, added first in
-the constructor, before any window), `Player`, `YandexSource::Catalog` and `JamMode` as members; its
+`YandexSource::Source`, `LocalSource::Source`, `Core::SourceRegistry` (the Yandex source under
+`"yandex"` and the local one under `"local"`, added first in the constructor, before any window),
+`Player`, `YandexSource::Catalog`, `LocalSource::Catalog` and `JamMode` as members; its
 own `QNetworkAccessManager` unless `Options::network` lends one; the `Jam::HostSession`,
 `CoverCache`, `MediaControls`, the `Mpris`, `MacMediaControls` or `Smtc` object (held as
 `std::unique_ptr<QObject>`), the windows (five, and the jam window in a jam build) and the
@@ -174,7 +175,9 @@ exist. The `Mpris`/`Smtc`/`MacMediaControls` object dies before the `MediaContro
    Then installs the interface language (`Options::language`, else the `language` setting, else
    Belarusian), before any window takes its texts. The `Player` gets the shuffle algorithm, the
    `playback/continueWithVibe` setting and `YandexSource::HistoryWaves` as the vibe that goes on
-   after a queue's head (spec CONT-01, CONT-04).
+   after a queue's head (spec CONT-01, CONT-04). The `SourceRegistry` has both sources,
+   `YandexSource::Source` as `yandex` and `LocalSource::Source` as `local`; `LocalSource::Catalog`
+   writes covers to `LocalCoversDirectory()` (`<temp dir>/local-covers` when `readOnlySettings`).
 2. Loads the built-in base skin `:/skins/base-2.91.wsz` (`Skins::Skin::BuiltinBase()`). It is also
    the fallback for bitmaps other skins lack.
 3. With `audio`, calls `AudioEngine::init()`. On failure it logs `Audio: <message>` and the app
@@ -398,7 +401,8 @@ void TransportKey(Core::Player* player, Audio::AudioEngine* engine, int key);   
 class MainMenu : public QObject {
 public:
     struct Parts { Core::Player* player; Audio::AudioEngine* engine; Yandex::Library* library;
-                   YandexSource::Catalog* catalog; Core::SourceRegistry* sources; YandexSource::Source* yandex;
+                   YandexSource::Catalog* catalog; LocalSource::Catalog* local;
+                   Core::SourceRegistry* sources; YandexSource::Source* yandex;
                    Settings* settings; WindowSet* windows; Account* account; JamBridge* jam;
                    TelemetryBridge* telemetry; const Translations* translations;
                    Ui::MainWindow* mainWindow; Ui::PlaylistWindow* playlistWindow; };
@@ -424,10 +428,22 @@ close. The playlist's ADD button and right-click open the full main menu: track 
 `PlaylistWindow::trackMenuRequested`; ADD and clicks outside the rows emit
 `PlaylistWindow::sourcesMenuRequested`.
 
-The sources menu holds the Yandex items from `Ui::AddLibraryActions` (only "Log in to Yandex Music…"
-while logged out; it calls `Account::login()`). The texts here are the English sources; the user
-sees them in the interface language. The main menu, top to bottom:
+The sources menu starts with "Open files…" (`openLocalFiles`) and "Open folder…"
+(`openLocalFolder`), then holds the Yandex items from `Ui::AddLibraryActions` (only "Log in to
+Yandex Music…" while logged out; it calls `Account::login()`). The texts here are the English
+sources; the user sees them in the interface language.
 
+**Local files** (spec/player/local.md), in both menus and also without an account:
+- "Open files…" is a `QFileDialog::getOpenFileNames` titled "Open files", filtered to "Audio
+  files (*.mp3 *.flac *.wav *.m4a *.mp4)", and calls `LocalSource::Catalog::openFiles`.
+- "Open folder…" is a `QFileDialog::getExistingDirectory` titled "Open folder", and calls
+  `openFolder`.
+- Both dialogs start in the `local/lastFolder` setting while that folder exists, else in the home
+  directory. A choice saves the folder: the chosen one, or the first chosen file's.
+
+The main menu, top to bottom:
+
+- "Open files…", "Open folder…";
 - the same Yandex items;
 - in a jam build, Jam (`JamBridge::addMenu`, below);
 - every window whose `WindowSet::Spec` has a `menuText`, with its `key`: Equalizer (Alt+G),
@@ -653,9 +669,10 @@ public:
     explicit Settings(const QString& fileName);       // INI format
     QString directory() const;                        // absolute folder of settings.ini
     bool wasEmpty() const;                            // no key when it was opened: the first run
-    // language, skin, scale, alwaysOnTop, shuffleAlgorithm, quality, continueWithVibe (read only),
-    // mainWindow, equalizer, equalizerAuto, milkdrop, jam, telemetryEnabled, machine: a getter
-    // with the key's default, and a setter that writes the key(s) at once
+    // language, skin, scale, alwaysOnTop, shuffleAlgorithm, quality, lastLocalFolder,
+    // continueWithVibe (read only), mainWindow, equalizer, equalizerAuto, milkdrop, jam,
+    // telemetryEnabled, machine: a getter with the key's default, and a setter that writes the
+    // key(s) at once
     WindowState window(const QString& group, bool visibleByDefault, QSize stepsByDefault = {}) const;
     void setWindowPos(const QString& group, QPoint pos);   // and setWindowVisible, setWindowShaded,
                                                             // setWindowSteps: one key each
@@ -671,6 +688,8 @@ public:
   absent.
 - `playback/continueWithVibe` has no setter: the app never writes it, the user sets it by hand
   ([docs/features.md](../../docs/features.md)).
+- `local/lastFolder` is where the "Open files…" and "Open folder…" dialogs start, empty until the
+  first pick; `setLastLocalFolder` writes it only when it changes.
 - The `milkdrop/*` keys are read and written only in a build with `QIYAA_HAVE_MILKDROP`, the
   `jam/*` and `jamWindow/*` keys only in a jam build, the `telemetry/*` keys only in a telemetry
   build. Another build leaves them as they are.
@@ -758,11 +777,15 @@ QStringList YaampDataDirectories();    // old Yaamp data folders, may not exist
 QString TokenFile();            // <ConfigDirectory>/token
 QStringList YaampTokenFiles();  // <dir>/token.json for each YaampDataDirectories() entry, same order
 QString SettingsFile(const QString& chosen, const QTemporaryDir* temporaryDirectory);
+QString LocalCoversDirectory(const QTemporaryDir* temporaryDirectory);
+                                // <temp dir>/local-covers, else <CacheLocation>/local-covers
                                 // <temp dir>/settings.ini, else chosen, else <ConfigDirectory>/settings.ini
 }
 ```
 
-`ConfigDirectory()` is `QStandardPaths::GenericConfigLocation` + `/QiYaa`. `YaampDataDirectories()` is where
+`ConfigDirectory()` is `QStandardPaths::GenericConfigLocation` + `/QiYaa`. `LocalCoversDirectory()`
+sits next to the cover cache (`QStandardPaths::CacheLocation`); the local source writes the
+covers of local files there and never deletes them. `YaampDataDirectories()` is where
 Electron's `app.getPath('userData')` (`<appData>/<productName>`) put the old Yaamp's data, with the
 product name spelled `Yaamp` and then `yaamp`:
 

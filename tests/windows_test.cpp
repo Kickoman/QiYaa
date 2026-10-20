@@ -54,6 +54,7 @@
 #include <QWidget>
 
 #include <algorithm>
+#include <functional>
 #include <memory>
 
 using Yandex::Track;
@@ -414,6 +415,35 @@ private Q_SLOTS:
             QSettings(options.settingsFile, QSettings::IniFormat).value(QStringLiteral("playback/continueWithVibe")),
             QVariant(false)
         );
+    }
+
+    void bothMenusOpenLocalFilesWithoutAnAccount() {  // LOCAL-01, LOCAL-02
+        QTemporaryDir directory;
+        QVERIFY(directory.isValid());
+        App::Application::Options options;
+        options.offline = true;
+        options.audio = false;
+        options.mediaIntegration = false;
+        options.language = App::Language::English;
+        options.settingsFile = directory.filePath(QStringLiteral("settings.ini"));
+        App::Application configured(options);
+        QVERIFY(!configured.library()->isLoggedIn());
+        const auto check = [&configured](const std::function<void()>& open) {
+            open();
+            QAction* files = configured.mainWindow()->findChild<QAction*>(QStringLiteral("openLocalFiles"));
+            QAction* folder = configured.mainWindow()->findChild<QAction*>(QStringLiteral("openLocalFolder"));
+            QVERIFY(files && folder);
+            QCOMPARE(files->text(), QStringLiteral("Open files…"));
+            QCOMPARE(folder->text(), QStringLiteral("Open folder…"));
+            QVERIFY(files->isEnabled() && folder->isEnabled());
+            QCOMPARE(files->parent(), folder->parent());
+            const auto* menu = qobject_cast<QMenu*>(files->parent());
+            QVERIFY(menu);
+            QCOMPARE(menu->actions().first(), files);
+            delete menu;
+        };
+        check([&configured] { configured.mainWindow()->menuRequested(QPoint(100, 100)); });
+        check([&configured] { Q_EMIT configured.mainWindow()->sourcesMenuRequested(QPoint(100, 100)); });
     }
 
     void defaultLayoutIsStacked() {

@@ -64,6 +64,8 @@ public:
     void setShuffleAlgorithm(Core::ShuffleAlgorithm algorithm);
     Yandex::Quality quality() const;
     void setQuality(Yandex::Quality quality);
+    QString lastLocalFolder() const;
+    void setLastLocalFolder(const QString& folder);
     bool continueWithVibe() const;
 
     MainWindowState mainWindow() const;

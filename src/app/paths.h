@@ -15,5 +15,6 @@ QString TokenFile();
 QStringList YaampTokenFiles();
 
 QString SettingsFile(const QString& chosen, const QTemporaryDir* temporaryDirectory);
+QString LocalCoversDirectory(const QTemporaryDir* temporaryDirectory);
 
 }  // namespace App

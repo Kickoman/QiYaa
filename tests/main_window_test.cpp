@@ -197,6 +197,15 @@ private Q_SLOTS:
         QCOMPARE(text(Code::VibeFailed, "HTTP 500"), QStringLiteral("Vibe error: HTTP 500"));
     }
 
+    void aBitrateOverThreeDigitsShowsItsHundredsAsWinampDid() {
+        QCOMPARE(Ui::BitrateText(64), QStringLiteral(" 64"));
+        QCOMPARE(Ui::BitrateText(320), QStringLiteral("320"));
+        QCOMPARE(Ui::BitrateText(999), QStringLiteral("999"));
+        QCOMPARE(Ui::BitrateText(1'000), QStringLiteral("10H"));
+        QCOMPARE(Ui::BitrateText(1'411), QStringLiteral("14H"));
+        QCOMPARE(Ui::BitrateText(25'000), QStringLiteral("99H"));
+    }
+
     void theCatalogsNoticesReadAsItsStatusesDid() {
         using Code = Core::SourceNoticeCode;
         const auto text = [](Code code, const QString& subject = {}, const QString& detail = {}, int count = 0) {
@@ -212,6 +221,7 @@ private Q_SLOTS:
         QCOMPARE(text(Code::Empty, "My Vibe"), QStringLiteral("My Vibe: empty"));
         QCOMPARE(text(Code::NothingFound), QStringLiteral("Nothing found"));
         QCOMPARE(text(Code::Loaded, "Liked", {}, 2), QStringLiteral("Liked: 2 track(s)"));
+        QCOMPARE(text(Code::LoadedFirst, "Music", {}, 10'000), QStringLiteral("Music: the first 10000 track(s)"));
         QCOMPARE(text(Code::AddedToLiked), QStringLiteral("Added to Liked"));
         QCOMPARE(text(Code::RemovedFromLiked), QStringLiteral("Removed from Liked"));
         QCOMPARE(text(Code::Disliked), QStringLiteral("Disliked"));

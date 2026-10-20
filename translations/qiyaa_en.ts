@@ -20,5 +20,12 @@
             <numerusform>%1: %n tracks</numerusform>
         </translation>
     </message>
+    <message numerus="yes">
+        <source>%1: the first %n track(s)</source>
+        <translation>
+            <numerusform>%1: the first %n track</numerusform>
+            <numerusform>%1: the first %n tracks</numerusform>
+        </translation>
+    </message>
 </context>
 </TS>

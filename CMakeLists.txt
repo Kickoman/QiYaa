@@ -184,7 +184,11 @@ target_include_directories(tag SYSTEM INTERFACE
 add_library(TagLib::tag ALIAS tag)
 
 qiyaa_add_module(sources_local
-    src/sources/local/tags.cpp      src/sources/local/tags.h)
+    src/sources/local/catalog.cpp   src/sources/local/catalog.h
+    src/sources/local/scan.cpp      src/sources/local/scan.h
+    src/sources/local/source.cpp    src/sources/local/source.h
+    src/sources/local/tags.cpp      src/sources/local/tags.h
+    src/sources/local/tracks.cpp    src/sources/local/tracks.h)
 target_link_libraries(qiyaa_sources_local PUBLIC qiyaa_core Qt6::Core PRIVATE TagLib::tag)
 
 # Jam: a shared queue the app hosts for guests (spec/jam). Needs Qt WebSockets; without it the
@@ -376,7 +380,7 @@ qiyaa_add_module(app
     src/app/translations.cpp    src/app/translations.h
     src/app/window_set.cpp      src/app/window_set.h)
 target_link_libraries(qiyaa_app
-    PUBLIC qiyaa_audio qiyaa_core qiyaa_skins qiyaa_sources_yandex qiyaa_yandex
+    PUBLIC qiyaa_audio qiyaa_core qiyaa_skins qiyaa_sources_local qiyaa_sources_yandex qiyaa_yandex
     PRIVATE qiyaa_integrations qiyaa_ui qiyaa_vis)
 # App::Settings holds the default of jam/server, also in a build without the jam.
 target_compile_definitions(qiyaa_app PRIVATE QIYAA_JAM_URL="${QIYAA_JAM_URL}")

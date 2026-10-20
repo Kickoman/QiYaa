@@ -58,6 +58,8 @@ Q_SIGNALS:
     void volumeChanged();
 
 private:
+    QUrl coverUrl() const;
+
     Core::Player* corePlayer;
     const Core::SourceRegistry* trackSources;
     Core::CoverCache* coverCache;

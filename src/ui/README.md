@@ -298,6 +298,8 @@ Positions are returned as the new top-left.
 ## MainWindow — `main_window.h/.cpp`
 
 ```cpp
+QString BitrateText(int kbps);   // the kbps field: " 64", "320", and "14H" for 1411 (hundreds, as Winamp)
+
 class MainWindow : public SkinnedWindow {
 public:
     enum class VisMode { Spectrum, Oscilloscope, Off };
@@ -339,8 +341,9 @@ come from the `Player` (`state()`, `positionSeconds()`, `stateChanged`; the look
 [src/core](../core/README.md#phases-and-state)). The engine gives only what is the sound's own:
 volume and balance, the visualization samples, the source's rate and channels.
 `setVolume`/`setBalance` push the value to the `AudioEngine` every time, the signals fire only on a
-change. `Player::noticed`, worded by `NoticeText`, is connected to `setStatusText`; so is the
-catalogue's `noticed`, worded by `SourceNoticeText`, by `src/app`.
+change. `Player::noticed`, worded by `NoticeText`, is connected to `setStatusText`; so are both
+catalogues' `noticed` (Yandex Music's and the local files'), worded by `SourceNoticeText`, by
+`src/app`.
 
 The timer runs only while something on screen changes (first matching row wins):
 
@@ -838,8 +841,9 @@ QString SourceNoticeText(const Core::SourceNotice& notice);
 The words for each `Core::SourceNoticeCode`
 ([src/core](../core/README.md#source_noticeh-sourcenotice)), in the context `Ui::SourceNotices`:
 "%1: loading…" and "%1: empty" with the subject, "Search: %1…" with the search's text, "Error: %1"
-and "Search error: %1" with the detail, "Nothing found", "%1: %n track(s)", "Added to Liked",
-"Removed from Liked", "Disliked". `VibeFailed` takes `NoticeText`'s "Vibe error: %1", so the two say
+and "Search error: %1" with the detail, "Nothing found", "%1: %n track(s)", "%1: the first %n
+track(s)" (`LoadedFirst`: a local folder over its limit), "Added to Liked", "Removed from Liked",
+"Disliked". `VibeFailed` takes `NoticeText`'s "Vibe error: %1", so the two say
 it in one translation. They are the texts the catalogue itself sent until #28, with "Liked: %n
 track(s)" now "%1: %n track(s)" (test `theCatalogsNoticesReadAsItsStatusesDid`).
 

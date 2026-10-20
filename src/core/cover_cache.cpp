@@ -3,6 +3,7 @@
 #include <QCryptographicHash>
 #include <QDir>
 #include <QFile>
+#include <QFileInfo>
 #include <QNetworkAccessManager>
 #include <QNetworkReply>
 #include <QNetworkRequest>
@@ -15,6 +16,7 @@ namespace Core {
 namespace {
 constexpr int kMemoryItems = 30;
 constexpr int kTimeoutMs = 20'000;
+constexpr qint64 kMaxLocalFileBytes = 16 * 1024 * 1024;
 }  // namespace
 
 CoverCache::CoverCache(QNetworkAccessManager* networkAccessManager, const QString& cacheDirectory, QObject* parent)
@@ -37,7 +39,7 @@ QString CoverCache::localFile(const QUrl& url) const {
     if (url.isEmpty()) {
         return {};
     }
-    const QString path = pathFor(url);
+    const QString path = url.isLocalFile() ? url.toLocalFile() : pathFor(url);
     return QFile::exists(path) ? path : QString();
 }
 
@@ -59,14 +61,14 @@ QImage CoverCache::get(const QUrl& url) {
         recentlyUsed.append(url);
         return *cached;
     }
-    if (const QString path = localFile(url); !path.isEmpty()) {
+    if (const QString path = localFile(url); !path.isEmpty() && QFileInfo(path).size() <= kMaxLocalFileBytes) {
         const QImage image(path);
         if (!image.isNull()) {
             remember(url, image);
             return image;
         }
     }
-    if (pending.contains(url) || !networkManager) {
+    if (url.isLocalFile() || pending.contains(url) || !networkManager) {
         return {};
     }
     pending.insert(url);

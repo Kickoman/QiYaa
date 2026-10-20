@@ -39,6 +39,7 @@ private Q_SLOTS:
         QVERIFY(!settings.alwaysOnTop());
         QCOMPARE(settings.shuffleAlgorithm(), Core::ShuffleAlgorithm::WithoutRepeats);
         QCOMPARE(settings.quality(), Yandex::Quality::Standard);
+        QCOMPARE(settings.lastLocalFolder(), QString());
         QVERIFY(settings.continueWithVibe());
         const App::MainWindowState mainWindow = settings.mainWindow();
         QCOMPARE(mainWindow.volume, 75);
@@ -93,6 +94,7 @@ private Q_SLOTS:
         settings.setAlwaysOnTop(true);
         settings.setShuffleAlgorithm(Core::ShuffleAlgorithm::Random);
         settings.setQuality(Yandex::Quality::Economy);
+        settings.setLastLocalFolder(QStringLiteral("/home/маша/Music"));
         settings.setMainWindow(App::MainWindowState{40, -20, 1, true});
         Audio::EqSettings eq;
         eq.enabled = false;
@@ -112,6 +114,7 @@ private Q_SLOTS:
         QCOMPARE(stored(QStringLiteral("alwaysOnTop")), QVariant(true));
         QCOMPARE(stored(QStringLiteral("shuffle/algorithm")), QVariant(QStringLiteral("random")));
         QCOMPARE(stored(QStringLiteral("playback/quality")), QVariant(QStringLiteral("economy")));
+        QCOMPARE(stored(QStringLiteral("local/lastFolder")), QVariant(QStringLiteral("/home/маша/Music")));
         QCOMPARE(stored(QStringLiteral("volume")), QVariant(40));
         QCOMPARE(stored(QStringLiteral("balance")), QVariant(-20));
         QCOMPARE(stored(QStringLiteral("vis/mode")), QVariant(1));
@@ -137,6 +140,7 @@ private Q_SLOTS:
         QCOMPARE(reread.language(), std::optional(App::Language::Russian));
         QCOMPARE(reread.shuffleAlgorithm(), Core::ShuffleAlgorithm::Random);
         QCOMPARE(reread.quality(), Yandex::Quality::Economy);
+        QCOMPARE(reread.lastLocalFolder(), QStringLiteral("/home/маша/Music"));
         QCOMPARE(reread.equalizer(), eq);
         QCOMPARE(reread.milkdrop().preset, QStringLiteral("Flexi"));
         QCOMPARE(reread.jam().server, QStringLiteral("https://jam.example.org"));

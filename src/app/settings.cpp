@@ -77,6 +77,16 @@ void Settings::setQuality(Yandex::Quality quality) {
     store.setValue(QStringLiteral("playback/quality"), Yandex::QualityKey(quality));
 }
 
+QString Settings::lastLocalFolder() const {
+    return store.value(QStringLiteral("local/lastFolder")).toString();
+}
+
+void Settings::setLastLocalFolder(const QString& folder) {
+    if (folder != lastLocalFolder()) {
+        store.setValue(QStringLiteral("local/lastFolder"), folder);
+    }
+}
+
 bool Settings::continueWithVibe() const {
     return store.value(QStringLiteral("playback/continueWithVibe"), true).toBool();
 }
