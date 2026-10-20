@@ -267,6 +267,30 @@ private Q_SLOTS:
         QVERIFY(stack.player.hasOwnContinuation());
     }
 
+    void aQueueOfLocalFilesHasNoWaveFromHistory() {  // CONT-12, CONT-01
+        HistoryStack stack;
+        QVERIFY(stack.start(2));
+        QVERIFY(stack.wave);
+        stack.wave.reset();
+        stack.player.setSource(Core::QueueSource{.head = Tracks(2), .waveFromHistory = false}, false);
+        QVERIFY(!stack.wave);
+        QVERIFY(!stack.player.continuesWithVibe());
+        QVERIFY(!stack.player.canSwitchVibe());
+        QSignalSpy modes(&stack.player, &Core::Player::modesChanged);
+        stack.player.setContinueWithVibe(true);
+        QVERIFY(!stack.player.continuesWithVibe());
+        QVERIFY(modes.isEmpty());
+        stack.player.playIndex(1);
+        stack.source.complete(0);
+        QVERIFY(!stack.wave);
+        stack.player.next();
+        QCOMPARE(stack.player.state(), Core::Player::State::Stopped);
+        stack.player.setSource(HeadOf(Tracks(2)), false);
+        QVERIFY(stack.wave);
+        QVERIFY(stack.player.continuesWithVibe());
+        QVERIFY(stack.player.canSwitchVibe());
+    }
+
     void theHistoryVibeAsksWithTheHeadTracksThatStarted() {  // CONT-04 to CONT-06, CONT-08
         HistoryStack stack;
         QVERIFY(stack.start(3));

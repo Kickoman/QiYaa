@@ -176,21 +176,21 @@ void Player::setLayerItems(const QList<LayerItem>& items, std::optional<SeedHint
 }
 
 void Player::takeNewBase() {
-    queue->setContinueWithVibe(continueWithVibeByDefault);  // CONT-01
-    if (!queue->continuation() && historyWaveFactory) {
+    queue->setContinueWithVibe(continueWithVibeByDefault && queue->takesHistoryWave());  // CONT-01, CONT-12
+    if (!queue->continuation() && queue->takesHistoryWave() && historyWaveFactory) {
         queue->setHistoryWave(historyWaveFactory());
     }
 }
 
 void Player::setHistoryWaveFactory(THistoryWaveFactory factory) {
     historyWaveFactory = std::move(factory);
-    if (!queue->continuation() && !queue->historyWave() && historyWaveFactory) {
+    if (!queue->continuation() && queue->takesHistoryWave() && !queue->historyWave() && historyWaveFactory) {
         queue->setHistoryWave(historyWaveFactory());
     }
 }
 
 void Player::setContinueWithVibe(bool on) {
-    if (on == queue->continuesWithVibe()) {
+    if (on == queue->continuesWithVibe() || !canSwitchVibe()) {
         return;
     }
     queue->setContinueWithVibe(on);
@@ -209,6 +209,10 @@ bool Player::continuesWithVibe() const {
 
 bool Player::hasOwnContinuation() const {
     return static_cast<bool>(queue->continuation());
+}
+
+bool Player::canSwitchVibe() const {
+    return !queue->continuation() && queue->takesHistoryWave();
 }
 
 void Player::queueEdited(quint64 revision) {

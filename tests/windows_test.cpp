@@ -351,7 +351,7 @@ private Q_SLOTS:
         QCOMPARE(fallback.yandex()->quality(), Yandex::Quality::Standard);
     }
 
-    void theVibeItemSwitchesOnlyTheCurrentQueue() {  // CONT-01, CONT-02
+    void theVibeItemSwitchesOnlyTheCurrentQueue() {  // CONT-01, CONT-02, CONT-12
         QTemporaryDir directory;
         QVERIFY(directory.isValid());
         App::Application::Options options;
@@ -396,6 +396,19 @@ private Q_SLOTS:
         );
         item = openItem();
         QVERIFY(!item->isEnabled());
+        delete item->parent();
+        player->setContinueWithVibeByDefault(true);
+        player->setSource(
+            Core::QueueSource{
+                .title = QStringLiteral("Local"),
+                .head = YandexSource::TracksOf(MakeTracks(2)),
+                .waveFromHistory = false
+            },
+            false
+        );
+        item = openItem();
+        QVERIFY(!item->isEnabled());
+        QVERIFY(!item->isChecked());
         delete item->parent();
         QCOMPARE(
             QSettings(options.settingsFile, QSettings::IniFormat).value(QStringLiteral("playback/continueWithVibe")),

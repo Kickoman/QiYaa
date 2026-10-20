@@ -72,6 +72,7 @@ public:
     void setContinueWithVibe(bool on);
     bool continuesWithVibe() const;
     bool hasOwnContinuation() const;
+    bool canSwitchVibe() const;
 
     void play();
     void pause();

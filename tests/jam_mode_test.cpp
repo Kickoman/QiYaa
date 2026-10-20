@@ -362,6 +362,23 @@ private Q_SLOTS:
         QTRY_COMPARE(stack.started.size(), 1);
     }
 
+    void aBaseOfLocalFilesHasNoJamVibeAndGoesIdle() {  // CONT-12, HOST-11, HOST-13
+        Stack stack(&library);
+        waveAnswers();
+        const qsizetype before = server.requests().size();
+        Core::QueueSource local = HeadOf({"11"});
+        local.waveFromHistory = false;
+        stack.player.setSource(local, false);
+        stack.player.playIndex(0);
+        stack.jam.start(false);
+        stack.jam.setQueue({}, {QStringLiteral("track:11")}, 1);
+        stack.player.next();
+        QCOMPARE(stack.player.state(), Core::Player::State::Stopped);
+        QTRY_COMPARE(stack.lastPlayback().kind, Core::JamPlayback::Kind::Idle);
+        QTest::qWait(50);
+        QVERIFY(requestsTo(QStringLiteral("/rotor/session/new"), before).isEmpty());
+    }
+
     void aJamVibeThatBroughtNothingWaitsForTheNextItem() {  // HOST-08, HOST-11
         Stack stack(&library);
         noWave();
