@@ -151,11 +151,12 @@ from a skip into a failure, because on that runner OpenGL must work (but see **T
 
 **jam_e2e_test** needs a jam server whose `PUBLIC_URL` is the address in
 `QIYAA_JAM_TEST_SERVER` (the guest sends that origin). CI runs the server's image on the Linux
-jobs that build the jam. By hand, either of:
+jobs that build the jam. By hand, either of (the server's own checkout needs Node 22):
 
 ```bash
-docker run -d --rm -p 8090:8090 -e PUBLIC_URL=http://localhost:8090 ghcr.io/kickoman/qiyaa-jam:0.3.1
-(cd ../qiyaa-jam/server && npm run build && PORT=8090 DATA_DIR=$(mktemp -d) node dist/main.js)
+docker run -d --rm -p 8090:8090 -e PUBLIC_URL=http://localhost:8090 ghcr.io/kickoman/qiyaa-jam:0.8.2
+(cd ../qiyaa-jam && npm ci && npm run generate -w server && npm run build -w server)
+(cd ../qiyaa-jam/server && PORT=8090 DATA_DIR=$(mktemp -d) node dist/main.js)
 QIYAA_JAM_TEST_SERVER=http://localhost:8090 ctest --test-dir build -R jam_e2e_test --output-on-failure
 ```
 
