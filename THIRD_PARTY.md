@@ -7,7 +7,8 @@ QiYaa itself is MIT-licensed (see `LICENSE`). It includes or links the following
 | Component | License | How it is used |
 |---|---|---|
 | [Qt 6](https://www.qt.io/) — Core, Gui, Widgets, Network, WebSockets, OpenGL, DBus (Linux) | LGPLv3 | Linked **dynamically**. You may replace the Qt libraries shipped with a build by your own. Qt sources: https://download.qt.io/official_releases/qt/ |
-| [projectM](https://github.com/projectM-visualizer/projectm) 4.1.7 — the Milkdrop engine | LGPL-2.1 | Linked **dynamically** (`libprojectM-4.so` / `projectM-4.dll` / `.dylib`, shipped next to the app); replaceable by your own build of the same version. Sources: https://github.com/projectM-visualizer/projectm/tree/v4.1.7 |
+| [projectM](https://github.com/projectM-visualizer/projectm) 4.1.7 — the Milkdrop engine | LGPL-2.1 | Linked **dynamically** (`libprojectM-4.so` / `projectM-4.dll` / `.dylib`, shipped next to the app); replaceable by your own build of the same version. Its license text comes with every binary package as `projectM-LICENSE.txt`. Sources: https://github.com/projectM-visualizer/projectm/tree/v4.1.7 |
+| [TagLib](https://taglib.org/) 2.3.2 — tags and covers of local files | MPL-1.1 (TagLib is offered under LGPL-2.1 or MPL-1.1; QiYaa takes MPL-1.1) | Linked **statically**, unmodified, built by QiYaa's CMake without zlib and with only the formats the engine plays. Its license text comes with every binary package as `taglib-LICENSE.txt`, next to this file. Sources: https://github.com/taglib/taglib/releases/tag/v2.3.2. It contains [utfcpp](https://github.com/nemtrif/utfcpp) (BSL-1.0), header-only |
 
 Only LGPL-licensed Qt modules are used. GPL-only modules (Qt HTTP Server, Qt Network Authorization, etc.) are deliberately not used.
 
