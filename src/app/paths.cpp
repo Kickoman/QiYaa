@@ -52,4 +52,11 @@ QString SettingsFile(const QString& chosen, const QTemporaryDir* temporaryDirect
     return chosen.isEmpty() ? ConfigDirectory() + QStringLiteral("/settings.ini") : chosen;
 }
 
+QString LocalCoversDirectory(const QTemporaryDir* temporaryDirectory) {
+    if (temporaryDirectory) {
+        return temporaryDirectory->filePath(QStringLiteral("local-covers"));
+    }
+    return QStandardPaths::writableLocation(QStandardPaths::CacheLocation) + QStringLiteral("/local-covers");
+}
+
 }  // namespace App

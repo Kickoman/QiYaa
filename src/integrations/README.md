@@ -82,7 +82,7 @@ public:
     enum class Status { Playing, Paused, Stopped };
     Status status() const;
     QUrl artUrl() const;          // cached cover as file://, else the https URL, else empty
-    QUrl remoteArtUrl() const;    // always the https URL (or empty)
+    QUrl remoteArtUrl() const;    // always the https URL (or empty): never a file:// cover
     QUrl webPage() const;         // the current track's web page; empty without one
 
 Q_SIGNALS:
@@ -328,7 +328,9 @@ public:
   single-threaded apartment), and asking for a different apartment type fails with
   `RPC_E_CHANGED_MODE`, which C++/WinRT throws.
 - The thumbnail must stay `remoteArtUrl()`, not `artUrl()`: SMTC downloads it itself, and
-  `CreateFromUri` refuses `file://` URIs. `smtc.cpp` keeps a one-line note about it.
+  `CreateFromUri` refuses `file://` URIs. `smtc.cpp` keeps a one-line note about it. A source
+  whose cover is a `file:` URL (local files) gets no thumbnail: `remoteArtUrl()` is empty for it,
+  while `artUrl()` still gives MPRIS that file.
 - SMTC has no play/pause toggle button: a play/pause key arrives as `Play` or `Pause`, which
   Windows picks from the `PlaybackStatus` we published. A stale status makes the key do nothing.
 - The binding is to the HWND at construction. The app creates `Smtc` after the main window and

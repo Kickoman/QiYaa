@@ -27,11 +27,11 @@ audio, yandex, skins, telemetry  →  vis, core  →  sources/yandex, sources/lo
 | [src/vis](../src/vis/README.md) | `Vis` | Spectrum, oscilloscope, FFT; Milkdrop through projectM in a `QOpenGLWindow` | Qt Gui (+ OpenGL) | audio, skins (+ projectM) |
 | [src/core](../src/core/README.md) | `Core` | `Track` and `TrackKey` (a track of any source), `TrackSource` and `SourceRegistry` (what a source answers about its tracks, and how it opens their files), `Player` (queue, transport, downloads, preload, track events), `JamMode` (the jam over the host's queue, as the queue's layer) and `CoverCache` | audio, Qt Gui, Network | |
 | [src/sources/yandex](../src/sources/yandex/README.md) | `YandexSource` | Yandex Music as a source: `Yandex::Track` ↔ `Core::Track`, its `TrackSource` (cover, web page, the file and its quality, the play report), `Catalog` (what a pick plays, likes), and the continuations `Vibe` (a vibe or station) and `HistoryWave` (the vibe after a queue's head, the jam vibe during a jam) | core, yandex, Qt Core | |
-| [src/sources/local](../src/sources/local/README.md) | `LocalSource` | The user's own files as a source: their tags and covers through TagLib, read with every size bounded | core, Qt Core | TagLib |
+| [src/sources/local](../src/sources/local/README.md) | `LocalSource` | The user's own files as a source: `Catalog` (opening files and folders on a thread of its own), their tags and covers through TagLib with every size bounded, and its `TrackSource`, which hands the engine the file on disk | core, Qt Core | TagLib |
 | [src/jam](../src/jam/README.md) | `Jam` | The jam: protocol messages and their JSON, the WebSocket connection to a jam server, the host's stored session, and `HostSession` (create, resume, the guests' search and checks, end). Optional (Qt WebSockets) | core, yandex, Qt Core, WebSockets | sources/yandex |
 | [src/ui](../src/ui/README.md) | `Ui` | The skinned windows, snapping and docking, the Yandex menus, the login dialog, the jam window | audio, vis, Qt Widgets (+ jam) | core, skins, sources/yandex, yandex (+ qrcodegen) |
 | [src/integrations](../src/integrations/README.md) | `Integrations` | Media keys and system media panels: MPRIS (Linux), SMTC (Windows) or MediaPlayer (macOS) | Qt Gui (+ DBus) | core |
-| [src/app](../src/app/README.md) | `App` | `Application`: owns and wires everything, decides nothing; the controllers `Settings`, `WindowSet`, `MainMenu`, `Account`, `JamBridge`, `TelemetryBridge`, `NetworkWatch`; `main()` | audio, core, skins, sources/yandex, yandex | integrations, jam, ui, vis (+ telemetry) |
+| [src/app](../src/app/README.md) | `App` | `Application`: owns and wires everything, decides nothing; the controllers `Settings`, `WindowSet`, `MainMenu`, `Account`, `JamBridge`, `TelemetryBridge`, `NetworkWatch`; `main()` | audio, core, skins, sources/local, sources/yandex, yandex | integrations, jam, ui, vis (+ telemetry) |
 
 Vendored code lives in `contrib/` (miniaudio, miniz, qrcodegen, minimp4, fdk-aac's decoder) and is
 not changed. TagLib is fetched at configure time and linked statically
@@ -47,8 +47,9 @@ MPRIS (`QIYAA_HAVE_MPRIS`) and SMTC (`QIYAA_HAVE_SMTC`) are optional; the macOS 
 
 `App::Application` is the composition root: it creates, owns and connects, and decides nothing. It
 holds `App::Settings`, the skins, the network manager, `Yandex::ApiClient`, `Yandex::Library`,
-`Audio::AudioEngine`, `YandexSource::Source`, `Core::SourceRegistry`, `Core::Player`,
-`YandexSource::Catalog`, `Core::JamMode` and `App::NetworkWatch` as members, and the windows, the
+`Audio::AudioEngine`, `YandexSource::Source`, `LocalSource::Source`, `Core::SourceRegistry`,
+`Core::Player`, `YandexSource::Catalog`, `LocalSource::Catalog`, `Core::JamMode` and
+`App::NetworkWatch` as members, and the windows, the
 cover cache, the media integration and the controllers (`WindowSet`, `Account`, `JamBridge`,
 `TelemetryBridge`, `MainMenu`) through `std::unique_ptr`. Member order is the construction order
 and, reversed, the destruction order: the controllers go first, then the windows, while everything
@@ -73,7 +74,9 @@ Ui (menu)  ──source──▶  Core::Player  ──open──▶  Core::Sourc
    source's own id, and for a wave a continuation (`YandexSource::Vibe`) that fetches more tracks
    and sends the wave feedback for the tracks it gave. Any other queue goes on, when its flag says
    so, with the vibe from history (`YandexSource::HistoryWave`, from the factory the app gives the
-   `Player`); during a jam that is the jam vibe, under the guests' items.
+   `Player`); during a jam that is the jam vibe, under the guests' items. "Open files…" and "Open
+   folder…" (`App::MainMenu`) call `LocalSource::Catalog` instead, which reads the files on a thread
+   of its own and hands them over the same way, as a queue without a vibe from history.
 2. `Player::playIndex` starts a stream in the engine and asks the track's source, through
    `SourceRegistry`, to open the track. `YandexSource::Source` resolves the link of the file in the
    chosen quality (a signed mp3 link, or AAC in MP4 at the economy quality) and hands back a
@@ -93,7 +96,8 @@ Ui (menu)  ──source──▶  Core::Player  ──open──▶  Core::Sourc
 
 | Thread | What runs there |
 |---|---|
-| Qt main thread | Everything outside `src/audio`: every window, every network callback, `Player`, the engine's public API and signals |
+| Qt main thread | Everything outside `src/audio` but a local scan: every window, every network callback, `Player`, the engine's public API and signals |
+| A local folder's scan (one at a time, `LocalSource::Catalog`) | Lists the files of a pick, reads their tags and writes their covers; hands the tracks back to the main thread and ends |
 | Decoder thread (one per engine) | Owns every `ma_decoder`, decides whether a track ends or the queued one follows, writes the blocks; takes commands from the engine and sends it events |
 | Device thread (miniaudio's) | Plays the blocks, equalizer, `VisTap`, gains; takes no lock and allocates nothing |
 | WinRT thread (Windows) | SMTC button presses, handed straight to the main thread |

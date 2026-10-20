@@ -9,6 +9,8 @@
 #include "core/track.h"
 #include "core/track_source.h"
 #include "skins/skin.h"
+#include "sources/local/catalog.h"
+#include "sources/local/source.h"
 #include "sources/yandex/catalog.h"
 #include "sources/yandex/source.h"
 #include "yandex/api_client.h"
@@ -127,9 +129,11 @@ private:
     Yandex::Library yandexLibrary;
     Audio::AudioEngine audioEngine;
     YandexSource::Source yandexSource;
+    LocalSource::Source localSource;
     Core::SourceRegistry trackSources;
     Core::Player corePlayer;
     YandexSource::Catalog catalog;
+    LocalSource::Catalog localCatalog;
     Core::JamMode jamMode;
     std::unique_ptr<Jam::HostSession> jamHostSession;
     std::unique_ptr<Core::CoverCache> coverCache;

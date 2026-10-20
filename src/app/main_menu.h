@@ -27,6 +27,10 @@ namespace Yandex {
 class Library;
 }  // namespace Yandex
 
+namespace LocalSource {
+class Catalog;
+}  // namespace LocalSource
+
 namespace YandexSource {
 class Catalog;
 class Source;
@@ -50,6 +54,7 @@ public:
         Audio::AudioEngine* engine = nullptr;
         Yandex::Library* library = nullptr;
         YandexSource::Catalog* catalog = nullptr;
+        LocalSource::Catalog* local = nullptr;
         Core::SourceRegistry* sources = nullptr;
         YandexSource::Source* yandex = nullptr;
         Settings* settings = nullptr;
@@ -75,6 +80,8 @@ Q_SIGNALS:
 
 private:
     void installShortcuts(QWidget* widget);
+    void addLocalActions(QMenu* menu);
+    QString localStartFolder() const;
     void addWindowActions(QMenu* menu);
     void addModes(QMenu* menu);
     void addLooks(QMenu* menu);

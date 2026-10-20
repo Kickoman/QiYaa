@@ -11,6 +11,7 @@
 #include "integrations/media_controls.h"
 #include "jam/host_session.h"
 #include "skins/error.h"
+#include "sources/local/tracks.h"
 #include "sources/yandex/history_wave.h"
 #include "sources/yandex/tracks.h"
 #include "ui/equalizer_window.h"
@@ -54,8 +55,10 @@ Application::Application(const Options& options, QObject* parent)
     , yandexSource(&yandexLibrary)
     , corePlayer(&audioEngine, &trackSources)
     , catalog(&corePlayer, &yandexLibrary)
+    , localCatalog(&corePlayer, LocalCoversDirectory(temporaryDirectory.get()))
     , jamMode(&corePlayer) {
     trackSources.add(YandexSource::kSourceName, &yandexSource);
+    trackSources.add(LocalSource::kSourceName, &localSource);
     // Before any window: they take their texts from the translation.
     translations.apply(options.language.value_or(settings.language().value_or(kDefaultLanguage)));
     corePlayer.setShuffleAlgorithm(settings.shuffleAlgorithm());
@@ -178,6 +181,9 @@ Application::Application(const Options& options, QObject* parent)
 #endif
 
     connect(&catalog, &YandexSource::Catalog::noticed, this, [this](const Core::SourceNotice& notice) {
+        mainWindowInstance->setStatusText(Ui::SourceNoticeText(notice));
+    });
+    connect(&localCatalog, &LocalSource::Catalog::noticed, this, [this](const Core::SourceNotice& notice) {
         mainWindowInstance->setStatusText(Ui::SourceNoticeText(notice));
     });
     // Before WindowSet::restore() below, which takes in the jam window.
@@ -327,6 +333,7 @@ Application::Application(const Options& options, QObject* parent)
         &audioEngine,
         &yandexLibrary,
         &catalog,
+        &localCatalog,
         &trackSources,
         &yandexSource,
         &settings,

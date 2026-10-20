@@ -13,6 +13,7 @@ enum class SourceNoticeCode {
     Empty,
     NothingFound,
     Loaded,
+    LoadedFirst,
     AddedToLiked,
     RemovedFromLiked,
     Disliked,

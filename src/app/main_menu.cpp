@@ -7,6 +7,7 @@
 #include "app/window_set.h"
 #include "audio/audio_engine.h"
 #include "core/player.h"
+#include "sources/local/catalog.h"
 #include "sources/yandex/catalog.h"
 #include "sources/yandex/source.h"
 #include "ui/library_menu.h"
@@ -19,6 +20,7 @@
 #include <QCoreApplication>
 #include <QDir>
 #include <QFileDialog>
+#include <QFileInfo>
 #include <QKeySequence>
 #include <QLatin1String>
 #include <QMenu>
@@ -96,6 +98,7 @@ void MainMenu::installShortcuts(QWidget* widget) {
 void MainMenu::showSources(QPoint globalPosition) {
     auto* menu = new QMenu(parts.mainWindow);
     menu->setAttribute(Qt::WA_DeleteOnClose);
+    addLocalActions(menu);
     Ui::AddLibraryActions(
         menu,
         parts.library,
@@ -111,6 +114,7 @@ void MainMenu::showSources(QPoint globalPosition) {
 void MainMenu::showMain(QPoint globalPosition, const Core::Track* track) {
     auto* menu = new QMenu(parts.mainWindow);
     menu->setAttribute(Qt::WA_DeleteOnClose);
+    addLocalActions(menu);
     Ui::AddLibraryActions(menu, parts.library, parts.catalog, parts.sources, track, parts.mainWindow, [this] {
         parts.account->login();
     });
@@ -126,6 +130,33 @@ void MainMenu::showMain(QPoint globalPosition, const Core::Track* track) {
     }
     menu->addAction(tr("Quit QiYaa"), this, &MainMenu::quitChosen);
     menu->popup(globalPosition);
+}
+
+void MainMenu::addLocalActions(QMenu* menu) {
+    QAction* files = menu->addAction(tr("Open files…"), this, [this] {
+        const QStringList paths = QFileDialog::getOpenFileNames(
+            parts.mainWindow, tr("Open files"), localStartFolder(), tr("Audio files (*.mp3 *.flac *.wav *.m4a *.mp4)")
+        );
+        if (!paths.isEmpty()) {
+            parts.settings->setLastLocalFolder(QFileInfo(paths.front()).absolutePath());
+            parts.local->openFiles(paths);
+        }
+    });
+    files->setObjectName(QStringLiteral("openLocalFiles"));
+    QAction* folder = menu->addAction(tr("Open folder…"), this, [this] {
+        const QString path = QFileDialog::getExistingDirectory(parts.mainWindow, tr("Open folder"), localStartFolder());
+        if (!path.isEmpty()) {
+            parts.settings->setLastLocalFolder(path);
+            parts.local->openFolder(path);
+        }
+    });
+    folder->setObjectName(QStringLiteral("openLocalFolder"));
+    menu->addSeparator();
+}
+
+QString MainMenu::localStartFolder() const {
+    const QString last = parts.settings->lastLocalFolder();
+    return !last.isEmpty() && QFileInfo(last).isDir() ? last : QDir::homePath();
 }
 
 void MainMenu::addWindowActions(QMenu* menu) {

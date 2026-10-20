@@ -23,6 +23,13 @@
 
 namespace Ui {
 
+QString BitrateText(int kbps) {
+    if (kbps > 999) {
+        return QString::number(std::min(kbps / 100, 99)).rightJustified(2, u' ') + u'H';
+    }
+    return QString::number(std::max(kbps, 0)).rightJustified(3, u' ');
+}
+
 using TSheet = Skins::Skin::Sheet;
 using Skins::MainWindowSprites;
 
@@ -471,8 +478,7 @@ void MainWindow::paintSkin(QPainter& painter) {
         const int kbps = corePlayer->currentBitrate();
         const int khz = (audioEngine->sourceSampleRate() + 500) / 1000;
         if (kbps > 0) {
-            const QString bitrateText = QString::number(kbps).rightJustified(3, u' ').right(3);
-            activeSkin.drawText(painter, Skins::MainWindowSprites::kKbps, bitrateText);
+            activeSkin.drawText(painter, Skins::MainWindowSprites::kKbps, BitrateText(kbps));
         }
         if (khz > 0) {
             activeSkin.drawText(

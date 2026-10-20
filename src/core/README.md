@@ -811,12 +811,12 @@ Q_SIGNALS:
 
 ```cpp
 enum class SourceNoticeCode { Loading, Searching, Failed, VibeFailed, SearchFailed, Empty, NothingFound,
-                              Loaded, AddedToLiked, RemovedFromLiked, Disliked };
+                              Loaded, LoadedFirst, AddedToLiked, RemovedFromLiked, Disliked };
 struct SourceNotice {
     SourceNoticeCode code;
     QString subject;          // the pick's title (a search's text for Searching)
     QString detail;           // English: the request's error
-    int count = 0;            // Loaded: the available tracks
+    int count = 0;            // Loaded: the available tracks; LoadedFirst: those taken, the rest left out
 };
 ```
 
@@ -1014,7 +1014,7 @@ public:
     );
 
     QImage get(const QUrl& url);               // null while it downloads; ready(url) follows on success
-    QString localFile(const QUrl& url) const;  // empty until the file is on disk
+    QString localFile(const QUrl& url) const;  // empty until the file is on disk; a file: URL's own file
 
 Q_SIGNALS:
     void ready(const QUrl& url);
@@ -1028,10 +1028,11 @@ Q_SIGNALS:
   directory comes from `src/app`, which passes a folder inside its temporary directory when it
   runs with read-only settings, and an empty string otherwise.
 - `get(url)` returns a null image for an empty URL. Otherwise it looks in memory, then on disk,
-  then goes to the network:
+  then goes to the network. A `file:` URL is its own file on disk: it is read from there, never
+  copied into the directory and never downloaded, so it works without a network manager:
   - A memory hit makes the URL the most recently used and returns the image.
-  - If `localFile(url)` exists and `QImage` decodes it, the image goes into memory and is
-    returned.
+  - If `localFile(url)` exists, holds at most `kMaxLocalFileBytes` (16 MiB) and `QImage` decodes
+    it, the image goes into memory and is returned.
   - Otherwise `get` returns a null image and starts a download, unless one for this URL is
     already pending or `networkAccessManager` is null.
 - The download is a GET through `networkAccessManager` with `NoLessSafeRedirectPolicy` and
@@ -1079,7 +1080,9 @@ Q_SIGNALS:
 - A file is written only after `QImage::loadFromData` has accepted the bytes.
 - The extension is always `.jpg`, whatever the content is. `QImage` detects the real format;
   anyone else who reads `localFile()` gets the `.jpg` name either way.
-- On reading, a file that `QImage` cannot decode is treated as missing. There is no size check.
+- On reading, a file that `QImage` cannot decode, or one over 16 MiB, is treated as missing.
+- A `file:` URL is not kept here: its own file is read in place (the local source's covers,
+  `<cache>/local-covers/`).
 
 `Player` reads no files. The audio bytes go straight from the network to the engine.
 

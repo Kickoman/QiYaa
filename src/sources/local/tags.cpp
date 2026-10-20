@@ -1,7 +1,7 @@
 #include "sources/local/tags.h"
 
 #include <QFile>
-#include <QtGlobal>
+#include <QLoggingCategory>
 #include <fileref.h>
 #include <flacfile.h>
 #include <mp4file.h>
@@ -23,6 +23,8 @@ namespace LocalSource {
 
 namespace {
 
+Q_LOGGING_CATEGORY(TagLibLog, "qiyaa.taglib", QtWarningMsg)
+
 class BoundedStream : public TagLib::FileStream {
 public:
     using TagLib::FileStream::FileStream;
@@ -38,7 +40,7 @@ public:
 class QtDebugListener : public TagLib::DebugListener {
 public:
     void printMessage(const TagLib::String& message) override {
-        qDebug("%s", qUtf8Printable(QString::fromStdWString(message.toWString()).trimmed()));
+        qCDebug(TagLibLog, "%s", qUtf8Printable(QString::fromStdWString(message.toWString()).trimmed()));
     }
 };
 

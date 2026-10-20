@@ -92,9 +92,14 @@ bool MediaControls::seekTo(double seconds) {
     return corePlayer->durationSeconds() > 0 && corePlayer->seekTo(seconds);
 }
 
-QUrl MediaControls::remoteArtUrl() const {
+QUrl MediaControls::coverUrl() const {
     const auto* track = corePlayer->currentTrack();
     return track ? trackSources->coverUrl(*track, kCoverPixels) : QUrl();
+}
+
+QUrl MediaControls::remoteArtUrl() const {
+    const QUrl url = coverUrl();
+    return url.isLocalFile() ? QUrl() : url;
 }
 
 QUrl MediaControls::webPage() const {
@@ -103,17 +108,17 @@ QUrl MediaControls::webPage() const {
 }
 
 QUrl MediaControls::artUrl() const {
-    const QUrl remote = remoteArtUrl();
-    if (remote.isEmpty()) {
+    const QUrl cover = coverUrl();
+    if (cover.isEmpty()) {
         return {};
     }
     if (coverCache) {
-        const QString local = coverCache->localFile(remote);
+        const QString local = coverCache->localFile(cover);
         if (!local.isEmpty()) {
             return QUrl::fromLocalFile(local);
         }
     }
-    return remote;
+    return remoteArtUrl();
 }
 
 }  // namespace Integrations

@@ -252,6 +252,26 @@
         <source>Send statistics</source>
         <translation>Отправлять статистику</translation>
     </message>
+    <message>
+        <source>Open files…</source>
+        <translation>Открыть файлы…</translation>
+    </message>
+    <message>
+        <source>Open files</source>
+        <translation>Открыть файлы</translation>
+    </message>
+    <message>
+        <source>Audio files (*.mp3 *.flac *.wav *.m4a *.mp4)</source>
+        <translation>Аудиофайлы (*.mp3 *.flac *.wav *.m4a *.mp4)</translation>
+    </message>
+    <message>
+        <source>Open folder…</source>
+        <translation>Открыть папку…</translation>
+    </message>
+    <message>
+        <source>Open folder</source>
+        <translation>Открыть папку</translation>
+    </message>
 </context>
 <context>
     <name>Ui::EqualizerWindow</name>
@@ -950,6 +970,14 @@ Right click or ADD: pick what to listen to.</source>
     <message>
         <source>Disliked</source>
         <translation>Дизлайк поставлен</translation>
+    </message>
+    <message numerus="yes">
+        <source>%1: the first %n track(s)</source>
+        <translation>
+            <numerusform>%1: первый %n трек</numerusform>
+            <numerusform>%1: первые %n трека</numerusform>
+            <numerusform>%1: первые %n треков</numerusform>
+        </translation>
     </message>
 </context>
 <context>

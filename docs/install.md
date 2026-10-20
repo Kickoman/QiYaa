@@ -72,6 +72,7 @@
 |---|---|---|---|
 | Настройки (`settings.ini`), токен (`token`), свои пресеты Milkdrop (`milkdrop/`) | `~/.config/QiYaa/` (или `$XDG_CONFIG_HOME/QiYaa/`) | `%LOCALAPPDATA%\QiYaa\` | `~/Library/Preferences/QiYaa/` |
 | Обложки | `~/.cache/QiYaa/covers/` | `%LOCALAPPDATA%\QiYaa\cache\covers\` | `~/Library/Caches/QiYaa/covers/` |
+| Обложки своих файлов (уменьшенные, по одной на картинку) | `~/.cache/QiYaa/local-covers/` | `%LOCALAPPDATA%\QiYaa\cache\local-covers\` | `~/Library/Caches/QiYaa/local-covers/` |
 | Токен Yaamp, который QiYaa подхватывает | `~/.config/Yaamp/token.json` | `%APPDATA%\Yaamp\token.json` | `~/Library/Application Support/Yaamp/token.json` |
 
 Что записано в `settings.ini` — в [src/app/README.md](../src/app/README.md#file-format-settingsini).
