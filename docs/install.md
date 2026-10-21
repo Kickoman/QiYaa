@@ -64,13 +64,20 @@
 3. `token.json` старого Yaamp, если Yaamp был залогинен. После успешного подключения QiYaa копирует
    этот токен в свой файл.
 
-Файл `token` доступен только владельцу. «Выйти из аккаунта» в меню очищает его.
+Файл `token` доступен только владельцу. Меню → «Яндекс Музыка» → «Выйти (имя)» очищает его.
+
+## Вход в Spotify
+
+Меню → «Spotify» → «Войти в Spotify…», нужен аккаунт Premium. Способы входа — в
+[features.md](features.md#spotify). QiYaa сохраняет данные для повторного входа в файл
+`spotify-credentials` (доступен только владельцу) и при следующем запуске входит сама. «Выйти (имя)»
+в том же подменю удаляет файл.
 
 ## Где QiYaa хранит файлы
 
 | Что | Linux | Windows | macOS |
 |---|---|---|---|
-| Настройки (`settings.ini`), токен (`token`), свои пресеты Milkdrop (`milkdrop/`) | `~/.config/QiYaa/` (или `$XDG_CONFIG_HOME/QiYaa/`) | `%LOCALAPPDATA%\QiYaa\` | `~/Library/Preferences/QiYaa/` |
+| Настройки (`settings.ini`), токен (`token`), вход в Spotify (`spotify-credentials`), свои пресеты Milkdrop (`milkdrop/`) | `~/.config/QiYaa/` (или `$XDG_CONFIG_HOME/QiYaa/`) | `%LOCALAPPDATA%\QiYaa\` | `~/Library/Preferences/QiYaa/` |
 | Обложки | `~/.cache/QiYaa/covers/` | `%LOCALAPPDATA%\QiYaa\cache\covers\` | `~/Library/Caches/QiYaa/covers/` |
 | Обложки своих файлов (уменьшенные, по одной на картинку) | `~/.cache/QiYaa/local-covers/` | `%LOCALAPPDATA%\QiYaa\cache\local-covers\` | `~/Library/Caches/QiYaa/local-covers/` |
 | Токен Yaamp, который QiYaa подхватывает | `~/.config/Yaamp/token.json` | `%APPDATA%\Yaamp\token.json` | `~/Library/Application Support/Yaamp/token.json` |

@@ -13,6 +13,9 @@
 #include "sources/local/source.h"
 #include "sources/yandex/catalog.h"
 #include "sources/yandex/source.h"
+#include "spotify/client/endpoints.h"
+#include "spotify/client/session.h"
+#include "spotify/client/web.h"
 #include "yandex/api_client.h"
 #include "yandex/library.h"
 
@@ -52,6 +55,7 @@ namespace App {
 class Account;
 class JamBridge;
 class MainMenu;
+class SpotifyAccount;
 class TelemetryBridge;
 class WindowSet;
 
@@ -71,6 +75,7 @@ public:
         std::optional<Language> language;
         // Where telemetry goes; empty: none (tests, screenshots, builds without telemetry).
         QUrl telemetryUrl;
+        SpotifyClient::Endpoints spotifyEndpoints;
     };
 
     explicit Application(const Options& options, QObject* parent = nullptr);
@@ -97,6 +102,8 @@ public:
 
     WindowSet* windows() const { return windowSet.get(); }
     Account* account() const { return accountControl.get(); }
+    SpotifyAccount* spotify() const { return spotifyAccountControl.get(); }
+    SpotifyClient::Session* spotifySession() { return &spotifyClientSession; }
 
     bool loadSkin(const QString& path);
 
@@ -127,6 +134,9 @@ private:
     QNetworkAccessManager* networkManager;
     Yandex::ApiClient apiClient;
     Yandex::Library yandexLibrary;
+    QString spotifyDeviceId;
+    SpotifyClient::Session spotifyClientSession;
+    SpotifyClient::Web spotifyWeb;
     Audio::AudioEngine audioEngine;
     YandexSource::Source yandexSource;
     LocalSource::Source localSource;
@@ -150,6 +160,7 @@ private:
     std::unique_ptr<Ui::JamWindow> jamWindowInstance;
     std::unique_ptr<WindowSet> windowSet;
     std::unique_ptr<Account> accountControl;
+    std::unique_ptr<SpotifyAccount> spotifyAccountControl;
     std::unique_ptr<JamBridge> jamBridge;
     std::unique_ptr<TelemetryBridge> telemetryBridge;
     std::unique_ptr<MainMenu> mainMenu;
