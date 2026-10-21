@@ -17,6 +17,7 @@
 #include <tvariant.h>
 #include <wavfile.h>
 
+#include <memory>
 #include <mutex>
 
 namespace LocalSource {
@@ -82,23 +83,28 @@ bool Playable(TagLib::File* file) {
     return dynamic_cast<TagLib::FLAC::File*>(file) || dynamic_cast<TagLib::RIFF::WAV::File*>(file);
 }
 
-}  // namespace
-
-std::optional<FileTags> ReadTags(const QString& path) {
+std::unique_ptr<BoundedStream> OpenStream(const QString& path) {
     static QtDebugListener listener;
     static std::once_flag listening;
     std::call_once(listening, [] { TagLib::setDebugListener(&listener); });
 
 #ifdef _WIN32
-    BoundedStream stream(reinterpret_cast<const wchar_t*>(path.utf16()), true);
+    auto stream = std::make_unique<BoundedStream>(reinterpret_cast<const wchar_t*>(path.utf16()), true);
 #else
     const QByteArray encoded = QFile::encodeName(path);
-    BoundedStream stream(encoded.constData(), true);
+    auto stream = std::make_unique<BoundedStream>(encoded.constData(), true);
 #endif
-    if (!stream.isOpen()) {
+    return stream->isOpen() ? std::move(stream) : nullptr;
+}
+
+}  // namespace
+
+std::optional<FileTags> ReadTags(const QString& path) {
+    const std::unique_ptr<BoundedStream> stream = OpenStream(path);
+    if (!stream) {
         return std::nullopt;
     }
-    const TagLib::FileRef file(&stream, true, TagLib::AudioProperties::Average);
+    const TagLib::FileRef file(stream.get(), true, TagLib::AudioProperties::Average);
     if (file.isNull()) {
         return std::nullopt;
     }
@@ -120,6 +126,24 @@ std::optional<FileTags> ReadTags(const QString& path) {
     tags.playable = Playable(file.file());
     tags.picture = PictureOf(file);
     return tags;
+}
+
+QString ReadTagLyrics(const QString& path) {
+    const std::unique_ptr<BoundedStream> stream = OpenStream(path);
+    if (!stream) {
+        return {};
+    }
+    const TagLib::FileRef file(stream.get(), false);
+    if (file.isNull()) {
+        return {};
+    }
+    const TagLib::PropertyMap properties = file.properties();
+    for (const auto& [key, values] : properties) {
+        if ((key == "LYRICS" || key.startsWith("LYRICS:")) && !values.isEmpty()) {
+            return QString::fromStdWString(values.front().toWString());
+        }
+    }
+    return {};
 }
 
 }  // namespace LocalSource

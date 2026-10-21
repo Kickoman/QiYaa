@@ -47,6 +47,7 @@ public:
     QUrl webPage(const Core::Track& track) const override;
     void open(const Core::Track& track, TOpened done) override;
     void trackEvent(Core::TrackEvent event, const Core::Track& track, double playedSeconds) override;
+    void lyrics(const Core::Track& track, Core::TLyricsDone done) override;
 
     qsizetype pending() const;
     const QStringList& asked() const { return askedIds; }
@@ -59,6 +60,10 @@ public:
     void completeWithFile(qsizetype request, std::shared_ptr<Audio::ByteSource> file);
     void fail(qsizetype request, Core::FailureKind kind, const QString& text = QStringLiteral("broken"));
     void changeFiles();
+
+    const QStringList& lyricsAsked() const { return lyricsAskedIds; }
+    qsizetype lyricsPending() const;
+    void answerLyrics(qsizetype request, Core::LyricsAnswer answer);
     static QUrl LinkOf(const QString& id);
 
 private:
@@ -69,6 +74,8 @@ private:
     QStringList askedIds;
     QStringList startedIds;
     QList<Event> trackEvents;
+    QList<Core::TLyricsDone> lyricsAnswers;
+    QStringList lyricsAskedIds;
 };
 
 }  // namespace Tests

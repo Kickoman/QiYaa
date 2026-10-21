@@ -52,6 +52,24 @@ void FakeSource::trackEvent(Core::TrackEvent event, const Core::Track& track, do
     trackEvents << Event{event, track.key.id};
 }
 
+void FakeSource::lyrics(const Core::Track& track, Core::TLyricsDone done) {
+    lyricsAskedIds << track.key.id;
+    lyricsAnswers << std::move(done);
+}
+
+qsizetype FakeSource::lyricsPending() const {
+    qsizetype count = 0;
+    for (const Core::TLyricsDone& answer : lyricsAnswers) {
+        count += answer ? 1 : 0;
+    }
+    return count;
+}
+
+void FakeSource::answerLyrics(qsizetype request, Core::LyricsAnswer answer) {
+    const Core::TLyricsDone done = std::exchange(lyricsAnswers[request], {});
+    done(std::move(answer));
+}
+
 qsizetype FakeSource::pending() const {
     qsizetype count = 0;
     for (const TOpened& answer : answers) {
