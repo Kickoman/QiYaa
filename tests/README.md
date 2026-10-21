@@ -702,7 +702,7 @@ collects `org.freedesktop.DBus.Properties.PropertiesChanged`.
 - `DialogAfterChoosing(item)` opens the item's submenus and presses Return on it (a press alone:
   without the fix the menu is deleted before the release). A 5 ms timer rejects every modal
   dialog and notes whether it came up before the press returned. The result is the dialog's
-  title, or `inside the menu: <title>`, the bug that crashed v0.7.0 on Qt 6.4 (the traps of
+  title (a `QMessageBox`'s text: on macOS it has no title), or `inside the menu: <title>`, the bug that crashed v0.7.0 on Qt 6.4 (the traps of
   [`App::MainMenu`](../src/app/README.md#main_menuhcpp--appmainmenu)). "Log in to Yandex Music…"
   is not checked: its dialog starts the device flow against the real OAuth server.
 

@@ -59,6 +59,7 @@
 #include <algorithm>
 #include <functional>
 #include <memory>
+#include <optional>
 
 using Yandex::Track;
 
@@ -130,23 +131,24 @@ QString DialogAfterChoosing(QAction* item) {
         }
     }
     const QPointer<QMenu> top = path.first();
-    QString during;
-    QString after;
+    std::optional<QString> during;
+    std::optional<QString> after;
     bool choosing = true;
     QTimer poll;
     QObject::connect(&poll, &QTimer::timeout, [&] {
         if (auto* dialog = qobject_cast<QDialog*>(QApplication::activeModalWidget())) {
-            (choosing ? during : after) = dialog->windowTitle();
+            const auto* box = qobject_cast<QMessageBox*>(dialog);
+            (choosing ? during : after) = box ? box->text() : dialog->windowTitle();
             dialog->reject();
         }
     });
     poll.start(5);
     PressReturn(path.last(), item);
     choosing = false;
-    if (!QTest::qWaitFor([&] { return !during.isEmpty() || (!after.isEmpty() && !top); }, 5000)) {
+    if (!QTest::qWaitFor([&] { return during || (after && !top); }, 5000)) {
         return top ? QStringLiteral("menu still open") : QStringLiteral("no dialog");
     }
-    return during.isEmpty() ? after : QStringLiteral("inside the menu: ") + during;
+    return during ? QStringLiteral("inside the menu: ") + *during : *after;
 }
 
 class NoMoreTracks : public Core::Continuation {
@@ -1335,7 +1337,10 @@ private Q_SLOTS:
             return OpenMenuItem(textOrName);
         };
         QCOMPARE(DialogAfterChoosing(mainItem(QStringLiteral("Search…"))), QStringLiteral("Search"));
-        QCOMPARE(DialogAfterChoosing(mainItem(QStringLiteral("endJam"))), QStringLiteral("End the jam"));
+        QCOMPARE(
+            DialogAfterChoosing(mainItem(QStringLiteral("endJam"))),
+            QStringLiteral("End the jam? The guests will see that it is over.")
+        );
         QCOMPARE(start.application->jamHost()->phase(), Jam::HostPhase::Active);
 #else
         QSKIP("built without the jam");
