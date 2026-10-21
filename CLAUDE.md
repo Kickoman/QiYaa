@@ -20,8 +20,10 @@ README is its file-level reference.
   RBJ cookbook biquads and the FFT.
 - **Music sources are a group of modules.** `src/sources/` holds only folders and its README is
   their index; `src/sources/<name>` is a module with the namespace `<Name>Source` (`YandexSource`:
-  `Yandex` is the API client's) and the library `qiyaa_sources_<name>`. The rule for modules and
-  groups is in [docs/architecture.md](docs/architecture.md#modules).
+  `Yandex` is the API client's) and the library `qiyaa_sources_<name>`. `src/spotify/` is a group
+  too: `src/spotify/<part>`, namespace `Spotify<Part>` (`SpotifyProtocol`), library
+  `qiyaa_spotify_<part>`. The rule for modules and groups is in
+  [docs/architecture.md](docs/architecture.md#modules).
 - **Include root is `src/`.** Project headers are written from there (`"audio/audio_engine.h"`),
   tests from `tests/` (`"support/mock_http_server.h"`).
 - **Includes.** A `.cpp` may rely on what its own header includes, and an override does not

@@ -71,6 +71,41 @@ else()
     target_compile_options(qiyaa_stb_vorbis PRIVATE -w)
 endif()
 
+# The crypto behind the Spotify protocol (src/spotify/protocol): a subset of BearSSL 7bea48e.
+add_library(qiyaa_bearssl STATIC
+    contrib/bearssl/src/codec/ccopy.c
+    contrib/bearssl/src/codec/dec32be.c
+    contrib/bearssl/src/codec/enc32be.c
+    contrib/bearssl/src/hash/sha1.c
+    contrib/bearssl/src/int/i31_add.c
+    contrib/bearssl/src/int/i31_bitlen.c
+    contrib/bearssl/src/int/i31_decmod.c
+    contrib/bearssl/src/int/i31_decode.c
+    contrib/bearssl/src/int/i31_encode.c
+    contrib/bearssl/src/int/i31_fmont.c
+    contrib/bearssl/src/int/i31_modpow2.c
+    contrib/bearssl/src/int/i31_montmul.c
+    contrib/bearssl/src/int/i31_muladd.c
+    contrib/bearssl/src/int/i31_ninv31.c
+    contrib/bearssl/src/int/i31_rshift.c
+    contrib/bearssl/src/int/i31_sub.c
+    contrib/bearssl/src/int/i31_tmont.c
+    contrib/bearssl/src/int/i32_div32.c
+    contrib/bearssl/src/mac/hmac.c
+    contrib/bearssl/src/rsa/rsa_i31_pkcs1_vrfy.c
+    contrib/bearssl/src/rsa/rsa_i31_pub.c
+    contrib/bearssl/src/rsa/rsa_pkcs1_sig_unpad.c
+    contrib/bearssl/src/symcipher/aes_ct.c
+    contrib/bearssl/src/symcipher/aes_ct_ctr.c
+    contrib/bearssl/src/symcipher/aes_ct_enc.c)
+target_include_directories(qiyaa_bearssl PUBLIC contrib/bearssl/inc PRIVATE contrib/bearssl/src)
+set_target_properties(qiyaa_bearssl PROPERTIES POSITION_INDEPENDENT_CODE ON)
+if(MSVC)
+    target_compile_options(qiyaa_bearssl PRIVATE /w)
+else()
+    target_compile_options(qiyaa_bearssl PRIVATE -w)
+endif()
+
 # One static library per module: a folder of src/ with sources in it (src/sources/yandex is qiyaa_sources_yandex).
 # Dependencies point one way:
 #   audio, yandex, skins  ->  vis, core  ->  sources/yandex, sources/local  ->  jam  ->  ui, integrations  ->  app  ->  qiyaa (main)
@@ -104,6 +139,20 @@ qiyaa_add_module(audio
     src/audio/vis_tap.cpp       src/audio/vis_tap.h)
 target_link_libraries(qiyaa_audio PUBLIC Qt6::Core
     PRIVATE qiyaa_miniaudio qiyaa_minimp4 qiyaa_fdk_aac qiyaa_stb_vorbis)
+
+qiyaa_add_module(spotify_protocol
+    src/spotify/protocol/access_point.cpp src/spotify/protocol/access_point.h
+    src/spotify/protocol/audio_file.cpp   src/spotify/protocol/audio_file.h
+    src/spotify/protocol/bytes.cpp        src/spotify/protocol/bytes.h
+    src/spotify/protocol/crypto.cpp       src/spotify/protocol/crypto.h
+    src/spotify/protocol/ids.cpp          src/spotify/protocol/ids.h
+    src/spotify/protocol/login.cpp        src/spotify/protocol/login.h
+    src/spotify/protocol/metadata.cpp     src/spotify/protocol/metadata.h
+    src/spotify/protocol/modpow.c         src/spotify/protocol/modpow.h
+    src/spotify/protocol/protobuf.cpp     src/spotify/protocol/protobuf.h
+    src/spotify/protocol/shannon.cpp      src/spotify/protocol/shannon.h)
+target_include_directories(qiyaa_spotify_protocol PRIVATE contrib/bearssl/src)
+target_link_libraries(qiyaa_spotify_protocol PRIVATE qiyaa_bearssl)
 
 qiyaa_add_module(yandex
     src/yandex/api_client.cpp   src/yandex/api_client.h

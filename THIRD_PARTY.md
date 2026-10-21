@@ -25,6 +25,7 @@ and [GLM](https://github.com/g-truc/glm) (MIT). On Windows it uses [GLEW](https:
 | [QR Code generator](https://github.com/nayuki/QR-Code-generator) (C++) — Project Nayuki | 1.8.0 (`7ad95ce`) | MIT | `contrib/qrcodegen/` (only in builds with the jam) |
 | [minimp4](https://github.com/lieff/minimp4) — Lieff and contributors | `2a3014a` | CC0 1.0 | `contrib/minimp4/` |
 | [stb_vorbis](https://github.com/nothings/stb) — Sean Barrett and contributors | 1.22 (the same file as miniaudio 0.11.25's `extras/stb_vorbis.c`) | Public domain / MIT | `contrib/stb_vorbis/` |
+| [BearSSL](https://bearssl.org/) — Thomas Pornin; AES, SHA-1, HMAC, RSA PKCS#1 check and big integers only | `7bea48e` (2026-04-06) | MIT | `contrib/bearssl/` |
 | [FDK AAC](https://github.com/mstorsjo/fdk-aac) — Fraunhofer IIS, the decoder libraries only | 2.0.3 (`716f439`) | Software License for The Fraunhofer FDK AAC Codec Library for Android (see below) | `contrib/fdk-aac/` (`CMakeLists.txt` there is QiYaa's) |
 
 **FDK AAC and patents.** Fraunhofer's license (`contrib/fdk-aac/LICENSE`, upstream's `NOTICE`)
@@ -69,9 +70,17 @@ request, and so does QiYaa. Details in `resources/milkdrop/README.md`.
 **yandex-music-api** — https://github.com/MarshalX/yandex-music-api — the unofficial API documentation of that project was used as a reference
 for the shapes of the rotor session, wave feedback, landing and playlist-recommendation endpoints. No code was copied.
 
+**librespot** — https://github.com/librespot-org/librespot — MIT License, Copyright (c) 2015 Paul Lietar and the
+librespot contributors. Spotify's client protocol in `src/spotify/protocol` (the access point handshake and session,
+client-token and login5, extended-metadata, storage-resolve, audio keys, the file decryption and its header) follows
+librespot's code, and the values QiYaa sends where Spotify checks them are librespot's.
+
+**shannon** — https://crates.io/crates/shannon — MIT License, Copyright (c) 2016 Paul Lietar: the Shannon cipher in
+`src/spotify/protocol/shannon.cpp` is ported from it, after Qualcomm's reference implementation.
+
 The equalizer uses the peaking-filter formulas from Robert Bristow-Johnson's *Audio EQ Cookbook* (public knowledge, no code copied).
 
-<details><summary>MIT License text (webamp, Yaamp, miniz)</summary>
+<details><summary>MIT License text (webamp, Yaamp, miniz, BearSSL, librespot, shannon)</summary>
 
 ```
 Permission is hereby granted, free of charge, to any person obtaining a copy
