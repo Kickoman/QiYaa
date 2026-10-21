@@ -12,6 +12,7 @@
 #include <QJsonValue>
 #include <QList>
 #include <QObject>
+#include <QSignalSpy>
 #include <QString>
 #include <QStringList>
 #include <QTest>
@@ -446,6 +447,7 @@ private Q_SLOTS:
     void turningTheServiceOnAndOff() {  // LYR-15
         Stack stack;
         QVERIFY(stack.start(1));
+        QSignalSpy switched(&stack.finder, &Core::LyricsFinder::thirdPartyChanged);
         stack.finder.setActive(true);
         stack.source.answerLyrics(0, Plain(QStringLiteral("plain")));
         QVERIFY(stack.service.asked.isEmpty());
@@ -459,8 +461,11 @@ private Q_SLOTS:
         QCOMPARE(stack.service.asked, QStringList{"1"});
         QCOMPARE(stack.shownText(), QStringLiteral("timed"));
         stack.finder.setThirdPartyEnabled(false);
+        stack.finder.setThirdPartyEnabled(false);
         stack.player.playIndex(0);
         QCOMPARE(stack.source.lyricsAsked(), QStringList{"1"});
+        QCOMPARE(switched.count(), 4);
+        QCOMPARE(switched.last().first().toBool(), false);
     }
 
     void turningTheServiceOffCancelsItsRequest() {  // LYR-15

@@ -33,6 +33,7 @@ class Reporter : public QObject {
     void recordError(area, kind, httpStatus = 0);  // at most kMaxErrorsPerSession, then counted
     void recordFeature(name, value);
     void countTrack(); void countJam(); void setPlaying(bool); void setMilkdropShown(bool);
+    void countLyrics(const QString& field);   // one of exit's lyrics counts (TEL-17); any other name: nothing
     void finish();       // `exit`; from here the run counts as closed
     void send();         // one batch, if allowed now
     void forget();       // TEL-02: deletes this run's files, sends nothing more
@@ -58,6 +59,11 @@ server takes 64). The answer decides what happens next:
 - 2xx, 400 or 413 drops the events;
 - 429 waits `Retry-After` (60 s without it);
 - anything else, or no answer, keeps them and waits 1 min, doubling up to 1 h.
+
+**The lyrics counts** go into `exit` only once one of them was counted, and then all eight of
+them, the rest as 0: the schema wants them together. The names are the schema's
+(`lyricsLookups`, `lyricsSourceSynced`…); a name it does not have is dropped, so no other field
+can slip into `exit` this way.
 
 **Traps:**
 - the crash handler is per process: a second `Reporter` in one process (tests) does not install

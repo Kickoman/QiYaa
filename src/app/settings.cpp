@@ -91,6 +91,14 @@ bool Settings::continueWithVibe() const {
     return store.value(QStringLiteral("playback/continueWithVibe"), true).toBool();
 }
 
+bool Settings::lyricsThirdParty() const {
+    return store.value(QStringLiteral("lyrics/thirdParty"), false).toBool();
+}
+
+void Settings::setLyricsThirdParty(bool on) {
+    store.setValue(QStringLiteral("lyrics/thirdParty"), on);
+}
+
 MainWindowState Settings::mainWindow() const {
     MainWindowState state;
     state.volume = store.value(QStringLiteral("volume"), state.volume).toInt();

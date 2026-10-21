@@ -14,6 +14,7 @@
 #include "ui/equalizer_window.h"
 #include "ui/jam_window.h"
 #include "ui/login_dialog.h"
+#include "ui/lyrics_window.h"
 #include "ui/main_window.h"
 #include "ui/milkdrop_window.h"
 #include "ui/now_playing_window.h"
@@ -21,6 +22,7 @@
 #include "yandex/api_client.h"
 #include "yandex/file_info.h"
 
+#include <QAbstractButton>
 #include <QAction>
 #include <QApplication>
 #include <QBuffer>
@@ -33,6 +35,7 @@
 #include <QEvent>
 #include <QGuiApplication>
 #include <QKeyEvent>
+#include <QKeySequence>
 #include <QLabel>
 #include <QList>
 #include <QMenu>
@@ -1237,6 +1240,93 @@ private Q_SLOTS:
         QCOMPARE(saved.value(QStringLiteral("scale")).toDouble(), 1.5);
         QVERIFY(saved.contains(QStringLiteral("mainWindow/pos")));
         QVERIFY(saved.contains(QStringLiteral("equalizer/pos")));
+    }
+
+    void theLyricsWindowStacksUnderThePlaylist() {
+        if (QGuiApplication::primaryScreen()->availableGeometry().height() < 1200) {
+            QSKIP("needs a 2560x1440 virtual screen");
+        }
+        Ui::LyricsWindow* lyrics = application->lyricsWindow();
+        application->windows()->setVisible(lyrics, true);
+        QCOMPARE(lyrics->skinSize(), QSize(275, 290));
+        QCOMPARE(lyrics->pos(), playlist->pos() + QPoint(0, playlist->height()));
+        application->windows()->setVisible(lyrics, false);
+    }
+
+    void altLTogglesTheLyricsWindowAndItsLookups() {  // LYR-01
+        Ui::LyricsWindow* lyrics = application->lyricsWindow();
+        QVERIFY(lyrics);
+        QVERIFY(!lyrics->isVisible());
+        const QList<QAction*> actions = main->actions();
+        const auto altL = std::find_if(actions.cbegin(), actions.cend(), [](const QAction* action) {
+            return action->shortcut() == QKeySequence(Qt::ALT | Qt::Key_L);
+        });
+        QVERIFY(altL != actions.cend());
+        (*altL)->trigger();
+        QVERIFY(lyrics->isVisible());
+        QVERIFY(application->lyrics()->isActive());
+        (*altL)->trigger();
+        QVERIFY(!lyrics->isVisible());
+        QVERIFY(!application->lyrics()->isActive());
+    }
+
+    void theLrclibItemAsksAndSaysWhatGoesThereAndIsAbsentOffline() {  // LYR-15
+        main->menuRequested(QPoint(100, 100));
+        QVERIFY(main->findChild<QAction*>(QStringLiteral("openLocalFiles")));
+        QVERIFY(!main->findChild<QAction*>(QStringLiteral("lyricsFromLrclib")));
+        QVERIFY(!application->lyrics()->hasThirdParty());
+        QTemporaryDir directory;
+        QVERIFY(directory.isValid());
+        App::Application::Options options = OptionsWithSettings(directory.filePath(QStringLiteral("settings.ini")));
+        options.offline = false;
+        const auto choose = [](App::Application& app, const QString& button) {
+            app.mainWindow()->menuRequested(QPoint(100, 100));
+            QAction* item = app.mainWindow()->findChild<QAction*>(QStringLiteral("lyricsFromLrclib"));
+            if (!item) {
+                return QStringLiteral("no item");
+            }
+            QString question;
+            QTimer answer;
+            QObject::connect(&answer, &QTimer::timeout, [&] {
+                auto* box = qobject_cast<QMessageBox*>(QApplication::activeModalWidget());
+                if (!box) {
+                    return;
+                }
+                question = box->text();
+                for (QAbstractButton* candidate : box->buttons()) {
+                    if (candidate->text() == button) {
+                        candidate->click();
+                    }
+                }
+            });
+            answer.start(5);
+            const bool inside = (item->trigger(), !question.isEmpty());
+            delete qobject_cast<QMenu*>(item->parent());
+            if (!QTest::qWaitFor([&] { return !question.isEmpty(); }, 2000)) {
+                return QStringLiteral("no question");
+            }
+            QTest::qWait(20);
+            return inside ? QStringLiteral("inside the menu") : question;
+        };
+        {
+            App::Application online(options);
+            QVERIFY(online.lyrics()->hasThirdParty());
+            QVERIFY(!online.lyrics()->thirdPartyEnabled());
+            const QString question = choose(online, QStringLiteral("Cancel"));
+            QVERIFY2(question.contains(QStringLiteral("title and first artist")), qPrintable(question));
+            QVERIFY(!online.lyrics()->thirdPartyEnabled());
+            QVERIFY(choose(online, QStringLiteral("Turn on")).contains(QStringLiteral("computer's address")));
+            QVERIFY(online.lyrics()->thirdPartyEnabled());
+        }
+        App::Application restored(options);
+        QVERIFY(restored.lyrics()->thirdPartyEnabled());
+        QCOMPARE(AllSettings(options.settingsFile).value(QStringLiteral("lyrics/thirdParty")).toBool(), true);
+        restored.mainWindow()->menuRequested(QPoint(100, 100));
+        QAction* item = restored.mainWindow()->findChild<QAction*>(QStringLiteral("lyricsFromLrclib"));
+        QVERIFY(item && item->isChecked());
+        item->trigger();
+        QVERIFY(!restored.lyrics()->thirdPartyEnabled());
+        delete qobject_cast<QMenu*>(item->parent());
     }
 
     void theJamWindowIsOneOfTheWindows() {

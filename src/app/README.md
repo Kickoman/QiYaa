@@ -45,10 +45,11 @@ MPRIS, SMTC and macOS MediaPlayer in [src/integrations](../integrations/README.m
 `jam_bridge.h` and `telemetry_bridge.h`, and one of each pair `jam_bridge.cpp`/`jam_off.cpp` and
 `telemetry_bridge.cpp`/`telemetry_off.cpp`, as the build has the jam and telemetry or not:
 
-- PUBLIC `qiyaa_audio`, `qiyaa_core`, `qiyaa_skins`, `qiyaa_sources_yandex`, `qiyaa_yandex`:
-  `application.h` holds `Audio::AudioEngine`, `Core::Player`, `Core::SourceRegistry`,
-  `Core::JamMode`, `Skins::Skin`, `YandexSource::Source`, `YandexSource::Catalog`,
-  `Yandex::ApiClient` and `Yandex::Library` by value.
+- PUBLIC `qiyaa_audio`, `qiyaa_core`, `qiyaa_lrclib`, `qiyaa_skins`, `qiyaa_sources_local`,
+  `qiyaa_sources_yandex`, `qiyaa_yandex`: `application.h` holds `Audio::AudioEngine`,
+  `Core::Player`, `Core::SourceRegistry`, `Core::JamMode`, `Core::LyricsFinder`, `Skins::Skin`,
+  `YandexSource::Source`, `YandexSource::Catalog`, `Yandex::ApiClient` and `Yandex::Library` by
+  value, and `Lrclib::Service` through a `std::unique_ptr`.
 - PRIVATE `qiyaa_integrations`, `qiyaa_ui`, `qiyaa_vis`: the header only forward-declares the
   windows, `Core::CoverCache` and `Integrations::MediaControls`.
 - PRIVATE `qiyaa_jam` in a jam build (`QIYAA_HAVE_JAM`), with `jam_bridge.cpp`; a build without
@@ -97,7 +98,7 @@ public:
     struct Options {
         QString skinOverride;           // --skin; empty = the `skin` setting
         QString settingsFile;           // empty = <ConfigDirectory>/settings.ini
-        bool offline = false;           // start() does not look for a token
+        bool offline = false;           // start() does not look for a token; no LRCLIB
         bool audio = true;              // false: AudioEngine::init() is never called
         bool readOnlySettings = false;  // settings, covers, Milkdrop presets in a temp dir
         bool mediaIntegration = true;   // MPRIS, SMTC or macOS MediaPlayer
@@ -114,6 +115,7 @@ public:
     Ui::EqualizerWindow* equalizerWindow() const;
     Ui::PlaylistWindow* playlistWindow() const;
     Ui::NowPlayingWindow* nowPlayingWindow() const;
+    Ui::LyricsWindow* lyricsWindow() const;
     Ui::MilkdropWindow* milkdropWindow() const;  // null without QIYAA_HAVE_MILKDROP
     Ui::JamWindow* jamWindow() const;            // null without QIYAA_HAVE_JAM
     Core::CoverCache* covers() const;
@@ -124,6 +126,7 @@ public:
     YandexSource::Source* yandex();                  // the Yandex source: its quality
     Core::SourceRegistry* sources();                 // the player's sources by name
     Core::JamMode* jam();
+    Core::LyricsFinder* lyrics();                    // what the lyrics window shows
     Jam::HostSession* jamHost() const;                 // null without QIYAA_HAVE_JAM
 
     WindowSet* windows() const;                        // places, shows, scales the windows (below)
@@ -150,10 +153,11 @@ callback stay inside [src/audio](../audio/README.md)). `Application` owns everyt
 `App::Settings`, the base and the current `Skins::Skin`, `ApiClient`, `Library`, `AudioEngine`,
 `YandexSource::Source`, `LocalSource::Source`, `Core::SourceRegistry` (the Yandex source under
 `"yandex"` and the local one under `"local"`, added first in the constructor, before any window),
-`Player`, `YandexSource::Catalog`, `LocalSource::Catalog` and `JamMode` as members; its
+`Player`, `YandexSource::Catalog`, `LocalSource::Catalog`, `JamMode` and `Core::LyricsFinder` as
+members, the `Lrclib::Service` unless `offline`; its
 own `QNetworkAccessManager` unless `Options::network` lends one; the `Jam::HostSession`,
 `CoverCache`, `MediaControls`, the `Mpris`, `MacMediaControls` or `Smtc` object (held as
-`std::unique_ptr<QObject>`), the windows (five, and the jam window in a jam build) and the
+`std::unique_ptr<QObject>`), the windows (six, and the jam window in a jam build) and the
 controllers (`WindowSet`, `Account`, `JamBridge`, `TelemetryBridge`, `MainMenu`) through
 `std::unique_ptr`; `NetworkWatch` is a member. The accessors return non-owning pointers, valid until
 the `Application` is destroyed.
@@ -161,7 +165,8 @@ the `Application` is destroyed.
 Member order is load-bearing. Members are constructed in declaration order, and the initialiser list
 relies on it: the settings file after the temporary directory, `ApiClient` after the network
 manager, the Yandex source after the library, `Player` after the engine and the registry, `JamMode`
-after the player. The host session is declared after `JamMode` and destroyed before it. The windows
+after the player, the `LyricsFinder` after the player, the registry and the LRCLIB service it
+asks. The host session is declared after `JamMode` and destroyed before it. The windows
 are declared after everything they point at, and the controllers after the windows, so the
 controllers go first, then the windows, while the player, engine and skins they point at still
 exist. The `Mpris`/`Smtc`/`MacMediaControls` object dies before the `MediaControls` it wraps, and
@@ -178,13 +183,17 @@ exist. The `Mpris`/`Smtc`/`MacMediaControls` object dies before the `MediaContro
    after a queue's head (spec CONT-01, CONT-04). The `SourceRegistry` has both sources,
    `YandexSource::Source` as `yandex` and `LocalSource::Source` as `local`; `LocalSource::Catalog`
    writes covers to `LocalCoversDirectory()` (`<temp dir>/local-covers` when `readOnlySettings`).
+   The `LyricsFinder` asks the registry and, unless `offline`, an `Lrclib::Service` on the app's
+   network manager with the app's version: a screenshot run (`--screenshot` is offline) never
+   reaches LRCLIB, whatever its settings say. It takes `lyrics/thirdParty`, forgets its answers
+   on `Library::accountChanged` (LYR-14) and asks again on `NetworkWatch::back` (LYR-17).
 2. Loads the built-in base skin `:/skins/base-2.91.wsz` (`Skins::Skin::BuiltinBase()`). It is also
    the fallback for bitmaps other skins lack.
 3. With `audio`, calls `AudioEngine::init()`. On failure it logs `Audio: <message>` and the app
    runs without sound; on success it logs `Audio backend: <name>`.
 4. Loads `skinOverride`, or else the `skin` setting. A `Skins::Error` logs
    `Skin: <what>; using the built-in one`.
-5. Creates the main, equalizer, playlist and now-playing windows and the cover cache (`<temp
+5. Creates the main, equalizer, playlist, now-playing and lyrics windows and the cover cache (`<temp
    dir>/covers` when `readOnlySettings`, else the default of [src/core](../core/README.md)). With
    `QIYAA_HAVE_MILKDROP` it also creates the Milkdrop window, with built-in presets from
    `:/milkdrop` and user presets from `<ConfigDirectory>/milkdrop` (`<temp dir>/milkdrop` when
@@ -403,7 +412,7 @@ class MainMenu : public QObject {
 public:
     struct Parts { Core::Player* player; Audio::AudioEngine* engine; Yandex::Library* library;
                    YandexSource::Catalog* catalog; LocalSource::Catalog* local;
-                   Core::SourceRegistry* sources; YandexSource::Source* yandex;
+                   Core::SourceRegistry* sources; Core::LyricsFinder* lyrics; YandexSource::Source* yandex;
                    Settings* settings; WindowSet* windows; Account* account; JamBridge* jam;
                    TelemetryBridge* telemetry; const Translations* translations;
                    Ui::MainWindow* mainWindow; Ui::PlaylistWindow* playlistWindow; };
@@ -450,8 +459,14 @@ The main menu, top to bottom:
 - the same Yandex items;
 - in a jam build, Jam (`JamBridge::addMenu`, below);
 - every window whose `WindowSet::Spec` has a `menuText`, with its `key`: Equalizer (Alt+G),
-  Playlist (Alt+E), Now playing (no shortcut), Milkdrop (Ctrl+Shift+K, only in a Milkdrop build);
-  checkable, checked when the window is visible;
+  Playlist (Alt+E), Now playing (no shortcut), Lyrics (Alt+L), Milkdrop (Ctrl+Shift+K, only in a
+  Milkdrop build); checkable, checked when the window is visible;
+- "Lyrics from LRCLIB" (`lyricsFromLrclib`), only when the app has the service (not `offline`):
+  checkable, off until chosen. Turning it on asks first, after the menu has closed, and says what
+  LRCLIB gets (the title and first artist of a track without synced lyrics, and the computer's
+  address), as the spec asks of the place where the user turns it on; "Turn on" saves
+  `lyrics/thirdParty` and calls `LyricsFinder::setThirdPartyEnabled` (LYR-15), "Cancel" leaves it
+  off. Turning it off needs no question. The lyrics window points here when it finds nothing;
 - Visualization: Spectrum, Oscilloscope, Off (exclusive; a choice emits `visModeChosen`, which
   saves);
 - Shuffle: "Random track" or "Without repeats" (exclusive); chooses the preferred algorithm
@@ -489,6 +504,7 @@ shows the same key, so the label and the key that works cannot drift apart.
 | Left, Right | seek 5 s back or forward from `AudioEngine::positionSeconds()` |
 | Alt+G | show or hide the equalizer |
 | Alt+E | show or hide the playlist |
+| Alt+L | show or hide the lyrics |
 | Ctrl+D | scale 2.0, or 1.0 when it is already 2.0 (saved) |
 | Ctrl+W | shade or unshade the main window |
 | Ctrl+Shift+K | show or hide Milkdrop (only in a Milkdrop build) |
@@ -551,7 +567,8 @@ dropped.
 | `error login/failed`, `skin/load` | `Account::failed`, `Application::skinFailed` |
 | `error milkdrop/<category>` | `Ui::MilkdropWindow::failed` |
 | `error jam/<reason>`, `jam/gone`, `jam/expired`, `jam/ended-by-server` | `HostSession::refused`, `ended` |
-| `feature vis`, `equalizer`, `skin`, `language`, `milkdrop`, `jam` | `MainWindow::visModeChanged`, the equalizer's `settingsChanged`, `Application::skinChanged`, `Application::languageChanged`, `WindowSet::visibilityChosen` of Milkdrop, `HostSession::activeChanged` |
+| `feature vis`, `equalizer`, `skin`, `language`, `milkdrop`, `jam`, `lyrics`, `lyrics-services` | `MainWindow::visModeChanged`, the equalizer's `settingsChanged`, `Application::skinChanged`, `Application::languageChanged`, `WindowSet::visibilityChosen` of Milkdrop and of the lyrics window, `HostSession::activeChanged`, `LyricsFinder::thirdPartyChanged` |
+| the lyrics counts of `exit` (`lyricsLookups`…, TEL-17) | `LyricsFinder::lookedUp`, through `Reporter::countLyrics` |
 
 A skin is `base`, a built-in skin's name or `custom`, never a path. `quit()` calls `finish()`
 (`exit`) and waits for the last batch (`sent`) within its 1.5 s, like the plays reports. The menu's
@@ -615,7 +632,7 @@ hidden by minimising, its close is the app's `quit()`, and it is the first of `a
 
 **Layout**, only in `showAtStart()`: each window at its saved `<group>/pos`, or at its place: the
 main window at (100, 100); `Stacked` right below the previous stacked window's default (the
-equalizer under the main window, the playlist under the equalizer); `RightOfMain` (now-playing, the
+equalizer under the main window, the playlist under the equalizer, the lyrics under the playlist); `RightOfMain` (now-playing, the
 jam window); `BelowRightOfMain` at main position + (main width, main height) (Milkdrop). The
 defaults use the sizes the windows have at that moment, after shade and scale.
 `SkinnedWindow::placeAt` clamps every position to the screens that exist now.
@@ -680,7 +697,7 @@ public:
     QString directory() const;                        // absolute folder of settings.ini
     bool wasEmpty() const;                            // no key when it was opened: the first run
     // language, skin, scale, alwaysOnTop, shuffleAlgorithm, quality, lastLocalFolder,
-    // continueWithVibe (read only), mainWindow, equalizer, equalizerAuto, milkdrop, jam,
+    // continueWithVibe (read only), lyricsThirdParty, mainWindow, equalizer, equalizerAuto, milkdrop, jam,
     // telemetryEnabled, machine: a getter with the key's default, and a setter that writes the
     // key(s) at once
     WindowState window(const QString& group, bool visibleByDefault, QSize stepsByDefault = {}) const;
@@ -700,6 +717,8 @@ public:
   ([docs/features.md](../../docs/features.md)).
 - `local/lastFolder` is where the "Open files…" and "Open folder…" dialogs start, empty until the
   first pick; `setLastLocalFolder` writes it only when it changes.
+- `lyrics/thirdParty` is false until the user turns LRCLIB on in the menu (spec: services are off
+  by default).
 - The `milkdrop/*` keys are read and written only in a build with `QIYAA_HAVE_MILKDROP`, the
   `jam/*` and `jamWindow/*` keys only in a jam build, the `telemetry/*` keys only in a telemetry
   build. Another build leaves them as they are.
