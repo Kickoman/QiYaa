@@ -116,6 +116,10 @@ parity table; [spec/README.md](spec/README.md) says what is where. Nothing in it
   complete (its spec statuses are "yes", docs and translations are in, CI is green), after it has
   been brought up to date with `master`.
 - A change that fits one pull request (a fix, a document) goes to `master` through that pull request.
+- **A version bump goes straight to `master`, never through a pull request**: the commit
+  "Version X.Y.Z for builds from a checkout" (only `QIYAA_VERSION` in `CMakeLists.txt`), pushed to
+  `master`, then the tag `vX.Y.Z` on it. The tag's CI builds and checks the release anyway; a pull
+  request would only run the same jobs once more on the Actions quota.
 - The spec repository is not part of this: a feature's spec commits go to QiYaa-spec's `master`
   first, as above, because the apps pin its commits.
 
