@@ -2,6 +2,7 @@
 
 #include "audio/audio_engine.h"
 #include "audio/vis_tap.h"
+#include "vis/projectm_opengl.h"
 
 #include <QKeyEvent>
 #include <QMouseEvent>
@@ -198,7 +199,7 @@ void MilkdropView::initializeGL() {
                 .arg(contextFormat.minorVersion());
         failureCategory = MilkdropFailure::OldOpenGl;
     } else {
-        projectM = projectm_create();
+        projectM = LoadOpenGlForProjectM() ? projectm_create() : nullptr;
         if (!projectM) {
             failureReason = tr("projectM did not start");
             failureCategory = MilkdropFailure::ProjectM;

@@ -155,7 +155,7 @@ QT_QPA_PLATFORM=offscreen QIYAA_AUDIO_BACKEND=null build/tests/audio_test queued
 | `jam_e2e_test` | app audio core jam ui yandex (+ `qiyaa_test_core`) | only with `QIYAA_HAVE_JAM`; `QIYAA_TEST_DATA`; skips without `QIYAA_JAM_TEST_SERVER` |
 | `mpris_test` | core integrations sources_yandex, Qt6::DBus | only with `QIYAA_HAVE_MPRIS`; under `dbus-run-session` |
 | `milkdrop_test` | audio skins ui vis | only with `QIYAA_HAVE_MILKDROP`; offscreen, so the GL functions skip |
-| `milkdrop_gl_test` | the `milkdrop_test` binary | only with `xvfb-run` and Qt's xcb plugin; four GL functions |
+| `milkdrop_gl_test` | the `milkdrop_test` binary | only with `xvfb-run` and Qt's xcb plugin, or on Windows with `QIYAA_TEST_MESA_DIR`; four GL functions |
 
 `QIYAA_TEST_DATA` is a compile definition that holds the absolute path of `tests/data` in the
 **source** tree.
@@ -181,6 +181,19 @@ available, CTest adds a second entry. It runs `rendersWithProjectM`, `blackPictu
 `QT_QPA_PLATFORM=xcb`, `LIBGL_ALWAYS_SOFTWARE=1` (Mesa's software renderer),
 `QIYAA_AUDIO_BACKEND=null` and `QIYAA_EXPECT_GL=1`. `QIYAA_EXPECT_GL` turns "no OpenGL here"
 from a skip into a failure, because on that runner OpenGL must work (but see **Traps**).
+
+On Windows the same four functions run when the CMake variable `QIYAA_TEST_MESA_DIR` names a
+folder with `opengl32.dll` and `libgallium_wgl.dll` from the x64 folder of a
+[mesa-dist-win](https://github.com/pal1000/mesa-dist-win) release. CI downloads 26.2.4 and checks
+its SHA-256. A build step copies both next to `milkdrop_test.exe`, where Windows finds that
+`opengl32.dll` before its own. CTest then runs the functions with `QT_QPA_PLATFORM=windows`,
+`GALLIUM_DRIVER=llvmpipe`, `QIYAA_EXPECT_GL=1`, `QIYAA_AUDIO_BACKEND=null` and a 300 s timeout.
+This is the only test that reaches projectM's GLEW on Windows (#67). The plain `milkdrop_test`
+loads the same copy, though it does not draw. Qt's own `opengl32sw.dll` will not do: it is Mesa
+11.2, and its contexts are OpenGL 3.0.
+
+CI's Test step sets `QT_FORCE_STDERR_LOGGING=1` for Windows' sake. Without a console, Qt Test
+there writes to `OutputDebugString`, and ctest's `--output-on-failure` shows nothing.
 
 **jam_e2e_test** needs a jam server whose `PUBLIC_URL` is the address in
 `QIYAA_JAM_TEST_SERVER` (the guest sends that origin). CI runs the server's image on the Linux
