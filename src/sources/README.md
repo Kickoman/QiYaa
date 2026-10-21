@@ -11,6 +11,7 @@ Yandex Music, [src/yandex](../yandex/README.md)).
 |---|---|---|
 | [yandex](yandex/README.md) | `YandexSource`, `qiyaa_sources_yandex` | Yandex Music: the catalogue (likes, playlists, artists, albums, vibes, search) and the jam's own vibe |
 | [local](local/README.md) | `LocalSource`, `qiyaa_sources_local` | The user's own files: opening files and folders, their tags and covers through TagLib, reading them from the disk |
+| [spotify](spotify/README.md) | `SpotifySource`, `qiyaa_sources_spotify` | Spotify: the picks (liked songs, playlists, albums, artists, For you, search, radio), autoplay after a pick, a track's file in the quality in effect |
 
 A new source is a folder here with its README, a row in the table above and in the module table of
 [docs/architecture.md](../../docs/architecture.md#modules), and `qiyaa_add_module(sources_<name> …)`

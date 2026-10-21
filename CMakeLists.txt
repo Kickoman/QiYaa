@@ -266,6 +266,14 @@ qiyaa_add_module(sources_local
     src/sources/local/tracks.cpp    src/sources/local/tracks.h)
 target_link_libraries(qiyaa_sources_local PUBLIC qiyaa_core Qt6::Core PRIVATE TagLib::tag)
 
+qiyaa_add_module(sources_spotify
+    src/sources/spotify/autoplay.cpp src/sources/spotify/autoplay.h
+    src/sources/spotify/catalog.cpp  src/sources/spotify/catalog.h
+    src/sources/spotify/library.cpp  src/sources/spotify/library.h
+    src/sources/spotify/source.cpp   src/sources/spotify/source.h
+    src/sources/spotify/tracks.cpp   src/sources/spotify/tracks.h)
+target_link_libraries(qiyaa_sources_spotify PUBLIC qiyaa_core qiyaa_spotify_protocol Qt6::Core PRIVATE qiyaa_spotify_client)
+
 # Jam: a shared queue the app hosts for guests (spec/jam). Needs Qt WebSockets; without it the
 # app builds without the jam, like without Milkdrop.
 option(QIYAA_WITH_JAM "Jam: host a shared queue for guests (needs Qt WebSockets)" ON)
@@ -309,7 +317,7 @@ qiyaa_add_module(ui
     src/ui/spotify_login_dialog.cpp src/ui/spotify_login_dialog.h)
 target_link_libraries(qiyaa_ui
     PUBLIC qiyaa_audio qiyaa_vis Qt6::Widgets
-    PRIVATE qiyaa_core qiyaa_skins qiyaa_sources_yandex qiyaa_spotify_client qiyaa_yandex)
+    PRIVATE qiyaa_core qiyaa_skins qiyaa_sources_spotify qiyaa_sources_yandex qiyaa_spotify_client qiyaa_yandex)
 if(QIYAA_HAVE_JAM)
     # The jam window and its QR code (contrib/qrcodegen, MIT).
     add_library(qiyaa_qrcodegen STATIC contrib/qrcodegen/qrcodegen.cpp)
@@ -457,7 +465,8 @@ qiyaa_add_module(app
     src/app/translations.cpp    src/app/translations.h
     src/app/window_set.cpp      src/app/window_set.h)
 target_link_libraries(qiyaa_app
-    PUBLIC qiyaa_audio qiyaa_core qiyaa_skins qiyaa_sources_local qiyaa_sources_yandex qiyaa_spotify_client qiyaa_yandex
+    PUBLIC qiyaa_audio qiyaa_core qiyaa_skins qiyaa_sources_local qiyaa_sources_spotify qiyaa_sources_yandex
+        qiyaa_spotify_client qiyaa_yandex
     PRIVATE qiyaa_integrations qiyaa_ui qiyaa_vis)
 # App::Settings holds the default of jam/server, also in a build without the jam.
 target_compile_definitions(qiyaa_app PRIVATE QIYAA_JAM_URL="${QIYAA_JAM_URL}")

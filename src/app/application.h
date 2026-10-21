@@ -11,6 +11,9 @@
 #include "skins/skin.h"
 #include "sources/local/catalog.h"
 #include "sources/local/source.h"
+#include "sources/spotify/catalog.h"
+#include "sources/spotify/library.h"
+#include "sources/spotify/source.h"
 #include "sources/yandex/catalog.h"
 #include "sources/yandex/source.h"
 #include "spotify/client/endpoints.h"
@@ -104,6 +107,8 @@ public:
     Account* account() const { return accountControl.get(); }
     SpotifyAccount* spotify() const { return spotifyAccountControl.get(); }
     SpotifyClient::Session* spotifySession() { return &spotifyClientSession; }
+    SpotifySource::Source* spotifyTracks() { return &spotifySource; }
+    SpotifySource::Catalog* spotifyPicks() { return &spotifyCatalog; }
 
     bool loadSkin(const QString& path);
 
@@ -137,13 +142,16 @@ private:
     QString spotifyDeviceId;
     SpotifyClient::Session spotifyClientSession;
     SpotifyClient::Web spotifyWeb;
+    SpotifySource::Library spotifyLibrary;
     Audio::AudioEngine audioEngine;
     YandexSource::Source yandexSource;
     LocalSource::Source localSource;
+    SpotifySource::Source spotifySource;
     Core::SourceRegistry trackSources;
     Core::Player corePlayer;
     YandexSource::Catalog catalog;
     LocalSource::Catalog localCatalog;
+    SpotifySource::Catalog spotifyCatalog;
     Core::JamMode jamMode;
     std::unique_ptr<Jam::HostSession> jamHostSession;
     std::unique_ptr<Core::CoverCache> coverCache;

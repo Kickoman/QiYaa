@@ -154,7 +154,8 @@ jam it is the jam vibe (spec/jam/host.md, HOST-11, HOST-16, HOST-32):
   `more` starts again (CONT-07). A batch with tracks opens the session (the station is the first
   seed) and sends `RadioStarted` when the request has `feedback` (TRK-03).
 - **Every reply** of a session on the jam's seeds carries their version (`seedsVersion`); the
-  `Player` decides from it what is outdated. A reply of a session that a newer start replaced is
+  `Player` decides from it what is outdated. `followsJamSeeds()` is true: it is the one
+  continuation that gets the seeds. A reply of a session that a newer start replaced is
   empty.
 - `begin(true)` sends the `RadioStarted` that a session on the history's seeds did not send when it
   started without feedback (during a jam); the `Player` calls it at the jam's end (HOST-33).

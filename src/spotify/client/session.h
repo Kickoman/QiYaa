@@ -51,6 +51,7 @@ public:
     void logout();
 
     bool loggedIn() const;
+    bool hasAccount() const { return active; }
     const SpotifyProtocol::Credentials& credentials() const { return loginCredentials; }
     QString username() const;
     QString country() const { return accountCountry; }

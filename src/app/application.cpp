@@ -13,6 +13,7 @@
 #include "jam/host_session.h"
 #include "skins/error.h"
 #include "sources/local/tracks.h"
+#include "sources/spotify/tracks.h"
 #include "sources/yandex/history_wave.h"
 #include "sources/yandex/tracks.h"
 #include "spotify/client/identity.h"
@@ -76,17 +77,22 @@ Application::Application(const Options& options, QObject* parent)
           spotifyDeviceId,
           QCoreApplication::applicationVersion()
       )
+    , spotifyLibrary(&spotifyWeb, &spotifyClientSession)
     , yandexSource(&yandexLibrary)
+    , spotifySource(&spotifyWeb, &spotifyClientSession, networkManager)
     , corePlayer(&audioEngine, &trackSources)
     , catalog(&corePlayer, &yandexLibrary)
     , localCatalog(&corePlayer, LocalCoversDirectory(temporaryDirectory.get()))
+    , spotifyCatalog(&corePlayer, &spotifyLibrary)
     , jamMode(&corePlayer) {
     trackSources.add(YandexSource::kSourceName, &yandexSource);
     trackSources.add(LocalSource::kSourceName, &localSource);
+    trackSources.add(SpotifySource::kSourceName, &spotifySource);
     // Before any window: they take their texts from the translation.
     translations.apply(options.language.value_or(settings.language().value_or(kDefaultLanguage)));
     corePlayer.setShuffleAlgorithm(settings.shuffleAlgorithm());
     yandexSource.setQuality(settings.quality());
+    spotifySource.setEconomy(settings.quality() == Yandex::Quality::Economy);
     corePlayer.setContinueWithVibeByDefault(settings.continueWithVibe());
     corePlayer.setHistoryWaveFactory(YandexSource::HistoryWaves(&yandexLibrary));
     connect(&corePlayer, &Core::Player::modesChanged, this, [this] {
@@ -228,6 +234,9 @@ Application::Application(const Options& options, QObject* parent)
         mainWindowInstance->setStatusText(Ui::SourceNoticeText(notice));
     });
     connect(&localCatalog, &LocalSource::Catalog::noticed, this, [this](const Core::SourceNotice& notice) {
+        mainWindowInstance->setStatusText(Ui::SourceNoticeText(notice));
+    });
+    connect(&spotifyCatalog, &SpotifySource::Catalog::noticed, this, [this](const Core::SourceNotice& notice) {
         mainWindowInstance->setStatusText(Ui::SourceNoticeText(notice));
     });
     // Before WindowSet::restore() below, which takes in the jam window.
@@ -384,6 +393,8 @@ Application::Application(const Options& options, QObject* parent)
         windowSet.get(),
         accountControl.get(),
         spotifyAccountControl.get(),
+        &spotifyCatalog,
+        &spotifySource,
         jamBridge.get(),
         telemetryBridge.get(),
         &translations,

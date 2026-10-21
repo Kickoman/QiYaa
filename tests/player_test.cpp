@@ -323,6 +323,53 @@ private Q_SLOTS:
         QCOMPARE(stack.source.eventLog().mid(6), (QStringList{"started:11", "skipped:11"}));
     }
 
+    void aSourcesOwnHistoryWaveTakesThePlaceOfTheVibe() {  // SPOT-20, CONT-01
+        HistoryStack stack;
+        QVERIFY(stack.start(2));
+        stack.wave.reset();
+        const auto autoplay = std::make_shared<Tests::FakeContinuation>();
+        autoplay->followSeeds(false);
+        stack.player.setSource(Core::QueueSource{.head = Tracks(2), .historyWave = autoplay}, false);
+        QVERIFY(!stack.wave);
+        QVERIFY(stack.player.continuesWithVibe());
+        QVERIFY(stack.player.canSwitchVibe());
+        stack.player.playIndex(1);
+        QCOMPARE(autoplay->requests().size(), 1);
+        autoplay->answer(Tracks(2, 11));
+        QCOMPARE(stack.player.entries().size(), 4);
+        stack.player.setContinueWithVibeByDefault(false);
+        const auto unused = std::make_shared<Tests::FakeContinuation>();
+        stack.player.setSource(Core::QueueSource{.head = Tracks(2), .historyWave = unused}, false);
+        stack.player.playIndex(1);
+        QVERIFY(unused->requests().isEmpty());
+        QVERIFY(!stack.wave);
+    }
+
+    void aJamsSeedsReachNoHistoryWaveThatDoesNotFollowThem() {  // SPOT-22, HOST-11
+        HistoryStack stack;
+        QVERIFY(stack.start(2));
+        stack.player.setLayer(Core::QueueLayer{});
+        const auto autoplay = std::make_shared<Tests::FakeContinuation>();
+        autoplay->followSeeds(false);
+        stack.player.setSource(Core::QueueSource{.head = Tracks(2), .historyWave = autoplay}, false);
+        stack.player.setLayerItems({}, Core::SeedHint{.seeds = {QStringLiteral("track:1")}, .version = 1});
+        stack.player.playIndex(1);
+        QCOMPARE(autoplay->requests().size(), 1);
+        QVERIFY(!autoplay->requests()[0].jamSeeds);
+        autoplay->answer(Tracks(2, 11));
+        const auto ids = [&stack] {
+            QStringList list;
+            for (const Core::QueueEntry& entry : stack.player.entries()) {
+                list << entry.track.key.id;
+            }
+            return list;
+        };
+        const QStringList answered = ids();
+        QCOMPARE(answered.mid(answered.size() - 2), (QStringList{"11", "12"}));
+        stack.player.setLayerItems({}, Core::SeedHint{.seeds = {QStringLiteral("track:2")}, .version = 2});
+        QCOMPARE(ids(), answered);
+    }
+
     void switchingTheFlagOnAsksAtOnceAndOffAsksNoMore() {  // CONT-02, CONT-03
         HistoryStack stack;
         stack.player.setContinueWithVibeByDefault(false);

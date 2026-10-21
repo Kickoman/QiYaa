@@ -177,7 +177,7 @@ void Player::setLayerItems(const QList<LayerItem>& items, std::optional<SeedHint
 
 void Player::takeNewBase() {
     queue->setContinueWithVibe(continueWithVibeByDefault && queue->takesHistoryWave());  // CONT-01, CONT-12
-    if (!queue->continuation() && queue->takesHistoryWave() && historyWaveFactory) {
+    if (!queue->continuation() && queue->takesHistoryWave() && !queue->historyWave() && historyWaveFactory) {
         queue->setHistoryWave(historyWaveFactory());
     }
 }
@@ -537,7 +537,7 @@ void Player::maybeLoadMore() {
     const bool history = continuation == queue->historyWave();
     ContinuationRequest request;
     request.history = queue->history();
-    request.jamSeeds = layer ? queue->seeds() : std::nullopt;  // HOST-11
+    request.jamSeeds = layer && continuation->followsJamSeeds() ? queue->seeds() : std::nullopt;  // HOST-11, SPOT-22
     request.feedback = history ? queueRules.historyFeedback : queueRules.ownContinuationFeedback;
     const QList<QueueEntry>& entries = queue->entries();
     for (qsizetype i = std::max<qsizetype>(0, entries.size() - kQueueEndSize); i < entries.size(); ++i) {
@@ -558,7 +558,7 @@ void Player::maybeLoadMore() {
 
 void Player::continuationReplied(const std::shared_ptr<Continuation>& giver, const ContinuationReply& reply) {
     queue->setAsking(false);
-    if (giver == queue->historyWave() && queue->isStale(reply.seedsVersion)) {
+    if (giver == queue->historyWave() && giver->followsJamSeeds() && queue->isStale(reply.seedsVersion)) {
         maybeLoadMore();  // HOST-11, HOST-32: a session that the seeds outdated
         if (!queue->isAsking() && waitingForMore) {
             setWaitingForMore(false);

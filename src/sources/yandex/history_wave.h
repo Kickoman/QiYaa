@@ -27,6 +27,7 @@ public:
 
     void begin(bool feedback) override;
     bool more(const Core::ContinuationRequest& request, TDone done) override;
+    bool followsJamSeeds() const override { return true; }
     void trackEvent(Core::TrackEvent event, const Core::Track& track, double playedSeconds) override;
 
 private:

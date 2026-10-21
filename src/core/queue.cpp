@@ -47,6 +47,7 @@ void Queue::replace(QueueSource source) {
     titleText = source.title;
     playingIndex = queued.isEmpty() ? -1 : 0;
     newBase();
+    historyContinuation = std::move(source.historyWave);
     markCurrent();
     resetNavigator();
     ++changes;
@@ -69,6 +70,7 @@ void Queue::replaceBase(QueueSource source) {
     queued = std::move(kept);
     titleText = source.title;
     newBase();
+    historyContinuation = std::move(source.historyWave);
     resetNavigator();
     ++changes;
 }
@@ -371,8 +373,9 @@ void Queue::dropStaleWave() {
     QList<int> stale;
     for (int i = 0; i < queued.size(); ++i) {
         const QueueEntry& candidate = queued[i];
-        if (candidate.part == EntryPart::Continuation && candidate.fromHistory
-            && candidate.seedsVersion != seedHint->version && ordinalOf(i) > continuationMark) {
+        if (candidate.part == EntryPart::Continuation && candidate.fromHistory && candidate.giver
+            && candidate.giver->followsJamSeeds() && candidate.seedsVersion != seedHint->version
+            && ordinalOf(i) > continuationMark) {
             stale << i;  // HOST-11
         }
     }

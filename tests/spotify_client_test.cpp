@@ -10,6 +10,7 @@
 #include "spotify/protocol/protobuf.h"
 #include "support/fake_access_point.h"
 #include "support/mock_http_server.h"
+#include "support/spotify_stack.h"
 
 #include <QByteArray>
 #include <QCryptographicHash>
@@ -39,34 +40,12 @@ using SpotifyProtocol::TBytes;
 using Tests::MockRequest;
 using Tests::MockResponse;
 
-const QString kAppVersion = QStringLiteral("0.8.0");
-const QString kDeviceId = QString(40, u'd');
-
 QByteArray Bytes(const TBytes& bytes) {
     return QByteArray(reinterpret_cast<const char*>(bytes.data()), static_cast<qsizetype>(bytes.size()));
 }
 
 QByteArray JsonOf(const QJsonObject& object) {
     return QJsonDocument(object).toJson(QJsonDocument::Compact);
-}
-
-SpotifyClient::Endpoints EndpointsOf(const Tests::MockHttpServer& server) {
-    SpotifyClient::Endpoints endpoints;
-    endpoints.apresolve = server.baseUrl();
-    endpoints.accounts = server.baseUrl();
-    endpoints.clientToken = server.baseUrl();
-    endpoints.login5 = server.baseUrl();
-    endpoints.pathfinder = server.baseUrl();
-    endpoints.spclientScheme = QStringLiteral("http");
-    return endpoints;
-}
-
-SpotifyProtocol::Credentials Stored() {
-    return SpotifyProtocol::Credentials{
-        .username = "owner",
-        .type = SpotifyProtocol::AuthenticationType::StoredCredentials,
-        .data = TBytes{1, 2, 3},
-    };
 }
 
 QByteArray TrackMetadata(std::initializer_list<std::pair<std::uint32_t, std::uint8_t>> files) {
@@ -118,50 +97,7 @@ MockResponse Slice(const MockRequest& request, const QByteArray& file, qsizetype
     return response;
 }
 
-class Stack {
-public:
-    Stack()
-        : session(&network, EndpointsOf(http), SpotifyClient::Identity(kAppVersion, kDeviceId))
-        , web(&network, EndpointsOf(http), &session, kDeviceId, kAppVersion) {
-        session.setServerKey(Tests::FakeAccessPointKey());
-        session.setReconnectDelaysMs({50});
-        accessPoint.key.fill(0x5a);
-        const QString spclient = QUrl(http.baseUrl()).authority();
-        http.json(
-            "GET",
-            QStringLiteral("/"),
-            JsonOf(
-                {{QStringLiteral("accesspoint"), QJsonArray{accessPoint.address()}},
-                 {QStringLiteral("spclient"), QJsonArray{spclient}}}
-            )
-        );
-        http.on("POST", QStringLiteral("/v1/clienttoken"), [](const MockRequest&) {
-            ProtoWriter token;
-            token.string(1, "client-token").varint(3, 1209600);
-            ProtoWriter reply;
-            reply.varint(1, 1).message(2, token);
-            return MockResponse{200, Bytes(reply.data())};
-        });
-        http.on("POST", QStringLiteral("/v3/login"), [](const MockRequest&) {
-            ProtoWriter ok;
-            ok.string(1, "owner").string(2, "bearer-token").varint(4, 3600);
-            ProtoWriter reply;
-            reply.message(1, ok);
-            return MockResponse{200, Bytes(reply.data())};
-        });
-    }
-
-    bool loginStored() {
-        session.login(Stored());
-        return QTest::qWaitFor([this] { return session.loggedIn(); }, 5000);
-    }
-
-    Tests::MockHttpServer http;
-    Tests::FakeAccessPointServer accessPoint;
-    QNetworkAccessManager network;
-    SpotifyClient::Session session;
-    SpotifyClient::Web web;
-};
+using Stack = Tests::SpotifyStack;
 
 struct Fetched {
     bool prepared = false;
@@ -204,7 +140,7 @@ private Q_SLOTS:
     void credentialsFileKeepsTheReusableCredentialsForTheOwnerOnly() {  // SPOT-03
         QTemporaryDir directory;
         const QString path = directory.filePath(QStringLiteral("spotify-credentials"));
-        QVERIFY(SpotifyClient::SaveCredentials(path, Stored()));
+        QVERIFY(SpotifyClient::SaveCredentials(path, Tests::StoredSpotifyCredentials()));
         const std::optional<SpotifyProtocol::Credentials> loaded = SpotifyClient::LoadCredentials(path);
         QVERIFY(loaded);
         QCOMPARE(loaded->username, std::string("owner"));
@@ -248,7 +184,7 @@ private Q_SLOTS:
             return MockResponse{200, JsonOf({{QStringLiteral("access_token"), QStringLiteral("BQ-token")}})};
         });
         QNetworkAccessManager network;
-        SpotifyClient::PairLogin login(&network, EndpointsOf(http));
+        SpotifyClient::PairLogin login(&network, Tests::SpotifyEndpointsOf(http));
         QSignalSpy code(&login, &SpotifyClient::PairLogin::codeReady);
         QSignalSpy token(&login, &SpotifyClient::PairLogin::succeeded);
         login.start();
@@ -287,7 +223,7 @@ private Q_SLOTS:
             400
         );
         QNetworkAccessManager network;
-        SpotifyClient::PairLogin login(&network, EndpointsOf(http));
+        SpotifyClient::PairLogin login(&network, Tests::SpotifyEndpointsOf(http));
         QSignalSpy failed(&login, &SpotifyClient::PairLogin::failed);
         login.start();
         QTRY_COMPARE_WITH_TIMEOUT(failed.count(), 1, 5000);
@@ -309,7 +245,7 @@ private Q_SLOTS:
             return MockResponse{200, JsonOf({{QStringLiteral("access_token"), QStringLiteral("BQ-browser")}})};
         });
         QNetworkAccessManager network;
-        SpotifyClient::BrowserLogin login(&network, EndpointsOf(http));
+        SpotifyClient::BrowserLogin login(&network, Tests::SpotifyEndpointsOf(http));
         QSignalSpy opened(&login, &SpotifyClient::BrowserLogin::openUrl);
         QSignalSpy token(&login, &SpotifyClient::BrowserLogin::succeeded);
         login.start();
@@ -333,7 +269,7 @@ private Q_SLOTS:
     void browserLoginRefusesARedirectOfAnotherRequest() {  // SPOT-02
         Tests::MockHttpServer http;
         QNetworkAccessManager network;
-        SpotifyClient::BrowserLogin login(&network, EndpointsOf(http));
+        SpotifyClient::BrowserLogin login(&network, Tests::SpotifyEndpointsOf(http));
         QSignalSpy opened(&login, &SpotifyClient::BrowserLogin::openUrl);
         QSignalSpy failed(&login, &SpotifyClient::BrowserLogin::failed);
         login.start();
@@ -360,7 +296,7 @@ private Q_SLOTS:
         Stack stack;
         stack.accessPoint.loginRefusal = static_cast<int>(SpotifyProtocol::LoginError::PremiumAccountRequired);
         QSignalSpy refused(&stack.session, &SpotifyClient::Session::loginRefused);
-        stack.session.login(Stored());
+        stack.session.login(Tests::StoredSpotifyCredentials());
         QTRY_COMPARE(refused.count(), 1);
         QCOMPARE(refused.first().at(0).toInt(), static_cast<int>(SpotifyProtocol::LoginError::PremiumAccountRequired));
         QTest::qWait(200);
@@ -588,8 +524,10 @@ private Q_SLOTS:
         QVERIFY(credentials);
         QNetworkAccessManager network;
         const SpotifyClient::Endpoints endpoints;
-        SpotifyClient::Session session(&network, endpoints, SpotifyClient::Identity(kAppVersion, kDeviceId));
-        SpotifyClient::Web web(&network, endpoints, &session, kDeviceId, kAppVersion);
+        SpotifyClient::Session session(
+            &network, endpoints, SpotifyClient::Identity(Tests::kSpotifyAppVersion, Tests::kSpotifyDeviceId)
+        );
+        SpotifyClient::Web web(&network, endpoints, &session, Tests::kSpotifyDeviceId, Tests::kSpotifyAppVersion);
         session.login(*credentials);
         QTRY_VERIFY_WITH_TIMEOUT(session.loggedIn(), 15'000);
         const QString track = qEnvironmentVariable("QIYAA_SPOTIFY_TRACK", QStringLiteral("6PCoZdjSPbRMehHviTrpB3"));

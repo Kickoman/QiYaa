@@ -17,10 +17,12 @@ class FakeContinuation : public Core::Continuation {
 public:
     void begin(bool feedback) override;
     bool more(const Core::ContinuationRequest& request, TDone done) override;
+    bool followsJamSeeds() const override { return seedsFollowed; }
     void trackEvent(Core::TrackEvent event, const Core::Track& track, double playedSeconds) override;
 
     void answerAtOnce(const QList<Core::Track>& tracks) { atOnce = tracks; }
     void refuse(bool on) { refusing = on; }
+    void followSeeds(bool on) { seedsFollowed = on; }
     void answer(const QList<Core::Track>& tracks, const QString& failure = {});
 
     qsizetype pending() const { return waiting.size(); }
@@ -31,6 +33,7 @@ public:
 private:
     std::optional<QList<Core::Track>> atOnce;
     bool refusing = false;
+    bool seedsFollowed = true;
     QList<TDone> waiting;
     QList<Core::ContinuationRequest> asked;
     QList<bool> begun;
