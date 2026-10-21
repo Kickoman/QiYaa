@@ -62,6 +62,8 @@ target_compile_definitions(audio_test PRIVATE QIYAA_TEST_DATA="${CMAKE_CURRENT_S
 qiyaa_add_test(spotify_protocol_test spotify_protocol)
 qiyaa_add_test(spotify_access_point_test spotify_protocol)
 target_link_libraries(spotify_access_point_test PRIVATE qiyaa_test_spotify)
+qiyaa_add_test(spotify_client_test spotify_client)
+target_link_libraries(spotify_client_test PRIVATE qiyaa_test_spotify)
 qiyaa_add_test(mp4_aac_test audio)
 target_link_libraries(mp4_aac_test PRIVATE qiyaa_miniaudio)
 target_compile_definitions(mp4_aac_test PRIVATE QIYAA_TEST_DATA="${CMAKE_CURRENT_SOURCE_DIR}/data")

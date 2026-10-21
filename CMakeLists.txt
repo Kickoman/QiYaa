@@ -154,6 +154,16 @@ qiyaa_add_module(spotify_protocol
 target_include_directories(qiyaa_spotify_protocol PRIVATE contrib/bearssl/src)
 target_link_libraries(qiyaa_spotify_protocol PRIVATE qiyaa_bearssl)
 
+qiyaa_add_module(spotify_client
+    src/spotify/client/credentials_file.cpp src/spotify/client/credentials_file.h
+    src/spotify/client/endpoints.h
+    src/spotify/client/file_download.cpp    src/spotify/client/file_download.h
+    src/spotify/client/identity.cpp         src/spotify/client/identity.h
+    src/spotify/client/login.cpp            src/spotify/client/login.h
+    src/spotify/client/session.cpp          src/spotify/client/session.h
+    src/spotify/client/web.cpp              src/spotify/client/web.h)
+target_link_libraries(qiyaa_spotify_client PUBLIC qiyaa_spotify_protocol Qt6::Core Qt6::Network)
+
 qiyaa_add_module(yandex
     src/yandex/api_client.cpp   src/yandex/api_client.h
     src/yandex/download.cpp     src/yandex/download.h
