@@ -290,7 +290,7 @@
     </message>
     <message>
         <source>Yandex Music</source>
-        <translation>Эквалайзер</translation>
+        <translation>Яндекс Музыка</translation>
     </message>
     <message>
         <source>Spotify</source>
