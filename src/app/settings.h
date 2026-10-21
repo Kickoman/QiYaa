@@ -67,6 +67,8 @@ public:
     QString lastLocalFolder() const;
     void setLastLocalFolder(const QString& folder);
     bool continueWithVibe() const;
+    QString spotifyDeviceId() const;
+    void setSpotifyDeviceId(const QString& id);
 
     MainWindowState mainWindow() const;
     void setMainWindow(const MainWindowState& state);
