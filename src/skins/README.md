@@ -30,15 +30,16 @@ It deliberately does not link:
 - `Qt6::Network`, and every other `qiyaa_*` library.
 
 miniz is private. Only `skin.cpp` includes `<miniz.h>`, so no header of the module exposes it.
+Of the tests, only `skin_test.cpp` includes it, to build archives.
 
 ```bash
 grep -rn --include='*.h' --include='*.cpp' '#include "' src/skins/ | grep -v '#include "skins/'   # must print nothing
-grep -rln --include='*.h' --include='*.cpp' 'miniz' src/ tests/ | grep -v '^src/skins/skin.cpp$'  # must print nothing
+grep -rln --include='*.h' --include='*.cpp' 'miniz' src/ tests/ | grep -v '^src/skins/skin.cpp$\|^tests/skin_test.cpp$'  # must print nothing
 grep -rn --include='*.h' --include='*.cpp' 'QtWidgets\|<QWidget\|<QApplication' src/skins/        # must print nothing
 ```
 
-Tests: `tests/skin_test.cpp` loads the base skin and every bundled skin, and pins the error
-messages. `tests/region_test.cpp` pins the `region.txt` rules.
+Tests: `tests/skin_test.cpp` loads the base skin and every bundled skin, checks `genFrame()` on
+them and on archives it builds, and pins `textBackground()` and the error messages. `tests/region_test.cpp` pins the `region.txt` rules.
 
 ## `error.h`
 
@@ -62,6 +63,7 @@ class Skin {
 public:
     enum class Sheet { Main, CButtons, TitleBar, Numbers, PlayPaus, MonoSter, PosBar, ShufRep,
                        Volume, Balance, Text, EqMain, PlEdit, EqEx, Gen };
+    enum class GenFrame { Gen, Playlist };
 
     struct PlaylistStyle {
         QColor normal{0x00, 0xFF, 0x00};
@@ -78,6 +80,7 @@ public:
     bool isValid() const;                    // the Main sheet is present
     const QImage& sheet(Sheet sheet) const;  // null QImage when absent
     bool numbersAreExtended() const;         // Numbers holds nums_ex.bmp, not numbers.bmp
+    GenFrame genFrame() const;               // the frame Ui::GenWindow draws, decided at load
 
     void draw(QPainter& painter, Sheet bitmap, const QRect& source, const QPoint& target) const;
 
@@ -86,6 +89,7 @@ public:
 
     int drawText(QPainter& painter, const QPoint& at, const QString& text, int maxWidth = -1) const;
     static int TextWidth(const QString& text);
+    QColor textBackground() const;           // TEXT.BMP's (width − 1, 0); black without the sheet
 
     const TRegionData& region() const;
     const QList<QColor>& visColors() const;
@@ -122,6 +126,19 @@ the fallback and the new skin share the pixel data. Where each item comes from:
 Every sheet is converted to `QImage::Format_ARGB32_Premultiplied`. The file formats and the limits
 are under [File formats](#file-formats).
 
+**The frame of the generic windows (`genFrame`).** The loader decides once which frame
+`Ui::GenWindow` draws:
+1. `Gen` when the archive's `gen.bmp` decodes and is not the fallback's;
+2. else `Playlist` when the archive's `pledit.bmp` decodes and is not the fallback's;
+3. else `Gen`, from the fallback's sheet.
+
+A sheet is the fallback's when every piece that frame draws is pixel-equal to the fallback's: the
+`GenWindowSprites` frame pieces (the letters are not compared), or the `PlaylistSprites` pieces of
+the top, the sides, the bottom and the pressed close. So a stock sheet that a skin's author saved
+again in another bit depth is not the skin's own either. Without a fallback both sheets are the
+skin's own, and `BuiltinBase()` is `Gen`. base-2.91 loaded with itself as the fallback has neither
+sheet of its own and stays `Gen`. In the app the fallback is always base-2.91.
+
 **Drawing.** All positions are skin pixels at scale 1. The painter's transform does the scaling, and
 `src/ui` sets it. `draw()` copies `source` from the sheet to `target` and does nothing if the sheet
 is absent.
@@ -141,7 +158,7 @@ is absent.
    full hinting. Its advance comes from `QFontMetrics::horizontalAdvance`.
 
 Pixel glyphs and system-font characters are painted in the TEXT.BMP *ink colour*. The background
-is the top-right pixel of TEXT.BMP, `(width − 1, 0)`. The ink colour is the most frequent other
+is the top-right pixel of TEXT.BMP, `(width − 1, 0)`, which `textBackground()` returns. The ink colour is the most frequent other
 colour in the a–z strip (`y < 6`, `x < 130`). It is `#00FF00` if TEXT.BMP is absent or if that
 strip has no other colour. It is computed once per `drawText` call, and only when needed.
 `drawText` stops before the first character that would end past `at.x() + maxWidth`. A negative
@@ -180,6 +197,14 @@ on first use.
   installed on the machine.
 - Lower-case å, ö, ä are drawn as a, o, a. The lookup lower-cases first and the table holds
   upper-case Å, Ö, Ä, so only the upper-case letters find their cells.
+- `genFrame()` compares a sheet with the fallback's, whatever the fallback is. A stock `gen.bmp`
+  from another Winamp version that differs from base-2.91's by one pixel is the skin's own, and its
+  frame is `Gen`.
+- Qt leaves the pixels that an RLE8 bitmap skips undefined, and they differ from load to load
+  (Windows makes them palette index 0). base-2.91's GEN.BMP and TEXT.BMP are RLE8, and its GEN.BMP
+  skips everything right of its pieces and of the letter rows. That is why `genFrame()` compares
+  only pieces, never whole sheets. It also makes the width of Z undefined: Z is the last GEN.BMP
+  letter, and no separator follows it. The window titles have no Z.
 - `genTextWidth` measures with the normal row. `drawGenText(..., selected = true)` draws with the
   selected row, and its widths differ if a skin's two rows differ. The rows are the same in the
   three bundled skins that have a `gen.bmp` (base-2.91, Green-Dimension-V2, Skinner_Atlas).

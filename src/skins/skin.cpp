@@ -225,11 +225,65 @@ const QFont& FallbackFont() {
     return fallbackFont;
 }
 
+const QList<QRect>& GenFramePieces() {
+    static const QList<QRect> pieces{
+        GenWindowSprites::kTopLeftSelected,
+        GenWindowSprites::kTopLeftEndSelected,
+        GenWindowSprites::kTopCenterFillSelected,
+        GenWindowSprites::kTopRightEndSelected,
+        GenWindowSprites::kTopLeftRightFillSelected,
+        GenWindowSprites::kTopRightSelected,
+        GenWindowSprites::kTopLeft,
+        GenWindowSprites::kTopLeftEnd,
+        GenWindowSprites::kTopCenterFill,
+        GenWindowSprites::kTopRightEnd,
+        GenWindowSprites::kTopLeftRightFill,
+        GenWindowSprites::kTopRight,
+        GenWindowSprites::kBottomLeft,
+        GenWindowSprites::kBottomRight,
+        GenWindowSprites::kBottomFill,
+        GenWindowSprites::kMiddleLeft,
+        GenWindowSprites::kMiddleLeftBottom,
+        GenWindowSprites::kMiddleRight,
+        GenWindowSprites::kMiddleRightBottom,
+        GenWindowSprites::kCloseSelected,
+    };
+    return pieces;
+}
+
+const QList<QRect>& PlaylistFramePieces() {
+    static const QList<QRect> pieces{
+        PlaylistSprites::kTopLeftSelected,
+        PlaylistSprites::kTopTileSelected,
+        PlaylistSprites::kTopRightSelected,
+        PlaylistSprites::kTopLeft,
+        PlaylistSprites::kTopTile,
+        PlaylistSprites::kTopRight,
+        PlaylistSprites::kLeftTile,
+        PlaylistSprites::kRightTile,
+        PlaylistSprites::kBottomTile,
+        PlaylistSprites::kBottomLeft,
+        PlaylistSprites::kBottomRight,
+        PlaylistSprites::kCloseSelected,
+    };
+    return pieces;
+}
+
+bool SamePieces(const QImage& one, const QImage& other, const QList<QRect>& pieces) {
+    return std::all_of(pieces.cbegin(), pieces.cend(), [&one, &other](const QRect& piece) {
+        return one.copy(piece) == other.copy(piece);
+    });
+}
+
+QRgb TextBackground(const QImage& textSheet) {
+    return textSheet.pixel(textSheet.width() - 1, 0);
+}
+
 QColor TextInkColor(const QImage& textSheet) {
     if (textSheet.isNull()) {
         return Qt::green;
     }
-    const QRgb background = textSheet.pixel(textSheet.width() - 1, 0);
+    const QRgb background = TextBackground(textSheet);
     std::map<QRgb, int> counts;
     const int rows = std::min(textSheet.height(), 6);
     const int columns = std::min(textSheet.width(), 26 * Skins::kCharWidth);
@@ -351,10 +405,13 @@ void Skin::loadArchive(const QByteArray& archive, const Skin* fallback) {
     load(Sheet::ShufRep, {"shufrep.bmp"});
     load(Sheet::Text, {"text.bmp"});
     load(Sheet::EqMain, {"eqmain.bmp"});
-    load(Sheet::PlEdit, {"pledit.bmp"});
+    const bool ownPlaylist = load(Sheet::PlEdit, {"pledit.bmp"})
+        && !(fallback && SamePieces(sheet(Sheet::PlEdit), fallback->sheet(Sheet::PlEdit), PlaylistFramePieces()));
     load(Sheet::EqEx, {"eq_ex.bmp"});
-    load(Sheet::Gen, {"gen.bmp"});
+    const bool ownGen = load(Sheet::Gen, {"gen.bmp"})
+        && !(fallback && SamePieces(sheet(Sheet::Gen), fallback->sheet(Sheet::Gen), GenFramePieces()));
     measureGenLetters();
+    genWindowFrame = !ownGen && ownPlaylist ? GenFrame::Playlist : GenFrame::Gen;
     const bool hasVolume = load(Sheet::Volume, {"volume.bmp"});
     if (!load(Sheet::Balance, {"balance.bmp"}) && hasVolume) {
         sheets.insert(Sheet::Balance, sheets.value(Sheet::Volume));
@@ -504,6 +561,11 @@ int Skin::TextWidth(const QString& text) {
         width += ResolveChar(character).advance;
     }
     return width;
+}
+
+QColor Skin::textBackground() const {
+    const QImage& textSheet = sheet(Sheet::Text);
+    return textSheet.isNull() ? QColor(Qt::black) : QColor::fromRgb(TextBackground(textSheet));
 }
 
 int Skin::drawText(QPainter& painter, const QPoint& at, const QString& text, int maxWidth) const {
