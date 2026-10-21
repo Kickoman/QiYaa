@@ -41,6 +41,7 @@ private Q_SLOTS:
         QCOMPARE(settings.quality(), Yandex::Quality::Standard);
         QCOMPARE(settings.lastLocalFolder(), QString());
         QVERIFY(settings.continueWithVibe());
+        QVERIFY(!settings.lyricsThirdParty());
         const App::MainWindowState mainWindow = settings.mainWindow();
         QCOMPARE(mainWindow.volume, 75);
         QCOMPARE(mainWindow.balance, 0);
@@ -107,6 +108,7 @@ private Q_SLOTS:
         settings.setJam(App::JamSettings{QStringLiteral("https://jam.example.org"), false, true});
         settings.setTelemetryEnabled(false);
         settings.setMachine(QStringLiteral("machine-1"));
+        settings.setLyricsThirdParty(true);
 
         QCOMPARE(stored(QStringLiteral("language")), QVariant(QStringLiteral("ru")));
         QCOMPARE(stored(QStringLiteral("skin")), QVariant(QStringLiteral(":/skins/Vizor1-01.wsz")));
@@ -133,6 +135,7 @@ private Q_SLOTS:
         QCOMPARE(stored(QStringLiteral("jam/waveFeedback")), QVariant(false));
         QCOMPARE(stored(QStringLiteral("jam/shareAudio")), QVariant(true));
         QCOMPARE(stored(QStringLiteral("telemetry/enabled")), QVariant(false));
+        QCOMPARE(stored(QStringLiteral("lyrics/thirdParty")), QVariant(true));
         QCOMPARE(stored(QStringLiteral("telemetry/machine")), QVariant(QStringLiteral("machine-1")));
 
         const App::Settings reread(file);

@@ -67,6 +67,8 @@ public:
     QString lastLocalFolder() const;
     void setLastLocalFolder(const QString& folder);
     bool continueWithVibe() const;
+    bool lyricsThirdParty() const;
+    void setLyricsThirdParty(bool on);
 
     MainWindowState mainWindow() const;
     void setMainWindow(const MainWindowState& state);

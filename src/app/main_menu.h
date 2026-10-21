@@ -13,6 +13,7 @@ class AudioEngine;
 }  // namespace Audio
 
 namespace Core {
+class LyricsFinder;
 class Player;
 class SourceRegistry;
 struct Track;
@@ -56,6 +57,7 @@ public:
         YandexSource::Catalog* catalog = nullptr;
         LocalSource::Catalog* local = nullptr;
         Core::SourceRegistry* sources = nullptr;
+        Core::LyricsFinder* lyrics = nullptr;
         YandexSource::Source* yandex = nullptr;
         Settings* settings = nullptr;
         WindowSet* windows = nullptr;
@@ -85,6 +87,7 @@ private:
     void openLocalFolder();
     QString localStartFolder() const;
     void loadSkinFile();
+    void askForLrclib();
     void addWindowActions(QMenu* menu);
     void addModes(QMenu* menu);
     void addLooks(QMenu* menu);

@@ -7,11 +7,13 @@
 #include "app/translations.h"
 #include "app/window_set.h"
 #include "audio/audio_engine.h"
+#include "core/lyrics_finder.h"
 #include "core/player.h"
 #include "telemetry/machine_id.h"
 #include "telemetry/reporter.h"
 #include "telemetry/system_info.h"
 #include "ui/equalizer_window.h"
+#include "ui/lyrics_window.h"
 #include "ui/main_window.h"
 #include "ui/milkdrop_window.h"
 #include "yandex/api_client.h"
@@ -84,6 +86,18 @@ QString MilkdropFailureCode(Vis::MilkdropFailure failure) {
     return QStringLiteral("projectm");
 }
 #endif
+
+QString LookupField(Core::LyricsLookup::Shown shown) {
+    switch (shown) {
+        case Core::LyricsLookup::Shown::SourceSynced: return QStringLiteral("lyricsSourceSynced");
+        case Core::LyricsLookup::Shown::ThirdPartySynced: return QStringLiteral("lyricsThirdPartySynced");
+        case Core::LyricsLookup::Shown::SourceText: return QStringLiteral("lyricsSourceText");
+        case Core::LyricsLookup::Shown::ThirdPartyText: return QStringLiteral("lyricsThirdPartyText");
+        case Core::LyricsLookup::Shown::Instrumental: return QStringLiteral("lyricsInstrumental");
+        case Core::LyricsLookup::Shown::None: break;
+    }
+    return QStringLiteral("lyricsNone");
+}
 
 QString OnOff(bool on) {
     return on ? QStringLiteral("on") : QStringLiteral("off");
@@ -162,6 +176,9 @@ TelemetryBridge::TelemetryBridge(const Sources& sources, Config config, QObject*
         }
     );
     connect(sources.windows, &WindowSet::visibilityChosen, this, [telemetry](Ui::SkinnedWindow* window, bool on) {
+        if (window && window == telemetry->sources.lyricsWindow) {
+            return telemetry->feature(QStringLiteral("lyrics"), OnOff(on));
+        }
         if (!window || window != telemetry->sources.milkdrop) {
             return;
         }
@@ -177,6 +194,19 @@ TelemetryBridge::TelemetryBridge(const Sources& sources, Config config, QObject*
         });
     }
 #endif
+    connect(sources.lyrics, &Core::LyricsFinder::thirdPartyChanged, this, [telemetry](bool on) {
+        telemetry->feature(QStringLiteral("lyrics-services"), OnOff(on));
+    });
+    connect(sources.lyrics, &Core::LyricsFinder::lookedUp, this, [telemetry](const Core::LyricsLookup& lookup) {
+        if (!telemetry->reporter) {
+            return;
+        }
+        telemetry->reporter->countLyrics(QStringLiteral("lyricsLookups"));
+        telemetry->reporter->countLyrics(LookupField(lookup.shown));
+        if (lookup.thirdPartyFailed) {
+            telemetry->reporter->countLyrics(QStringLiteral("lyricsThirdPartyFailed"));
+        }
+    });
     connect(sources.application, &Application::languageChanged, this, [telemetry](Language language) {
         telemetry->feature(QStringLiteral("language"), LanguageCode(language));
     });

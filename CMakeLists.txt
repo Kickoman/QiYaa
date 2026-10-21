@@ -302,6 +302,7 @@ qiyaa_add_module(ui
     src/ui/gen_window.cpp       src/ui/gen_window.h
     src/ui/input_dialogs.cpp    src/ui/input_dialogs.h
     src/ui/library_menu.cpp     src/ui/library_menu.h
+    src/ui/lyrics_window.cpp    src/ui/lyrics_window.h
     src/ui/login_dialog.cpp     src/ui/login_dialog.h
     src/ui/main_window.cpp      src/ui/main_window.h
     src/ui/now_playing_window.cpp src/ui/now_playing_window.h
@@ -459,7 +460,7 @@ qiyaa_add_module(app
     src/app/translations.cpp    src/app/translations.h
     src/app/window_set.cpp      src/app/window_set.h)
 target_link_libraries(qiyaa_app
-    PUBLIC qiyaa_audio qiyaa_core qiyaa_skins qiyaa_sources_local qiyaa_sources_yandex qiyaa_yandex
+    PUBLIC qiyaa_audio qiyaa_core qiyaa_lrclib qiyaa_skins qiyaa_sources_local qiyaa_sources_yandex qiyaa_yandex
     PRIVATE qiyaa_integrations qiyaa_ui qiyaa_vis)
 # App::Settings holds the default of jam/server, also in a build without the jam.
 target_compile_definitions(qiyaa_app PRIVATE QIYAA_JAM_URL="${QIYAA_JAM_URL}")
