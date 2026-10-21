@@ -249,6 +249,25 @@ void ApiClient::tracks(const QStringList& ids, TCallback<QList<Track>> callback)
     );
 }
 
+std::optional<QString> ApiClient::ParseSupplementLyrics(const QJsonValue& result) {
+    const QJsonObject lyrics = result.toObject().value(QStringLiteral("lyrics")).toObject();
+    const QString text = lyrics.value(QStringLiteral("fullLyrics")).toString();
+    if (text.isEmpty() || lyrics.value(QStringLiteral("hasRights")) == QJsonValue(false)) {
+        return std::nullopt;
+    }
+    return text;
+}
+
+void ApiClient::lyricsText(const QString& trackId, TLyricsTextCallback callback) {
+    const QString path = QStringLiteral("/tracks/%1/supplement").arg(trackId.section(u':', 0, 0));
+    getClassifiedJson(path, {}, [callback = std::move(callback)](const QJsonValue& result, const RequestError& error) {
+        if (error.isError()) {
+            return callback(std::nullopt, error);
+        }
+        callback(ParseSupplementLyrics(result), {});
+    });
+}
+
 void ApiClient::resolveTrackUrl(const QString& trackId, Quality quality, TUrlCallback callback) {
     const QString id = trackId.section(u':', 0, 0);
     if (quality == Quality::Economy) {

@@ -110,6 +110,46 @@ private Q_SLOTS:
         const QJsonObject actual = info ? Tests::ToJson(*info) : QJsonObject{{QStringLiteral("fallback"), true}};
         QCOMPARE(Tests::Json(actual), Tests::Expected(name));
     }
+    void supplementRepliesGiveThePlainText_data() {  // LYR-02
+        QTest::addColumn<QString>("name");
+        for (const char* name : {"with-lyrics", "without-lyrics", "no-rights", "400-validate"}) {
+            QTest::newRow(name) << QStringLiteral("tracks-supplement/%1").arg(name);
+        }
+    }
+
+    void supplementRepliesGiveThePlainText() {
+        QFETCH(QString, name);
+        Tests::MockHttpServer server;
+        Tests::LocalNetworkAccessManager network;
+        Yandex::ApiClient api(&network);
+        api.setBaseUrl(server.baseUrl());
+        api.setToken(QStringLiteral("test-token"));
+        server.fixture("GET", QStringLiteral("/tracks/33311009/supplement"), name);
+        QSignalSpy failures(&api, &Yandex::ApiClient::requestFailed);
+        std::optional<std::optional<QString>> text;
+        Yandex::RequestError error;
+        api.lyricsText(
+            QStringLiteral("33311009:4"),
+            [&](const std::optional<QString>& lyrics, const Yandex::RequestError& failed) {
+                text = lyrics;
+                error = failed;
+            }
+        );
+        QVERIFY(QTest::qWaitFor([&] { return text.has_value(); }, 5'000));
+        QVERIFY(server.last(QStringLiteral("/tracks/33311009/supplement")));
+        if (Tests::FixtureStatus(name) != 200) {
+            QVERIFY(error.isError());
+            const QString mismatch = Tests::CheckError(error.text, name);
+            QVERIFY2(mismatch.isEmpty(), qPrintable(mismatch));
+            QCOMPARE(failures.count(), 1);
+            return;
+        }
+        QVERIFY(!error.isError());
+        QCOMPARE(failures.count(), 0);
+        const QJsonObject actual{{QStringLiteral("lyrics"), *text ? QJsonValue(**text) : QJsonValue()}};
+        QCOMPARE(Tests::Json(actual), Tests::Expected(name));
+    }
+
     // The worked example of spec/player/quality.md.
     void signsFileInfoLikeTheSpecExample() {
         const Yandex::FileInfoRequest request{

@@ -13,6 +13,7 @@
 
 #include <functional>
 #include <memory>
+#include <optional>
 #include <utility>
 
 class QNetworkAccessManager;
@@ -75,6 +76,7 @@ public:
     using TJsonCallback = std::function<void(const QJsonValue& result, const QString& error)>;
     using TUrlCallback = std::function<void(const ResolvedUrl& link, const RequestError& error)>;
     using TClassifiedJsonCallback = std::function<void(const QJsonValue& result, const RequestError& error)>;
+    using TLyricsTextCallback = std::function<void(const std::optional<QString>& text, const RequestError& error)>;
 
     explicit ApiClient(QNetworkAccessManager* networkAccessManager, QObject* parent = nullptr);
 
@@ -94,12 +96,14 @@ public:
     void accountStatus(TCallback<Account> callback);
     void tracks(const QStringList& ids, TCallback<QList<Track>> callback);
     void resolveTrackUrl(const QString& trackId, Quality quality, TUrlCallback callback);
+    void lyricsText(const QString& trackId, TLyricsTextCallback callback);
     void reportPlayStarted(const Account& account, const QString& trackId, qint64 durationMs, const QString& playId);
     std::unique_ptr<Download> download(const QUrl& url);
 
     int pendingPosts() const { return pendingPostCount; }
 
     static Track ParseTrack(const QJsonValue& value);
+    static std::optional<QString> ParseSupplementLyrics(const QJsonValue& result);
     static QString IdString(const QJsonValue& value);
 
 Q_SIGNALS:
