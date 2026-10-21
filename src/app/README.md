@@ -138,6 +138,7 @@ public:
     Account* account() const;                          // login and logout (below)
     SpotifyAccount* spotify() const;                   // the Spotify login (below)
     SpotifyClient::Session* spotifySession();          // the access point session, one per app
+    SpotifyClient::Web* spotifyApi();                  // Spotify's HTTP requests and their tokens
     SpotifySource::Source* spotifyTracks();            // the Spotify source: its quality
     SpotifySource::Catalog* spotifyPicks();            // what a Spotify pick plays
     TelemetryBridge* telemetry() const;                // never null; does nothing without telemetry
@@ -372,13 +373,17 @@ public:
     SpotifyAccount(const Parts& parts, QString credentialsFile, QObject* parent = nullptr);
     void start();                                      // the saved credentials, if any
     void login();                                      // modal dialog
-    void loginWithToken(const QString& accessToken);
+    void loginWithToken(const QString& accessToken, Way way = Way::Code);
     void logout();
     bool loggedIn() const;
+    bool hasSavedLogin() const;                        // the credentials file holds a login
     QString username() const;                          // Spotify's canonical username
 Q_SIGNALS:
     void statusText(const QString& text);              // for the marquee
     void connected(const QString& username);           // once per login, not per reconnect
+    void loggedInWith(App::SpotifyAccount::Way way);   // after a dialog's login: Code or Browser
+    void loggedOut();
+    void refused(App::SpotifyAccount::Refusal refusal);    // Expired, PremiumRequired, Other
 };
 ```
 
@@ -602,7 +607,9 @@ public:
     struct Sources { Application* application; Settings* settings; Account* account; WindowSet* windows;
                      Core::Player* player; Audio::AudioEngine* engine; Yandex::ApiClient* api;
                      Ui::MainWindow* mainWindow; Ui::EqualizerWindow* equalizer;
-                     Ui::MilkdropWindow* milkdrop; Jam::HostSession* jamHost; };   // the last two may be null
+                     Ui::MilkdropWindow* milkdrop; Jam::HostSession* jamHost;   // these two may be null
+                     SpotifyAccount* spotify; SpotifyClient::Session* spotifySession;
+                     SpotifyClient::Web* spotifyWeb; };
     struct Config { QUrl url; QNetworkAccessManager* network; QString skinOverride; bool audio; bool audioFailed; };
     TelemetryBridge(const Sources& sources, Config config, QObject* parent = nullptr);
     bool available() const;                            // a telemetry build with a URL
@@ -626,7 +633,8 @@ builds.
 With a URL and `telemetry/enabled` on (the default), `start()` creates the `Telemetry::Reporter`
 in `telemetry/` next to `settings.ini` and records `start`. Its fields are the system's
 (`Telemetry::SystemFields`), the state the windows start in, and `firstRun`: the settings were
-empty when the app opened them. `telemetry/firstStart` is written and synced at once, so a first
+empty when the app opened them; `spotifyLoggedIn` is whether Spotify credentials are saved
+(`SpotifyAccount::hasSavedLogin`). `telemetry/firstStart` is written and synced at once, so a first
 run that gets killed does not make the next one first too. Without a reporter every event is
 dropped.
 
@@ -638,6 +646,10 @@ dropped.
 | `error login/failed`, `skin/load` | `Account::failed`, `Application::skinFailed` |
 | `error milkdrop/<category>` | `Ui::MilkdropWindow::failed` |
 | `error jam/<reason>`, `jam/gone`, `jam/expired`, `jam/ended-by-server` | `HostSession::refused`, `ended` |
+| `error spotify/login-expired`, `spotify/premium-required` | `SpotifyAccount::refused` (another refusal sends nothing) |
+| `error spotify/key-refused`, `spotify/key-failed`, `spotify/access-point` | `SpotifyClient::Session::keyFailed`, `accessPointFailed` |
+| `error spotify/http` (+ `httpStatus`), `spotify/content`, `spotify/query-outdated` | `SpotifyClient::Web::problem` |
+| `feature spotify` `login-code`, `login-browser`, `logout` | `SpotifyAccount::loggedInWith`, `loggedOut` |
 | `feature vis`, `equalizer`, `skin`, `language`, `milkdrop`, `jam`, `lyrics`, `lyrics-services` | `MainWindow::visModeChanged`, the equalizer's `settingsChanged`, `Application::skinChanged`, `Application::languageChanged`, `WindowSet::visibilityChosen` of Milkdrop and of the lyrics window, `HostSession::activeChanged`, `LyricsFinder::thirdPartyChanged` |
 | the lyrics counts of `exit` (`lyricsLookups`…, TEL-17) | `LyricsFinder::lookedUp`, through `Reporter::countLyrics` |
 

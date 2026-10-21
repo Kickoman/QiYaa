@@ -57,7 +57,8 @@ QString username(), country(), product();
 bool hasAccount();                    // logged in, or reconnecting with credentials; false after logout or a refusal
 QStringList spclients() const;                                // from apresolve
 void audioKey(const TGid& track, const TFileId& file, TKeyDone done);
-Q_SIGNALS: loggedInChanged(bool), loginRefused(int code, QString), accountChanged()
+Q_SIGNALS: loggedInChanged(bool), loginRefused(int code, QString), accountChanged(),
+           keyFailed(bool refused), accessPointFailed()
 ```
 
 - `login` asks apresolve for the access points and the spclient hosts (falling back to
@@ -73,6 +74,9 @@ Q_SIGNALS: loggedInChanged(bool), loginRefused(int code, QString), accountChange
   answer in `kKeyTimeoutMs` is asked once more after `kKeyRetryMs`, then `Failed` (SPOT-16). A
   request made before the login waits for it, at most `kQueuedKeyTimeoutMs`; one in flight when the
   connection drops, and every one after `logout`, is `Network`.
+- `keyFailed(refused)` comes once for each key that ends `Refused` or `Failed`, and
+  `accessPointFailed()` for a connection the protocol gave up on (not a socket error): the
+  telemetry's (TEL-18).
 
 ## `Web`
 
@@ -86,6 +90,12 @@ with the session's reusable credentials (kept `expires_in` less a minute). Reque
 the tokens are fetched wait for them. A 401 forgets the bearer and sends once more; a 429 with a
 `Retry-After` of at most 5 s is sent once more after it. Everything else reaches `done` as it is:
 `WebReply` with the status (0 without one: `network`), the body and the error text.
+
+`problem(WebProblem, httpStatus)` reports what went wrong, for the telemetry (TEL-18): `Http` with
+the status of every request that ends without 2xx (a token's, spclient's, Pathfinder's, a CDN's
+through `report`), `Content` for an answer that cannot be read, `QueryOutdated` when Pathfinder
+refused every hash. A network failure is not reported. `report(problem, status)` lets the callers
+that read the answers (`FileDownload`, `SpotifySource::Library`) say the same.
 
 ## `FileDownload`
 

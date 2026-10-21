@@ -92,7 +92,9 @@ SpotifyLoginDialog::SpotifyLoginDialog(
         QGuiApplication::clipboard()->setText(code);
         fitToContents();
     });
-    connect(pairLogin, &SpotifyClient::PairLogin::succeeded, this, &SpotifyLoginDialog::finishWith);
+    connect(pairLogin, &SpotifyClient::PairLogin::succeeded, this, [this](const QString& token) {
+        finishWith(token, Way::Code);
+    });
     connect(pairLogin, &SpotifyClient::PairLogin::failed, this, [this](const QString& error) {
         codeLabel->setText(QStringLiteral("—"));
         openPair->setEnabled(false);
@@ -105,7 +107,9 @@ SpotifyLoginDialog::SpotifyLoginDialog(
         browserStatus->show();
         fitToContents();
     });
-    connect(browserLogin, &SpotifyClient::BrowserLogin::succeeded, this, &SpotifyLoginDialog::finishWith);
+    connect(browserLogin, &SpotifyClient::BrowserLogin::succeeded, this, [this](const QString& token) {
+        finishWith(token, Way::Browser);
+    });
     connect(browserLogin, &SpotifyClient::BrowserLogin::failed, this, [this](const QString& error) {
         browserStatus->setText(tr("Logging in in the browser failed: %1").arg(error));
         browserStatus->show();
@@ -128,10 +132,11 @@ void SpotifyLoginDialog::fitToContents() {
     }
 }
 
-void SpotifyLoginDialog::finishWith(const QString& token) {
+void SpotifyLoginDialog::finishWith(const QString& token, Way way) {
     pairLogin->cancel();
     browserLogin->cancel();
     accessToken = token;
+    loginWay = way;
     accept();
 }
 

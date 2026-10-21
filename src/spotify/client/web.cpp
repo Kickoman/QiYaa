@@ -117,6 +117,7 @@ void Web::fetchClientToken(const QByteArray& body, int round) {
         reply->deleteLater();
         const WebReply result = ReplyOf(reply);
         if (!result.ok()) {
+            reportFailed(result);
             finishTokens(&result);
             return;
         }
@@ -134,6 +135,7 @@ void Web::fetchClientToken(const QByteArray& body, int round) {
         }
         if (!solution) {
             const WebReply failure = Failure(tr("Spotify did not give a client token"));
+            report(WebProblem::Content);
             finishTokens(&failure);
             return;
         }
@@ -165,6 +167,7 @@ void Web::fetchBearer(const QByteArray& requestBody, int round) {
         reply->deleteLater();
         const WebReply result = ReplyOf(reply);
         if (!result.ok()) {
+            reportFailed(result);
             finishTokens(&result);
             return;
         }
@@ -185,6 +188,7 @@ void Web::fetchBearer(const QByteArray& requestBody, int round) {
             if (std::holds_alternative<SpotifyProtocol::Login5Error>(parsed)) {
                 failure.status = 401;
             }
+            reportFailed(failure);
             finishTokens(&failure);
             return;
         }
@@ -253,9 +257,25 @@ void Web::send(const WebRequest& request, bool onPathfinder, TReply done, bool r
                 QTimer::singleShot(retryAfterMs, this, [=, this] { send(request, onPathfinder, done, true); });
                 return;
             }
+            reportFailed(result);
             done(result);
         });
     });
+}
+
+void Web::report(WebProblem problem, int httpStatus) {
+    Q_EMIT this->problem(problem, httpStatus);
+}
+
+void Web::reportFailed(const WebReply& reply) {
+    if (reply.network) {
+        return;
+    }
+    if (reply.status > 0 && !reply.ok()) {
+        report(WebProblem::Http, reply.status);
+    } else if (reply.status == 0) {
+        report(WebProblem::Content);
+    }
 }
 
 }  // namespace SpotifyClient

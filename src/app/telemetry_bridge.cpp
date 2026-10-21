@@ -4,11 +4,14 @@
 #include "app/application.h"
 #include "app/paths.h"
 #include "app/settings.h"
+#include "app/spotify_account.h"
 #include "app/translations.h"
 #include "app/window_set.h"
 #include "audio/audio_engine.h"
 #include "core/lyrics_finder.h"
 #include "core/player.h"
+#include "spotify/client/session.h"
+#include "spotify/client/web.h"
 #include "telemetry/machine_id.h"
 #include "telemetry/reporter.h"
 #include "telemetry/system_info.h"
@@ -219,6 +222,7 @@ TelemetryBridge::TelemetryBridge(const Sources& sources, Config config, QObject*
     connect(sources.account, &Account::failed, this, [telemetry] {
         telemetry->error(QStringLiteral("login"), QStringLiteral("failed"));
     });
+    connectSpotify(sources);
 #ifdef QIYAA_HAVE_JAM
     if (sources.jamHost) {
         connect(sources.jamHost, &Jam::HostSession::refused, this, [telemetry](const QString& reason) {
@@ -246,6 +250,43 @@ TelemetryBridge::TelemetryBridge(const Sources& sources, Config config, QObject*
 }
 
 TelemetryBridge::~TelemetryBridge() = default;
+
+void TelemetryBridge::connectSpotify(const Sources& sources) {
+    State* const telemetry = state.get();
+    const QString area = QStringLiteral("spotify");
+    connect(sources.spotify, &SpotifyAccount::loggedInWith, this, [telemetry, area](SpotifyAccount::Way way) {
+        const bool code = way == SpotifyAccount::Way::Code;
+        telemetry->feature(area, code ? QStringLiteral("login-code") : QStringLiteral("login-browser"));
+    });
+    connect(sources.spotify, &SpotifyAccount::loggedOut, this, [telemetry, area] {
+        telemetry->feature(area, QStringLiteral("logout"));
+    });
+    connect(sources.spotify, &SpotifyAccount::refused, this, [telemetry, area](SpotifyAccount::Refusal refusal) {
+        switch (refusal) {
+            case SpotifyAccount::Refusal::Expired: telemetry->error(area, QStringLiteral("login-expired")); break;
+            case SpotifyAccount::Refusal::PremiumRequired:
+                telemetry->error(area, QStringLiteral("premium-required"));
+                break;
+            case SpotifyAccount::Refusal::Other: break;
+        }
+    });
+    connect(sources.spotifySession, &SpotifyClient::Session::keyFailed, this, [telemetry, area](bool refused) {
+        telemetry->error(area, refused ? QStringLiteral("key-refused") : QStringLiteral("key-failed"));
+    });
+    connect(sources.spotifySession, &SpotifyClient::Session::accessPointFailed, this, [telemetry, area] {
+        telemetry->error(area, QStringLiteral("access-point"));
+    });
+    const auto problem = [telemetry, area](SpotifyClient::WebProblem kind, int httpStatus) {
+        switch (kind) {
+            case SpotifyClient::WebProblem::Http: telemetry->error(area, QStringLiteral("http"), httpStatus); break;
+            case SpotifyClient::WebProblem::Content: telemetry->error(area, QStringLiteral("content")); break;
+            case SpotifyClient::WebProblem::QueryOutdated:
+                telemetry->error(area, QStringLiteral("query-outdated"));
+                break;
+        }
+    };
+    connect(sources.spotifyWeb, &SpotifyClient::Web::problem, this, problem);
+}
 
 bool TelemetryBridge::available() const {
     return !state->config.url.isEmpty();
@@ -305,6 +346,7 @@ void TelemetryBridge::start() {
         config.audioFailed || !config.audio ? QString() : from.engine->backendName().remove(notBackend).left(24)
     );
     fields.insert(QStringLiteral("loggedIn"), !Yandex::FindToken(TokenFile(), YaampTokenFiles()).token.isEmpty());
+    fields.insert(QStringLiteral("spotifyLoggedIn"), from.spotify->hasSavedLogin());
     fields.insert(QStringLiteral("firstRun"), from.settings->wasEmpty());
     if (!from.settings->hasFirstStart()) {
         from.settings->setFirstStart(QDate::currentDate());  // a first run that is killed: the next is not first

@@ -26,6 +26,8 @@ struct WebReply {
     bool ok() const { return status >= 200 && status < 300; }
 };
 
+enum class WebProblem { Http, Content, QueryOutdated };
+
 struct WebRequest {
     QByteArray method = QByteArrayLiteral("GET");
     QString path;
@@ -53,7 +55,11 @@ public:
     void spclient(const WebRequest& request, TReply done);
     void pathfinder(const QByteArray& query, TReply done);
     void forgetTokens();
+    void report(WebProblem problem, int httpStatus = 0);
     QByteArray userAgent() const { return agent; }
+
+Q_SIGNALS:
+    void problem(SpotifyClient::WebProblem problem, int httpStatus);
 
 private:
     using TReady = std::function<void(const WebReply* failure)>;
@@ -65,6 +71,7 @@ private:
     void send(const WebRequest& request, bool onPathfinder, TReply done, bool retried);
     QNetworkReply* post(const QNetworkRequest& request, const QByteArray& body);
     static WebReply ReplyOf(QNetworkReply* reply);
+    void reportFailed(const WebReply& reply);
 
     QNetworkAccessManager* networkManager;
     Endpoints endpoints;

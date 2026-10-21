@@ -21,6 +21,11 @@ namespace Jam {
 class HostSession;
 }  // namespace Jam
 
+namespace SpotifyClient {
+class Session;
+class Web;
+}  // namespace SpotifyClient
+
 namespace Telemetry {
 class Reporter;
 }  // namespace Telemetry
@@ -41,6 +46,7 @@ namespace App {
 class Account;
 class Application;
 class Settings;
+class SpotifyAccount;
 class WindowSet;
 
 class TelemetryBridge : public QObject {
@@ -60,6 +66,9 @@ public:
         Jam::HostSession* jamHost = nullptr;
         Core::LyricsFinder* lyrics = nullptr;
         Ui::LyricsWindow* lyricsWindow = nullptr;
+        SpotifyAccount* spotify = nullptr;
+        SpotifyClient::Session* spotifySession = nullptr;
+        SpotifyClient::Web* spotifyWeb = nullptr;
     };
 
     struct Config {
@@ -86,6 +95,7 @@ Q_SIGNALS:
 
 private:
     struct State;
+    void connectSpotify(const Sources& sources);
     std::unique_ptr<State> state;
 };
 

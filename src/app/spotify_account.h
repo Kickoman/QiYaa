@@ -6,6 +6,7 @@
 #include <QString>
 
 #include <cstdint>
+#include <optional>
 #include <vector>
 
 class QNetworkAccessManager;
@@ -29,19 +30,26 @@ public:
         SpotifyClient::Endpoints endpoints;
     };
 
+    enum class Way { Code, Browser };
+    enum class Refusal { Expired, PremiumRequired, Other };
+
     SpotifyAccount(const Parts& parts, QString credentialsFile, QObject* parent = nullptr);
 
     void start();
     void login();
-    void loginWithToken(const QString& accessToken);
+    void loginWithToken(const QString& accessToken, Way way = Way::Code);
     void logout();
 
     bool loggedIn() const;
+    bool hasSavedLogin() const;
     QString username() const;
 
 Q_SIGNALS:
     void statusText(const QString& text);
     void connected(const QString& username);
+    void loggedInWith(App::SpotifyAccount::Way way);
+    void loggedOut();
+    void refused(App::SpotifyAccount::Refusal refusal);
 
 private:
     void onLoggedInChanged(bool loggedIn);
@@ -51,6 +59,7 @@ private:
     QString file;
     std::vector<std::uint8_t> savedData;
     bool greeted = false;
+    std::optional<Way> pendingWay;
 };
 
 }  // namespace App
