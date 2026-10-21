@@ -17,6 +17,7 @@ colours from [src/skins](../skins/README.md).
 | `milkdrop_presets.h/.cpp` | `PresetTransition` (cut or blend); `MilkdropPresets` — built-in and user `.milk` files in a fixed order, read with a 1 MiB bound |
 | `milkdrop_failure.h` | `MilkdropFailure`: why Milkdrop cannot run (no OpenGL, only OpenGL ES, OpenGL older than 3.3, projectM) as a category, without projectM, for telemetry |
 | `milkdrop_view.h/.cpp` | `MilkdropView` — projectM 4 in a `QOpenGLWindow`: OpenGL 3.3 probe, PCM feed, deferred preset loads, black-picture watch, frame capture. Built only with Milkdrop |
+| `projectm_opengl.h/.cpp` | `LoadOpenGlForProjectM()`: on Windows `glewInit()`, which projectM leaves to the application; elsewhere nothing. Built only with Milkdrop |
 
 ## Dependencies
 
@@ -29,9 +30,10 @@ Module order: `audio`, `yandex`, `skins` → **`vis`**, `core` → `ui`, `integr
   `visualizer.cpp` alone.
 - With Milkdrop (CMake finds `Qt6::OpenGL` and projectM 4.1 or newer, or downloads projectM v4.1.7
   when `QIYAA_FETCH_PROJECTM=ON`): PUBLIC `Qt6::OpenGL`, PRIVATE `libprojectM::projectM` (LGPL-2.1,
-  linked dynamically, see [THIRD_PARTY.md](../../THIRD_PARTY.md)), PUBLIC define
-  `QIYAA_HAVE_MILKDROP`, and the resource prefix `:/milkdrop` with the 150 `.milk` files of
-  `resources/milkdrop`. Only then are `milkdrop_view.*` compiled; `MilkdropPresets` is always built.
+  linked dynamically, see [THIRD_PARTY.md](../../THIRD_PARTY.md)), on Windows PRIVATE `GLEW::GLEW`
+  (the `glew32.dll` projectM itself uses), PUBLIC define `QIYAA_HAVE_MILKDROP`, and the resource
+  prefix `:/milkdrop` with the 150 `.milk` files of `resources/milkdrop`. Only then are
+  `milkdrop_view.*` and `projectm_opengl.*` compiled; `MilkdropPresets` is always built.
 - It deliberately does not link `Qt6::Widgets` (the view is a `QWindow`; `src/ui` embeds it with
   `QWidget::createWindowContainer`), `Qt6::Network`, `qiyaa_core`, `qiyaa_yandex` or `qiyaa_ui`.
   projectM's header is private to one source file.
@@ -42,6 +44,7 @@ Checks, from the repository root:
 grep -rnE --include='*.h' --include='*.cpp' '#include "(core|ui|integrations|app|yandex)/' src/vis/   # must print nothing
 grep -n '#include "' src/vis/*.h | grep -v '"vis/'                                                  # must print nothing
 grep -rl --include='*.h' --include='*.cpp' 'projectM-4/' src/vis/ | grep -v 'milkdrop_view.cpp$'      # must print nothing
+grep -rl --include='*.h' --include='*.cpp' 'GL/glew.h' src/ | grep -v 'src/vis/projectm_opengl.cpp$'  # must print nothing
 grep -rnw --include='*.h' --include='*.cpp' throw src/vis/                                            # must print nothing
 ```
 
@@ -282,7 +285,7 @@ that same framebuffer.
   the answer: empty, or one of the reasons under **Errors**. OpenGL ES is refused because projectM
   is built for desktop OpenGL.
 - `initializeGL` (the first paint after the window is exposed) runs the same checks on the real
-  context, then `projectm_create()`. On success it sends the window size in device pixels, turns
+  context, then `LoadOpenGlForProjectM()` and `projectm_create()`. On success it sends the window size in device pixels, turns
   aspect correction on, sets the soft-cut (blend) time to 3 s and projectM's fps value to 60,
   installs the two callbacks, applies duration, lock and texture paths, starts the black-watch
   clocks, logs `Milkdrop: OpenGL <glInfo>` with `qInfo`, and emits `ready()`. On failure it stops
@@ -416,6 +419,13 @@ are dropped.
   only once projectM renders.
 - `presetFailed` carries projectM's message only; the view drops projectM's file-name argument
   (the preset came as data).
+- On Windows projectM 4.1 calls every OpenGL function newer than 1.1 through GLEW's pointers, and
+  only `glewInit()` fills them; projectM never calls it. Without it the first such call in
+  `projectm_create()` jumps to address 0 (#67, projectM-visualizer/projectm#822). GLEW's header
+  must come before any other OpenGL header and clashes with Qt's, hence a file of its own. GLEW
+  (non-MX) keeps one set of pointers per process, so each new context simply loads them again.
+  projectM's master (after 4.1.8) replaces GLEW with a loader of its own and
+  `projectm_create_with_opengl_load_proc`.
 
 ## File format: `.milk`
 
@@ -460,7 +470,7 @@ failure is data:
 | `no OpenGL` | the probe context can't be created; or in `initializeGL` there is no context, it is invalid, or it isn't the current one |
 | `only OpenGL ES is here, and OpenGL 3.3 is needed` | the context is OpenGL ES |
 | `OpenGL 3.3 is needed, and X.Y is here` | the context is older than 3.3 |
-| `projectM did not start` | `projectm_create()` returned null (`initializeGL` only) |
+| `projectM did not start` | `glewInit()` failed (Windows) or `projectm_create()` returned null (`initializeGL` only) |
 
 ## Not here
 

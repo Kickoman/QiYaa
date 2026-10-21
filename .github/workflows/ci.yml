@@ -170,6 +170,19 @@ jobs:
           "$root/vcpkg.exe" install projectm:x64-windows-release
           echo "CMAKE_EXTRA=-DCMAKE_TOOLCHAIN_FILE=$root/scripts/buildsystems/vcpkg.cmake -DVCPKG_TARGET_TRIPLET=x64-windows-release" >> "$GITHUB_ENV"
 
+      # milkdrop_gl_test draws with Mesa's software OpenGL next to the test (tests/README.md). Qt's
+      # own opengl32sw.dll is Mesa 11.2, which gives OpenGL 3.0, and projectM needs 3.3.
+      - name: Mesa for the OpenGL test (Windows)
+        if: runner.os == 'Windows'
+        shell: bash
+        run: |
+          temp=$(cygpath -u "$RUNNER_TEMP")
+          curl -sSfL -o "$temp/mesa.7z" \
+            https://github.com/pal1000/mesa-dist-win/releases/download/26.2.4/mesa3d-26.2.4-release-msvc.7z
+          echo "351fc8c8b695878ffb3eaa044b3ead08672a48b1a045e3c3e3975811df0f6695  $temp/mesa.7z" | sha256sum -c -
+          7z e -y -o"$(cygpath -w "$temp/mesa")" "$(cygpath -w "$temp/mesa.7z")" x64/opengl32.dll x64/libgallium_wgl.dll > /dev/null
+          echo "CMAKE_EXTRA=$CMAKE_EXTRA -DQIYAA_TEST_MESA_DIR=$(cygpath -m "$temp/mesa")" >> "$GITHUB_ENV"
+
       - name: Configure
         shell: bash
         run: |
@@ -200,6 +213,8 @@ jobs:
         run: ctest --test-dir build -C Release --output-on-failure
         env:
           QT_QPA_PLATFORM: offscreen
+          # Without a console Qt Test on Windows writes to OutputDebugString, and ctest shows nothing.
+          QT_FORCE_STDERR_LOGGING: 1
           QIYAA_JAM_TEST_SERVER: ${{ matrix.jam_server && 'http://localhost:8090' || '' }}
 
       - name: Screenshot (offscreen)

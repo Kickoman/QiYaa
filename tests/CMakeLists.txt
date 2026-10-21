@@ -171,17 +171,29 @@ if(QIYAA_HAVE_MPRIS)
 endif()
 
 # Milkdrop: rendering needs an OpenGL 3.3 context. The offscreen platform has
-# none, so on Linux (with Qt's xcb plugin and Xvfb) the rendering tests also run
-# on a virtual X server with Mesa; elsewhere they skip themselves.
+# none, so the rendering tests also run with Mesa's software OpenGL: on Linux
+# (with Qt's xcb plugin and Xvfb) on a virtual X server, on Windows when
+# QIYAA_TEST_MESA_DIR holds mesa-dist-win's opengl32.dll and libgallium_wgl.dll.
+# Elsewhere they skip themselves.
+set(QIYAA_TEST_MESA_DIR "" CACHE PATH "Windows: Mesa's opengl32.dll and libgallium_wgl.dll for milkdrop_gl_test")
 if(QIYAA_HAVE_MILKDROP)
     qiyaa_add_test(milkdrop_test audio skins ui vis)
+    set(milkdrop_gl_functions rendersWithProjectM blackPictureIsNoticed fullScreenTakesOverRenderingAndGivesItBack
+        theViewFollowsTheFrameWhenTheSkinChanges)
     find_program(XVFB_RUN xvfb-run)
     if(XVFB_RUN AND TARGET Qt6::QXcbIntegrationPlugin)
         add_test(NAME milkdrop_gl_test COMMAND ${XVFB_RUN} -a -s "-screen 0 1280x1024x24 +extension GLX"
-                 $<TARGET_FILE:milkdrop_test> rendersWithProjectM blackPictureIsNoticed fullScreenTakesOverRenderingAndGivesItBack
-                 theViewFollowsTheFrameWhenTheSkinChanges)
+                 $<TARGET_FILE:milkdrop_test> ${milkdrop_gl_functions})
         # Fail instead of skipping: here OpenGL must work.
         set_tests_properties(milkdrop_gl_test PROPERTIES
             ENVIRONMENT "QT_QPA_PLATFORM=xcb;QIYAA_EXPECT_GL=1;LIBGL_ALWAYS_SOFTWARE=1;QIYAA_AUDIO_BACKEND=null")
+    elseif(WIN32 AND QIYAA_TEST_MESA_DIR)
+        # An opengl32.dll next to the executable comes before the system's.
+        add_custom_command(TARGET milkdrop_test POST_BUILD
+            COMMAND ${CMAKE_COMMAND} -E copy_if_different ${QIYAA_TEST_MESA_DIR}/opengl32.dll
+                    ${QIYAA_TEST_MESA_DIR}/libgallium_wgl.dll $<TARGET_FILE_DIR:milkdrop_test>)
+        add_test(NAME milkdrop_gl_test COMMAND milkdrop_test ${milkdrop_gl_functions})
+        set_tests_properties(milkdrop_gl_test PROPERTIES TIMEOUT 300
+            ENVIRONMENT "QT_QPA_PLATFORM=windows;QIYAA_EXPECT_GL=1;GALLIUM_DRIVER=llvmpipe;QIYAA_AUDIO_BACKEND=null")
     endif()
 endif()
