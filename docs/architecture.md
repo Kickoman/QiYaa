@@ -9,19 +9,21 @@ rules for changing the code are [code-style.md](code-style.md) and, where QiYaa 
 
 A folder of `src/` with files of its own is one module: one namespace, one static library
 `qiyaa_<folder>`, one README. A folder that holds only folders is a group: its README is an index,
-and each folder in it is a module named after both. `src/sources/` is the one group: each music
-source is a module `src/sources/<name>` with the namespace `<Name>Source` and the library
-`qiyaa_sources_<name>`. Dependencies point one way, and a module never includes a header of a
+and each folder in it is a module named after both. In `src/sources/` each music source is a
+module `src/sources/<name>` with the namespace `<Name>Source` and the library
+`qiyaa_sources_<name>`; in `src/spotify/` each part of the Spotify client is a module
+`src/spotify/<part>` with the namespace `Spotify<Part>` and the library `qiyaa_spotify_<part>`. Dependencies point one way, and a module never includes a header of a
 module to its right:
 
 ```
-audio, yandex, skins, telemetry  →  vis, core  →  sources/yandex, sources/local  →  jam  →  ui, integrations  →  app  →  qiyaa (src/app/main.cpp)
+audio, yandex, spotify/protocol, skins, telemetry  →  vis, core  →  sources/yandex, sources/local  →  jam  →  ui, integrations  →  app  →  qiyaa (src/app/main.cpp)
 ```
 
 | Module | Namespace | What it does | Links PUBLIC | Links PRIVATE |
 |---|---|---|---|---|
 | [src/audio](../src/audio/README.md) | `Audio` | Plays a file while it downloads: decoder thread, blocks of audio with what they are, equalizer, gapless chaining, `.eqf` presets; AAC in MP4 for the economy quality, Ogg Vorbis for Spotify and local files | Qt Core | miniaudio, minimp4, fdk-aac, stb_vorbis |
 | [src/yandex](../src/yandex/README.md) | `Yandex` | Yandex Music HTTP API, OAuth device login, signed track links, the token file | Qt Core, Network | |
+| [src/spotify/protocol](../src/spotify/protocol/README.md) | `SpotifyProtocol` | Spotify's client protocol in standard C++ without Qt, shared with Android (sans-IO): the access point session (handshake, login, keep-alive, audio keys), client-token and login5 bodies, track metadata, decrypting the files | | BearSSL |
 | [src/skins](../src/skins/README.md) | `Skins` | Loads `.wsz` skins: sheets, `region.txt`, `pledit.txt`, `viscolor.txt`, bitmap text; sprite tables | Qt Gui | miniz |
 | [src/telemetry](../src/telemetry/README.md) | `Telemetry` | Usage statistics and crash reports ([spec/telemetry](../spec/telemetry/README.md)): the events kept on disk until the jam server takes them, the crash handler. Optional (`QIYAA_WITH_TELEMETRY`, on in the releases) | Qt Core, Network | Qt Gui; dbghelp (Windows) or dl |
 | [src/vis](../src/vis/README.md) | `Vis` | Spectrum, oscilloscope, FFT; Milkdrop through projectM in a `QOpenGLWindow` | Qt Gui (+ OpenGL) | audio, skins (+ projectM) |
@@ -33,7 +35,7 @@ audio, yandex, skins, telemetry  →  vis, core  →  sources/yandex, sources/lo
 | [src/integrations](../src/integrations/README.md) | `Integrations` | Media keys and system media panels: MPRIS (Linux), SMTC (Windows) or MediaPlayer (macOS) | Qt Gui (+ DBus) | core |
 | [src/app](../src/app/README.md) | `App` | `Application`: owns and wires everything, decides nothing; the controllers `Settings`, `WindowSet`, `MainMenu`, `Account`, `JamBridge`, `TelemetryBridge`, `NetworkWatch`; `main()` | audio, core, skins, sources/local, sources/yandex, yandex | integrations, jam, ui, vis (+ telemetry) |
 
-Vendored code lives in `contrib/` (miniaudio, miniz, qrcodegen, minimp4, fdk-aac's decoder, stb_vorbis) and is
+Vendored code lives in `contrib/` (miniaudio, miniz, qrcodegen, minimp4, fdk-aac's decoder, stb_vorbis, BearSSL) and is
 not changed. TagLib is fetched at configure time and linked statically
 ([THIRD_PARTY.md](../THIRD_PARTY.md)). The interface texts are English sources in the code,
 translated into Belarusian (the default) and Russian in [translations/](../translations/README.md). `spec/` is a submodule
