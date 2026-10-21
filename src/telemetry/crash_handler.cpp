@@ -187,16 +187,33 @@ const char* ExceptionName(DWORD code) {
     }
 }
 
+// A call through a null pointer stops StackWalk64 at address 0: such a stack goes on from the
+// call's return address, as if the call had returned.
 void WriteStack(CONTEXT context) {
     STACKFRAME64 frame{};
     DWORD machine = 0;
+    int count = 0;
 #if defined(_M_X64)
     machine = IMAGE_FILE_MACHINE_AMD64;
+    ULONG_PTR stackLow = 0;
+    ULONG_PTR stackHigh = 0;
+    GetCurrentThreadStackLimits(&stackLow, &stackHigh);
+    if (context.Rip == 0 && context.Rsp >= stackLow && context.Rsp + sizeof(DWORD64) <= stackHigh) {
+        WriteFrame(nullptr, 0);
+        ++count;
+        context.Rip = *reinterpret_cast<const DWORD64*>(context.Rsp);
+        context.Rsp += sizeof(DWORD64);
+    }
     frame.AddrPC.Offset = context.Rip;
     frame.AddrFrame.Offset = context.Rbp;
     frame.AddrStack.Offset = context.Rsp;
 #elif defined(_M_ARM64)
     machine = IMAGE_FILE_MACHINE_ARM64;
+    if (context.Pc == 0) {
+        WriteFrame(nullptr, 0);
+        ++count;
+        context.Pc = context.Lr;
+    }
     frame.AddrPC.Offset = context.Pc;
     frame.AddrFrame.Offset = context.Fp;
     frame.AddrStack.Offset = context.Sp;
@@ -206,7 +223,7 @@ void WriteStack(CONTEXT context) {
     frame.AddrStack.Mode = AddrModeFlat;
     const HANDLE process = GetCurrentProcess();
     const HANDLE thread = GetCurrentThread();
-    for (int count = 0; count < kMaxFrames && machine != 0; ++count) {
+    for (; count < kMaxFrames && machine != 0; ++count) {
         if (!StackWalk64(
                 machine,
                 process,
@@ -293,6 +310,22 @@ std::uintptr_t ProgramCounter(void* context) {
 #endif
 }
 
+// Where a call that jumped to address 0 returns: the link register, or the top of the stack.
+std::uintptr_t NullCallReturnAddress(void* context) {
+    [[maybe_unused]] auto* user = static_cast<ucontext_t*>(context);
+#if defined(__linux__) && defined(__x86_64__)
+    return *reinterpret_cast<const std::uintptr_t*>(user->uc_mcontext.gregs[REG_RSP]);
+#elif defined(__linux__) && defined(__aarch64__)
+    return static_cast<std::uintptr_t>(user->uc_mcontext.regs[30]);
+#elif defined(__APPLE__) && defined(__aarch64__)
+    return static_cast<std::uintptr_t>(user->uc_mcontext->__ss.__lr);
+#elif defined(__APPLE__) && defined(__x86_64__)
+    return *reinterpret_cast<const std::uintptr_t*>(user->uc_mcontext->__ss.__rsp);
+#else
+    return 0;
+#endif
+}
+
 void WriteAddress(void* address) {
     Dl_info info{};
     if (dladdr(address, &info) != 0 && info.dli_fname && info.dli_fbase) {
@@ -326,9 +359,8 @@ void WriteStack(std::uintptr_t programCounter, int skip) {
 }
 
 #if defined(__APPLE__)
-void WalkFramePointers(std::uintptr_t programCounter, std::uintptr_t framePointer) {
-    WriteAddress(reinterpret_cast<void*>(programCounter));
-    for (int written = 1; written < kMaxFrames && framePointer != 0 && framePointer % 8 == 0; ++written) {
+void WalkFramePointers(std::uintptr_t framePointer, int written) {
+    for (; written < kMaxFrames && framePointer != 0 && framePointer % 8 == 0; ++written) {
         const auto* frame = reinterpret_cast<const std::uintptr_t*>(framePointer);
         const std::uintptr_t next = frame[0];
         const std::uintptr_t returnAddress = frame[1];
@@ -344,14 +376,35 @@ void WalkFramePointers(std::uintptr_t programCounter, std::uintptr_t framePointe
 }
 #endif
 
+// A call through a null pointer: the unwinders stop at address 0, so the caller comes from the
+// return address. Linux's backtrace() cannot go on from there: the caller is its last frame.
+bool WriteNullCall(void* context) {
+    if (ProgramCounter(context) != 0) {
+        return false;
+    }
+    const std::uintptr_t caller = NullCallReturnAddress(context);
+    if (caller == 0) {
+        return false;
+    }
+    WriteFrame(nullptr, 0);
+    WriteAddress(reinterpret_cast<void*>(caller));
+#if defined(__APPLE__)
+    WalkFramePointers(FramePointer(context), 2);
+#endif
+    return true;
+}
+
 void OnSignal(int signal, siginfo_t*, void* context) {
     if (!reported.exchange(true)) {
         BeginReport(SignalName(signal), nullptr);
+        if (signal == SIGABRT || !WriteNullCall(context)) {
 #if defined(__APPLE__)
-        WalkFramePointers(ProgramCounter(context), FramePointer(context));
+            WriteAddress(reinterpret_cast<void*>(ProgramCounter(context)));
+            WalkFramePointers(FramePointer(context), 1);
 #else
-        WriteStack(signal == SIGABRT ? 0 : ProgramCounter(context), 1);
+            WriteStack(signal == SIGABRT ? 0 : ProgramCounter(context), 1);
 #endif
+        }
     }
     struct sigaction standard { };
     standard.sa_handler = SIG_DFL;

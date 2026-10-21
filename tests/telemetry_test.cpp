@@ -371,6 +371,8 @@ private Q_SLOTS:
         QTest::addColumn<QStringList>("expected");
         QTest::newRow("segv") << QStringLiteral("segv"
         ) << QStringList{"SIGSEGV", "SIGBUS", "EXCEPTION_ACCESS_VIOLATION"};
+        QTest::newRow("nullcall") << QStringLiteral("nullcall"
+        ) << QStringList{"SIGSEGV", "SIGBUS", "EXCEPTION_ACCESS_VIOLATION"};
         QTest::newRow("terminate") << QStringLiteral("terminate") << QStringList{"TERMINATE", "CPP_EXCEPTION"};
         QTest::newRow("abort") << QStringLiteral("abort") << QStringList{"SIGABRT"};
     }
@@ -407,6 +409,12 @@ private Q_SLOTS:
             inProbe |= value.toString().startsWith(QLatin1String("crash_probe"));
         }
         QVERIFY2(inProbe, qPrintable(QJsonDocument(frames).toJson()));
+        if (how == QLatin1String("nullcall")) {
+            QVERIFY(frames.size() >= 2);
+            QCOMPARE(frames.at(0).toString(), QStringLiteral("unknown+0x0"));
+            const QString caller = frames.at(1).toString();
+            QVERIFY2(caller.startsWith(QLatin1String("crash_probe")), qPrintable(caller));
+        }
         QVERIFY(sessionFiles(crashed).isEmpty());
     }
 

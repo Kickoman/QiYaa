@@ -13,7 +13,7 @@
 #endif
 
 // telemetry_test's crashing child: installs the crash handler, then fails as its last argument
-// says (segv, terminate, abort). Arguments: <report path> <session> <version> <how>.
+// says (segv, nullcall, terminate, abort). Arguments: <report path> <session> <version> <how>.
 
 int main(int argc, char** argv) {
     QCoreApplication application(argc, argv);
@@ -30,6 +30,9 @@ int main(int argc, char** argv) {
     if (how == QLatin1String("segv")) {
         volatile std::uintptr_t nowhere = 0;
         *reinterpret_cast<volatile int*>(nowhere) = 1;
+    } else if (how == QLatin1String("nullcall")) {
+        void (*volatile nowhere)() = nullptr;
+        nowhere();
     } else if (how == QLatin1String("terminate")) {
         throw std::runtime_error("telemetry crash probe");
     } else if (how == QLatin1String("abort")) {
