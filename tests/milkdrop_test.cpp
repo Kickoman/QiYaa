@@ -14,6 +14,7 @@
 #include <QRgb>
 #include <QSet>
 #include <QSignalSpy>
+#include <QSize>
 #include <QString>
 #include <QTemporaryDir>
 #include <QTest>
@@ -300,6 +301,21 @@ private Q_SLOTS:
         QCOMPARE(black.count(), 0);
         window.selectPreset(window.presets().indexOf("black"), Vis::PresetTransition::Cut);
         QVERIFY(black.wait(5000));
+    }
+
+    void theViewFollowsTheFrameWhenTheSkinChanges() {
+        Ui::MilkdropWindow window(&engine, builtIn.path(), user.path(), &skin);
+        window.show();
+        QVERIFY(QTest::qWaitForWindowExposed(&window));
+        if (!window.view()) {
+            QSKIP("no OpenGL 3.3 here");
+        }
+        QTRY_COMPARE(window.view()->size(), QSize(256, 82));
+        const Skins::Skin vizor = Skins::Skin::LoadFile(QStringLiteral(":/skins/Vizor1-01.wsz"), &skin);
+        window.setSkin(&vizor);
+        QTRY_COMPARE(window.view()->size(), QSize(243, 78));
+        window.setSkin(&skin);
+        QTRY_COMPARE(window.view()->size(), QSize(256, 82));
     }
 
     void fullScreenTakesOverRenderingAndGivesItBack() {

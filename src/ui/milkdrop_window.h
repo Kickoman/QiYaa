@@ -91,6 +91,7 @@ protected:
     void paintContent(QPainter& painter, const QRect& area) override;
     bool contentMousePress(QPoint pos, Qt::MouseButton button) override;
     void resizeEvent(QResizeEvent* event) override;
+    void skinChanged() override;
     void showEvent(QShowEvent* event) override;
     void hideEvent(QHideEvent* event) override;
 

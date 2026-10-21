@@ -512,6 +512,10 @@ void MilkdropWindow::resizeEvent(QResizeEvent* event) {
     placeView();
 }
 
+void MilkdropWindow::skinChanged() {
+    placeView();
+}
+
 void MilkdropWindow::showEvent(QShowEvent* event) {
     GenWindow::showEvent(event);
     ensureView();
