@@ -14,6 +14,7 @@
 #include <QMap>
 #include <QMenu>
 #include <QPointer>
+#include <QTimer>
 
 #include <algorithm>
 #include <memory>
@@ -196,15 +197,17 @@ void AddLibraryActions(
     );
 
     menu->addAction(QCoreApplication::translate("Ui::LibraryMenu", "Search…"), menu, [catalog, dialogParent] {
-        const std::optional<QString> answer = AskText(
-            dialogParent,
-            QCoreApplication::translate("Ui::LibraryMenu", "Search"),
-            QCoreApplication::translate("Ui::LibraryMenu", "Artist, album or track:")
-        );
-        const QString text = answer.value_or(QString()).trimmed();
-        if (!text.isEmpty()) {
-            catalog->search(text);
-        }
+        QTimer::singleShot(0, catalog, [catalog, dialogParent] {
+            const std::optional<QString> answer = AskText(
+                dialogParent,
+                QCoreApplication::translate("Ui::LibraryMenu", "Search"),
+                QCoreApplication::translate("Ui::LibraryMenu", "Artist, album or track:")
+            );
+            const QString text = answer.value_or(QString()).trimmed();
+            if (!text.isEmpty()) {
+                catalog->search(text);
+            }
+        });
     });
 
     menu->addSeparator();

@@ -459,6 +459,8 @@ is missing). The preamp line is drawn at the preamp's height.
 - `pressedControl` is an `EqualizerControl`: its `band` means something only for `Kind::Band`,
   and `ShadeVolume`/`ShadeBalance` are the shade-mode sliders.
 - The reset menu item emits `settingsChanged` but no `statusText`.
+- Load and save `.eqf` open their dialogs after the presets menu has closed, as the traps of
+  [`App::MainMenu`](../app/README.md#main_menuhcpp--appmainmenu) require.
 
 ## PlaylistWindow — `playlist_window.h/.cpp`
 
@@ -880,6 +882,9 @@ The menu only builds items; what they play, and every status they report, is
 - Menu actions capture `Player*`, `Catalog*` and `Library*` unguarded; that is safe only because
   the app owns them for the whole run.
 - Submenus never reload: build a new menu for fresh data.
+- "Search…" asks after the menu has closed (`QTimer::singleShot(0, catalog, …)`): a modal dialog
+  inside a menu action crashes the app on Qt 6.4 (the traps of
+  [`App::MainMenu`](../app/README.md#main_menuhcpp--appmainmenu)).
 
 ## LoginDialog — `login_dialog.h/.cpp`
 

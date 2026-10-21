@@ -55,6 +55,8 @@ Q_SIGNALS:
     void statusText(const QString& text);
 
 private:
+    void askToEnd();
+
     Parts parts;
     QPointer<QMessageBox> storedJamQuestion;
 };

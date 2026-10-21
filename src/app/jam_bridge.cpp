@@ -18,6 +18,7 @@
 #include <QMenu>
 #include <QMessageBox>
 #include <QPushButton>
+#include <QTimer>
 #include <QUrl>
 
 namespace App {
@@ -140,25 +141,31 @@ void JamBridge::addMenu(QMenu* menu) {
         parts.windows->setVisible(parts.window, true);
     });
     jam->addAction(tr("Join…"))->setEnabled(false);  // Kickoman/QiYaa#16
-    QAction* end = jam->addAction(tr("End"), this, [this] {
-        QMessageBox ask(
-            QMessageBox::Question,
-            tr("End the jam"),
-            tr("End the jam? The guests will see that it is over."),
-            QMessageBox::NoButton,
-            parts.mainWindow
-        );
-        QPushButton* endIt = ask.addButton(tr("End it"), QMessageBox::DestructiveRole);
-        ask.setDefaultButton(ask.addButton(tr("Cancel"), QMessageBox::RejectRole));
-        ask.exec();
-        if (ask.clickedButton() == endIt) {
-            parts.host->end();
-        }
-    });
+    QAction* end = jam->addAction(tr("End"), this, [this] { QTimer::singleShot(0, this, &JamBridge::askToEnd); });
+    end->setObjectName(QStringLiteral("endJam"));
     end->setEnabled(phase == Jam::HostPhase::Active);
     jam->addSeparator();
-    jam->addAction(tr("Server settings…"), this, &JamBridge::showServerDialog);
+    QAction* server = jam->addAction(tr("Server settings…"), this, [this] {
+        QTimer::singleShot(0, this, &JamBridge::showServerDialog);
+    });
+    server->setObjectName(QStringLiteral("jamServerSettings"));
     menu->addSeparator();
+}
+
+void JamBridge::askToEnd() {
+    QMessageBox ask(
+        QMessageBox::Question,
+        tr("End the jam"),
+        tr("End the jam? The guests will see that it is over."),
+        QMessageBox::NoButton,
+        parts.mainWindow
+    );
+    QPushButton* endIt = ask.addButton(tr("End it"), QMessageBox::DestructiveRole);
+    ask.setDefaultButton(ask.addButton(tr("Cancel"), QMessageBox::RejectRole));
+    ask.exec();
+    if (ask.clickedButton() == endIt) {
+        parts.host->end();
+    }
 }
 
 void JamBridge::showServerDialog() {

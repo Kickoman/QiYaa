@@ -81,7 +81,10 @@ Q_SIGNALS:
 private:
     void installShortcuts(QWidget* widget);
     void addLocalActions(QMenu* menu);
+    void openLocalFiles();
+    void openLocalFolder();
     QString localStartFolder() const;
+    void loadSkinFile();
     void addWindowActions(QMenu* menu);
     void addModes(QMenu* menu);
     void addLooks(QMenu* menu);
