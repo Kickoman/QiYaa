@@ -7,7 +7,8 @@ that PCM to the miniaudio device callback together with
 what it is (track, position, start or seek), and the callback applies the equalizer, feeds the
 visualization tap and applies volume and balance. A second stream can be queued; it follows the
 current one in the same queue without a gap. It reads mp3, FLAC,
-WAV and AAC in MP4 (the economy quality of [spec/player/quality.md](../../spec/player/quality.md)). The module also holds the
+WAV, AAC in MP4 (the economy quality of [spec/player/quality.md](../../spec/player/quality.md)) and Ogg Vorbis
+(Spotify's files, [SPOT-13](../../spec/player/spotify.md#playing-a-track), and local `.ogg`, LOCAL-09). The module also holds the
 10-band equalizer DSP, Winamp's built-in presets and the `.eqf` reader and writer. It does not
 download anything, decide what plays next or when to queue it, or poll itself: that is `Player` in
 [src/core](../core/README.md). It draws no visualization ([src/vis](../vis/README.md)) and shows no
@@ -24,20 +25,26 @@ equalizer window ([src/ui](../ui/README.md)). Namespace `Audio`, library `qiyaa_
 | `equalizer.h/.cpp` | `EqSettings`, `EqualizerDsp` — preamp and 10 peaking biquads per channel, coefficients handed to the audio thread through a triple buffer; `kEqBands`, `kEqBandHz`, `kEqMaxDb` |
 | `eq_presets.h/.cpp` | `EqPreset`; `ParseEqf`, `WriteEqf` (`.eqf` and `.q1`); `EqfToDb`, `DbToEqf`; `BuiltinEqPresets` — Winamp's 17 presets |
 | `mp4_aac_backend.h/.cpp` | `IsMp4`, `Mp4AacBackend` — a miniaudio decoding backend for AAC in MP4 over minimp4 and fdk-aac. Only in the `.cpp`: `Mp4AacDecoder` and the `DataSource` miniaudio holds |
+| `ogg_vorbis_backend.h/.cpp` | `IsOgg`, `OggVorbisBackend` — a miniaudio decoding backend for Ogg Vorbis over stb_vorbis's push API. Only in the `.cpp`: `OggVorbisDecoder` and the `DataSource` miniaudio holds |
 | `vis_tap.h/.cpp` | `VisTap` — the last 4096 output frames, for visualizations |
 | `error.h` | `Audio::Error` |
 | `miniaudio_impl.c` | `#define MINIAUDIO_IMPLEMENTATION` + `#include "miniaudio.h"`: the one translation unit that compiles miniaudio. It is the source of `qiyaa_miniaudio`, not of `qiyaa_audio` |
 | `minimp4_impl.c` | `#define MINIMP4_IMPLEMENTATION` + `#include "minimp4.h"`: the source of `qiyaa_minimp4` |
+| `stb_vorbis_impl.c` | `#include "stb_vorbis.c"`: the source of `qiyaa_stb_vorbis` |
 
 ## Dependencies
 
 - `qiyaa_audio` links PUBLIC `Qt6::Core` (`QObject`, `QString`, `QStringList`, `QByteArray`,
   `QHash`, `QList`, `QStringConverter`, `QStringDecoder`) and PRIVATE `qiyaa_miniaudio`,
-  `qiyaa_minimp4` and `qiyaa_fdk_aac`.
+  `qiyaa_minimp4`, `qiyaa_fdk_aac` and `qiyaa_stb_vorbis`.
 - `qiyaa_minimp4` is built from `src/audio/minimp4_impl.c` against `contrib/minimp4/minimp4.h`
   (lieff/minimp4 `2a3014a`, CC0). `qiyaa_fdk_aac` is fdk-aac 2.0.3's decoder libraries only,
   built by `contrib/fdk-aac/CMakeLists.txt` (QiYaa's own; upstream's source lists) with
-  `-fno-exceptions -fno-rtti`, as upstream does. Neither gets the project's warning flags.
+  `-fno-exceptions -fno-rtti`, as upstream does. `qiyaa_stb_vorbis` is built from
+  `src/audio/stb_vorbis_impl.c` against `contrib/stb_vorbis/stb_vorbis.c` (stb_vorbis 1.22, the same
+  file as miniaudio 0.11.25's `extras/stb_vorbis.c`; MIT or public domain) with
+  `STB_VORBIS_NO_PULLDATA_API`, so only the push API is compiled. None of the three gets the
+  project's warning flags.
 - `qiyaa_miniaudio` is a separate static library built from `src/audio/miniaudio_impl.c` against
   `contrib/miniaudio/miniaudio.h` (miniaudio 0.11.25) with `MA_NO_ENCODING MA_NO_GENERATION
   MA_NO_VORBIS`, so the decoders compiled in are WAV, FLAC and MP3. It links `Threads::Threads` and
@@ -50,34 +57,40 @@ equalizer window ([src/ui](../ui/README.md)). Namespace `Audio`, library `qiyaa_
 - miniaudio stays private to the module: `audio_engine.h` and every header another module may
   include leave out `miniaudio.h`. `AudioEngine` holds everything miniaudio-typed through
   `std::unique_ptr<Implementation>` and a forward-declared `StreamBuffer`; `decoder.h` keeps its
-  `ma_decoder`s in a `Source` defined in `decoder.cpp`. Only the module's own `mp4_aac_backend.h`
-  includes it (miniaudio's vtable types are anonymous structs that cannot be forward-declared);
-  `decoder.cpp` and `tests/mp4_aac_test.cpp` include that header. minimp4 and fdk-aac appear only
-  in `mp4_aac_backend.cpp`. miniaudio itself: `audio_engine.cpp` (the device), `decoder.cpp` (the
-  decoders), `mp4_aac_backend.*` and `miniaudio_impl.c`.
+  `ma_decoder`s in a `Source` defined in `decoder.cpp`. Only the module's own `mp4_aac_backend.h` and
+  `ogg_vorbis_backend.h` include it (miniaudio's vtable types are anonymous structs that cannot be forward-declared);
+  `decoder.cpp` and the tests of the two backends include those headers. minimp4 and fdk-aac appear
+  only in `mp4_aac_backend.cpp`, stb_vorbis only in `ogg_vorbis_backend.cpp`. miniaudio itself:
+  `audio_engine.cpp` (the device), `decoder.cpp` (the decoders), `mp4_aac_backend.*`,
+  `ogg_vorbis_backend.*` and `miniaudio_impl.c`.
 - Inside the module: `audio_engine.h` and `eq_presets.h` include `equalizer.h`; `decoder.h`
   includes `blocks.h` and `byte_source.h`; `stream_buffer.h` and `file_byte_source.h` include
   `byte_source.h`; `audio_engine.cpp` includes `blocks.h`, `decoder.h`, `equalizer.h`,
-  `stream_buffer.h` and `vis_tap.h`; `decoder.cpp` includes `mp4_aac_backend.h`; `eq_presets.cpp`
+  `stream_buffer.h` and `vis_tap.h`; `decoder.cpp` includes `mp4_aac_backend.h` and `ogg_vorbis_backend.h`; `eq_presets.cpp`
   includes `error.h`. `blocks.h`, `byte_source.h`, `equalizer.h`, `vis_tap.h` and `error.h` include
   no file of the module.
 
 ```bash
 grep -rnE '#include "(app|core|integrations|skins|ui|vis|yandex)/' src/audio/ --include='*.h' --include='*.cpp'   # must print nothing
 grep -rlE '#include [<"]miniaudio' src/ --include='*.h' --include='*.cpp' --include='*.c' \
-    | grep -vxE 'src/audio/(audio_engine\.cpp|decoder\.cpp|miniaudio_impl\.c|mp4_aac_backend\.(h|cpp))'  # must print nothing
+    | grep -vxE 'src/audio/(audio_engine\.cpp|decoder\.cpp|miniaudio_impl\.c|(mp4_aac|ogg_vorbis)_backend\.(h|cpp))'  # must print nothing
 grep -rlE '#include [<"](minimp4|aacdecoder_lib)' src/ --include='*.h' --include='*.cpp' --include='*.c' \
     | grep -vxE 'src/audio/(mp4_aac_backend\.cpp|minimp4_impl\.c)'                                  # must print nothing
 grep -rl '"audio/mp4_aac_backend.h"' src/ --include='*.h' --include='*.cpp' \
     | grep -vxE 'src/audio/(decoder|mp4_aac_backend)\.cpp'                                           # must print nothing
+grep -rlE '#include [<"]stb_vorbis' src/ --include='*.h' --include='*.cpp' --include='*.c' \
+    | grep -vxE 'src/audio/(ogg_vorbis_backend\.cpp|stb_vorbis_impl\.c)'                          # must print nothing
+grep -rl '"audio/ogg_vorbis_backend.h"' src/ --include='*.h' --include='*.cpp' \
+    | grep -vxE 'src/audio/(decoder|ogg_vorbis_backend)\.cpp'                                       # must print nothing
 grep -rnE '#include <Q' src/audio/ --include='*.h' --include='*.cpp' \
     | grep -vE '<Q(ByteArray|Hash|List|Object|String|StringConverter|StringDecoder|StringList)>'                              # must print nothing
 grep -rnw 'throw' src/audio/ --include='*.h' --include='*.cpp' | grep -v '^src/audio/eq_presets.cpp:'   # must print nothing
 ```
 
 The tests are `tests/audio_test.cpp` (the real engine on `tests/data/sine440_3s.mp3`,
-`sine440_3s_heaac.m4a`, `sine440_1s.flac` and `sine440_1s.wav`, streamed or as files on disk),
-`tests/mp4_aac_test.cpp` (the MP4 backend through an `ma_decoder` over memory) and
+`sine440_3s_heaac.m4a`, `sine440_3s.ogg`, `sine440_1s.flac` and `sine440_1s.wav`, streamed or as files on
+disk), `tests/mp4_aac_test.cpp` and `tests/ogg_vorbis_test.cpp` (each backend through an `ma_decoder` over
+memory) and
 `tests/dsp_test.cpp` (equalizer response, presets, `.eqf`). CTest runs every test with
 `QIYAA_AUDIO_BACKEND=null`.
 
@@ -293,9 +306,10 @@ it, and the decoder stamps it on every block. Older blocks are never heard.
 ### Decoder thread
 
 It opens a source on its own: it reads the first 12 bytes (waiting for them). An MP4 file
-(`IsMp4`: `ftyp` at offset 4) gets `Mp4AacBackend()` as miniaudio's only custom backend, and the
-decoder is kept only if that backend opened it: miniaudio would otherwise go on to its MP3
-decoder, which finds "frames" in an MP4 it does not understand. `RIFF…WAVE` forces the WAV decoder
+(`IsMp4`: `ftyp` at offset 4) gets `Mp4AacBackend()` as miniaudio's only custom backend, and an Ogg
+file (`IsOgg`: `OggS` at offset 0) `OggVorbisBackend()`. The decoder is kept only if that backend
+opened it: miniaudio would otherwise go on to its MP3 decoder, which finds "frames" in a file it
+does not understand, so an Ogg of another codec (Opus, FLAC) fails to open. `RIFF…WAVE` forces the WAV decoder
 and `fLaC` the FLAC decoder. A FLAC is also recognised behind an ID3v2 tag: the decoder steps over
 the tag (10 bytes, its syncsafe size, and a footer when its flag says so) and looks for `fLaC`
 after it, and dr_flac steps over the tag itself. dr_wav does not, so a WAV behind such a tag does
@@ -357,6 +371,41 @@ fdk-aac; a change of rate or frame size mid-stream ends the source. Access units
 
 Not supported: encrypted files (`encraw`), FLAC in MP4, more than 2 output channels, and the edit
 list (`elst`): Yandex's files have `media_time` 0, so the encoder's priming is not trimmed.
+
+### Ogg Vorbis (`ogg_vorbis_backend`)
+
+`OggVorbisBackend()` is a `ma_decoding_backend_vtable` like the MP4 one: `onInit` and `onUninit`, reading
+through miniaudio's read and seek callbacks over a `ByteSource`. stb_vorbis decodes; QiYaa reads the Ogg
+pages itself only to seek and to find the length.
+
+- **Opening.** The first bytes go to `stb_vorbis_open_pushdata` until it has the three headers, at most
+  32 MiB (a comment header can carry a picture). It refuses anything but Vorbis. The audio starts on the
+  page after them. Output is 32-bit float in the file's own channel count (1 to 8, in Vorbis order, which
+  `ma_decoder` maps to stereo) at its own rate.
+- **Reading.** Bytes go to stb_vorbis as they come: a read takes what the source has, so a stream plays
+  while it downloads. Each frame's position is what `stb_vorbis_get_sample_offset` says after it; frames
+  without one are dropped.
+- **Length.** When the source is complete (a seek from the end succeeds), the length is the granule
+  position of the last page, found in at most the last 128 KiB. While a stream still downloads it is 0,
+  unknown, and the track ends where stb_vorbis's output ends, which it trims at the last page's granule
+  position itself.
+- **Seeking** to frame `F`: the page headers are indexed from the first audio page on, as far as needed
+  (reading only headers, which waits for the download like any seek). The decoder restarts five pages
+  before the first page whose granule position reaches `F` (`stb_vorbis_flush_pushdata`), or from the
+  start of the file when fewer pages come before it, and drops the frames before `F`. A seek within the
+  frame already decoded moves within it.
+
+Traps:
+
+- After a flush, stb_vorbis can place the frames of the next pages wrongly: it guesses a page's start
+  from its granule position, and the guess is off when the page ends on a short block. Restarting at
+  every page of a dozen encodings and a Spotify file, the last misplaced frame was at most on the fourth
+  page from the restart; five pages of run-up keep a margin (`seekingToEveryPageLandsExactly`, on
+  `chirp_12s.ogg`, whose short blocks trigger it).
+- Restarting at the first audio page with a flush does not work: stb_vorbis's first-decode handling is
+  lost, so a seek near the start reopens the decoder instead.
+- stb_vorbis counts samples in an `int`: a stream longer than 2³¹ frames (13.5 h at 44.1 kHz) has no
+  length.
 
 ### Gapless chaining
 

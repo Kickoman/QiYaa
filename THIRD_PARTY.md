@@ -24,6 +24,7 @@ and [GLM](https://github.com/g-truc/glm) (MIT). On Windows it uses [GLEW](https:
 | [miniz](https://github.com/richgel999/miniz) — Rich Geldreich, RAD Game Tools, Valve | 3.1.2 (`77d0dce`) | MIT | `contrib/miniz/` |
 | [QR Code generator](https://github.com/nayuki/QR-Code-generator) (C++) — Project Nayuki | 1.8.0 (`7ad95ce`) | MIT | `contrib/qrcodegen/` (only in builds with the jam) |
 | [minimp4](https://github.com/lieff/minimp4) — Lieff and contributors | `2a3014a` | CC0 1.0 | `contrib/minimp4/` |
+| [stb_vorbis](https://github.com/nothings/stb) — Sean Barrett and contributors | 1.22 (the same file as miniaudio 0.11.25's `extras/stb_vorbis.c`) | Public domain / MIT | `contrib/stb_vorbis/` |
 | [FDK AAC](https://github.com/mstorsjo/fdk-aac) — Fraunhofer IIS, the decoder libraries only | 2.0.3 (`716f439`) | Software License for The Fraunhofer FDK AAC Codec Library for Android (see below) | `contrib/fdk-aac/` (`CMakeLists.txt` there is QiYaa's) |
 
 **FDK AAC and patents.** Fraunhofer's license (`contrib/fdk-aac/LICENSE`, upstream's `NOTICE`)

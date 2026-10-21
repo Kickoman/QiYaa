@@ -20,7 +20,7 @@ audio, yandex, skins, telemetry  →  vis, core  →  sources/yandex, sources/lo
 
 | Module | Namespace | What it does | Links PUBLIC | Links PRIVATE |
 |---|---|---|---|---|
-| [src/audio](../src/audio/README.md) | `Audio` | Plays a file while it downloads: decoder thread, blocks of audio with what they are, equalizer, gapless chaining, `.eqf` presets; AAC in MP4 for the economy quality | Qt Core | miniaudio, minimp4, fdk-aac |
+| [src/audio](../src/audio/README.md) | `Audio` | Plays a file while it downloads: decoder thread, blocks of audio with what they are, equalizer, gapless chaining, `.eqf` presets; AAC in MP4 for the economy quality, Ogg Vorbis for Spotify and local files | Qt Core | miniaudio, minimp4, fdk-aac, stb_vorbis |
 | [src/yandex](../src/yandex/README.md) | `Yandex` | Yandex Music HTTP API, OAuth device login, signed track links, the token file | Qt Core, Network | |
 | [src/skins](../src/skins/README.md) | `Skins` | Loads `.wsz` skins: sheets, `region.txt`, `pledit.txt`, `viscolor.txt`, bitmap text; sprite tables | Qt Gui | miniz |
 | [src/telemetry](../src/telemetry/README.md) | `Telemetry` | Usage statistics and crash reports ([spec/telemetry](../spec/telemetry/README.md)): the events kept on disk until the jam server takes them, the crash handler. Optional (`QIYAA_WITH_TELEMETRY`, on in the releases) | Qt Core, Network | Qt Gui; dbghelp (Windows) or dl |
@@ -33,7 +33,7 @@ audio, yandex, skins, telemetry  →  vis, core  →  sources/yandex, sources/lo
 | [src/integrations](../src/integrations/README.md) | `Integrations` | Media keys and system media panels: MPRIS (Linux), SMTC (Windows) or MediaPlayer (macOS) | Qt Gui (+ DBus) | core |
 | [src/app](../src/app/README.md) | `App` | `Application`: owns and wires everything, decides nothing; the controllers `Settings`, `WindowSet`, `MainMenu`, `Account`, `JamBridge`, `TelemetryBridge`, `NetworkWatch`; `main()` | audio, core, skins, sources/local, sources/yandex, yandex | integrations, jam, ui, vis (+ telemetry) |
 
-Vendored code lives in `contrib/` (miniaudio, miniz, qrcodegen, minimp4, fdk-aac's decoder) and is
+Vendored code lives in `contrib/` (miniaudio, miniz, qrcodegen, minimp4, fdk-aac's decoder, stb_vorbis) and is
 not changed. TagLib is fetched at configure time and linked statically
 ([THIRD_PARTY.md](../THIRD_PARTY.md)). The interface texts are English sources in the code,
 translated into Belarusian (the default) and Russian in [translations/](../translations/README.md). `spec/` is a submodule
