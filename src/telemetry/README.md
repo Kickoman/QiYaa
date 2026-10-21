@@ -89,6 +89,7 @@ install, from fixed buffers, and number formatting of their own: no allocation a
 | Linux, macOS | `sigaction` on SIGSEGV, SIGBUS, SIGILL, SIGFPE, SIGABRT, on an alternate stack | `backtrace()` (loaded at install), starting at the interrupted instruction from `ucontext`; `dladdr` gives the module and its base |
 | Windows | `SetUnhandledExceptionFilter`, `signal(SIGABRT)` | `StackWalk64` over the exception's context (`SymInitialize` at install, deferred loads); `GetModuleHandleEx` gives the module |
 | all | `std::set_terminate`: an uncaught C++ exception, as `TERMINATE` with its type's name | the terminate handler's own stack |
+| all | a call through a null pointer: the crash is at address 0, where the unwinders stop | `unknown+0x0`, then the caller from the return address (the link register on arm64, the top of the stack on x86-64), then on Windows and macOS the frames above it; Linux's `backtrace()` cannot go on, so there the caller is the last frame |
 
 After writing, a signal handler puts back the default action and raises the signal again. The
 Windows filter passes the exception on. So the OS still sees a crash: a core dump, WER,
