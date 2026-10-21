@@ -16,6 +16,7 @@
 #include "sources/yandex/tracks.h"
 #include "ui/equalizer_window.h"
 #include "ui/jam_window.h"
+#include "ui/lyrics_window.h"
 #include "ui/main_window.h"
 #include "ui/milkdrop_window.h"
 #include "ui/now_playing_window.h"
@@ -56,7 +57,14 @@ Application::Application(const Options& options, QObject* parent)
     , corePlayer(&audioEngine, &trackSources)
     , catalog(&corePlayer, &yandexLibrary)
     , localCatalog(&corePlayer, LocalCoversDirectory(temporaryDirectory.get()))
-    , jamMode(&corePlayer) {
+    , jamMode(&corePlayer)
+    , lrclibService(
+          options.offline
+              ? nullptr
+              : std::make_unique<
+                    Lrclib::Service>(networkManager, Lrclib::kBaseUrl, QCoreApplication::applicationVersion())
+      )
+    , lyricsFinder(&corePlayer, &trackSources, lrclibService.get()) {
     trackSources.add(YandexSource::kSourceName, &yandexSource);
     trackSources.add(LocalSource::kSourceName, &localSource);
     // Before any window: they take their texts from the translation.
@@ -65,6 +73,9 @@ Application::Application(const Options& options, QObject* parent)
     yandexSource.setQuality(settings.quality());
     corePlayer.setContinueWithVibeByDefault(settings.continueWithVibe());
     corePlayer.setHistoryWaveFactory(YandexSource::HistoryWaves(&yandexLibrary));
+    lyricsFinder.setThirdPartyEnabled(settings.lyricsThirdParty());
+    connect(&yandexLibrary, &Yandex::Library::accountChanged, &lyricsFinder, &Core::LyricsFinder::forget);
+    connect(&networkWatch, &NetworkWatch::back, &lyricsFinder, &Core::LyricsFinder::retryFailed);
     connect(&corePlayer, &Core::Player::modesChanged, this, [this] {
         settings.setShuffleAlgorithm(corePlayer.shuffleAlgorithm());
     });
@@ -124,6 +135,15 @@ Application::Application(const Options& options, QObject* parent)
         {.group = QStringLiteral("nowPlaying"),
          .stepsByDefault = QSize(0, 0),
          .menuText = QT_TRANSLATE_NOOP("App::MainMenu", "Now playing")}
+    );
+    lyricsWindowInstance = std::make_unique<Ui::LyricsWindow>(&lyricsFinder, &corePlayer, currentSkin.get());
+    windowSet->add(
+        lyricsWindowInstance.get(),
+        {.group = QStringLiteral("lyrics"),
+         .place = WindowSet::Place::Stacked,
+         .stepsByDefault = QSize(0, 6),
+         .menuText = QT_TRANSLATE_NOOP("App::MainMenu", "Lyrics"),
+         .key = QKeySequence(Qt::ALT | Qt::Key_L)}
     );
     accountControl = std::make_unique<Account>(
         Account::Parts{&apiClient, &yandexLibrary, &corePlayer, &catalog, networkManager, mainWindowInstance.get()},
@@ -322,7 +342,9 @@ Application::Application(const Options& options, QObject* parent)
             mainWindowInstance.get(),
             equalizerWindowInstance.get(),
             milkdropWindowInstance.get(),
-            jamHostSession.get()
+            jamHostSession.get(),
+            &lyricsFinder,
+            lyricsWindowInstance.get()
         },
         TelemetryBridge::Config{
             startOptions.telemetryUrl, networkManager, startOptions.skinOverride, startOptions.audio, audioFailed
@@ -335,6 +357,7 @@ Application::Application(const Options& options, QObject* parent)
         &catalog,
         &localCatalog,
         &trackSources,
+        &lyricsFinder,
         &yandexSource,
         &settings,
         windowSet.get(),

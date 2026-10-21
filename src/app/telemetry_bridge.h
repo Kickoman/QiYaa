@@ -13,6 +13,7 @@ class AudioEngine;
 }  // namespace Audio
 
 namespace Core {
+class LyricsFinder;
 class Player;
 }  // namespace Core
 
@@ -26,6 +27,7 @@ class Reporter;
 
 namespace Ui {
 class EqualizerWindow;
+class LyricsWindow;
 class MainWindow;
 class MilkdropWindow;
 }  // namespace Ui
@@ -56,6 +58,8 @@ public:
         Ui::EqualizerWindow* equalizer = nullptr;
         Ui::MilkdropWindow* milkdrop = nullptr;
         Jam::HostSession* jamHost = nullptr;
+        Core::LyricsFinder* lyrics = nullptr;
+        Ui::LyricsWindow* lyricsWindow = nullptr;
     };
 
     struct Config {

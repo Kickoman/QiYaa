@@ -272,6 +272,26 @@
         <source>Open folder</source>
         <translation>Открыть папку</translation>
     </message>
+    <message>
+        <source>Lyrics</source>
+        <translation>Текст песни</translation>
+    </message>
+    <message>
+        <source>Lyrics from LRCLIB</source>
+        <translation>Тексты из LRCLIB</translation>
+    </message>
+    <message>
+        <source>LRCLIB is an open database of lyrics, most of them synced. For a track without synced lyrics of its own, it gets the track&apos;s title and first artist, and your computer&apos;s address. Turn it on?</source>
+        <translation>LRCLIB — открытая база текстов песен, большинство из них с метками времени. Для трека без собственного текста с метками туда уйдут его название и первый исполнитель, а также адрес вашего компьютера. Включить?</translation>
+    </message>
+    <message>
+        <source>Turn on</source>
+        <translation>Включить</translation>
+    </message>
+    <message>
+        <source>Cancel</source>
+        <translation>Отмена</translation>
+    </message>
 </context>
 <context>
     <name>SpotifyClient::BrowserLogin</name>
@@ -833,6 +853,65 @@
     <message>
         <source>There is no token here. An address with “#access_token=…” or the token itself is needed.</source>
         <translation>Не вижу здесь токена. Нужен адрес с «#access_token=…» или сам токен.</translation>
+    </message>
+</context>
+<context>
+    <name>Ui::LyricsWindow</name>
+    <message>
+        <source>QiYaa: lyrics</source>
+        <translation>QiYaa: текст песни</translation>
+    </message>
+    <message>
+        <source>Yandex Music</source>
+        <translation>Яндекс Музыка</translation>
+    </message>
+    <message>
+        <source>.lrc file</source>
+        <translation>файл .lrc</translation>
+    </message>
+    <message>
+        <source>the file&apos;s tags</source>
+        <translation>теги файла</translation>
+    </message>
+    <message>
+        <source>Lyrics: %1</source>
+        <translation>Текст: %1</translation>
+    </message>
+    <message>
+        <source>not synced</source>
+        <translation>без синхронизации</translation>
+    </message>
+    <message>
+        <source>looking for synced lyrics…</source>
+        <translation>ищу текст с метками времени…</translation>
+    </message>
+    <message>
+        <source>Nothing is playing</source>
+        <translation>Ничего не играет</translation>
+    </message>
+    <message>
+        <source>Loading…</source>
+        <translation>Загрузка…</translation>
+    </message>
+    <message>
+        <source>No lyrics</source>
+        <translation>Текста нет</translation>
+    </message>
+    <message>
+        <source>Search in LRCLIB is off (menu)</source>
+        <translation>Поиск в LRCLIB выключен (меню)</translation>
+    </message>
+    <message>
+        <source>Instrumental</source>
+        <translation>Без слов</translation>
+    </message>
+    <message>
+        <source>Could not load the lyrics</source>
+        <translation>Не удалось загрузить текст</translation>
+    </message>
+    <message>
+        <source>Log in to Yandex Music for its lyrics</source>
+        <translation>Войдите в Яндекс Музыку, чтобы видеть её тексты</translation>
     </message>
 </context>
 <context>

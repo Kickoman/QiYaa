@@ -5,9 +5,11 @@
 #include "app/translations.h"
 #include "audio/audio_engine.h"
 #include "core/jam_mode.h"
+#include "core/lyrics_finder.h"
 #include "core/player.h"
 #include "core/track.h"
 #include "core/track_source.h"
+#include "lrclib/service.h"
 #include "skins/skin.h"
 #include "sources/local/catalog.h"
 #include "sources/local/source.h"
@@ -41,6 +43,7 @@ namespace Ui {
 class EqualizerWindow;
 class MainWindow;
 class JamWindow;
+class LyricsWindow;
 class MilkdropWindow;
 class NowPlayingWindow;
 class PlaylistWindow;
@@ -83,6 +86,7 @@ public:
     Ui::PlaylistWindow* playlistWindow() const { return playlistWindowInstance.get(); }
     Ui::NowPlayingWindow* nowPlayingWindow() const { return nowPlayingWindowInstance.get(); }
     Ui::MilkdropWindow* milkdropWindow() const { return milkdropWindowInstance.get(); }
+    Ui::LyricsWindow* lyricsWindow() const { return lyricsWindowInstance.get(); }
     Ui::JamWindow* jamWindow() const { return jamWindowInstance.get(); }  // null without the jam
     Core::CoverCache* covers() const { return coverCache.get(); }
     Core::Player* player() { return &corePlayer; }
@@ -92,6 +96,7 @@ public:
     YandexSource::Source* yandex() { return &yandexSource; }
     Core::SourceRegistry* sources() { return &trackSources; }
     Core::JamMode* jam() { return &jamMode; }
+    Core::LyricsFinder* lyrics() { return &lyricsFinder; }
     // Null when the app is built without the jam.
     Jam::HostSession* jamHost() const { return jamHostSession.get(); }
 
@@ -135,6 +140,8 @@ private:
     YandexSource::Catalog catalog;
     LocalSource::Catalog localCatalog;
     Core::JamMode jamMode;
+    std::unique_ptr<Lrclib::Service> lrclibService;
+    Core::LyricsFinder lyricsFinder;
     std::unique_ptr<Jam::HostSession> jamHostSession;
     std::unique_ptr<Core::CoverCache> coverCache;
     std::unique_ptr<Integrations::MediaControls> mediaControls;
@@ -146,6 +153,7 @@ private:
     std::unique_ptr<Ui::EqualizerWindow> equalizerWindowInstance;
     std::unique_ptr<Ui::PlaylistWindow> playlistWindowInstance;
     std::unique_ptr<Ui::NowPlayingWindow> nowPlayingWindowInstance;
+    std::unique_ptr<Ui::LyricsWindow> lyricsWindowInstance;
     std::unique_ptr<Ui::MilkdropWindow> milkdropWindowInstance;
     std::unique_ptr<Ui::JamWindow> jamWindowInstance;
     std::unique_ptr<WindowSet> windowSet;

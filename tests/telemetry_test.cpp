@@ -1,11 +1,13 @@
 #include "app/application.h"
 #include "app/telemetry_bridge.h"
 #include "app/window_set.h"
+#include "core/lyrics_finder.h"
 #include "support/mock_http_server.h"
 #include "support/spec_fixtures.h"
 #include "telemetry/machine_id.h"
 #include "telemetry/reporter.h"
 #include "telemetry/system_info.h"
+#include "ui/lyrics_window.h"
 #include "ui/main_window.h"
 #include "ui/milkdrop_window.h"
 
@@ -267,6 +269,55 @@ private Q_SLOTS:
         QVERIFY2(sessionFiles(session).isEmpty(), qPrintable(sessionFiles(session).join(u' ')));
     }
 
+    void theLyricsCountsComeOnlyAfterALookupAndAllAtOnce() {  // TEL-17
+        auto quiet = reporter();
+        quiet->begin(StartFields());
+        quiet->finish();
+        QTRY_VERIFY(!quiet->isSending() && quiet->queued() == 0);
+        const QJsonObject without = Events(lastPost()).last().toObject();
+        QCOMPARE(without.value(QStringLiteral("type")).toString(), QStringLiteral("exit"));
+        QVERIFY(!without.contains(QStringLiteral("lyricsLookups")));
+        quiet.reset();
+
+        auto run = reporter();
+        run->begin(StartFields());
+        run->countLyrics(QStringLiteral("lyricsLookups"));
+        run->countLyrics(QStringLiteral("lyricsThirdPartySynced"));
+        run->countLyrics(QStringLiteral("lyricsLookups"));
+        run->countLyrics(QStringLiteral("lyricsNone"));
+        run->countLyrics(QStringLiteral("lyricsThirdPartyFailed"));
+        run->countLyrics(QStringLiteral("trackTitle"));
+        run->finish();
+        QTRY_VERIFY(!run->isSending() && run->queued() == 0);
+        const QJsonObject exit = Events(lastPost()).last().toObject();
+        QCOMPARE(exit.value(QStringLiteral("lyricsLookups")).toInt(), 2);
+        QCOMPARE(exit.value(QStringLiteral("lyricsThirdPartySynced")).toInt(), 1);
+        QCOMPARE(exit.value(QStringLiteral("lyricsNone")).toInt(), 1);
+        QCOMPARE(exit.value(QStringLiteral("lyricsThirdPartyFailed")).toInt(), 1);
+        QCOMPARE(exit.value(QStringLiteral("lyricsSourceText")).toInt(), 0);
+        QVERIFY(!exit.contains(QStringLiteral("trackTitle")));
+        QJsonObject example;
+        for (const QJsonValue& event :
+             Tests::SpecObject(QStringLiteral("telemetry/examples/session.json"))[QStringLiteral("events")].toArray()) {
+            if (event[QStringLiteral("type")].toString() == QLatin1String("exit")) {
+                example = event.toObject();
+            }
+        }
+        QStringList ours;
+        QStringList theirs;
+        for (const QString& key : exit.keys()) {
+            if (key.startsWith(QLatin1String("lyrics"))) {
+                ours << key;
+            }
+        }
+        for (const QString& key : example.keys()) {
+            if (key.startsWith(QLatin1String("lyrics"))) {
+                theirs << key;
+            }
+        }
+        QCOMPARE(ours, theirs);
+    }
+
     void errorsAreCappedPerSession() {  // TEL-07
         status = 500;
         auto run = reporter();
@@ -407,6 +458,34 @@ private Q_SLOTS:
             }
         }
         QCOMPARE(milkdrop, QStringList{QStringLiteral("on")});
+    }
+
+    void theLyricsWindowAndServiceAreFeatures() {  // TEL-17
+        App::Application::Options options;
+        options.offline = true;
+        options.audio = false;
+        options.mediaIntegration = false;
+        options.settingsFile = directory->filePath(QStringLiteral("settings.ini"));
+        options.network = network.get();
+        options.telemetryUrl = QUrl(server->baseUrl() + kPath);
+        App::Application application(options);
+        application.start();
+        QTRY_COMPARE(posts(), 1);
+        application.windows()->setVisible(application.lyricsWindow(), true);
+        application.lyrics()->setThirdPartyEnabled(true);
+        application.lyrics()->setThirdPartyEnabled(false);
+        application.windows()->setVisible(application.lyricsWindow(), false);
+        application.telemetry()->reporter()->send();
+        QTRY_COMPARE(posts(), 2);
+        QStringList features;
+        for (const QJsonValue& event : Events(lastPost())) {
+            const QJsonObject fields = event.toObject();
+            if (fields.value(QStringLiteral("type")).toString() == QLatin1String("feature")) {
+                features << fields.value(QStringLiteral("name")).toString() + u'='
+                        + fields.value(QStringLiteral("value")).toString();
+            }
+        }
+        QCOMPARE(features, (QStringList{"lyrics=on", "lyrics-services=on", "lyrics-services=off", "lyrics=off"}));
     }
 };
 

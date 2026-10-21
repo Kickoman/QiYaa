@@ -1086,6 +1086,7 @@ public:
 Q_SIGNALS:
     void changed();                                              // view() was set again
     void lookedUp(const Core::LyricsLookup& lookup);
+    void thirdPartyChanged(bool on);                             // by setThirdPartyEnabled, on a change
 };
 ```
 

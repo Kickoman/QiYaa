@@ -1,7 +1,7 @@
 # `src/ui` — the skinned Winamp windows, the Yandex menus, the login dialog and the jam window
 
 Namespace `Ui`. This folder holds the widgets the user sees: the main, equalizer and playlist
-windows, the generic-framed "Now playing", Milkdrop and jam windows, their common base class (frameless,
+windows, the generic-framed "Now playing", lyrics, Milkdrop and jam windows, their common base class (frameless,
 scaled, snapping, docking, shade mode), the pure geometry behind snapping, the Yandex part of the
 context menus, and the login dialog. The windows paint sprites and turn clicks into calls on
 `Core::Player` or into signals. They do not load skins or parse skin files
@@ -19,6 +19,7 @@ to Yandex ([src/yandex](../yandex/README.md)), or create, lay out, connect and s
 | `playlist_window.h/.cpp` | `PlaylistWindow` — the player's queue: rows, selection, scrollbar, resize steps, bottom buttons |
 | `gen_window.h/.cpp` | `GenWindow` — abstract frame from GEN.BMP, or from PLEDIT.BMP for a skin without a GEN.BMP of its own: title, close button, resize grip |
 | `now_playing_window.h/.cpp` | `NowPlayingWindow` — cover and details of the current track |
+| `lyrics_window.h/.cpp` | `LyricsWindow` — the current track's lyrics from `Core::LyricsFinder`: the synced line that follows the position, a click that seeks, the statuses |
 | `milkdrop_window.h/.cpp` | `MilkdropWindow` — projectM view in a GEN frame: preset switching, black-preset skipping, full screen. Built only with Milkdrop |
 | `library_menu.h/.cpp` | `AddLibraryActions`: the Yandex menu items, which call `YandexSource::Catalog` |
 | `player_notices.h/.cpp` | `NoticeText`: what a `Core::PlayerNotice` says, in the user's language |
@@ -78,6 +79,7 @@ grep -rn --include='*.h' --include='*.cpp' 'AudioEngine::State' src/ui/ src/inte
     - [`GenWindow`](#genwindow--gen_windowhcpp) — abstract: `paintContent`; 275x116 plus 25x29
       steps, no shade mode
       - [`NowPlayingWindow`](#nowplayingwindow--now_playing_windowhcpp)
+      - [`LyricsWindow`](#lyricswindow--lyrics_windowhcpp)
       - [`MilkdropWindow`](#milkdropwindow--milkdrop_windowhcpp) — only with Milkdrop
 - `QDialog`
   - [`LoginDialog`](#logindialog--login_dialoghcpp)
@@ -107,7 +109,8 @@ window alike.
 Tests: `tests/snap_test.cpp` (Snap), `tests/main_window_test.cpp` (drag, snap, clamp, scale),
 `tests/windows_test.cpp` (docking, shade stack, scaling, playlist, equalizer, login dialog height,
 "Now playing"), `tests/milkdrop_test.cpp` (preset order, switching, black presets, full screen),
-`tests/screenshots_test.cpp` (golden images of the main and equalizer windows).
+`tests/screenshots_test.cpp` (golden images of the main and equalizer windows),
+`tests/lyrics_window_test.cpp` (the lyrics window on a real `Player`).
 
 ## SkinnedWindow — `skinned_window.h/.cpp`
 
@@ -623,6 +626,43 @@ the click to the window. None of the pointers is owned.
 **Traps:**
 - `CoverCache::get` starts the download as a side effect of painting; the repaint comes from
   `ready`. The URL includes the size, so another size is another cache entry.
+
+## LyricsWindow — `lyrics_window.h/.cpp`
+
+```cpp
+class LyricsWindow : public GenWindow {
+public:
+    LyricsWindow(Core::LyricsFinder* finder, Core::Player* player, const Skins::Skin* skin, QWidget* parent = nullptr);
+    int currentLine() const;               // the synced line at the position; -1: none (or no synced text)
+    int lineAt(QPoint skinPos) const;      // the line of the row there; -1: none
+    bool isFollowing() const;              // false for 5 s after the wheel
+    void setFollowPauseMs(int ms);         // tests
+};
+```
+
+Title `LYRICS`. It shows `Core::LyricsFinder::view()` ([src/core](../core/README.md)) as
+`spec/player/lyrics.md` asks, in the PLEDIT.TXT colours and font at 9 px, like the playlist.
+
+- **Active only while shown.** `showEvent` and `hideEvent` call `LyricsFinder::setActive`, so a
+  window hidden with the minimised main window asks nothing either (LYR-01).
+- **Rows.** Each line is centred and wrapped by words to the content's width (a word wider than it
+  by characters), 13 px a row. The rows are made again for a new text, a new skin or a new width.
+  An empty line of a synced text is a pause, drawn `♪`.
+- **Synced text** (LYR-06 to LYR-08). The current line is the last one whose time is at or before
+  `Player::positionSeconds()`; it is drawn in `current`, never bold (the width would change), and
+  its first row is kept in the middle, clamped at both ends. `positionTick`, `seeked` and
+  `stateChanged` repaint only when the current line changes. A left click on any row of a line
+  seeks to it while the track plays or is paused. The wheel scrolls 3 rows a notch and stops the
+  following for 5 s.
+- **Plain text** starts at the top and scrolls with the wheel; a click does nothing.
+- **The footer**, dimmed (`normal` halfway to the background): where the text is from ("Yandex
+  Music" for the catalogue of a Yandex track, ".lrc file", "the file's tags", `LRCLIB`), "not
+  synced" for a plain text, and "looking for synced lyrics…" while a synced one may still replace
+  it.
+- **Statuses**, centred: nothing playing, loading, no lyrics (with "Search in LRCLIB is off
+  (menu)" when the app has the service and it is off), instrumental, could not load, log in to
+  Yandex Music.
+- The finder and the player are not owned.
 
 ## JamWindow — `jam_window.h/.cpp`
 

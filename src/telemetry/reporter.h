@@ -43,6 +43,7 @@ public:
     void recordFeature(const QString& name, const QString& value);
     void countTrack();
     void countJam();
+    void countLyrics(const QString& field);
     void setPlaying(bool playing);
     void setMilkdropShown(bool shown);
     void finish();
@@ -90,6 +91,7 @@ private:
     int jams = 0;
     int errors = 0;
     int errorsDropped = 0;
+    QJsonObject lyrics;
     bool begun = false;
     bool finished = false;
     bool forgotten = false;

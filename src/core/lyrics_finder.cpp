@@ -60,6 +60,7 @@ void LyricsFinder::setThirdPartyEnabled(bool on) {
         return;
     }
     thirdPartyOn = on;
+    Q_EMIT thirdPartyChanged(on);
     if (!on) {
         cancelThirdParty();
         thirdPartyAnswer.reset();

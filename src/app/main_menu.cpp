@@ -6,6 +6,7 @@
 #include "app/telemetry_bridge.h"
 #include "app/window_set.h"
 #include "audio/audio_engine.h"
+#include "core/lyrics_finder.h"
 #include "core/player.h"
 #include "sources/local/catalog.h"
 #include "sources/yandex/catalog.h"
@@ -24,6 +25,8 @@
 #include <QKeySequence>
 #include <QLatin1String>
 #include <QMenu>
+#include <QMessageBox>
+#include <QPushButton>
 #include <QStringList>
 #include <QTimer>
 
@@ -166,6 +169,24 @@ void MainMenu::openLocalFolder() {
     }
 }
 
+void MainMenu::askForLrclib() {
+    QMessageBox ask(
+        QMessageBox::Question,
+        tr("Lyrics from LRCLIB"),
+        tr("LRCLIB is an open database of lyrics, most of them synced. For a track without synced lyrics of "
+           "its own, it gets the track's title and first artist, and your computer's address. Turn it on?"),
+        QMessageBox::NoButton,
+        parts.mainWindow
+    );
+    QPushButton* turnOn = ask.addButton(tr("Turn on"), QMessageBox::AcceptRole);
+    ask.setDefaultButton(ask.addButton(tr("Cancel"), QMessageBox::RejectRole));
+    ask.exec();
+    if (ask.clickedButton() == turnOn) {
+        parts.settings->setLyricsThirdParty(true);
+        parts.lyrics->setThirdPartyEnabled(true);
+    }
+}
+
 void MainMenu::loadSkinFile() {
     const QString path = QFileDialog::getOpenFileName(
         parts.mainWindow, tr("Winamp skin"), QDir::homePath(), tr("Winamp skins (*.wsz *.zip)")
@@ -193,6 +214,18 @@ void MainMenu::addWindowActions(QMenu* menu) {
         action->setCheckable(true);
         action->setChecked(window->isVisible());
         action->setShortcut(spec.key);
+    }
+    if (parts.lyrics->hasThirdParty()) {
+        QAction* lrclib = menu->addAction(tr("Lyrics from LRCLIB"), this, [this](bool on) {
+            if (on) {
+                return QTimer::singleShot(0, this, &MainMenu::askForLrclib);
+            }
+            parts.settings->setLyricsThirdParty(false);
+            parts.lyrics->setThirdPartyEnabled(false);
+        });
+        lrclib->setObjectName(QStringLiteral("lyricsFromLrclib"));
+        lrclib->setCheckable(true);
+        lrclib->setChecked(parts.lyrics->thirdPartyEnabled());
     }
 
     QMenu* visualizationMenu = menu->addMenu(tr("Visualization"));

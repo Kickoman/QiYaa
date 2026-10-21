@@ -14,6 +14,7 @@
 #include <QRegularExpression>
 #include <QSaveFile>
 #include <QSet>
+#include <QStringList>
 #include <QUuid>
 
 #include <algorithm>
@@ -21,6 +22,17 @@
 namespace Telemetry {
 
 namespace {
+
+const QStringList kLyricsFields = {
+    QStringLiteral("lyricsLookups"),
+    QStringLiteral("lyricsSourceSynced"),
+    QStringLiteral("lyricsThirdPartySynced"),
+    QStringLiteral("lyricsSourceText"),
+    QStringLiteral("lyricsThirdPartyText"),
+    QStringLiteral("lyricsInstrumental"),
+    QStringLiteral("lyricsNone"),
+    QStringLiteral("lyricsThirdPartyFailed"),
+};
 
 constexpr int kMarkerIntervalMs = 60 * 1000;
 constexpr int kFirstRetrySeconds = 60;
@@ -222,6 +234,18 @@ void Reporter::countJam() {
     ++jams;
 }
 
+void Reporter::countLyrics(const QString& field) {
+    if (!kLyricsFields.contains(field)) {
+        return;
+    }
+    if (lyrics.isEmpty()) {
+        for (const QString& name : kLyricsFields) {
+            lyrics.insert(name, 0);
+        }
+    }
+    lyrics.insert(field, lyrics.value(field).toInt() + 1);
+}
+
 void Reporter::setPlaying(bool on) {
     if (on == playing) {
         return;
@@ -259,17 +283,14 @@ void Reporter::finish() {
         return;
     }
     finished = true;
-    record(
-        QStringLiteral("exit"),
-        {
-            {QStringLiteral("seconds"), running.elapsed() / 1000},
-            {QStringLiteral("tracks"), tracks},
-            {QStringLiteral("playMinutes"), playedMs() / 60000},
-            {QStringLiteral("milkdropMinutes"), milkdropMs() / 60000},
-            {QStringLiteral("jams"), jams},
-            {QStringLiteral("errorsDropped"), errorsDropped},
-        }
-    );
+    QJsonObject fields = lyrics;
+    fields.insert(QStringLiteral("seconds"), running.elapsed() / 1000);
+    fields.insert(QStringLiteral("tracks"), tracks);
+    fields.insert(QStringLiteral("playMinutes"), playedMs() / 60000);
+    fields.insert(QStringLiteral("milkdropMinutes"), milkdropMs() / 60000);
+    fields.insert(QStringLiteral("jams"), jams);
+    fields.insert(QStringLiteral("errorsDropped"), errorsDropped);
+    record(QStringLiteral("exit"), fields);
     markerTimer.stop();
     QFile::remove(file(sessionId, QStringLiteral("json")));
     send();

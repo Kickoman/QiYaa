@@ -33,9 +33,9 @@ audio, yandex, spotify/protocol, skins, telemetry  →  vis, core, spotify/clien
 | [src/sources/local](../src/sources/local/README.md) | `LocalSource` | The user's own files as a source: `Catalog` (opening files and folders on a thread of its own), their tags and covers through TagLib with every size bounded, and its `TrackSource`, which hands the engine the file on disk and reads a file's lyrics from its `.lrc` and its tags | core, Qt Core | TagLib |
 | [src/lrclib](../src/lrclib/README.md) | `Lrclib` | LRCLIB, the lyrics service the lyrics view asks when the user turns it on: the search, the record that fits the track, one retry, the size bound | core, Qt Core, Network | |
 | [src/jam](../src/jam/README.md) | `Jam` | The jam: protocol messages and their JSON, the WebSocket connection to a jam server, the host's stored session, and `HostSession` (create, resume, the guests' search and checks, end). Optional (Qt WebSockets) | core, yandex, Qt Core, WebSockets | sources/yandex |
-| [src/ui](../src/ui/README.md) | `Ui` | The skinned windows, snapping and docking, the Yandex menus, the login dialog, the jam window | audio, vis, Qt Widgets (+ jam) | core, skins, sources/yandex, yandex (+ qrcodegen) |
+| [src/ui](../src/ui/README.md) | `Ui` | The skinned windows (the lyrics window among them), snapping and docking, the Yandex menus, the login dialog, the jam window | audio, vis, Qt Widgets (+ jam) | core, skins, sources/yandex, yandex (+ qrcodegen) |
 | [src/integrations](../src/integrations/README.md) | `Integrations` | Media keys and system media panels: MPRIS (Linux), SMTC (Windows) or MediaPlayer (macOS) | Qt Gui (+ DBus) | core |
-| [src/app](../src/app/README.md) | `App` | `Application`: owns and wires everything, decides nothing; the controllers `Settings`, `WindowSet`, `MainMenu`, `Account`, `JamBridge`, `TelemetryBridge`, `NetworkWatch`; `main()` | audio, core, skins, sources/local, sources/yandex, yandex | integrations, jam, ui, vis (+ telemetry) |
+| [src/app](../src/app/README.md) | `App` | `Application`: owns and wires everything, decides nothing; the controllers `Settings`, `WindowSet`, `MainMenu`, `Account`, `JamBridge`, `TelemetryBridge`, `NetworkWatch`; `main()` | audio, core, lrclib, skins, sources/local, sources/yandex, yandex | integrations, jam, ui, vis (+ telemetry) |
 
 Vendored code lives in `contrib/` (miniaudio, miniz, qrcodegen, minimp4, fdk-aac's decoder, stb_vorbis, BearSSL) and is
 not changed. TagLib is fetched at configure time and linked statically
@@ -52,8 +52,9 @@ MPRIS (`QIYAA_HAVE_MPRIS`) and SMTC (`QIYAA_HAVE_SMTC`) are optional; the macOS 
 `App::Application` is the composition root: it creates, owns and connects, and decides nothing. It
 holds `App::Settings`, the skins, the network manager, `Yandex::ApiClient`, `Yandex::Library`,
 `Audio::AudioEngine`, `YandexSource::Source`, `LocalSource::Source`, `Core::SourceRegistry`,
-`Core::Player`, `YandexSource::Catalog`, `LocalSource::Catalog`, `Core::JamMode` and
-`App::NetworkWatch` as members, and the windows, the
+`Core::Player`, `YandexSource::Catalog`, `LocalSource::Catalog`, `Core::JamMode`,
+`Core::LyricsFinder` and `App::NetworkWatch` as members, `Lrclib::Service` through a
+`std::unique_ptr` (none in an offline run), and the windows, the
 cover cache, the media integration and the controllers (`WindowSet`, `Account`, `JamBridge`,
 `TelemetryBridge`, `MainMenu`) through `std::unique_ptr`. Member order is the construction order
 and, reversed, the destruction order: the controllers go first, then the windows, while everything

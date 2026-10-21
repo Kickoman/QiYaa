@@ -59,6 +59,7 @@ public:
 Q_SIGNALS:
     void changed();
     void lookedUp(const Core::LyricsLookup& lookup);
+    void thirdPartyChanged(bool on);
 
 private:
     struct Remembered {
