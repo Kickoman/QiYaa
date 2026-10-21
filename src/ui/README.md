@@ -1,7 +1,7 @@
 # `src/ui` — the skinned Winamp windows, the Yandex menus, the login dialog and the jam window
 
 Namespace `Ui`. This folder holds the widgets the user sees: the main, equalizer and playlist
-windows, the GEN.BMP-framed "Now playing", Milkdrop and jam windows, their common base class (frameless,
+windows, the generic-framed "Now playing", Milkdrop and jam windows, their common base class (frameless,
 scaled, snapping, docking, shade mode), the pure geometry behind snapping, the Yandex part of the
 context menus, and the login dialog. The windows paint sprites and turn clicks into calls on
 `Core::Player` or into signals. They do not load skins or parse skin files
@@ -17,7 +17,7 @@ to Yandex ([src/yandex](../yandex/README.md)), or create, lay out, connect and s
 | `main_window.h/.cpp` | `MainWindow` — transport, time, marquee, visualizer, volume, balance, EQ/PL lights |
 | `equalizer_window.h/.cpp` | `EqualizerWindow` — preamp and 10 bands, ON/AUTO, presets menu, `.eqf` load/save, spline graph |
 | `playlist_window.h/.cpp` | `PlaylistWindow` — the player's queue: rows, selection, scrollbar, resize steps, bottom buttons |
-| `gen_window.h/.cpp` | `GenWindow` — abstract GEN.BMP frame: title, close button, resize grip |
+| `gen_window.h/.cpp` | `GenWindow` — abstract frame from GEN.BMP, or from PLEDIT.BMP for a skin without a GEN.BMP of its own: title, close button, resize grip |
 | `now_playing_window.h/.cpp` | `NowPlayingWindow` — cover and details of the current track |
 | `milkdrop_window.h/.cpp` | `MilkdropWindow` — projectM view in a GEN frame: preset switching, black-preset skipping, full screen. Built only with Milkdrop |
 | `library_menu.h/.cpp` | `AddLibraryActions`: the Yandex menu items, which call `YandexSource::Catalog` |
@@ -539,19 +539,42 @@ public:
     void setSizeSteps(QSize steps) override;  // each clamped to 0..40; 275x116 + steps × 25x29
 
 protected:
-    QRect contentRect() const;             // skin pixels inside the frame: (11, 20, w − 19, h − 34)
+    QRect contentRect() const;             // skin pixels inside the frame, which depends on the skin
     virtual void paintContent(QPainter& painter, const QRect& area) = 0;
     virtual bool contentMousePress(QPoint, Qt::MouseButton);  // true = consumed
 };
 ```
 
-Winamp's generic plugin frame from GEN.BMP: top 20 px, left 11, right 8, bottom 14; the top and
-bottom are tiled in 25 px pieces, the sides in 29 px pieces with the bottom pieces anchored to the
-bottom, and the bottom corners are 125 px wide. The title is drawn with GEN.BMP's letters (A–Z
-only, see [src/skins](../skins/README.md)) between the two title end pieces, centred, with 4 px of
-padding on the left and 3 px on the right; the top pieces have active and inactive sprites. The
-content is painted first, clipped to `contentRect()`, and the frame over it.
+Winamp's generic plugin frame. Which one is drawn is `Skin::genFrame()`
+([src/skins](../skins/README.md)): the frame of GEN.BMP, or, for a skin without a GEN.BMP of its
+own, a frame cut from its PLEDIT.BMP. It is read at every paint, `contentRect()` and hit test, so a
+new skin takes effect with the next paint.
 
+**From GEN.BMP (`GenFrame::Gen`).** Top 20 px, left 11, right 8, bottom 14. The top and bottom are
+tiled in 25 px pieces, the sides in 29 px pieces with the bottom pieces anchored to the bottom, and
+the bottom corners are 125 px wide. The title is drawn with GEN.BMP's letters (A–Z only, see
+[src/skins](../skins/README.md)) between the two title end pieces, centred, with 4 px of padding
+on the left and 3 px on the right. The top pieces have active and inactive sprites.
+`contentRect()` is (11, 20, w − 19, h − 34).
+
+**From PLEDIT.BMP (`GenFrame::Playlist`).** The pieces are `PlaylistSprites`:
+- the top, 20 px: the left corner, the top tile from x = 25 to w − 25 and the right corner, active
+  and inactive. The playlist's title piece (`kTitle`) is not used: it has the word "PLAYLIST"
+  drawn in it;
+- the title in TEXT.BMP's font (`Skin::drawText`), centred at y = 7, on a plate of
+  `Skin::textBackground()`: 3 px wider than the text on each side, y from 5 to 14. The plate and
+  the letters stay the same in an inactive window, because TEXT.BMP has no inactive look (GEN's
+  letters dim);
+- the sides: the left tile (12 px) and the right tile (20 px, its scrollbar groove only a
+  decoration) in 29 px pieces from y = 20 to h − 18, the last one cut;
+- the bottom, 18 px. Of each 38 px piece it takes the top 8 rows and the bottom 10 rows: the
+  first 12 px of the bottom-left piece, the bottom tile in 25 px pieces from x = 12 to w − 20 (the
+  last one cut), and the last 20 px of the bottom-right piece, which holds the resize grip;
+- the pressed close: `PlaylistSprites::kCloseSelected`.
+
+`contentRect()` is (12, 20, w − 32, h − 38), 243x78 at the minimum size.
+
+In both frames the content is painted first, clipped to `contentRect()`, and the frame over it.
 The title bar (y < 20) drags the window. The close button (width − 11, 3, 9x9) acts on release
 inside. The bottom-right 20x20 grip resizes: each 25 px (29 px) of mouse travel, rounded, is one
 step. A press inside `contentRect()` goes to `contentMousePress`. No mask, no shade mode.
@@ -559,6 +582,13 @@ step. A press inside `contentRect()` goes to `contentMousePress`. No mask, no sh
 **Traps:**
 - An unconsumed press in the content area does nothing: only the title bar drags.
 - The size cannot go below 275x116 skin pixels.
+- The playlist frame shows the playlist's shade button at (width − 21, 3), and it does nothing: a
+  press there lands in the title bar and drags the window.
+- The playlist frame's bottom drops the middle 20 rows of each 38 px piece, so a picture on the
+  bottom tile loses its middle.
+- `contentRect()` changes with the skin, not only with the size. A subclass that places a widget
+  over it re-places it in `skinChanged()` too, as `MilkdropWindow` does with its GL view.
+  `JamWindow` and `NowPlayingWindow` take it anew at every paint and click.
 
 ## NowPlayingWindow — `now_playing_window.h/.cpp`
 
@@ -751,8 +781,8 @@ Title `MILKDROP`. The preset list is loaded in the constructor (built-ins first,
 see [src/vis](../vis/README.md)); OpenGL is not touched until the window is first shown, because
 probing it loads the GPU driver. On the first show `Vis::MilkdropView::OpenGlProblem()` is checked;
 if OpenGL is usable a `MilkdropView` (a `QOpenGLWindow`) is embedded with
-`QWidget::createWindowContainer` over `contentRect()` (scaled, focus on click). The container owns
-that view. Texture search paths are `userPresetDirectory` and `userPresetDirectory/textures`. When
+`QWidget::createWindowContainer` over `contentRect()` (scaled, focus on click), placed again on
+every resize and skin change. The container owns that view. Texture search paths are `userPresetDirectory` and `userPresetDirectory/textures`. When
 the view is ready it starts with the selected preset, or the first `followingPreset()`, without
 blending, and emits `presetChanged(name, PresetOrigin::Automatic)`. When a view fails, the embedded
 one is hidden and stops rendering, a full-screen one closes; `failure()` then returns the reason and

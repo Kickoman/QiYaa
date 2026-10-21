@@ -24,6 +24,7 @@ is formatting (the clang-format check in `.github/workflows/ci.yml`).
 | `support/fake_source.h/.cpp` | `Tests::FakeSource` and `Tests::FakeDownload`: a `Core::TrackSource` the test answers by hand (see below) |
 | `support/yandex_sources.h` | `Tests::YandexSources`: a `Core::SourceRegistry` with a `YandexSource::Source` under `"yandex"`, as the application wires them; header only, for suites that link `sources_yandex` |
 | `support/yandex_json.h/.cpp` | `Tests::ToJson` and friends: the `Yandex::` models in the neutral JSON of `spec/expected/yandex`; `CheckError` |
+| `gen_window_test.cpp` | `Ui::GenWindow` through a probe subclass, on base-2.91 and on Vizor1-01, which has no `gen.bmp`: `contentRect()` of the GEN.BMP and the PLEDIT.BMP frame at the minimum size and with steps, the area handed to `paintContent`, a new skin changing the frame at once, the close button and the resize grip at the same places in both frames, and the playlist's shade button that does nothing |
 | `snap_test.cpp` | `Ui::SnapToOthers`, `SnapWithin`, `ClampInside`, `PickScreen`, `ResolveDragPosition`, and `StackBelow` (which windows follow a shade change of window 0). Pure `QRect` arithmetic, no windows |
 | `region_test.cpp` | `Skins::ParseRegionTxt` and `RegionFromPolygons`: sections, several polygons, degenerate and missing points, empty input |
 | `yandex_test.cpp` | Track-link signing (`BuildTrackUrl`), download variants and the best full mp3, `ParseDownloadInfo` and the signed link, `ApiClient::ParseTrack` and the cover URL, all on spec fixtures; `get-file-info` replies parsed or falling back, the signature and the encoded query of the spec's example, `IsUsable`, the quality names; `NormalizeToken` on five input shapes; `Download` against the mock server (the bytes in order, a cut, an error page, no token, a silent abort); with `QIYAA_YANDEX_TOKEN=<token>` it also gets an economy link from the real API, which fails once Yandex stops accepting the signing key |
@@ -55,7 +56,7 @@ is formatting (the clang-format check in `.github/workflows/ci.yml`).
 | `jam_e2e_test.cpp` | The jam end to end: the app (offscreen, the Null output) hosts on a real jam server (`QIYAA_JAM_TEST_SERVER`, its `PUBLIC_URL`; CI runs the server's image on Linux, elsewhere the test skips), a guest joins over WebSocket, searches and adds; the track plays with no `/play-audio`, and after the end it is reported again. Then a base track of another source (`Tests::FakeSource` as `fake`, sharing on) plays in a new jam, and the guest sees it as the host's own by its title and artists, with no cover, album or listen links (HOST-37, LISTEN-14) |
 | `translations_test.cpp` | The interface languages: every text of `translations/*.ts` translated with the placeholders of its source and the right number of plural forms, no English text saying "wave", the app starting in Belarusian or in the saved language, another language applied while it runs (a window title, a menu text), and the plural forms of Belarusian, Russian and English |
 | `mpris_test.cpp` | `Integrations::Mpris` over a session bus, driven by `gdbus` as an external client |
-| `milkdrop_test.cpp` | `Vis::MilkdropPresets`, preset switching (with the marquee text only for a preset picked by hand) and black-preset handling in `Ui::MilkdropWindow`; with OpenGL 3.3, projectM rendering, the black-picture detector and fullscreen |
+| `milkdrop_test.cpp` | `Vis::MilkdropPresets`, preset switching (with the marquee text only for a preset picked by hand) and black-preset handling in `Ui::MilkdropWindow`; with OpenGL 3.3, projectM rendering, the black-picture detector, fullscreen, and the view following the frame when the skin changes |
 | `tsan.supp` | ThreadSanitizer suppressions for Qt's and GLib's own libraries (see **ThreadSanitizer**) |
 | `data/sine440_3s.mp3` | 3 s of a 440 Hz sine: MPEG-1 Layer III, 64 kbps, 44.1 kHz, stereo, ID3v2.4 tag, 24,494 bytes |
 | `data/sine440_3s_heaac.m4a` | The same sine as HE-AAC (SBR) 64 kbps, 44.1 kHz, stereo, in MP4 with `moov` before `mdat`, 25,818 bytes. Encoded by fdk-aac 2.0.3's `aac-enc -t 5 -r 64000` from a generated WAV (amplitude 0.5), muxed by `ffmpeg 4.4 -c copy -movflags +faststart -map_metadata -1 -fflags +bitexact`. Its AudioSpecificConfig signals SBR implicitly (AAC-LC at 22,050 Hz), unlike Yandex's files, which signal it explicitly |
@@ -101,6 +102,7 @@ QT_QPA_PLATFORM=offscreen QIYAA_AUDIO_BACKEND=null build/tests/audio_test queued
 | CTest name | Links (`qiyaa_*`) | Runs as |
 |---|---|---|
 | `snap_test` | ui | plain |
+| `gen_window_test` | skins ui | plain |
 | `region_test` | skins | plain |
 | `yandex_test` | yandex (+ `qiyaa_test_yandex`) | plain; `QIYAA_YANDEX_TOKEN` adds a check against the real API |
 | `yandex_source_test` | core sources_yandex yandex (+ `qiyaa_test_yandex`) | plain |
@@ -130,7 +132,7 @@ QT_QPA_PLATFORM=offscreen QIYAA_AUDIO_BACKEND=null build/tests/audio_test queued
 | `jam_e2e_test` | app audio core jam ui yandex (+ `qiyaa_test_core`) | only with `QIYAA_HAVE_JAM`; `QIYAA_TEST_DATA`; skips without `QIYAA_JAM_TEST_SERVER` |
 | `mpris_test` | core integrations sources_yandex, Qt6::DBus | only with `QIYAA_HAVE_MPRIS`; under `dbus-run-session` |
 | `milkdrop_test` | audio skins ui vis | only with `QIYAA_HAVE_MILKDROP`; offscreen, so the GL functions skip |
-| `milkdrop_gl_test` | the `milkdrop_test` binary | only with `xvfb-run` and Qt's xcb plugin; three GL functions |
+| `milkdrop_gl_test` | the `milkdrop_test` binary | only with `xvfb-run` and Qt's xcb plugin; four GL functions |
 
 `QIYAA_TEST_DATA` is a compile definition that holds the absolute path of `tests/data` in the
 **source** tree.
@@ -151,8 +153,8 @@ directly. With no session bus it then skips itself in `initTestCase`. On a deskt
 
 **milkdrop_gl_test**: projectM needs an OpenGL 3.3 context, and the offscreen platform has
 none. With `QIYAA_HAVE_MILKDROP`, `xvfb-run` and the target `Qt6::QXcbIntegrationPlugin`
-available, CTest adds a second entry. It runs `rendersWithProjectM`, `blackPictureIsNoticed`
-and `fullScreenTakesOverRenderingAndGivesItBack` under `xvfb-run -a -s "-screen 0 1280x1024x24 +extension GLX"` with
+available, CTest adds a second entry. It runs `rendersWithProjectM`, `blackPictureIsNoticed`,
+`fullScreenTakesOverRenderingAndGivesItBack` and `theViewFollowsTheFrameWhenTheSkinChanges` under `xvfb-run -a -s "-screen 0 1280x1024x24 +extension GLX"` with
 `QT_QPA_PLATFORM=xcb`, `LIBGL_ALWAYS_SOFTWARE=1` (Mesa's software renderer),
 `QIYAA_AUDIO_BACKEND=null` and `QIYAA_EXPECT_GL=1`. `QIYAA_EXPECT_GL` turns "no OpenGL here"
 from a skip into a failure, because on that runner OpenGL must work (but see **Traps**).
@@ -654,6 +656,8 @@ events go through `QCoreApplication::sendEvent`, which is synchronous.
   raise `drawsPicture`.
 - `fullScreenTakesOverRenderingAndGivesItBack`: in fullscreen the windowed view stops rendering, because the fullscreen
   view renders instead. The final `qWait(100)` lets the deleted fullscreen view go.
+- `theViewFollowsTheFrameWhenTheSkinChanges`: the embedded view is 256x82 on base-2.91, 243x78
+  after `setSkin` with Vizor1-01 (the frame from its playlist), and 256x82 again.
 
 **mpris_test.** The suite shares these fixtures:
 
@@ -795,7 +799,7 @@ D-Bus, and OpenGL on a software renderer. This is how they stay stable:
   no `gdbus` or run alone, it times out after 3 s.
 - **`QIYAA_EXPECT_GL` is not honoured everywhere.** `rendersWithProjectM` fails when the view
   is missing or never gets ready. `blackPictureIsNoticed` fails only when the view is missing.
-  `fullScreenTakesOverRenderingAndGivesItBack` never checks the variable. `milkdrop_gl_test` can therefore pass with
+  `fullScreenTakesOverRenderingAndGivesItBack` and `theViewFollowsTheFrameWhenTheSkinChanges` never check the variable. `milkdrop_gl_test` can therefore pass with
   skips; read the ctest output for `SKIP`.
 - **Synthetic input uses skin coordinates.** Examples: Shuffle at (184, 96); the volume slider
   from x = 107; EQ band 60 Hz at x = 78 with 51 px of travel; the playlist's first row at

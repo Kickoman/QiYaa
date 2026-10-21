@@ -34,7 +34,8 @@ protected:
 
 private:
     enum class Drag { None, Close, Resize };
-    void paintFrame(QPainter& painter);
+    void paintGenFrame(QPainter& painter);
+    void paintPlaylistFrame(QPainter& painter);
 
     QString titleText;
     QSize resizeSteps{0, 0};

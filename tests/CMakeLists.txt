@@ -38,6 +38,7 @@ function(qiyaa_add_test name)
 endfunction()
 
 qiyaa_add_test(snap_test ui)
+qiyaa_add_test(gen_window_test skins ui)
 qiyaa_add_test(region_test skins)
 qiyaa_add_test(yandex_test yandex)
 target_link_libraries(yandex_test PRIVATE qiyaa_test_yandex)
@@ -149,7 +150,8 @@ if(QIYAA_HAVE_MILKDROP)
     find_program(XVFB_RUN xvfb-run)
     if(XVFB_RUN AND TARGET Qt6::QXcbIntegrationPlugin)
         add_test(NAME milkdrop_gl_test COMMAND ${XVFB_RUN} -a -s "-screen 0 1280x1024x24 +extension GLX"
-                 $<TARGET_FILE:milkdrop_test> rendersWithProjectM blackPictureIsNoticed fullScreenTakesOverRenderingAndGivesItBack)
+                 $<TARGET_FILE:milkdrop_test> rendersWithProjectM blackPictureIsNoticed fullScreenTakesOverRenderingAndGivesItBack
+                 theViewFollowsTheFrameWhenTheSkinChanges)
         # Fail instead of skipping: here OpenGL must work.
         set_tests_properties(milkdrop_gl_test PROPERTIES
             ENVIRONMENT "QT_QPA_PLATFORM=xcb;QIYAA_EXPECT_GL=1;LIBGL_ALWAYS_SOFTWARE=1;QIYAA_AUDIO_BACKEND=null")

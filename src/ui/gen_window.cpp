@@ -18,11 +18,14 @@ namespace Ui {
 
 using TSheet = Skins::Skin::Sheet;
 using Skins::GenWindowSprites;
+using Skins::PlaylistSprites;
 
 namespace {
 constexpr QSize kMinSize{275, 116};
 constexpr int kStepWidth = 25, kStepHeight = 29;
 constexpr int kTopHeight = 20, kBottomHeight = 14, kLeftWidth = 11, kRightWidth = 8;
+constexpr int kPlaylistBottomHeight = 18, kPlaylistBottomUpperRows = 8;
+constexpr int kTitleY = 7, kTitlePadding = 3, kTitlePlateHeight = 10;
 
 bool RectContains(const QRect& rect, QPoint point) {
     return point.x() >= rect.x() && point.y() >= rect.y() && point.x() < rect.x() + rect.width()
@@ -46,12 +49,20 @@ void GenWindow::setSizeSteps(QSize steps) {
 
 QRect GenWindow::contentRect() const {
     const QSize size = skinSize();
+    if (skin().genFrame() == Skins::Skin::GenFrame::Playlist) {
+        return {
+            PlaylistSprites::kLeftWidth,
+            PlaylistSprites::kTopHeight,
+            size.width() - PlaylistSprites::kLeftWidth - PlaylistSprites::kRightWidth,
+            size.height() - PlaylistSprites::kTopHeight - kPlaylistBottomHeight
+        };
+    }
     return {
         kLeftWidth, kTopHeight, size.width() - kLeftWidth - kRightWidth, size.height() - kTopHeight - kBottomHeight
     };
 }
 
-void GenWindow::paintFrame(QPainter& painter) {
+void GenWindow::paintGenFrame(QPainter& painter) {
     const Skins::Skin& activeSkin = skin();
     const int windowWidth = skinSize().width(), windowHeight = skinSize().height();
     const bool active = isActiveWindow();
@@ -136,13 +147,77 @@ void GenWindow::paintFrame(QPainter& painter) {
     );
 }
 
+void GenWindow::paintPlaylistFrame(QPainter& painter) {
+    const Skins::Skin& activeSkin = skin();
+    const int windowWidth = skinSize().width(), windowHeight = skinSize().height();
+    const bool active = isActiveWindow();
+
+    for (int x = 25; x < windowWidth - 25; x += 25) {
+        activeSkin.draw(
+            painter, TSheet::PlEdit, active ? PlaylistSprites::kTopTileSelected : PlaylistSprites::kTopTile, {x, 0}
+        );
+    }
+    activeSkin.draw(
+        painter, TSheet::PlEdit, active ? PlaylistSprites::kTopLeftSelected : PlaylistSprites::kTopLeft, {0, 0}
+    );
+    activeSkin.draw(
+        painter,
+        TSheet::PlEdit,
+        active ? PlaylistSprites::kTopRightSelected : PlaylistSprites::kTopRight,
+        {windowWidth - 25, 0}
+    );
+    const int titleWidth = Skins::Skin::TextWidth(titleText);
+    const QPoint titleAt((windowWidth - titleWidth) / 2, kTitleY);
+    const int plateTop = kTitleY - (kTitlePlateHeight - Skins::kCharHeight) / 2;
+    painter.fillRect(
+        QRect(titleAt.x() - kTitlePadding, plateTop, titleWidth + 2 * kTitlePadding, kTitlePlateHeight),
+        activeSkin.textBackground()
+    );
+    activeSkin.drawText(painter, titleAt, titleText);
+    if (activeDrag == Drag::Close) {
+        activeSkin.draw(painter, TSheet::PlEdit, PlaylistSprites::kCloseSelected, {windowWidth - 11, 3});
+    }
+
+    for (int y = PlaylistSprites::kTopHeight; y < windowHeight - kPlaylistBottomHeight; y += 29) {
+        const int tileHeight = std::min(29, windowHeight - kPlaylistBottomHeight - y);
+        activeSkin.draw(painter, TSheet::PlEdit, PlaylistSprites::kLeftTile.adjusted(0, 0, 0, tileHeight - 29), {0, y});
+        activeSkin.draw(
+            painter,
+            TSheet::PlEdit,
+            PlaylistSprites::kRightTile.adjusted(0, 0, 0, tileHeight - 29),
+            {windowWidth - PlaylistSprites::kRightWidth, y}
+        );
+    }
+
+    const int lowerRows = kPlaylistBottomHeight - kPlaylistBottomUpperRows;
+    const auto drawBottom = [&](const QRect& piece, int x) {
+        const QRect upper(piece.x(), piece.y(), piece.width(), kPlaylistBottomUpperRows);
+        const QRect lower(piece.x(), piece.y() + piece.height() - lowerRows, piece.width(), lowerRows);
+        activeSkin.draw(painter, TSheet::PlEdit, upper, {x, windowHeight - kPlaylistBottomHeight});
+        activeSkin.draw(painter, TSheet::PlEdit, lower, {x, windowHeight - lowerRows});
+    };
+    const int tilesEnd = windowWidth - PlaylistSprites::kRightWidth;
+    for (int x = PlaylistSprites::kLeftWidth; x < tilesEnd; x += 25) {
+        drawBottom(PlaylistSprites::kBottomTile.adjusted(0, 0, std::min(0, tilesEnd - x - 25), 0), x);
+    }
+    const QRect bottomLeft = PlaylistSprites::kBottomLeft;
+    drawBottom({bottomLeft.x(), bottomLeft.y(), PlaylistSprites::kLeftWidth, bottomLeft.height()}, 0);
+    const QRect bottomRight = PlaylistSprites::kBottomRight;
+    const int rightCornerX = bottomRight.x() + bottomRight.width() - PlaylistSprites::kRightWidth;
+    drawBottom({rightCornerX, bottomRight.y(), PlaylistSprites::kRightWidth, bottomRight.height()}, tilesEnd);
+}
+
 void GenWindow::paintSkin(QPainter& painter) {
     const QRect area = contentRect();
     painter.save();
     painter.setClipRect(area);
     paintContent(painter, area);
     painter.restore();
-    paintFrame(painter);
+    if (skin().genFrame() == Skins::Skin::GenFrame::Playlist) {
+        paintPlaylistFrame(painter);
+    } else {
+        paintGenFrame(painter);
+    }
 }
 
 bool GenWindow::isDragArea(QPoint skinPos) const {
