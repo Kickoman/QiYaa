@@ -1,5 +1,6 @@
 #include "spotify/protocol/audio_file.h"
 #include "spotify/protocol/bytes.h"
+#include "spotify/protocol/catalog.h"
 #include "spotify/protocol/crypto.h"
 #include "spotify/protocol/ids.h"
 #include "spotify/protocol/login.h"
@@ -12,10 +13,15 @@
 
 #include <array>
 #include <cstring>
+#include <initializer_list>
 #include <optional>
 #include <string>
+#include <utility>
+#include <vector>
 
 namespace {
+
+using SpotifyProtocol::ProtoWriter;
 
 using SpotifyProtocol::TBytes;
 
@@ -61,6 +67,14 @@ private Q_SLOTS:
     void normalisationIsReadAfterTheFirst144Bytes();
     void oggVorbisFollowsTheQualityThenFallsBackTo160();
     void clientTokenNamesThePlatformItRunsOn();
+    void metadataRequestAsksForEveryUriOnce();
+    void metadataReplyKeepsEachEntitysUriAndStatus();
+    void trackMetadataCarriesArtistsAlbumYearAndCovers();
+    void albumListsItsTracksDiscByDisc();
+    void artistTopTracksAreTheCountrysThenTheWorldwideOnes();
+    void collectionPageDropsRemovedItemsAndKeepsTheNextToken();
+    void rootlistKeepsNamedPlaylistsAndLeavesOutFoldersAndBrokenOnes();
+    void autoplayRequestNamesTheContextAndTheRecentTracks();
 };
 
 void TestSpotifyProtocol::sha1MatchesTheStandardVector() {
@@ -377,6 +391,213 @@ void TestSpotifyProtocol::clientTokenNamesThePlatformItRunsOn() {
     const TBytes mac = SpotifyProtocol::ClientTokenRequest(params);
     QCOMPARE(PlatformOf(mac, 3).size > 0, true);
     QCOMPARE(PlatformOf(mac, 5).size, std::size_t{0});
+}
+
+void TestSpotifyProtocol::metadataRequestAsksForEveryUriOnce() {
+    const TBytes request = SpotifyProtocol::MetadataRequest(
+        {"spotify:track:a", "spotify:track:b"}, SpotifyProtocol::ExtensionKind::AlbumV4
+    );
+    std::vector<std::string> uris;
+    SpotifyProtocol::ProtoReader reader(request);
+    while (reader.next()) {
+        QCOMPARE(reader.field(), 2);
+        SpotifyProtocol::ProtoReader entity(reader.bytes());
+        while (entity.next()) {
+            if (entity.field() == 1) {
+                uris.push_back(entity.string());
+            } else {
+                SpotifyProtocol::ProtoReader query(entity.bytes());
+                QVERIFY(query.next());
+                QCOMPARE(query.varint(), std::uint64_t{9});
+            }
+        }
+    }
+    QCOMPARE(uris, (std::vector<std::string>{"spotify:track:a", "spotify:track:b"}));
+}
+
+void TestSpotifyProtocol::metadataReplyKeepsEachEntitysUriAndStatus() {
+    const auto entity = [](const std::string& uri, int status, const std::string& payload) {
+        ProtoWriter header;
+        header.varint(1, static_cast<std::uint64_t>(status));
+        ProtoWriter any;
+        any.string(1, "type.googleapis.com/spotify.metadata.Track").string(2, payload);
+        ProtoWriter data;
+        data.message(1, header).string(2, uri);
+        if (!payload.empty()) {
+            data.message(3, any);
+        }
+        return data;
+    };
+    ProtoWriter array;
+    array.varint(2, 10).message(3, entity("spotify:track:b", 200, "B")).message(3, entity("spotify:track:a", 404, ""));
+    ProtoWriter reply;
+    reply.message(2, array);
+    const auto entities = SpotifyProtocol::ParseMetadataReply(reply.data());
+    QVERIFY(entities.has_value());
+    QCOMPARE(entities->size(), std::size_t{2});
+    QCOMPARE((*entities)[0].uri, std::string("spotify:track:b"));
+    QCOMPARE((*entities)[0].status, 200);
+    QCOMPARE((*entities)[0].data, (TBytes{'B'}));
+    QCOMPARE((*entities)[1].uri, std::string("spotify:track:a"));
+    QCOMPARE((*entities)[1].status, 404);
+    QVERIFY((*entities)[1].data.empty());
+}
+
+void TestSpotifyProtocol::trackMetadataCarriesArtistsAlbumYearAndCovers() {
+    ProtoWriter date;
+    date.varint(1, 1975 * 2);
+    ProtoWriter small;
+    small.bytes(1, TBytes(20, 0x64)).varint(2, 1).varint(3, 64 * 2).varint(4, 64 * 2);
+    ProtoWriter large;
+    large.bytes(1, TBytes(20, 0x40)).varint(2, 2);
+    ProtoWriter covers;
+    covers.message(1, small).message(1, large);
+    ProtoWriter album;
+    album.bytes(1, TBytes(16, 0xa1)).string(2, "Album").message(6, date).message(17, covers);
+    ProtoWriter first;
+    first.bytes(1, TBytes(16, 0x01)).string(2, "First");
+    ProtoWriter second;
+    second.bytes(1, TBytes(16, 0x02)).string(2, "Second");
+    ProtoWriter track;
+    track.bytes(1, TBytes(16, 0x7a)).string(2, "Song").message(3, album).message(4, first).message(4, second);
+    track.varint(7, 180000 * 2);
+
+    const std::optional<SpotifyProtocol::TrackInfo> info = SpotifyProtocol::ParseTrack(track.data());
+    QVERIFY(info.has_value());
+    QCOMPARE(info->artists.size(), std::size_t{2});
+    QCOMPARE(info->artists[1].name, std::string("Second"));
+    QCOMPARE(info->artists[1].gid[0], std::uint8_t{0x02});
+    QCOMPARE(info->album.name, std::string("Album"));
+    QCOMPARE(info->album.gid[0], std::uint8_t{0xa1});
+    QCOMPARE(info->album.year, 1975);
+    QCOMPARE(info->album.covers.size(), std::size_t{2});
+    QCOMPARE(info->album.covers[0].pixels, 64);
+    QCOMPARE(info->album.covers[0].id[0], std::uint8_t{0x64});
+    QCOMPARE(info->album.covers[1].pixels, 640);
+    QCOMPARE(info->durationMs, std::int64_t{180000});
+}
+
+void TestSpotifyProtocol::albumListsItsTracksDiscByDisc() {
+    const auto disc = [](int number, std::initializer_list<std::uint8_t> tracks) {
+        ProtoWriter writer;
+        writer.varint(1, static_cast<std::uint64_t>(number * 2));
+        for (const std::uint8_t id : tracks) {
+            ProtoWriter track;
+            track.bytes(1, TBytes(16, id));
+            writer.message(3, track);
+        }
+        return writer;
+    };
+    ProtoWriter artist;
+    artist.bytes(1, TBytes(16, 0x0a)).string(2, "Band");
+    ProtoWriter album;
+    album.bytes(1, TBytes(16, 0xa1)).string(2, "Double").message(3, artist);
+    album.message(11, disc(1, {0x11, 0x12})).message(11, disc(2, {0x21}));
+
+    const std::optional<SpotifyProtocol::AlbumInfo> info = SpotifyProtocol::ParseAlbum(album.data());
+    QVERIFY(info.has_value());
+    QCOMPARE(info->name, std::string("Double"));
+    QCOMPARE(info->artists.front().name, std::string("Band"));
+    QCOMPARE(info->tracks.size(), std::size_t{3});
+    QCOMPARE(info->tracks[0][0], std::uint8_t{0x11});
+    QCOMPARE(info->tracks[1][0], std::uint8_t{0x12});
+    QCOMPARE(info->tracks[2][0], std::uint8_t{0x21});
+}
+
+void TestSpotifyProtocol::artistTopTracksAreTheCountrysThenTheWorldwideOnes() {
+    const auto top = [](const std::string& country, std::uint8_t id) {
+        ProtoWriter track;
+        track.bytes(1, TBytes(16, id));
+        ProtoWriter writer;
+        writer.string(1, country).message(2, track);
+        return writer;
+    };
+    ProtoWriter artist;
+    artist.bytes(1, TBytes(16, 0x0a)).string(2, "Band").message(4, top("ZZ", 0x22)).message(4, top("BY", 0x11));
+    const std::optional<SpotifyProtocol::ArtistInfo> info = SpotifyProtocol::ParseArtist(artist.data());
+    QVERIFY(info.has_value());
+    QCOMPARE(info->name, std::string("Band"));
+    QCOMPARE(SpotifyProtocol::TopTracksIn(*info, "BY").front()[0], std::uint8_t{0x11});
+    QCOMPARE(SpotifyProtocol::TopTracksIn(*info, "PL").front()[0], std::uint8_t{0x22});
+    QVERIFY(SpotifyProtocol::TopTracksIn(SpotifyProtocol::ArtistInfo{}, "BY").empty());
+}
+
+void TestSpotifyProtocol::collectionPageDropsRemovedItemsAndKeepsTheNextToken() {
+    const TBytes request = SpotifyProtocol::CollectionPageRequest("owner", "collection", "", 300);
+    SpotifyProtocol::ProtoReader fields(request);
+    std::vector<int> numbers;
+    while (fields.next()) {
+        numbers.push_back(fields.field());
+    }
+    QCOMPARE(numbers, (std::vector<int>{1, 2, 4}));
+
+    const auto item = [](const std::string& uri, std::uint64_t addedAt, bool removed) {
+        ProtoWriter writer;
+        writer.string(1, uri).varint(2, addedAt);
+        if (removed) {
+            writer.varint(3, 1);
+        }
+        return writer;
+    };
+    ProtoWriter page;
+    page.message(1, item("spotify:track:new", 200, false)).message(1, item("spotify:track:gone", 150, true));
+    page.message(1, item("spotify:album:old", 100, false)).string(2, "next").string(3, "sync");
+    const std::optional<SpotifyProtocol::CollectionPage> parsed = SpotifyProtocol::ParseCollectionPage(page.data());
+    QVERIFY(parsed.has_value());
+    QCOMPARE(parsed->items.size(), std::size_t{2});
+    QCOMPARE(parsed->items[0].uri, std::string("spotify:track:new"));
+    QCOMPARE(parsed->items[1].addedAt, std::int64_t{100});
+    QCOMPARE(parsed->nextPageToken, std::string("next"));
+}
+
+void TestSpotifyProtocol::rootlistKeepsNamedPlaylistsAndLeavesOutFoldersAndBrokenOnes() {
+    ProtoWriter contents;
+    contents.varint(1, 0).varint(2, 0);
+    const std::vector<std::pair<std::string, std::string>> entries{
+        {"spotify:start-group:g1:Folder", ""},
+        {"spotify:playlist:one", "One"},
+        {"spotify:playlist:broken", "Broken"},
+        {"spotify:end-group:g1", ""},
+        {"spotify:playlist:two", "Two"},
+    };
+    for (const auto& [uri, name] : entries) {
+        ProtoWriter entry;
+        entry.string(1, uri);
+        contents.message(3, entry);
+    }
+    for (const auto& [uri, name] : entries) {
+        ProtoWriter attributes;
+        attributes.string(1, name);
+        ProtoWriter meta;
+        meta.message(2, attributes);
+        if (uri == "spotify:playlist:broken") {
+            meta.varint(9, 403 * 2);
+        }
+        contents.message(4, meta);
+    }
+    ProtoWriter rootlist;
+    rootlist.varint(2, 5).message(5, contents);
+    const std::optional<SpotifyProtocol::ListPage> page = SpotifyProtocol::ParseListPage(rootlist.data());
+    QVERIFY(page.has_value());
+    QCOMPARE(page->length, 5);
+    const std::vector<SpotifyProtocol::ListItem> playlists = SpotifyProtocol::PlaylistsOf(*page);
+    QCOMPARE(playlists.size(), std::size_t{2});
+    QCOMPARE(playlists[0].uri, std::string("spotify:playlist:one"));
+    QCOMPARE(playlists[0].name, std::string("One"));
+    QCOMPARE(playlists[1].name, std::string("Two"));
+}
+
+void TestSpotifyProtocol::autoplayRequestNamesTheContextAndTheRecentTracks() {
+    const TBytes request =
+        SpotifyProtocol::AutoplayRequest("spotify:user:owner:collection", {"spotify:track:a", "spotify:track:b"});
+    std::vector<std::pair<int, std::string>> fields;
+    SpotifyProtocol::ProtoReader reader(request);
+    while (reader.next()) {
+        fields.emplace_back(reader.field(), reader.string());
+    }
+    QCOMPARE(fields.size(), std::size_t{3});
+    QCOMPARE(fields[0], (std::pair<int, std::string>{1, "spotify:user:owner:collection"}));
+    QCOMPARE(fields[2], (std::pair<int, std::string>{2, "spotify:track:b"}));
 }
 
 QTEST_GUILESS_MAIN(TestSpotifyProtocol)

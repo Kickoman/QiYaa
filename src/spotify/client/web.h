@@ -26,6 +26,15 @@ struct WebReply {
     bool ok() const { return status >= 200 && status < 300; }
 };
 
+struct WebRequest {
+    QByteArray method = QByteArrayLiteral("GET");
+    QString path;
+    QByteArray body{};
+    QByteArray contentType{};
+    QByteArray accept = QByteArrayLiteral("application/x-protobuf");
+    bool accountQuery = true;
+};
+
 class Web : public QObject {
     Q_OBJECT
 public:
@@ -41,13 +50,8 @@ public:
         QString appVersion,
         QObject* parent = nullptr);
 
-    void spclient(
-        const QByteArray& method,
-        const QString& pathAndQuery,
-        const QByteArray& body,
-        const QByteArray& contentType,
-        TReply done
-    );
+    void spclient(const WebRequest& request, TReply done);
+    void pathfinder(const QByteArray& query, TReply done);
     void forgetTokens();
     QByteArray userAgent() const { return agent; }
 
@@ -58,14 +62,7 @@ private:
     void fetchClientToken(const QByteArray& body, int round);
     void fetchBearer(const QByteArray& requestBody, int round);
     void finishTokens(const WebReply* failure);
-    void send(
-        const QByteArray& method,
-        const QString& pathAndQuery,
-        const QByteArray& body,
-        const QByteArray& contentType,
-        TReply done,
-        bool retried
-    );
+    void send(const WebRequest& request, bool onPathfinder, TReply done, bool retried);
     QNetworkReply* post(const QNetworkRequest& request, const QByteArray& body);
     static WebReply ReplyOf(QNetworkReply* reply);
 

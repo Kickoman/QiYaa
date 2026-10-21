@@ -13,7 +13,8 @@ sends the HTTP bodies it builds, hands it the time and owns the threads. Crypto 
 |---|---|
 | `access_point.h/.cpp` | `AccessPoint`: the TCP session with an access point (AP). The handshake (DH over Oakley group 1, the RSA signature of the server's key, HMAC-SHA1 key derivation), Shannon-framed packets, the login with stored credentials or an OAuth token, the keep-alive, audio keys, the account's country and product. `Credentials`, `ClientIdentity`, `ServerKey`, `LoginError`, the events |
 | `login.h/.cpp` | Bodies and replies of `clienttoken.spotify.com/v1/clienttoken` and `login5.spotify.com/v3/login`, the platform data client-token wants, and the hashcash both may ask for |
-| `metadata.h/.cpp` | `extended-metadata` (`TRACK_V4`) request and reply, the Ogg Vorbis file to play for a bitrate, `storage-resolve` reply |
+| `metadata.h/.cpp` | `extended-metadata` requests and replies (`TRACK_V4`, `ALBUM_V4`, `ARTIST_V4`, many at once), a track's artists, album and covers, an album's tracks, an artist's top tracks, the Ogg Vorbis file to play for a bitrate, `storage-resolve` reply |
+| `catalog.h/.cpp` | The library and the lists: `collection/v2/paging` request and reply, a playlist or the rootlist (`playlist4` `SelectedListContent`), the autoplay request |
 | `audio_file.h/.cpp` | `AudioDecryptor` (AES-128-CTR with Spotify's fixed IV, from any byte offset), the 167-byte Spotify header, the normalisation values in it |
 | `crypto.h/.cpp`, `modpow.h/.c` | SHA-1, HMAC-SHA1, RSA PKCS#1 v1.5 check, modular power, AES-CTR over BearSSL. `modpow.c` is C because BearSSL's `inner.h` is not valid C++ |
 | `shannon.h/.cpp` | The Shannon stream cipher and MAC, after the `shannon` crate (MIT) |
@@ -64,6 +65,32 @@ public:
   bytes. Retries and what a code means for playback are the caller's.
 - `ApCountry` and `ApProduct` (the `<type>` of ProductInfo, `premium` or `free`) come once after the login.
 - `ServerKey` exists for tests: anything but `SpotifyServerKey()` talks to a fake AP.
+
+## `metadata.h`, `catalog.h`: the catalogue
+
+Bodies to send and replies to read; the HTTP is the caller's ([src/spotify/client](../client/README.md)).
+Checked live on 2026-10-21 against one account.
+
+- `MetadataRequest(uris, kind)`: one `extended-metadata` request for many entities. `ParseMetadataReply` gives each
+  entity's URI, status and payload (the `Any`'s value). Match the payloads by URI: the reply's order is not the
+  request's. A status other than 200, or an empty payload, means the entity is gone.
+- `ParseTrack`: the name, the artists, the album (name, year, covers), the duration, the files and the alternatives.
+  A track the account's country may not play comes without files and with an alternative that has them; a track
+  with neither is not available (SPOT-15): `PickOggVorbis` returns nothing for it.
+- `Image::pixels` is the image's width when Spotify gives it, else its size class (64, 300, 640, 1280). Covers are
+  `https://i.scdn.co/image/<hex of the id>`.
+- `ParseAlbum`: the album's track ids, disc by disc in order; their metadata is a `TRACK_V4` request.
+  `ParseArtist` and `TopTracksIn(artist, country)`: the top tracks of the country, else the worldwide `ZZ` ones,
+  else those without a country.
+- `CollectionPageRequest(username, set, pageToken, limit)` for `POST /collection/v2/paging` with
+  `kCollectionContentType` as both `Content-Type` and `Accept`. Sets: `collection` holds the liked tracks and the
+  saved albums (told apart by the URI), `artist` the followed artists; a set Spotify does not know answers 403
+  (`albums` does). `ParseCollectionPage` drops removed items; an empty `nextPageToken` is the last page.
+- `ParseListPage` reads `GET /playlist/v2/playlist/<id>` and `/playlist/v2/user/<username>/rootlist`: the name, the
+  length, where the page starts, whether more follow, the items. With `decorate=attributes` each item of the
+  rootlist gets its name, and items whose status is not 200 are left out. `PlaylistsOf` keeps the playlists of a
+  rootlist, folders flattened.
+- `AutoplayRequest(contextUri, recentTrackUris)` for `POST /context-resolve/v1/autoplay`; the reply is JSON.
 
 ## What QiYaa tells Spotify about itself
 

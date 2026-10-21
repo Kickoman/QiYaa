@@ -85,63 +85,62 @@ void FileDownload::prepare() {
     const SpotifyProtocol::TBytes request = SpotifyProtocol::TrackMetadataRequest(uri);
     const QByteArray body(reinterpret_cast<const char*>(request.data()), static_cast<qsizetype>(request.size()));
     QPointer<FileDownload> self(this);
-    web->spclient(
-        "POST",
-        QStringLiteral("/extended-metadata/v0/extended-metadata"),
-        body,
-        kProtobuf,
-        [self](const WebReply& answer) {
+    const WebRequest metadata{
+        .method = "POST",
+        .path = QStringLiteral("/extended-metadata/v0/extended-metadata"),
+        .body = body,
+        .contentType = kProtobuf,
+    };
+    web->spclient(metadata, [self](const WebReply& answer) {
+        if (!self || self->done) {
+            return;
+        }
+        if (!answer.ok()) {
+            const DownloadFailure::Kind kind =
+                answer.network ? DownloadFailure::Kind::Network : DownloadFailure::Kind::Track;
+            self->fail(kind, answer.error.isEmpty() ? tr("Spotify: HTTP %1").arg(answer.status) : answer.error);
+            return;
+        }
+        const std::optional<SpotifyProtocol::TrackInfo> info = SpotifyProtocol::ParseTrackMetadata(View(answer.body));
+        const std::optional<SpotifyProtocol::PlayableFile> playable =
+            info ? SpotifyProtocol::PickOggVorbis(*info, self->preferredKbps) : std::nullopt;
+        if (!playable) {
+            self->fail(DownloadFailure::Kind::Track, tr("Spotify has no file of this track to play"));
+            return;
+        }
+        self->file = playable->file.id;
+        self->chosenKbps = KbpsOf(playable->file.format);
+        self->session->audioKey(playable->track, playable->file.id, [self](const KeyResult& result) {
             if (!self || self->done) {
                 return;
             }
-            if (!answer.ok()) {
-                const DownloadFailure::Kind kind =
-                    answer.network ? DownloadFailure::Kind::Network : DownloadFailure::Kind::Track;
-                self->fail(kind, answer.error.isEmpty() ? tr("Spotify: HTTP %1").arg(answer.status) : answer.error);
+            if (!result.key) {
+                switch (result.failure) {
+                    case KeyFailure::Refused:
+                        self->fail(
+                            DownloadFailure::Kind::KeyRefused, tr("Spotify does not let this account play here")
+                        );
+                        return;
+                    case KeyFailure::Network:
+                        self->fail(DownloadFailure::Kind::Network, tr("no connection to Spotify"));
+                        return;
+                    case KeyFailure::Failed: break;
+                }
+                self->fail(DownloadFailure::Kind::Track, tr("Spotify did not give the key of this track"));
                 return;
             }
-            const std::optional<SpotifyProtocol::TrackInfo> info = SpotifyProtocol::ParseTrackMetadata(View(answer.body)
-            );
-            const std::optional<SpotifyProtocol::PlayableFile> playable =
-                info ? SpotifyProtocol::PickOggVorbis(*info, self->preferredKbps) : std::nullopt;
-            if (!playable) {
-                self->fail(DownloadFailure::Kind::Track, tr("Spotify has no file of this track to play"));
-                return;
-            }
-            self->file = playable->file.id;
-            self->chosenKbps = KbpsOf(playable->file.format);
-            self->session->audioKey(playable->track, playable->file.id, [self](const KeyResult& result) {
-                if (!self || self->done) {
-                    return;
-                }
-                if (!result.key) {
-                    switch (result.failure) {
-                        case KeyFailure::Refused:
-                            self->fail(
-                                DownloadFailure::Kind::KeyRefused, tr("Spotify does not let this account play here")
-                            );
-                            return;
-                        case KeyFailure::Network:
-                            self->fail(DownloadFailure::Kind::Network, tr("no connection to Spotify"));
-                            return;
-                        case KeyFailure::Failed: break;
-                    }
-                    self->fail(DownloadFailure::Kind::Track, tr("Spotify did not give the key of this track"));
-                    return;
-                }
-                self->key = result.key;
-                self->decryptor = std::make_unique<SpotifyProtocol::AudioDecryptor>(*result.key);
-                self->resolveStorage();
-            });
-        }
-    );
+            self->key = result.key;
+            self->decryptor = std::make_unique<SpotifyProtocol::AudioDecryptor>(*result.key);
+            self->resolveStorage();
+        });
+    });
 }
 
 void FileDownload::resolveStorage() {
     const QString path = QStringLiteral("/storage-resolve/files/audio/interactive/")
         + QString::fromStdString(SpotifyProtocol::ToHex(file));
     QPointer<FileDownload> self(this);
-    web->spclient("GET", path, {}, kProtobuf, [self](const WebReply& answer) {
+    web->spclient(WebRequest{.path = path}, [self](const WebReply& answer) {
         if (!self || self->done) {
             return;
         }
