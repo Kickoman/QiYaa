@@ -16,7 +16,7 @@ module `src/sources/<name>` with the namespace `<Name>Source` and the library
 module to its right:
 
 ```
-audio, yandex, spotify/protocol, skins, telemetry  →  vis, core  →  sources/yandex, sources/local  →  jam  →  ui, integrations  →  app  →  qiyaa (src/app/main.cpp)
+audio, yandex, spotify/protocol, skins, telemetry  →  vis, core, spotify/client  →  sources/yandex, sources/local  →  jam  →  ui, integrations  →  app  →  qiyaa (src/app/main.cpp)
 ```
 
 | Module | Namespace | What it does | Links PUBLIC | Links PRIVATE |
@@ -24,6 +24,7 @@ audio, yandex, spotify/protocol, skins, telemetry  →  vis, core  →  sources/
 | [src/audio](../src/audio/README.md) | `Audio` | Plays a file while it downloads: decoder thread, blocks of audio with what they are, equalizer, gapless chaining, `.eqf` presets; AAC in MP4 for the economy quality, Ogg Vorbis for Spotify and local files | Qt Core | miniaudio, minimp4, fdk-aac, stb_vorbis |
 | [src/yandex](../src/yandex/README.md) | `Yandex` | Yandex Music HTTP API, OAuth device login, signed track links, the token file | Qt Core, Network | |
 | [src/spotify/protocol](../src/spotify/protocol/README.md) | `SpotifyProtocol` | Spotify's client protocol in standard C++ without Qt, shared with Android (sans-IO): the access point session (handshake, login, keep-alive, audio keys), client-token and login5 bodies, track metadata, decrypting the files | | BearSSL |
+| [src/spotify/client](../src/spotify/client/README.md) | `SpotifyClient` | Spotify on Qt: the logins (a code at spotify.com/pair, the browser), the access point connection with its keep-alive, reconnects and audio keys, the client-token and login5 tokens and `spclient` requests, a track's file from the CDN, decrypted | spotify/protocol, Qt Core, Network | |
 | [src/skins](../src/skins/README.md) | `Skins` | Loads `.wsz` skins: sheets, `region.txt`, `pledit.txt`, `viscolor.txt`, bitmap text; sprite tables | Qt Gui | miniz |
 | [src/telemetry](../src/telemetry/README.md) | `Telemetry` | Usage statistics and crash reports ([spec/telemetry](../spec/telemetry/README.md)): the events kept on disk until the jam server takes them, the crash handler. Optional (`QIYAA_WITH_TELEMETRY`, on in the releases) | Qt Core, Network | Qt Gui; dbghelp (Windows) or dl |
 | [src/vis](../src/vis/README.md) | `Vis` | Spectrum, oscilloscope, FFT; Milkdrop through projectM in a `QOpenGLWindow` | Qt Gui (+ OpenGL) | audio, skins (+ projectM) |

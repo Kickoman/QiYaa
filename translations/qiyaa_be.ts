@@ -274,6 +274,74 @@
     </message>
 </context>
 <context>
+    <name>SpotifyClient::BrowserLogin</name>
+    <message>
+        <source>QiYaa did not get access to Spotify. You can close this page.</source>
+        <translation>QiYaa не атрымала доступу да Spotify. Гэтую старонку можна закрыць.</translation>
+    </message>
+    <message>
+        <source>the browser&apos;s answer does not match the request</source>
+        <translation>адказ браўзера не адпавядае запыту</translation>
+    </message>
+    <message>
+        <source>QiYaa is logging in to Spotify. You can close this page.</source>
+        <translation>QiYaa ўваходзіць у Spotify. Гэтую старонку можна закрыць.</translation>
+    </message>
+</context>
+<context>
+    <name>SpotifyClient::FileDownload</name>
+    <message>
+        <source>Spotify: HTTP %1</source>
+        <translation>Spotify: HTTP %1</translation>
+    </message>
+    <message>
+        <source>Spotify has no file of this track to play</source>
+        <translation>у Spotify няма файла гэтага трэка, які можна прайграць</translation>
+    </message>
+    <message>
+        <source>Spotify does not let this account play here</source>
+        <translation>Spotify не дазваляе гэтаму акаўнту граць тут</translation>
+    </message>
+    <message>
+        <source>no connection to Spotify</source>
+        <translation>няма злучэння са Spotify</translation>
+    </message>
+    <message>
+        <source>Spotify did not give the key of this track</source>
+        <translation>Spotify не даў ключ гэтага трэка</translation>
+    </message>
+    <message>
+        <source>Spotify gave no link to this track&apos;s file</source>
+        <translation>Spotify не даў спасылку на файл гэтага трэка</translation>
+    </message>
+</context>
+<context>
+    <name>SpotifyClient::PairLogin</name>
+    <message>
+        <source>the code has expired, start again</source>
+        <translation>код састарэў, пачніце нанова</translation>
+    </message>
+</context>
+<context>
+    <name>SpotifyClient::Web</name>
+    <message>
+        <source>Spotify did not give a client token</source>
+        <translation>Spotify не даў токен кліента</translation>
+    </message>
+    <message>
+        <source>not logged in to Spotify</source>
+        <translation>няма ўваходу ў Spotify</translation>
+    </message>
+    <message>
+        <source>Spotify did not give an access token</source>
+        <translation>Spotify не даў токен доступу</translation>
+    </message>
+    <message>
+        <source>Spotify gave no server to ask</source>
+        <translation>Spotify не назваў сервер для запытаў</translation>
+    </message>
+</context>
+<context>
     <name>Ui::EqualizerWindow</name>
     <message>
         <source>Equalizer preset</source>

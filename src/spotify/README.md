@@ -6,6 +6,6 @@ A group of modules for Spotify as a music source ([#52](https://github.com/Kicko
 | Module | Namespace, library | What it is |
 |---|---|---|
 | [protocol](protocol/README.md) | `SpotifyProtocol`, `qiyaa_spotify_protocol` | Spotify's client protocol in standard C++ without Qt, shared with Android: the access point session, client-token and login5, track metadata, audio keys, decrypting the files |
+| [client](client/README.md) | `SpotifyClient`, `qiyaa_spotify_client` | Spotify's client on Qt Core and Network: the logins (a code, the browser), the access point connection and its keys, the web tokens and requests, a track's file from the CDN |
 
-The Qt client (connections, HTTP, login, the catalogue) and the source itself come next, as `src/spotify/client`
-and `src/sources/spotify`.
+The source itself, with the catalogue and the menus, comes next as `src/sources/spotify`.
