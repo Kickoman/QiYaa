@@ -147,7 +147,10 @@ void MainMenu::addLocalActions(QMenu* menu) {
 
 void MainMenu::openLocalFiles() {
     const QStringList paths = QFileDialog::getOpenFileNames(
-        parts.mainWindow, tr("Open files"), localStartFolder(), tr("Audio files (*.mp3 *.flac *.wav *.m4a *.mp4)")
+        parts.mainWindow,
+        tr("Open files"),
+        localStartFolder(),
+        tr("Audio files (*.mp3 *.flac *.wav *.m4a *.mp4 *.ogg *.oga)")
     );
     if (!paths.isEmpty()) {
         parts.settings->setLastLocalFolder(QFileInfo(paths.front()).absolutePath());

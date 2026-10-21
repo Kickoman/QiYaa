@@ -91,6 +91,7 @@ private Q_SLOTS:
         QTest::newRow("flac") << QStringLiteral("sine440_1s.flac") << 1'000 << kPng;
         QTest::newRow("wav") << QStringLiteral("sine440_1s.wav") << 1'000 << kPng;
         QTest::newRow("aac in mp4, no picture types") << QStringLiteral("sine440_3s_heaac.m4a") << 3'160 << kJpeg;
+        QTest::newRow("ogg vorbis") << QStringLiteral("sine440_3s.ogg") << 3'000 << kPng;  // LOCAL-09
     }
 
     void aFileGivesItsTagsItsDurationAndItsFrontCover() {  // LOCAL-04, LOCAL-05
@@ -166,6 +167,13 @@ private Q_SLOTS:
         QVERIFY(tags);
         QVERIFY(!tags->playable);
         QVERIFY(tags->durationMs > 900);
+    }
+
+    void anOggOfAnotherCodecCannotPlay() {  // LOCAL-09
+        const std::optional<LocalSource::FileTags> tags =
+            LocalSource::ReadTags(copied(QStringLiteral("sine440_1s_flac.ogg"), QStringLiteral("flac.ogg")));
+        QVERIFY(tags);
+        QVERIFY(!tags->playable);
     }
 
     void aTagOverTheReadLimitIsLeftOutWhole() {

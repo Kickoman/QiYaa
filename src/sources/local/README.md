@@ -71,9 +71,10 @@ QString ReadTagLyrics(const QString& path);              // empty: none
     picture. MP4 keeps no picture types.
   - Only JPEG and PNG count, by their first bytes rather than the stated MIME type.
   - A picture over `kMaxPictureBytes` is left out, and the other tags are read as usual.
-- **`playable`** (LOCAL-02). It is true for MPEG audio, FLAC, WAV, and MP4 with AAC, which are the
-  files the engine decodes. It is false for an MP4 with another codec (ALAC, for one) and for ADTS
-  AAC, which TagLib opens as an MPEG file but the engine would hand to its mp3 decoder.
+- **`playable`** (LOCAL-02, LOCAL-09). It is true for MPEG audio, FLAC, WAV, MP4 with AAC and Ogg
+  Vorbis, which are the files the engine decodes. It is false for an MP4 with another codec (ALAC, for
+  one), for an Ogg with another codec (Opus, FLAC), and for ADTS AAC, which TagLib opens as an MPEG file
+  but the engine would hand to its mp3 decoder.
 - **`nullopt`**: a file that cannot be opened (missing, a folder, no permission), an empty file, or
   one of no format TagLib knows.
 - **Sizes are bounded before allocation.**
@@ -100,7 +101,7 @@ fixtures and reads them back.
 
 ```cpp
 inline const QString kSourceName = QStringLiteral("local");
-inline const QStringList kExtensions = {"mp3", "flac", "wav", "m4a", "mp4"};
+inline const QStringList kExtensions = {"mp3", "flac", "wav", "m4a", "mp4", "ogg", "oga"};
 bool HasAudioExtension(const QString& path);           // by its suffix, ignoring case
 Core::Track TrackOf(const QString& path, const std::optional<FileTags>& tags, const QString& cover);
 ```
