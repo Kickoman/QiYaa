@@ -107,6 +107,18 @@ parity table; [spec/README.md](spec/README.md) says what is where. Nothing in it
 - **Never edit `spec/` only here.** A change inside the submodule that is not pushed to QiYaa-spec
   breaks every other checkout.
 
+## Branches and pull requests
+
+- **A feature gets a branch of its own**, `feature/<name>`, made from `master`. When it takes
+  several pull requests (the engine, a client, the source, the menus…), each of them targets the
+  feature branch and is reviewed and merged there, never into `master` piece by piece.
+- **`master` takes the whole feature at once**: the feature branch is merged when the feature is
+  complete (its spec statuses are "yes", docs and translations are in, CI is green), after it has
+  been brought up to date with `master`.
+- A change that fits one pull request (a fix, a document) goes to `master` through that pull request.
+- The spec repository is not part of this: a feature's spec commits go to QiYaa-spec's `master`
+  first, as above, because the apps pin its commits.
+
 ## Before you send a change
 
 ```bash
