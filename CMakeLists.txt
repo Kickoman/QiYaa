@@ -132,6 +132,8 @@ qiyaa_add_module(core
     src/core/cover_cache.cpp    src/core/cover_cache.h
     src/core/failure_policy.cpp src/core/failure_policy.h
     src/core/jam_mode.cpp       src/core/jam_mode.h
+    src/core/lyrics.cpp         src/core/lyrics.h
+    src/core/lyrics_finder.cpp  src/core/lyrics_finder.h
     src/core/player.cpp         src/core/player.h
     src/core/queue.cpp          src/core/queue.h
     src/core/queue_source.h
@@ -185,6 +187,7 @@ add_library(TagLib::tag ALIAS tag)
 
 qiyaa_add_module(sources_local
     src/sources/local/catalog.cpp   src/sources/local/catalog.h
+    src/sources/local/lyrics.cpp    src/sources/local/lyrics.h
     src/sources/local/scan.cpp      src/sources/local/scan.h
     src/sources/local/source.cpp    src/sources/local/source.h
     src/sources/local/tags.cpp      src/sources/local/tags.h

@@ -200,6 +200,38 @@ private Q_SLOTS:
         QVERIFY(QFile::remove(path));
     }
 
+    void lyricsComeFromTheTags_data() {  // LYR-10
+        QTest::addColumn<QString>("fixture");
+        QTest::addColumn<QString>("key");
+        QTest::newRow("mp3") << QStringLiteral("sine440_3s.mp3") << QStringLiteral("LYRICS");
+        QTest::newRow("mp3, a frame with a description") << QStringLiteral("sine440_3s.mp3"
+        ) << QStringLiteral("LYRICS:words");
+        QTest::newRow("wav") << QStringLiteral("sine440_1s.wav") << QStringLiteral("LYRICS");
+        QTest::newRow("flac") << QStringLiteral("sine440_1s.flac") << QStringLiteral("LYRICS");
+        QTest::newRow("aac in mp4") << QStringLiteral("sine440_3s_heaac.m4a") << QStringLiteral("LYRICS");
+    }
+
+    void lyricsComeFromTheTags() {
+        QFETCH(QString, fixture);
+        QFETCH(QString, key);
+        const QString path = copied(fixture, QStringLiteral("lyrics.") + fixture.section(u'.', -1));
+        QVERIFY(!path.isEmpty());
+        const QString text = QStringLiteral("[00:01.00]Першы радок\n[00:02.50]Другі радок");
+        TagLib::PropertyMap properties = Properties();
+        properties.replace(TagText(key), TagLib::StringList(TagText(text)));
+        QVERIFY(Tag(path, properties, {}));
+        QCOMPARE(LocalSource::ReadTagLyrics(path), text);
+        QCOMPARE(LocalSource::ReadTags(path)->title, QStringLiteral("Купалінка"));
+    }
+
+    void aFileWithoutLyricsGivesNoText() {  // LYR-10
+        QCOMPARE(
+            LocalSource::ReadTagLyrics(copied(QStringLiteral("sine440_1s.flac"), QStringLiteral("plain.flac"))),
+            QString()
+        );
+        QCOMPARE(LocalSource::ReadTagLyrics(directory.filePath(QStringLiteral("absent.mp3"))), QString());
+    }
+
     void aFileOfNoKnownFormatGivesNothing() {
         const QString text = directory.filePath(QStringLiteral("notes.txt"));
         QFile notes(text);

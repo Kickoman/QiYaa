@@ -4,7 +4,9 @@ The user's own audio files as one of the [music sources](../README.md), describe
 [spec/player/local.md](../../../spec/player/local.md).
 - `Catalog` turns files or a folder the user opens into the `Core::Player`'s queue: it reads them
   on its own thread, with each file's tags and cover.
-- `Source` is their `Core::TrackSource`: it opens a file on disk for the engine to read in place.
+- `Source` is their `Core::TrackSource`: it opens a file on disk for the engine to read in place,
+  and reads a file's lyrics from an `.lrc` next to it and from its tags
+  ([spec/player/lyrics.md](../../../spec/player/lyrics.md), LYR-10).
 
 The module does not decode audio ([src/audio](../../audio/README.md)), shows no dialog (the menu
 items are `App::MainMenu`'s, [src/app](../../app/README.md)) and knows nothing of Yandex Music. A
@@ -15,8 +17,9 @@ queue of local files has no wave from history (CONT-12). Namespace `LocalSource`
 |---|---|
 | `catalog.h/.cpp` | `Catalog`: opening files or a folder with a ticket each, on a thread of its own, and the statuses |
 | `scan.h/.cpp` | `ScanFiles`, `ScanFolder`, `ScanResult`, `kMaxFiles`, `kMaxFolders`, `kCoverPixels`: the files to queue, in order, with their tags and covers |
-| `source.h/.cpp` | `Source`, the `Core::TrackSource` of local files: the cover, opening the file |
-| `tags.h/.cpp` | `FileTags`, `ReadTags`, `kMaxPictureBytes`, `kMaxReadBytes`: what a file's tags say about it, through TagLib |
+| `lyrics.h/.cpp` | `LrcPathOf`, `ReadLrc`, `ReadLyrics`: a file's lyrics from its `.lrc` and its tags, in the order of LYR-10 |
+| `source.h/.cpp` | `Source`, the `Core::TrackSource` of local files: the cover, opening the file, the lyrics on a thread of their own |
+| `tags.h/.cpp` | `FileTags`, `ReadTags`, `ReadTagLyrics`, `kMaxPictureBytes`, `kMaxReadBytes`: what a file's tags say about it, through TagLib |
 | `tracks.h/.cpp` | `kSourceName`, `kExtensions`, `HasAudioExtension`, `TrackOf`: a file as a `Core::Track` |
 
 ## Dependencies
@@ -54,6 +57,7 @@ struct FileTags {
 };
 
 std::optional<FileTags> ReadTags(const QString& path);   // nullopt: not a file TagLib knows
+QString ReadTagLyrics(const QString& path);              // empty: none
 ```
 
 - **What is read** (LOCAL-04).
@@ -78,7 +82,12 @@ std::optional<FileTags> ReadTags(const QString& path);   // nullopt: not a file 
     allocate more.
   - The trade-off: a tag read in one block, such as an ID3v2 tag with its pictures, is lost whole
     when it is larger than that. Such a file reads like one without tags.
-- **Threads.** It may be called on any thread, one call at a time per file. TagLib 2.3.2 guards
+- **`ReadTagLyrics`** (LYR-10) gives the first of TagLib's `LYRICS` and `LYRICS:<description>`
+  keys, as it is: USLT in an ID3v2 tag of an mp3 or WAV file (TagLib names a frame with a
+  description other than empty or `LYRICS` by it), the `LYRICS` Vorbis comment of FLAC, `©lyr` of
+  MP4. It reads through the same `BoundedStream`, and opens the file a second time: the lyrics are
+  read only when the lyrics view asks, never during a scan.
+- **Threads.** Both may be called on any thread, one call at a time per file. TagLib 2.3.2 guards
   its shared caches.
 - **Debug output.** TagLib's own debug output (only in a debug build of it) goes to the logging
   category `qiyaa.taglib`, off by default (`QT_LOGGING_RULES=qiyaa.taglib.debug=true` shows it),
@@ -160,6 +169,7 @@ class Source : public Core::TrackSource {
     QUrl webPage(const Core::Track& track) const override;                // always empty (LOCAL-08)
     void open(const Core::Track& track, TOpened done) override;
     void trackEvent(Core::TrackEvent, const Core::Track&, double) override;   // nothing to report (LOCAL-08)
+    void lyrics(const Core::Track& track, Core::TLyricsDone done) override;
 };
 ```
 
@@ -177,6 +187,18 @@ class Source : public Core::TrackSource {
 - A file that cannot be opened is `TrackFailure{Track, "cannot open the file <name>"}` (LOCAL-07).
   `Network` is never answered, so no network wait applies.
 - A source destroyed before it answers drops the answer.
+- **`lyrics`** (LYR-10) reads on a new `QThread` per call and answers on the source's thread
+  through a queued call, so never inside the call. `ReadLyrics` does the reading:
+  - **The `.lrc`.** `LrcPathOf` finds it: the file in the same folder whose name without the
+    extension is the track's and whose extension is `.lrc` in any case. `ReadLrc` decodes it: by
+    its byte order mark, else as UTF-8, else in the system's code page. A file over
+    `Core::kMaxLyricsBytes` is not read (LYR-11).
+  - **The order.** A synced `.lrc` (`LrcFile`), then the tags' lyrics (`FileTags`, synced or
+    plain), then a plain `.lrc`; otherwise `Missing`. A synced `.lrc` spares the tags' read.
+  - A file that cannot be read gives `Missing`, never `Failed`: asking again would not help.
+  - Another source's track gets `Missing` on the next pass of the event loop.
+  - The destructor waits for every reading thread, so an answer never reaches a destroyed source,
+    and one that was still queued is dropped with it.
 
 ## `catalog.h`: `Catalog`
 

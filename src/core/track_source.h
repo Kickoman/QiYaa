@@ -2,6 +2,7 @@
 
 #include "audio/byte_source.h"
 #include "core/failure_policy.h"
+#include "core/lyrics.h"
 #include "core/track.h"
 
 #include <QByteArray>
@@ -53,6 +54,7 @@ public:
     virtual QUrl webPage(const Track& track) const = 0;
     virtual void open(const Track& track, TOpened done) = 0;
     virtual void trackEvent(TrackEvent event, const Track& track, double playedSeconds) = 0;
+    virtual void lyrics(const Track& track, TLyricsDone done) = 0;
 
 Q_SIGNALS:
     void filesChanged();
@@ -70,6 +72,7 @@ public:
     QUrl webPage(const Track& track) const;
     void open(const Track& track, TrackSource::TOpened done);
     void trackEvent(TrackEvent event, const Track& track, double playedSeconds);
+    void lyrics(const Track& track, TLyricsDone done);
 
 Q_SIGNALS:
     void filesChanged(const QString& source);

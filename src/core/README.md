@@ -1,4 +1,4 @@
-# `src/core` — playback controller, jam mode and cover cache
+# `src/core` — playback controller, jam mode, lyrics and cover cache
 
 This folder decides what plays. `Player` holds the queue of the current source and moves through it:
 play, pause, stop, next, previous, shuffle and repeat. It asks an endless source (a wave) for more
@@ -8,10 +8,13 @@ preloads the following track, so the engine can go on without a gap, and it repo
 start and end: to the source (Yandex's play report) and to the continuation that gave the track, for
 feedback. `JamMode` is the jam over the host's own queue: the guests' items as the queue's layer,
 the host's source under them (`spec/jam/host.md`). `CoverCache` downloads album covers and keeps
-them in memory and on disk. The folder does not decide what a pick plays or talk to a source's
+them in memory and on disk. `LyricsFinder` decides which lyrics text the lyrics view shows
+(`spec/player/lyrics.md`): it asks the current track's source and, when the user allows it, a lyrics
+service, and keeps their answers for the last tracks. The folder does not decide what a pick plays or talk to a source's
 catalogue ([src/sources](../sources/README.md)). It does not decode or output audio or chain streams
 at the sample level ([src/audio](../audio/README.md)). It speaks to no music service: links, files,
-cover URLs and play reports are a source's ([src/sources](../sources/README.md)). It builds no menus
+cover URLs, play reports and lyrics are a source's ([src/sources](../sources/README.md)), and a
+lyrics service is a module outside core behind `LyricsService`. It builds no menus
 ([src/ui](../ui/README.md), `library_menu.cpp`), shows nothing on screen and holds no text for the
 user: the `Player` says what happened as `PlayerNotice` codes, and `src/ui` words them. Namespace
 `Core`, library `qiyaa_core`.
@@ -22,6 +25,8 @@ user: the `Player` says what happened as `PlayerNotice` codes, and `src/ui` word
 | `queue.h/.cpp` | `Queue`, private to `Player`: the entries, the cursor, what plays next and before (waiting items, the head through the navigator, then the continuation), shuffle and repeat, the title, the layer's seeds, and the load-more generation |
 | `track.h/.cpp` | `Track`, `TrackKey`, `CoverRef`, `TrackEvent`: a track of any source |
 | `track_source.h/.cpp` | `TrackSource`, what each music source implements; `TrackDownload`, `OpenedTrack`, `TrackFailure`, `TOpenResult`; `SourceRegistry`, the sources by name |
+| `lyrics.h/.cpp` | `Lyrics`, `LyricsLine`, `LyricsKind`, `LyricsFrom`, `LyricsAnswer`, `TLyricsDone`: a track's lyrics as a source or a service answers them; `ParseLyricsText` (LRC or plain) and `PlainLyrics`, with the limits |
+| `lyrics_finder.h/.cpp` | `LyricsFinder`: the text the lyrics view shows, from the source and the service in their order; `LyricsService`, the port of a lyrics service; `LyricsLookup`, what a lookup ended with |
 | `source_notice.h` | `SourceNotice`, `SourceNoticeCode`: what a source's catalogue says about a pick, a like or a dislike, as a code for `src/ui` to word |
 | `continuation.h` | `Continuation`, what follows a queue's head: more tracks on request and the events of the tracks it gave; `ContinuationRequest`, `ContinuationReply`, `SeedHint` |
 | `queue_source.h` | `QueueSource` (a title, a head, a continuation and the tracks it already gave), `QueueEntry` and `EntryPart`: what a source puts into the queue and what each entry is; `LayerItem`, `QueueRules` and `QueueLayer`: what a layer over the queue (the jam) brings |
@@ -767,6 +772,7 @@ public:
     virtual QUrl webPage(const Track& track) const = 0;                // empty: no web page
     virtual void open(const Track& track, TOpened done) = 0;
     virtual void trackEvent(TrackEvent event, const Track& track, double playedSeconds) = 0;
+    virtual void lyrics(const Track& track, TLyricsDone done) = 0;
 Q_SIGNALS:
     void filesChanged();                          // the same track would now open another file
 };
@@ -779,6 +785,7 @@ public:
     QUrl webPage(const Track& track) const;
     void open(const Track& track, TrackSource::TOpened done);
     void trackEvent(TrackEvent event, const Track& track, double playedSeconds);
+    void lyrics(const Track& track, TLyricsDone done);
 Q_SIGNALS:
     void filesChanged(const QString& source);
 };
@@ -802,8 +809,14 @@ Q_SIGNALS:
   source does with it is its own (Yandex reports `Started` only).
 - `filesChanged`: the source now opens other files for the same tracks (another quality). The
   registry re-emits it with the source's name.
+- `lyrics` answers with the track's lyrics as the source has them ([`lyrics.h`](#lyricsh-lyrics)),
+  under the same rules as `open`: `done` exactly once, from the event loop, never inside the call,
+  and a port destroyed first may drop it. The asker may be gone by then: `LyricsFinder` checks a
+  `QPointer` to itself in every `done` it hands out. A port answers `NoAccount` when it would need
+  a login it does not have, `Failed` when asking again later may help, and `Missing` otherwise.
 - The registry routes by `track.key.source`. A track of a source it does not know fails to open
-  with `TrackFailure{Track}` on the next pass of the event loop, and its events go nowhere.
+  with `TrackFailure{Track}` on the next pass of the event loop, its events go nowhere, and its
+  lyrics are `Missing` on the next pass.
 - Like, dislike and the other capabilities of a source are not in the port yet: the Yandex menu
   asks `YandexSource::Catalog`.
 
@@ -1000,6 +1013,111 @@ reports through its signals. What the queue does is the `Player`'s [layer](#the-
 - HOST-09 (a broken last jam track) is the `Player`'s own ERR-07: `DecideOnFailure` says Next when
   a continuation follows (the policy table in `tests/failures_test.cpp`). `jam_mode_test` does not
   repeat it.
+
+## `lyrics.h`: `Lyrics`
+
+```cpp
+inline constexpr qsizetype kMaxLyricsBytes = 256 * 1024;      // a text over it, in UTF-8, is not taken
+inline constexpr qsizetype kMaxLyricsLines = 2000;
+inline constexpr qsizetype kMaxLyricsLineCharacters = 500;
+
+struct LyricsLine { qint64 ms = -1; QString text; };            // ms < 0: a line of plain text
+enum class LyricsKind { Synced, Plain };
+struct Lyrics { LyricsKind kind = LyricsKind::Plain; QList<LyricsLine> lines; };
+enum class LyricsFrom { Catalog, LrcFile, FileTags, ThirdParty };   // what the view names as the text's origin
+struct LyricsAnswer {
+    enum class Status { Found, Missing, Instrumental, Failed, NoAccount };
+    Status status = Status::Missing;
+    Lyrics lyrics;                                               // Found only
+    LyricsFrom from = LyricsFrom::Catalog;
+    bool serverError = false;                                    // Missing after the server kept failing
+};
+using TLyricsDone = std::function<void(LyricsAnswer answer)>;
+
+std::optional<Lyrics> ParseLyricsText(QStringView text);        // LRC or plain; nullopt: nothing, or over the limit
+std::optional<Lyrics> PlainLyrics(QStringView text);            // plain whatever the text holds
+```
+
+- `ParseLyricsText` follows `spec/lyrics/README.md` (LYR-11, LYR-12), and `lyrics_test` checks it
+  against `spec/lyrics/lrc.json`. A text with one line that starts with a time tag is synced; its
+  lines are sorted by time, a pause is an empty line, and lines without times are dropped. Any
+  other text is plain, with runs of empty lines made one.
+- `PlainLyrics` is the plain half alone, for a source whose text never carries times (Yandex
+  Music's `fullLyrics`).
+- `LyricsFrom::Catalog` is the catalogue of the track's source; `src/ui` words it by
+  `track.key.source`. `LrcFile` and `FileTags` are a local file's. `ThirdParty` is the lyrics
+  service's: `LyricsFinder` sets it on every answer of the service.
+- `serverError` lets a service say "nothing found" while counting a failure: LRCLIB answers some
+  misses with 503.
+
+## `lyrics_finder.h`: `LyricsFinder`
+
+```cpp
+class LyricsService : public QObject {                           // the lyrics service, outside core
+public:
+    virtual void lyrics(const Track& track, TLyricsDone done) = 0;   // as TrackSource::lyrics
+    virtual void cancel() = 0;                                   // the running request's done never comes
+};
+
+struct LyricsLookup {
+    enum class Shown { SourceSynced, ThirdPartySynced, SourceText, ThirdPartyText, Instrumental, None };
+    Shown shown = Shown::None;
+    bool thirdPartyFailed = false;
+};
+
+class LyricsFinder : public QObject {
+public:
+    enum class Phase { Idle, Loading, Shown, Missing, Instrumental, Failed, NoAccount };
+    struct View {
+        std::optional<Track> track;                              // the track looked up; none when Idle
+        Phase phase = Phase::Idle;
+        Lyrics lyrics;                                           // Shown only
+        LyricsFrom from = LyricsFrom::Catalog;
+        bool better = false;                                     // a text higher in the order may still come
+    };
+    LyricsFinder(Player* player, SourceRegistry* sources, LyricsService* thirdParty, QObject* parent = nullptr);
+    void setActive(bool on);                                     // the view is open
+    void setThirdPartyEnabled(bool on);                          // off until set
+    bool hasThirdParty() const;                                  // a service was given
+    void retryFailed();                                          // the network is back
+    void forget();                                               // the account changed
+    void setWaits(int answerMs, int sourceSilentMs);             // 8 s and 1 s unless a test sets them
+    const View& view() const;
+Q_SIGNALS:
+    void changed();                                              // view() was set again
+    void lookedUp(const Core::LyricsLookup& lookup);
+};
+```
+
+The rules are `spec/player/lyrics.md`'s; `tests/lyrics_test.cpp` checks them by ID.
+
+- **Only while active** (LYR-01). Inactive, it asks nothing and its view is `Idle`. Turning it on
+  looks up the current track, from memory when it can; turning it off drops what is being asked.
+- **The current track.** It follows `Player::currentTrackChanged` and `playlistChanged` (the cursor
+  can move without the first) and compares the `TrackKey`, so the many signals of one track ask
+  once. No current track is `Idle`.
+- **The order** (LYR-03, LYR-05). The source is asked at once. The service is asked when it is
+  given and on, and the source has no synced text: it answered without one, or has not answered
+  within the silent wait. A synced answer of the source cancels the service. The view shows the
+  first text of: the source's synced, the service's synced, the source's plain, the service's
+  plain. Without a text: `Instrumental` when the service says so, `Loading` while anyone is asked,
+  then `NoAccount` or `Failed` by the source's answer, else `Missing`.
+- **Waits.** A source or a service that has not answered within the answer wait has nothing, and
+  its late answer is dropped; the service gets `cancel()`.
+- **Stale answers** (LYR-09). Each request has a number and each `done` a `QPointer` to the
+  finder: an answer for an earlier request, track or lookup, or after the finder is gone, does
+  nothing.
+- **Memory** (LYR-14). The answers of the last 10 tracks, the source's and the service's apart.
+  `Failed`, `NoAccount` and a wait that ran out are not kept. An answer from memory sent no request,
+  so its `serverError` does not count again. `forget()` empties it and looks up the
+  current track again.
+- **Turning the service on and off** (LYR-15). On: asked at once when the source has no synced
+  text. Off: its answer is dropped from the view and its request cancelled.
+- **`retryFailed`** (LYR-17) asks again whoever answered `Failed` for the current track.
+- **`lookedUp`** comes once per lookup that sent a request, when everyone asked has answered, when
+  the track changes, or when the finder turns off, with what the view showed then: the telemetry's
+  lyrics counts (`spec/telemetry`). Turning the service on during a track starts a new lookup.
+- **Threads.** Main thread only, like the `Player` it follows.
 
 ## `cover_cache.h`: `CoverCache`
 

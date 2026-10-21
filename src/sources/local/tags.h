@@ -26,5 +26,6 @@ struct FileTags {
 };
 
 std::optional<FileTags> ReadTags(const QString& path);
+QString ReadTagLyrics(const QString& path);
 
 }  // namespace LocalSource

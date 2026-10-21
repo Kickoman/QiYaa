@@ -39,4 +39,11 @@ void SourceRegistry::trackEvent(TrackEvent event, const Track& track, double pla
     }
 }
 
+void SourceRegistry::lyrics(const Track& track, TLyricsDone done) {
+    if (TrackSource* port = find(track.key.source)) {
+        return port->lyrics(track, std::move(done));
+    }
+    QTimer::singleShot(0, this, [done = std::move(done)] { done(LyricsAnswer{}); });
+}
+
 }  // namespace Core

@@ -17,7 +17,7 @@ on after a head (the jam vibe during a jam). The module does not speak HTTP or p
 | `vibe.h/.cpp` | `Vibe`, the `Core::Continuation` of a vibe or station: `radioStarted`, load-more, the feedback on its tracks |
 | `history_wave.h/.cpp` | `HistoryWave`, the vibe that goes on after a queue's head, from the tracks that started; `HistoryWaves`, its factory for `Core::Player`; `HistorySeeds` |
 | `wave_origins.h/.cpp` | `WaveOrigins`: the session, station and batch each wave track came in, and the feedback sent to them |
-| `source.h/.cpp` | `Source`, the `Core::TrackSource` of Yandex tracks: the cover, the web page, opening the file, the play report, the quality; `FailureKindOf` |
+| `source.h/.cpp` | `Source`, the `Core::TrackSource` of Yandex tracks: the cover, the web page, opening the file, the play report, the lyrics, the quality; `FailureKindOf` |
 | `tracks.h/.cpp` | `kSourceName`, `KeyOf`, `TrackOf`, `TracksOf`, `YandexTrackOf`, `CatalogId`: `Core::Track` ↔ `Yandex::Track`; `WaveEventOf` |
 
 ## Dependencies
@@ -196,6 +196,7 @@ public:
     QUrl webPage(const Core::Track& track) const override;                // Yandex::Track::webUrl
     void open(const Core::Track& track, TOpened done) override;
     void trackEvent(Core::TrackEvent event, const Core::Track& track, double playedSeconds) override;
+    void lyrics(const Core::Track& track, Core::TLyricsDone done) override;
     void setQuality(Yandex::Quality quality);                             // filesChanged on a change
     Yandex::Quality quality() const;                                      // Standard until set
 };
@@ -217,6 +218,18 @@ settings and changes it from the menu.
 - **`trackEvent`**: `Started` posts `/play-audio` with the account, the key's id, the duration and
   a new UUID as the play id. `Finished` and `Skipped` send nothing. The `Player` leaves out the
   tracks of a jam (HOST-15).
+- **`lyrics`** (spec LYR-02, LYR-16). Without a token it answers `NoAccount` and asks nothing.
+  Otherwise it asks two things at once and answers when both have:
+  - **the synced text**, the private `askSynced`. For now it is the place where the signed
+    `/tracks/<id>/lyrics` request will go once someone sees a 200 from it
+    ([spec](../../../spec/player/lyrics.md#synced-lyrics-not-yet)): it answers `Missing` on the next
+    pass of the event loop and sends nothing;
+  - **the plain text**, `ApiClient::lyricsText` (`/supplement`), as `Core::PlainLyrics`: Yandex's
+    text is plain whatever it holds. No text, or an HTTP error below 500 (an id the server does
+    not know is 400), is `Missing`; a broken connection or a 5xx is `Failed`, which the finder
+    asks again when the network is back.
+
+  A synced answer wins over the plain one. Every answer is `LyricsFrom::Catalog`.
 - **`setQuality`** applies from the next link on: the playing track goes on with its file, and
   `filesChanged` makes the `Player` fetch its preload again (QUAL-05).
 - The `Library` must outlive the `Source` and every download it opened.

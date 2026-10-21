@@ -76,6 +76,18 @@ Core::TOpenResult Open(Core::TrackSource& source, const Core::Track& track) {
     return result ? std::move(*result) : Core::TOpenResult(Core::TrackFailure{Core::FailureKind::Track, "timeout"});
 }
 
+Core::LyricsAnswer AskLyrics(Core::TrackSource& source, const Core::Track& track, bool* answeredInside = nullptr) {
+    std::optional<Core::LyricsAnswer> answer;
+    source.lyrics(track, [&](Core::LyricsAnswer lyrics) { answer = std::move(lyrics); });
+    if (answeredInside) {
+        *answeredInside = answer.has_value();
+    }
+    if (!QTest::qWaitFor([&] { return answer.has_value(); }, 5'000)) {
+        return {.status = Core::LyricsAnswer::Status::Failed, .from = Core::LyricsFrom::ThirdParty};
+    }
+    return *answer;
+}
+
 }  // namespace
 
 class TestYandexSource : public QObject {
@@ -225,6 +237,67 @@ private Q_SLOTS:
         QCOMPARE(source.quality(), Yandex::Quality::Economy);
         QCOMPARE(changed.count(), 1);
         QCOMPARE(changed.first().first().toString(), YandexSource::kSourceName);
+    }
+
+    void lyricsAreTheSupplementsPlainText() {  // LYR-02
+        server.fixture(
+            "GET", QStringLiteral("/tracks/33311009/supplement"), QStringLiteral("tracks-supplement/with-lyrics")
+        );
+        YandexSource::Source source(&library);
+        const qsizetype from = server.requests().size();
+        bool answeredInside = true;
+        const Core::LyricsAnswer answer = AskLyrics(
+            source, YandexSource::TrackOf(Sample(QStringLiteral("33311009"), QStringLiteral("4"))), &answeredInside
+        );
+        QVERIFY(!answeredInside);
+        QCOMPARE(answer.status, Core::LyricsAnswer::Status::Found);
+        QCOMPARE(answer.from, Core::LyricsFrom::Catalog);
+        QCOMPARE(answer.lyrics.kind, Core::LyricsKind::Plain);
+        const QString expected =
+            Tests::ExpectedObject(QStringLiteral("tracks-supplement/with-lyrics"))
+                .value(QStringLiteral("lyrics"))
+                .toString();
+        QCOMPARE(answer.lyrics, *Core::PlainLyrics(expected));
+        QCOMPARE(requestsTo(QStringLiteral("/tracks/"), from), 1);
+    }
+
+    void noSupplementTextOrABadRequestIsMissingAndAServerErrorIsAFailure() {  // LYR-02, LYR-17
+        server.fixture(
+            "GET", QStringLiteral("/tracks/51/supplement"), QStringLiteral("tracks-supplement/without-lyrics")
+        );
+        server.json("GET", QStringLiteral("/tracks/52/supplement"), "{}", 500);
+        server.fixture(
+            "GET", QStringLiteral("/tracks/53/supplement"), QStringLiteral("tracks-supplement/400-validate")
+        );
+        YandexSource::Source source(&library);
+        QCOMPARE(
+            AskLyrics(source, YandexSource::TrackOf(Sample(QStringLiteral("51"), {}))).status,
+            Core::LyricsAnswer::Status::Missing
+        );
+        QCOMPARE(
+            AskLyrics(source, YandexSource::TrackOf(Sample(QStringLiteral("52"), {}))).status,
+            Core::LyricsAnswer::Status::Failed
+        );
+        QCOMPARE(
+            AskLyrics(source, YandexSource::TrackOf(Sample(QStringLiteral("53"), {}))).status,
+            Core::LyricsAnswer::Status::Missing
+        );
+    }
+
+    void withoutALoginYandexIsNotAskedForLyrics() {  // LYR-16
+        Tests::LocalNetworkAccessManager network;
+        Yandex::ApiClient anonymous(&network);
+        anonymous.setBaseUrl(server.baseUrl());
+        Yandex::Library nobody(&anonymous);
+        YandexSource::Source source(&nobody);
+        const qsizetype from = server.requests().size();
+        bool answeredInside = true;
+        const Core::LyricsAnswer answer =
+            AskLyrics(source, YandexSource::TrackOf(Sample(QStringLiteral("33311009"), {})), &answeredInside);
+        QVERIFY(!answeredInside);
+        QCOMPARE(answer.status, Core::LyricsAnswer::Status::NoAccount);
+        QTest::qWait(50);
+        QCOMPARE(server.requests().size(), from);
     }
 
     void aTrackOfNoSourceFailsAfterOpenReturns() {

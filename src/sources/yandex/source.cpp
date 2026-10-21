@@ -3,9 +3,11 @@
 #include "sources/yandex/tracks.h"
 #include "yandex/download.h"
 
+#include <QTimer>
 #include <QUuid>
 
 #include <memory>
+#include <optional>
 #include <utility>
 
 namespace YandexSource {
@@ -76,6 +78,49 @@ void Source::trackEvent(Core::TrackEvent event, const Core::Track& track, double
     yandexLibrary->api()->reportPlayStarted(
         yandexLibrary->account(), track.key.id, track.durationMs, QUuid::createUuid().toString(QUuid::WithoutBraces)
     );
+}
+
+void Source::lyrics(const Core::Track& track, Core::TLyricsDone done) {
+    Yandex::ApiClient* api = yandexLibrary->api();
+    if (!api->hasToken()) {
+        QTimer::singleShot(0, this, [done = std::move(done)] {
+            done(Core::LyricsAnswer{.status = Core::LyricsAnswer::Status::NoAccount});
+        });
+        return;
+    }
+    struct Parts {
+        std::optional<Core::LyricsAnswer> synced;
+        std::optional<Core::LyricsAnswer> plain;
+        Core::TLyricsDone done;
+    };
+    auto parts = std::make_shared<Parts>(Parts{.done = std::move(done)});
+    const auto finish = [parts] {
+        if (!parts->synced || !parts->plain) {
+            return;
+        }
+        const bool synced = parts->synced->status == Core::LyricsAnswer::Status::Found;
+        parts->done(synced ? *parts->synced : *parts->plain);
+    };
+    const QString id = CatalogId(track.key);
+    askSynced(id, [parts, finish](Core::LyricsAnswer answer) {
+        parts->synced = std::move(answer);
+        finish();
+    });
+    api->lyricsText(id, [parts, finish](const std::optional<QString>& text, const Yandex::RequestError& error) {
+        Core::LyricsAnswer answer;
+        if (error.isError()) {
+            const bool mayPass = error.kind == Yandex::RequestError::Kind::Network || error.httpStatus >= 500;
+            answer.status = mayPass ? Core::LyricsAnswer::Status::Failed : Core::LyricsAnswer::Status::Missing;
+        } else if (const std::optional<Core::Lyrics> lyrics = text ? Core::PlainLyrics(*text) : std::nullopt) {
+            answer = Core::LyricsAnswer{.status = Core::LyricsAnswer::Status::Found, .lyrics = *lyrics};
+        }
+        parts->plain = std::move(answer);
+        finish();
+    });
+}
+
+void Source::askSynced(const QString&, Core::TLyricsDone done) {
+    QTimer::singleShot(0, this, [done = std::move(done)] { done(Core::LyricsAnswer{}); });
 }
 
 void Source::setQuality(Yandex::Quality quality) {

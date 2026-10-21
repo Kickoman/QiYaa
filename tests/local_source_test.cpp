@@ -6,6 +6,7 @@
 #include "core/track_source.h"
 #include "integrations/media_controls.h"
 #include "sources/local/catalog.h"
+#include "sources/local/lyrics.h"
 #include "sources/local/scan.h"
 #include "sources/local/source.h"
 #include "sources/local/tracks.h"
@@ -19,9 +20,12 @@
 #include <QList>
 #include <QSignalSpy>
 #include <QString>
+#include <QStringConverter>
+#include <QStringEncoder>
 #include <QStringList>
 #include <QTemporaryDir>
 #include <QTest>
+#include <QThread>
 #include <QUrl>
 #include <fileref.h>
 #include <tbytevector.h>
@@ -73,6 +77,21 @@ bool Tag(const QString& path, const QString& title, const QStringList& artists, 
         pictures.append(cover);
         file.setComplexProperties("PICTURE", pictures);
     }
+    return file.save();
+}
+
+bool TagLyrics(const QString& path, const QString& text) {
+#ifdef _WIN32
+    TagLib::FileRef file(reinterpret_cast<const wchar_t*>(path.utf16()));
+#else
+    TagLib::FileRef file(QFile::encodeName(path).constData());
+#endif
+    if (file.isNull()) {
+        return false;
+    }
+    TagLib::PropertyMap properties = file.properties();
+    properties.replace("LYRICS", TagLib::StringList(TagLib::String(text.toStdWString())));
+    file.setProperties(properties);
     return file.save();
 }
 
@@ -293,6 +312,129 @@ private Q_SLOTS:
         const auto* failure = std::get_if<Core::TrackFailure>(&*answer);
         QVERIFY(failure);
         QCOMPARE(failure->kind, Core::FailureKind::Track);
+    }
+
+    void lyricsTakeTheFilesOwnOrder_data() {  // LYR-10
+        QTest::addColumn<QString>("lrcName");
+        QTest::addColumn<QString>("lrc");
+        QTest::addColumn<QString>("tags");
+        QTest::addColumn<int>("from");
+        QTest::addColumn<QString>("first");
+        const int lrcFile = static_cast<int>(Core::LyricsFrom::LrcFile);
+        const int fileTags = static_cast<int>(Core::LyricsFrom::FileTags);
+        const QString song = QStringLiteral("song.lrc");
+        QTest::newRow("synced lrc over synced tags"
+        ) << song
+          << QStringLiteral("[00:01.00]lrc") << QStringLiteral("[00:01.00]tags") << lrcFile << QStringLiteral("lrc");
+        QTest::newRow("synced tags over a plain lrc"
+        ) << song
+          << QStringLiteral("lrc") << QStringLiteral("[00:01.00]tags") << fileTags << QStringLiteral("tags");
+        QTest::newRow("plain tags over a plain lrc"
+        ) << song
+          << QStringLiteral("lrc") << QStringLiteral("tags") << fileTags << QStringLiteral("tags");
+        QTest::newRow("a plain lrc alone"
+        ) << song
+          << QStringLiteral("lrc") << QString() << lrcFile << QStringLiteral("lrc");
+        QTest::newRow("an lrc in capitals"
+        ) << QStringLiteral("song.LRC")
+          << QStringLiteral("[00:01.00]upper") << QString() << lrcFile << QStringLiteral("upper");
+        QTest::newRow("another song's lrc"
+        ) << QStringLiteral("song 2.lrc")
+          << QStringLiteral("[00:01.00]other") << QString() << -1 << QString();
+    }
+
+    void lyricsTakeTheFilesOwnOrder() {
+        QFETCH(QString, lrcName);
+        QFETCH(QString, lrc);
+        QFETCH(QString, tags);
+        QFETCH(int, from);
+        QFETCH(QString, first);
+        const QString folder =
+            QStringLiteral("lyrics/") + QString::fromLatin1(QTest::currentDataTag()).replace(u' ', u'-');
+        const QString audio = copied(QStringLiteral("sine440_3s.mp3"), folder + QStringLiteral("/song.mp3"));
+        QVERIFY(!audio.isEmpty());
+        if (!tags.isEmpty()) {
+            QVERIFY(TagLyrics(audio, tags));
+        }
+        QVERIFY(!written(folder + u'/' + lrcName, lrc.toUtf8()).isEmpty());
+        const Core::LyricsAnswer answer = LocalSource::ReadLyrics(audio);
+        if (from < 0) {
+            QCOMPARE(answer.status, Core::LyricsAnswer::Status::Missing);
+            return;
+        }
+        QCOMPARE(answer.status, Core::LyricsAnswer::Status::Found);
+        QCOMPARE(static_cast<int>(answer.from), from);
+        QCOMPARE(answer.lyrics.lines.front().text, first);
+    }
+
+    void anLrcIsReadInItsEncoding_data() {  // LYR-10
+        QTest::addColumn<int>("encoding");
+        QTest::addColumn<bool>("mark");
+        QTest::newRow("UTF-8") << static_cast<int>(QStringConverter::Utf8) << false;
+        QTest::newRow("UTF-8 with a byte order mark") << static_cast<int>(QStringConverter::Utf8) << true;
+        QTest::newRow("UTF-16 LE with a byte order mark") << static_cast<int>(QStringConverter::Utf16LE) << true;
+        QTest::newRow("UTF-16 BE with a byte order mark") << static_cast<int>(QStringConverter::Utf16BE) << true;
+    }
+
+    void anLrcIsReadInItsEncoding() {
+        QFETCH(int, encoding);
+        QFETCH(bool, mark);
+        const QString text = QStringLiteral("[00:01.00]Ноч і зоры над ракой");
+        QStringEncoder encoder(
+            static_cast<QStringConverter::Encoding>(encoding),
+            mark ? QStringConverter::Flag::WriteBom : QStringConverter::Flag::Default
+        );
+        const QByteArray bytes = encoder(text);
+        const QString lrcPath = written(QStringLiteral("encodings/song.lrc"), bytes);
+        QCOMPARE(LocalSource::ReadLrc(lrcPath), std::optional<QString>(text));
+    }
+
+    void anLrcOverTheLimitIsNotRead() {  // LYR-11
+        const QString audio = copied(QStringLiteral("sine440_3s.mp3"), QStringLiteral("big lrc/song.mp3"));
+        QVERIFY(TagLyrics(audio, QStringLiteral("from the tags")));
+        const QByteArray big = "[00:01.00]" + QByteArray(Core::kMaxLyricsBytes, 'a');
+        QVERIFY(!written(QStringLiteral("big lrc/song.lrc"), big).isEmpty());
+        QVERIFY(!LocalSource::ReadLrc(path(QStringLiteral("big lrc/song.lrc"))));
+        const Core::LyricsAnswer answer = LocalSource::ReadLyrics(audio);
+        QCOMPARE(answer.from, Core::LyricsFrom::FileTags);
+        QCOMPARE(answer.lyrics.lines.front().text, QStringLiteral("from the tags"));
+    }
+
+    void theSourceReadsLyricsAfterItReturns() {  // LYR-10
+        const QString audio = copied(QStringLiteral("sine440_3s.mp3"), QStringLiteral("threaded/song.mp3"));
+        QVERIFY(!written(QStringLiteral("threaded/song.lrc"), "[00:01.00]line").isEmpty());
+        LocalSource::Source source;
+        Core::Track track;
+        track.key = {LocalSource::kSourceName, audio};
+        std::optional<Core::LyricsAnswer> answer;
+        QThread* answeredOn = nullptr;
+        source.lyrics(track, [&](Core::LyricsAnswer lyrics) {
+            answer = std::move(lyrics);
+            answeredOn = QThread::currentThread();
+        });
+        QVERIFY(!answer);
+        QTRY_VERIFY(answer);
+        QCOMPARE(answeredOn, QThread::currentThread());
+        QCOMPARE(answer->from, Core::LyricsFrom::LrcFile);
+        track.key.source = QStringLiteral("yandex");
+        answer.reset();
+        source.lyrics(track, [&](Core::LyricsAnswer lyrics) { answer = std::move(lyrics); });
+        QVERIFY(!answer);
+        QTRY_VERIFY(answer);
+        QCOMPARE(answer->status, Core::LyricsAnswer::Status::Missing);
+    }
+
+    void aSourceGoneBeforeItsReaderEndsDropsTheAnswer() {
+        const QString audio = path(QStringLiteral("threaded/song.mp3"));
+        bool answered = false;
+        {
+            LocalSource::Source source;
+            Core::Track track;
+            track.key = {LocalSource::kSourceName, audio};
+            source.lyrics(track, [&](Core::LyricsAnswer) { answered = true; });
+        }
+        QTest::qWait(50);
+        QVERIFY(!answered);
     }
 
     void aFolderIsReadUpToItsLimits() {  // LOCAL-02

@@ -17,11 +17,14 @@ public:
     QUrl webPage(const Core::Track& track) const override;
     void open(const Core::Track& track, TOpened done) override;
     void trackEvent(Core::TrackEvent event, const Core::Track& track, double playedSeconds) override;
+    void lyrics(const Core::Track& track, Core::TLyricsDone done) override;
 
     void setQuality(Yandex::Quality quality);
     Yandex::Quality quality() const { return fileQuality; }
 
 private:
+    void askSynced(const QString& trackId, Core::TLyricsDone done);
+
     Yandex::Library* yandexLibrary;
     Yandex::Quality fileQuality = Yandex::Quality::Standard;
 };
