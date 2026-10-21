@@ -3,6 +3,7 @@
 #include "app/account.h"
 #include "app/jam_bridge.h"
 #include "app/settings.h"
+#include "app/spotify_account.h"
 #include "app/telemetry_bridge.h"
 #include "app/window_set.h"
 #include "audio/audio_engine.h"
@@ -103,15 +104,7 @@ void MainMenu::showSources(QPoint globalPosition) {
     auto* menu = new QMenu(parts.mainWindow);
     menu->setAttribute(Qt::WA_DeleteOnClose);
     addLocalActions(menu);
-    Ui::AddLibraryActions(
-        menu,
-        parts.library,
-        parts.catalog,
-        parts.sources,
-        parts.player->currentTrack(),
-        parts.mainWindow,
-        [this] { QTimer::singleShot(0, parts.account, &Account::login); }
-    );
+    addSourceMenus(menu, parts.player->currentTrack());
     menu->popup(globalPosition);
 }
 
@@ -119,21 +112,39 @@ void MainMenu::showMain(QPoint globalPosition, const Core::Track* track) {
     auto* menu = new QMenu(parts.mainWindow);
     menu->setAttribute(Qt::WA_DeleteOnClose);
     addLocalActions(menu);
-    Ui::AddLibraryActions(menu, parts.library, parts.catalog, parts.sources, track, parts.mainWindow, [this] {
-        QTimer::singleShot(0, parts.account, &Account::login);
-    });
+    addSourceMenus(menu, track);
     menu->addSeparator();
     parts.jam->addMenu(menu);
     addWindowActions(menu);
     addModes(menu);
     addLooks(menu);
     menu->addSeparator();
-    if (parts.library->isLoggedIn()) {
-        const QString name = parts.library->account().displayName;
-        menu->addAction(tr("Log out (%1)").arg(name), parts.account, &Account::logout);
-    }
     menu->addAction(tr("Quit QiYaa"), this, &MainMenu::quitChosen);
     menu->popup(globalPosition);
+}
+
+void MainMenu::addSourceMenus(QMenu* menu, const Core::Track* track) {
+    QMenu* yandex = menu->addMenu(tr("Yandex Music"));
+    yandex->setObjectName(QStringLiteral("yandexMenu"));
+    Ui::AddLibraryActions(
+        yandex,
+        parts.library,
+        parts.catalog,
+        parts.mainWindow,
+        [this] { QTimer::singleShot(0, parts.account, &Account::login); },
+        [this] { QTimer::singleShot(0, parts.account, &Account::logout); }
+    );
+    QMenu* spotify = menu->addMenu(tr("Spotify"));
+    spotify->setObjectName(QStringLiteral("spotifyMenu"));
+    const Ui::SpotifyMenuState state{parts.spotify->loggedIn(), parts.spotify->username()};
+    Ui::AddSpotifyActions(
+        spotify,
+        state,
+        [this] { QTimer::singleShot(0, parts.spotify, &SpotifyAccount::login); },
+        [this] { QTimer::singleShot(0, parts.spotify, &SpotifyAccount::logout); }
+    );
+    menu->addSeparator();
+    Ui::AddTrackActions(menu, parts.catalog, parts.sources, track);
 }
 
 void MainMenu::addLocalActions(QMenu* menu) {

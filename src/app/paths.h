@@ -12,6 +12,7 @@ QString ConfigDirectory();
 QStringList YaampDataDirectories();
 
 QString TokenFile();
+QString SpotifyCredentialsFile();
 QStringList YaampTokenFiles();
 
 QString SettingsFile(const QString& chosen, const QTemporaryDir* temporaryDirectory);

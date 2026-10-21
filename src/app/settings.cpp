@@ -87,6 +87,14 @@ void Settings::setLastLocalFolder(const QString& folder) {
     }
 }
 
+QString Settings::spotifyDeviceId() const {
+    return store.value(QStringLiteral("spotify/deviceId")).toString();
+}
+
+void Settings::setSpotifyDeviceId(const QString& id) {
+    store.setValue(QStringLiteral("spotify/deviceId"), id);
+}
+
 bool Settings::continueWithVibe() const {
     return store.value(QStringLiteral("playback/continueWithVibe"), true).toBool();
 }

@@ -310,10 +310,11 @@ qiyaa_add_module(ui
     src/ui/playlist_window.cpp  src/ui/playlist_window.h
     src/ui/skinned_window.cpp   src/ui/skinned_window.h
     src/ui/source_notices.cpp   src/ui/source_notices.h
-    src/ui/snap.cpp             src/ui/snap.h)
+    src/ui/snap.cpp             src/ui/snap.h
+    src/ui/spotify_login_dialog.cpp src/ui/spotify_login_dialog.h)
 target_link_libraries(qiyaa_ui
     PUBLIC qiyaa_audio qiyaa_vis Qt6::Widgets
-    PRIVATE qiyaa_core qiyaa_skins qiyaa_sources_yandex qiyaa_yandex)
+    PRIVATE qiyaa_core qiyaa_skins qiyaa_sources_yandex qiyaa_spotify_client qiyaa_yandex)
 if(QIYAA_HAVE_JAM)
     # The jam window and its QR code (contrib/qrcodegen, MIT).
     add_library(qiyaa_qrcodegen STATIC contrib/qrcodegen/qrcodegen.cpp)
@@ -456,11 +457,12 @@ qiyaa_add_module(app
     src/app/offline_sources.cpp src/app/offline_sources.h
     src/app/paths.cpp           src/app/paths.h
     src/app/settings.cpp        src/app/settings.h
+    src/app/spotify_account.cpp src/app/spotify_account.h
     src/app/telemetry_bridge.h
     src/app/translations.cpp    src/app/translations.h
     src/app/window_set.cpp      src/app/window_set.h)
 target_link_libraries(qiyaa_app
-    PUBLIC qiyaa_audio qiyaa_core qiyaa_lrclib qiyaa_skins qiyaa_sources_local qiyaa_sources_yandex qiyaa_yandex
+    PUBLIC qiyaa_audio qiyaa_core qiyaa_lrclib qiyaa_skins qiyaa_sources_local qiyaa_sources_yandex qiyaa_spotify_client qiyaa_yandex
     PRIVATE qiyaa_integrations qiyaa_ui qiyaa_vis)
 # App::Settings holds the default of jam/server, also in a build without the jam.
 target_compile_definitions(qiyaa_app PRIVATE QIYAA_JAM_URL="${QIYAA_JAM_URL}")

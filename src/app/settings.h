@@ -69,6 +69,8 @@ public:
     bool continueWithVibe() const;
     bool lyricsThirdParty() const;
     void setLyricsThirdParty(bool on);
+    QString spotifyDeviceId() const;
+    void setSpotifyDeviceId(const QString& id);
 
     MainWindowState mainWindow() const;
     void setMainWindow(const MainWindowState& state);

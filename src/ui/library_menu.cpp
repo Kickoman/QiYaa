@@ -87,10 +87,9 @@ void AddLibraryActions(
     QMenu* menu,
     Yandex::Library* library,
     YandexSource::Catalog* catalog,
-    const Core::SourceRegistry* sources,
-    const Core::Track* track,
     QWidget* dialogParent,
-    std::function<void()> loginRequested
+    std::function<void()> loginRequested,
+    std::function<void()> logoutRequested
 ) {
     if (!library->isLoggedIn()) {
         menu->addAction(
@@ -211,6 +210,16 @@ void AddLibraryActions(
     });
 
     menu->addSeparator();
+    const QString name = library->account().displayName;
+    menu->addAction(QCoreApplication::translate("Ui::LibraryMenu", "Log out (%1)").arg(name), menu, logoutRequested);
+}
+
+void AddTrackActions(
+    QMenu* menu,
+    YandexSource::Catalog* catalog,
+    const Core::SourceRegistry* sources,
+    const Core::Track* track
+) {
     const Core::TrackKey key = track ? track->key : Core::TrackKey{};
     const bool ownTrack = track && catalog->owns(key);
     const bool liked = ownTrack && catalog->isLiked(key);
@@ -232,6 +241,21 @@ void AddLibraryActions(
     like->setEnabled(ownTrack);
     dislike->setEnabled(ownTrack);
     open->setEnabled(!webUrl.isEmpty());
+}
+
+void AddSpotifyActions(
+    QMenu* menu,
+    const SpotifyMenuState& state,
+    std::function<void()> loginRequested,
+    std::function<void()> logoutRequested
+) {
+    if (!state.loggedIn) {
+        menu->addAction(QCoreApplication::translate("Ui::LibraryMenu", "Log in to Spotify…"), menu, loginRequested);
+        return;
+    }
+    menu->addAction(
+        QCoreApplication::translate("Ui::LibraryMenu", "Log out (%1)").arg(state.username), menu, logoutRequested
+    );
 }
 
 }  // namespace Ui

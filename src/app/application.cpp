@@ -4,6 +4,7 @@
 #include "app/jam_bridge.h"
 #include "app/main_menu.h"
 #include "app/paths.h"
+#include "app/spotify_account.h"
 #include "app/telemetry_bridge.h"
 #include "app/window_set.h"
 #include "audio/equalizer.h"
@@ -14,6 +15,7 @@
 #include "sources/local/tracks.h"
 #include "sources/yandex/history_wave.h"
 #include "sources/yandex/tracks.h"
+#include "spotify/client/identity.h"
 #include "ui/equalizer_window.h"
 #include "ui/jam_window.h"
 #include "ui/lyrics_window.h"
@@ -42,6 +44,15 @@
 
 namespace App {
 
+namespace {
+
+QString SpotifyDeviceId(const Settings& settings) {
+    const QString saved = settings.spotifyDeviceId();
+    return saved.isEmpty() ? SpotifyClient::NewDeviceId() : saved;
+}
+
+}  // namespace
+
 Application::Application(const Options& options, QObject* parent)
     : QObject(parent)
     , startOptions(options)
@@ -53,6 +64,19 @@ Application::Application(const Options& options, QObject* parent)
     , networkManager(options.network ? options.network : ownNetworkManager.get())
     , apiClient(networkManager)
     , yandexLibrary(&apiClient)
+    , spotifyDeviceId(SpotifyDeviceId(settings))
+    , spotifyClientSession(
+          networkManager,
+          options.spotifyEndpoints,
+          SpotifyClient::Identity(QCoreApplication::applicationVersion(), spotifyDeviceId)
+      )
+    , spotifyWeb(
+          networkManager,
+          options.spotifyEndpoints,
+          &spotifyClientSession,
+          spotifyDeviceId,
+          QCoreApplication::applicationVersion()
+      )
     , yandexSource(&yandexLibrary)
     , corePlayer(&audioEngine, &trackSources)
     , catalog(&corePlayer, &yandexLibrary)
@@ -150,6 +174,26 @@ Application::Application(const Options& options, QObject* parent)
         Account::TokenFiles{TokenFile(), YaampTokenFiles(), ConfigDirectory()}
     );
     connect(accountControl.get(), &Account::statusText, mainWindowInstance.get(), &Ui::MainWindow::setStatusText);
+    const QString spotifyCredentials = temporaryDirectory
+        ? temporaryDirectory->filePath(QStringLiteral("spotify-credentials"))
+        : SpotifyCredentialsFile();
+    spotifyAccountControl = std::make_unique<SpotifyAccount>(
+        SpotifyAccount::Parts{
+            &spotifyClientSession, &spotifyWeb, networkManager, mainWindowInstance.get(), options.spotifyEndpoints
+        },
+        spotifyCredentials
+    );
+    connect(
+        spotifyAccountControl.get(),
+        &SpotifyAccount::statusText,
+        mainWindowInstance.get(),
+        &Ui::MainWindow::setStatusText
+    );
+    connect(spotifyAccountControl.get(), &SpotifyAccount::connected, this, [this] {
+        if (settings.spotifyDeviceId().isEmpty()) {
+            settings.setSpotifyDeviceId(spotifyDeviceId);
+        }
+    });
 #if defined(QIYAA_HAVE_MILKDROP)
     {
         const QString userPresets =
@@ -362,6 +406,7 @@ Application::Application(const Options& options, QObject* parent)
         &settings,
         windowSet.get(),
         accountControl.get(),
+        spotifyAccountControl.get(),
         jamBridge.get(),
         telemetryBridge.get(),
         &translations,
@@ -385,6 +430,7 @@ void Application::start() {
     }
     jamBridge->offerStored();
     accountControl->start();
+    spotifyAccountControl->start();
 }
 
 bool Application::loadSkin(const QString& path) {

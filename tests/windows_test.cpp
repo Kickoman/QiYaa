@@ -9,6 +9,7 @@
 #include "support/jam_stub_server.h"
 #endif
 #include "sources/yandex/tracks.h"
+#include "spotify/client/endpoints.h"
 #include "support/mock_http_server.h"
 #include "support/spec_fixtures.h"
 #include "ui/equalizer_window.h"
@@ -190,6 +191,16 @@ App::Application::Options OptionsWithSettings(const QString& settingsFile) {
     options.language = App::Language::English;
     options.settingsFile = settingsFile;
     return options;
+}
+
+SpotifyClient::Endpoints SpotifyEndpointsOf(const Tests::MockHttpServer& server) {
+    SpotifyClient::Endpoints endpoints;
+    endpoints.apresolve = server.baseUrl();
+    endpoints.accounts = server.baseUrl();
+    endpoints.clientToken = server.baseUrl();
+    endpoints.login5 = server.baseUrl();
+    endpoints.spclientScheme = QStringLiteral("http");
+    return endpoints;
 }
 
 QVariantMap AllSettings(const QString& settingsFile) {
@@ -523,6 +534,36 @@ private Q_SLOTS:
         };
         QCOMPARE(DialogAfterChoosing(presetsItem(QStringLiteral("Load .eqf…"))), QStringLiteral("Equalizer preset"));
         QCOMPARE(DialogAfterChoosing(presetsItem(QStringLiteral("Save to .eqf…"))), QStringLiteral("Save the preset"));
+    }
+
+    void eachSourceHasASubmenuAndTheSpotifyLoginAsksAfterTheMenuIsGone() {
+        Tests::MockHttpServer spotify;
+        QTemporaryDir directory;
+        QVERIFY(directory.isValid());
+        App::Application::Options options = OptionsWithSettings(directory.filePath(QStringLiteral("settings.ini")));
+        options.spotifyEndpoints = SpotifyEndpointsOf(spotify);
+        App::Application configured(options);
+        configured.start();
+        QVERIFY(QTest::qWaitForWindowExposed(configured.mainWindow()));
+        Q_EMIT configured.mainWindow()->menuRequested(QPoint(100, 100));
+        auto* yandex = configured.mainWindow()->findChild<QMenu*>(QStringLiteral("yandexMenu"));
+        auto* spotifyMenu = configured.mainWindow()->findChild<QMenu*>(QStringLiteral("spotifyMenu"));
+        QVERIFY(yandex && spotifyMenu);
+        QCOMPARE(yandex->actions().size(), 1);
+        QCOMPARE(yandex->actions().first()->text(), QStringLiteral("Log in to Yandex Music…"));
+        QCOMPARE(spotifyMenu->actions().size(), 1);
+        QCOMPARE(spotifyMenu->actions().first()->text(), QStringLiteral("Log in to Spotify…"));
+        auto* root = qobject_cast<QMenu*>(yandex->parent());
+        QVERIFY(root);
+        QVERIFY(FindAction(root, QStringLiteral("Like")));
+        QVERIFY(FindAction(root, QStringLiteral("Open the track in the browser")));
+        QCOMPARE(
+            DialogAfterChoosing(OpenMenuItem(QStringLiteral("Log in to Spotify…"))), QStringLiteral("Log in to Spotify")
+        );
+        Q_EMIT configured.mainWindow()->sourcesMenuRequested(QPoint(100, 100));
+        QCOMPARE(
+            DialogAfterChoosing(OpenMenuItem(QStringLiteral("Log in to Spotify…"))), QStringLiteral("Log in to Spotify")
+        );
     }
 
     void defaultLayoutIsStacked() {

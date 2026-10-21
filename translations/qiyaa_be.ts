@@ -165,10 +165,6 @@
         <translation>Milkdrop</translation>
     </message>
     <message>
-        <source>Log out (%1)</source>
-        <translation>Выйсці з акаўнта (%1)</translation>
-    </message>
-    <message>
         <source>Quit QiYaa</source>
         <translation>Закрыць QiYaa</translation>
     </message>
@@ -291,6 +287,41 @@
     <message>
         <source>Cancel</source>
         <translation>Скасаваць</translation>
+    </message>
+    <message>
+        <source>Yandex Music</source>
+        <translation>Эквалайзер</translation>
+    </message>
+    <message>
+        <source>Spotify</source>
+        <translation>Spotify</translation>
+    </message>
+</context>
+<context>
+    <name>App::SpotifyAccount</name>
+    <message>
+        <source>Connecting to Spotify…</source>
+        <translation>Падключаюся да Spotify…</translation>
+    </message>
+    <message>
+        <source>You have logged out of Spotify</source>
+        <translation>Вы выйшлі са Spotify</translation>
+    </message>
+    <message>
+        <source>Logged in to Spotify as %1</source>
+        <translation>Уваход у Spotify: %1</translation>
+    </message>
+    <message>
+        <source>The Spotify login has expired: log in again</source>
+        <translation>Уваход у Spotify састарэў: увайдзіце нанова</translation>
+    </message>
+    <message>
+        <source>Spotify Premium is needed to play</source>
+        <translation>Каб граць, патрэбны Spotify Premium</translation>
+    </message>
+    <message>
+        <source>Spotify refused the login: %1</source>
+        <translation>Spotify не пусціў: %1</translation>
     </message>
 </context>
 <context>
@@ -807,6 +838,14 @@
         <source>Open the track in the browser</source>
         <translation>Адкрыць трэк у браўзеры</translation>
     </message>
+    <message>
+        <source>Log out (%1)</source>
+        <translation>Выйсці (%1)</translation>
+    </message>
+    <message>
+        <source>Log in to Spotify…</source>
+        <translation>Увайсці ў Spotify…</translation>
+    </message>
 </context>
 <context>
     <name>Ui::LoginDialog</name>
@@ -1125,6 +1164,57 @@ Right click or ADD: pick what to listen to.</source>
             <numerusform>%1: першыя %n трэкі</numerusform>
             <numerusform>%1: першыя %n трэкаў</numerusform>
         </translation>
+    </message>
+</context>
+<context>
+    <name>Ui::SpotifyLoginDialog</name>
+    <message>
+        <source>Log in to Spotify</source>
+        <translation>Уваход у Spotify</translation>
+    </message>
+    <message>
+        <source>Spotify plays only with a Premium account.</source>
+        <translation>Spotify грае толькі з акаўнтам Premium.</translation>
+    </message>
+    <message>
+        <source>&lt;b&gt;Way 1.&lt;/b&gt; Open the pairing page in any browser (a phone will do) and enter the code:</source>
+        <translation>&lt;b&gt;Спосаб 1.&lt;/b&gt; Адкрыйце старонку спалучэння ў любым браўзеры (можна на тэлефоне) і ўвядзіце код:</translation>
+    </message>
+    <message>
+        <source>Open %1</source>
+        <translation>Адкрыць %1</translation>
+    </message>
+    <message>
+        <source>Getting the code…</source>
+        <translation>Атрымліваю код…</translation>
+    </message>
+    <message>
+        <source>&lt;b&gt;Way 2.&lt;/b&gt; Log in in the browser on this computer.</source>
+        <translation>&lt;b&gt;Спосаб 2.&lt;/b&gt; Увайдзіце ў браўзеры на гэтым камп’ютары.</translation>
+    </message>
+    <message>
+        <source>Log in in the browser</source>
+        <translation>Увайсці ў браўзеры</translation>
+    </message>
+    <message>
+        <source>Cancel</source>
+        <translation>Скасаваць</translation>
+    </message>
+    <message>
+        <source>Waiting for the confirmation… (the code is copied to the clipboard)</source>
+        <translation>Чакаю пацверджання… (код скапіраваны ў буфер абмену)</translation>
+    </message>
+    <message>
+        <source>Logging in with the code failed: %1. Use way 2.</source>
+        <translation>Увайсці па кодзе не ўдалося: %1. Скарыстайцеся спосабам 2.</translation>
+    </message>
+    <message>
+        <source>Waiting for the browser…</source>
+        <translation>Чакаю браўзер…</translation>
+    </message>
+    <message>
+        <source>Logging in in the browser failed: %1</source>
+        <translation>Увайсці ў браўзеры не ўдалося: %1</translation>
     </message>
 </context>
 <context>

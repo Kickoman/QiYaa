@@ -37,6 +37,10 @@ QString TokenFile() {
     return ConfigDirectory() + QStringLiteral("/token");
 }
 
+QString SpotifyCredentialsFile() {
+    return ConfigDirectory() + QStringLiteral("/spotify-credentials");
+}
+
 QStringList YaampTokenFiles() {
     QStringList out;
     for (const QString& directory : YaampDataDirectories()) {

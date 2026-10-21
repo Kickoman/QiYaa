@@ -1,7 +1,7 @@
 # `src/app` — composition root and the `qiyaa` entry point
 
 `src/app` assembles the running player. `App::Application` creates and owns every long-lived
-object (the audio engine, the Yandex API client and library, the player, the jam mode and, in a jam
+object (the audio engine, the Yandex API client and library, the Spotify session and web client, the player, the jam mode and, in a jam
 build, the jam's host session, the cover cache, the media controls, the windows: main, equalizer,
 playlist, now-playing and, in a Milkdrop build, Milkdrop, and the controllers below), passes them
 their dependencies and connects them; it decides nothing itself. The decisions are the
@@ -11,6 +11,7 @@ controllers':
 - `App::WindowSet` places, shows, minimises and scales the windows, one `Spec` each;
 - `App::MainMenu` builds the context menus and the keyboard shortcuts;
 - `App::Account` finds and saves the Yandex token, logs in and out;
+- `App::SpotifyAccount` keeps the Spotify login: the saved credentials, the login dialog, logout;
 - `App::JamBridge` gives the jam its words and questions (in a jam build);
 - `App::TelemetryBridge` is all of the telemetry (in a telemetry build);
 - `App::NetworkWatch` tells the player and the jam whether the network is there.
@@ -27,13 +28,14 @@ MPRIS, SMTC and macOS MediaPlayer in [src/integrations](../integrations/README.m
 |---|---|
 | `application.h/.cpp` | `App::Application` and its `Options`: ownership, wiring, skins, the language, saving, quit |
 | `account.h/.cpp` | `App::Account`: the token at the start, login and logout, the likes after a login |
+| `spotify_account.h/.cpp` | `App::SpotifyAccount`: the saved Spotify credentials at the start, the login dialog, logout, the status texts |
 | `jam_bridge.h`, `jam_bridge.cpp`, `jam_off.cpp` | `App::JamBridge`: the jam's words and questions in the app (statuses, "Continue the jam?", the Jam submenu, the server settings); `jam_off.cpp` in a build without the jam |
 | `main_menu.h/.cpp` | `App::MainMenu` and `App::TransportKey`: the context menus and the keyboard shortcuts |
 | `network_watch.h/.cpp` | `App::NetworkWatch`: the system's view of the network for the `Player` and the jam |
 | `telemetry_bridge.h`, `telemetry_bridge.cpp`, `telemetry_off.cpp` | `App::TelemetryBridge`: all of the app's telemetry; `telemetry_off.cpp` in a build without it |
 | `window_set.h/.cpp` | `App::WindowSet`: the windows as one set, one `Spec` each: their places, showing and hiding, minimising, scale, "always on top", skin, saved positions, `snapshot()` |
 | `settings.h/.cpp` | `App::Settings`: every key of `settings.ini` with its default, typed reads and per-key writes; the only owner of `QSettings` |
-| `paths.h/.cpp` | `ConfigDirectory`, `YaampDataDirectories`, `TokenFile`, `YaampTokenFiles`, `SettingsFile`, `LocalCoversDirectory`: where settings, tokens and the local files' covers live |
+| `paths.h/.cpp` | `ConfigDirectory`, `YaampDataDirectories`, `TokenFile`, `YaampTokenFiles`, `SpotifyCredentialsFile`, `SettingsFile`, `LocalCoversDirectory`: where settings, tokens, the Spotify credentials and the local files' covers live |
 | `translations.h/.cpp` | `Language`, `Languages`, `LanguageCode`, `LanguageFromCode`, `LanguageName`, `Translations`: the interface language |
 | `offline_sources.h/.cpp` | `StreamLocalFile` (a local file fed to the engine like a download) and `DemoTracks` (nine sample entries) |
 | `main.cpp` | `main()` of the `qiyaa` executable: platform choice, command-line options, `--screenshot`, exit codes |
@@ -41,15 +43,16 @@ MPRIS, SMTC and macOS MediaPlayer in [src/integrations](../integrations/README.m
 ## Dependencies
 
 `qiyaa_app` is built from `account.*`, `application.*`, `main_menu.*`, `network_watch.*`,
-`offline_sources.*`, `paths.*`, `settings.*`, `translations.*`, `window_set.*`, the headers
+`offline_sources.*`, `paths.*`, `settings.*`, `spotify_account.*`, `translations.*`, `window_set.*`, the headers
 `jam_bridge.h` and `telemetry_bridge.h`, and one of each pair `jam_bridge.cpp`/`jam_off.cpp` and
 `telemetry_bridge.cpp`/`telemetry_off.cpp`, as the build has the jam and telemetry or not:
 
 - PUBLIC `qiyaa_audio`, `qiyaa_core`, `qiyaa_lrclib`, `qiyaa_skins`, `qiyaa_sources_local`,
-  `qiyaa_sources_yandex`, `qiyaa_yandex`: `application.h` holds `Audio::AudioEngine`,
-  `Core::Player`, `Core::SourceRegistry`, `Core::JamMode`, `Core::LyricsFinder`, `Skins::Skin`,
-  `YandexSource::Source`, `YandexSource::Catalog`, `Yandex::ApiClient` and `Yandex::Library` by
-  value, and `Lrclib::Service` through a `std::unique_ptr`.
+  `qiyaa_sources_yandex`, `qiyaa_yandex`, `qiyaa_spotify_client`: `application.h` holds
+  `Audio::AudioEngine`, `Core::Player`, `Core::SourceRegistry`, `Core::JamMode`, `Core::LyricsFinder`,
+  `Skins::Skin`, `YandexSource::Source`, `YandexSource::Catalog`, `Yandex::ApiClient`,
+  `Yandex::Library`, `SpotifyClient::Session` and `SpotifyClient::Web` by value, and
+  `Lrclib::Service` through a `std::unique_ptr`.
 - PRIVATE `qiyaa_integrations`, `qiyaa_ui`, `qiyaa_vis`: the header only forward-declares the
   windows, `Core::CoverCache` and `Integrations::MediaControls`.
 - PRIVATE `qiyaa_jam` in a jam build (`QIYAA_HAVE_JAM`), with `jam_bridge.cpp`; a build without
@@ -74,8 +77,8 @@ and `resources/icons/qiyaa.icns` on macOS.
 `app` deliberately does not link the vendored `qiyaa_miniaudio`, `qiyaa_miniz` or projectM (it
 reaches them only through `audio`, `skins` and `vis`), nor Qt D-Bus or WinRT (only through
 `integrations`). Nothing links `qiyaa_app` except the executable and, among the tests,
-`windows_test`, `settings_test`, `account_test`, `translations_test`, `telemetry_test` and, in a jam
-build, `jam_window_test`, `jam_bridge_test` and `jam_e2e_test`.
+`windows_test`, `settings_test`, `account_test`, `spotify_account_test`, `translations_test`,
+`telemetry_test` and, in a jam build, `jam_window_test`, `jam_bridge_test` and `jam_e2e_test`.
 
 `app` is the top of the one-way order `audio`, `yandex`, `skins` → `vis`, `core` → `ui`,
 `integrations` → `app` → `qiyaa`:
@@ -87,7 +90,7 @@ grep -rnw --include='*.h' --include='*.cpp' 'throw' src/app/                    
 grep -rn --include='*.h' --include='*.cpp' 'QIYAA_HAVE_TELEMETRY' src/                      # must print nothing: CMake picks telemetry_bridge.cpp or telemetry_off.cpp
 grep -rln --include='*.h' --include='*.cpp' 'Telemetry::' src/app/ | grep -v '^src/app/telemetry_'   # must print nothing: telemetry lives in its bridge
 grep -rnE --include='*.cpp' '"[a-z][A-Za-z]*/[a-z][A-Za-z]*"' src/app/ | grep -v '^src/app/settings\.cpp:'   # must print nothing: settings keys are written once, in App::Settings
-grep -nE '#include (<(QAction|QActionGroup|QMenu|QMessageBox|QNetworkInformation|QFileDialog|QSettings)>|"(ui/login_dialog|ui/jam_server_dialog|ui/library_menu|yandex/token)\.h")' src/app/application.cpp   # must print nothing: Application builds no menu and asks nothing
+grep -nE '#include (<(QAction|QActionGroup|QMenu|QMessageBox|QNetworkInformation|QFileDialog|QSettings)>|"(ui/login_dialog|ui/spotify_login_dialog|ui/jam_server_dialog|ui/library_menu|yandex/token)\.h")' src/app/application.cpp   # must print nothing: Application builds no menu and asks nothing
 ```
 
 ## `application.h/.cpp` — `App::Application`
@@ -105,6 +108,7 @@ public:
         QNetworkAccessManager* network = nullptr;  // tests: one that reaches a mock server
         std::optional<Language> language;          // this run only; unset: the `language` setting
         QUrl telemetryUrl;  // empty: no telemetry; main.cpp sets it in a telemetry build
+        SpotifyClient::Endpoints spotifyEndpoints;  // tests: their mock server; default: Spotify's
     };
 
     explicit Application(const Options& options, QObject* parent = nullptr);
@@ -131,6 +135,8 @@ public:
 
     WindowSet* windows() const;                        // places, shows, scales the windows (below)
     Account* account() const;                          // login and logout (below)
+    SpotifyAccount* spotify() const;                   // the Spotify login (below)
+    SpotifyClient::Session* spotifySession();          // the access point session, one per app
     TelemetryBridge* telemetry() const;                // never null; does nothing without telemetry
 
     bool loadSkin(const QString& path);                // false: message in the marquee
@@ -153,20 +159,22 @@ callback stay inside [src/audio](../audio/README.md)). `Application` owns everyt
 `App::Settings`, the base and the current `Skins::Skin`, `ApiClient`, `Library`, `AudioEngine`,
 `YandexSource::Source`, `LocalSource::Source`, `Core::SourceRegistry` (the Yandex source under
 `"yandex"` and the local one under `"local"`, added first in the constructor, before any window),
-`Player`, `YandexSource::Catalog`, `LocalSource::Catalog`, `JamMode` and `Core::LyricsFinder` as
-members, the `Lrclib::Service` unless `offline`; its
+`Player`, `YandexSource::Catalog`, `LocalSource::Catalog`, `JamMode`, `Core::LyricsFinder`, the
+Spotify device id, `SpotifyClient::Session` and `SpotifyClient::Web` as members, the
+`Lrclib::Service` unless `offline`; its
 own `QNetworkAccessManager` unless `Options::network` lends one; the `Jam::HostSession`,
 `CoverCache`, `MediaControls`, the `Mpris`, `MacMediaControls` or `Smtc` object (held as
 `std::unique_ptr<QObject>`), the windows (six, and the jam window in a jam build) and the
-controllers (`WindowSet`, `Account`, `JamBridge`, `TelemetryBridge`, `MainMenu`) through
+controllers (`WindowSet`, `Account`, `SpotifyAccount`, `JamBridge`, `TelemetryBridge`, `MainMenu`) through
 `std::unique_ptr`; `NetworkWatch` is a member. The accessors return non-owning pointers, valid until
 the `Application` is destroyed.
 
 Member order is load-bearing. Members are constructed in declaration order, and the initialiser list
 relies on it: the settings file after the temporary directory, `ApiClient` after the network
-manager, the Yandex source after the library, `Player` after the engine and the registry, `JamMode`
-after the player, the `LyricsFinder` after the player, the registry and the LRCLIB service it
-asks. The host session is declared after `JamMode` and destroyed before it. The windows
+manager, the Spotify session after the device id and the network manager and the Spotify web
+client after the session, the Yandex source after the library, `Player` after the engine and the
+registry, `JamMode` after the player, the `LyricsFinder` after the player, the registry and the
+LRCLIB service it asks. The host session is declared after `JamMode` and destroyed before it. The windows
 are declared after everything they point at, and the controllers after the windows, so the
 controllers go first, then the windows, while the player, engine and skins they point at still
 exist. The `Mpris`/`Smtc`/`MacMediaControls` object dies before the `MediaControls` it wraps, and
@@ -207,7 +215,10 @@ exist. The `Mpris`/`Smtc`/`MacMediaControls` object dies before the `MediaContro
    `settingsFile` keep it in their own folder; `NetworkWatch::back` reconnects it, HOST-26) and the
    jam window (`Ui::JamWindow`, `jamWindow` in the `WindowSet`). Then, in every build, the
    `JamBridge` (below), whose `statusText` goes to the marquee. It is done here, before
-   `WindowSet::restore()`, which takes the jam window in.
+   `WindowSet::restore()`, which takes the jam window in. The `Account` and the `SpotifyAccount`
+   (below) are created here too, both with their `statusText` on the marquee. The Spotify
+   credentials file is `SpotifyCredentialsFile()`, or `<temp dir>/spotify-credentials` when
+   `readOnlySettings`.
 7. Restores the settings (`App::Settings`, below) and connects the windows:
    - the equalizer's shade mode shows and sets the main window's volume and balance (`setMixer`,
      `volumeRequested`, `balanceRequested`);
@@ -231,7 +242,8 @@ exist. The `Mpris`/`Smtc`/`MacMediaControls` object dies before the `MediaContro
     `saveState()` and `quit()`.
 
 **`start()`** shows the windows (`WindowSet::showAtStart()`). Unless `offline`, it then asks about a
-stored jam (`JamBridge::offerStored()`) and looks for a token (`Account::start()`).
+stored jam (`JamBridge::offerStored()`), looks for a token (`Account::start()`) and for the saved
+Spotify credentials (`SpotifyAccount::start()`).
 
 **`saveState()`** always writes `volume`, `balance`, `vis/mode`, `time/remaining` and
 `equalizer/auto`, then the positions (`WindowSet::savePositions()`, below). It runs on the
@@ -342,6 +354,45 @@ play queue, calls `Library::logout()` (which also clears the API token) and
   result of `Yandex::SaveToken` is ignored.
 - Tests: `tests/account_test.cpp`.
 
+## `spotify_account.h/.cpp` — `App::SpotifyAccount`
+
+```cpp
+class SpotifyAccount : public QObject {
+public:
+    struct Parts { SpotifyClient::Session* session; SpotifyClient::Web* web; QNetworkAccessManager* network;
+                   QWidget* dialogParent; SpotifyClient::Endpoints endpoints; };
+    SpotifyAccount(const Parts& parts, QString credentialsFile, QObject* parent = nullptr);
+    void start();                                      // the saved credentials, if any
+    void login();                                      // modal dialog
+    void loginWithToken(const QString& accessToken);
+    void logout();
+    bool loggedIn() const;
+    QString username() const;                          // Spotify's canonical username
+Q_SIGNALS:
+    void statusText(const QString& text);              // for the marquee
+    void connected(const QString& username);           // once per login, not per reconnect
+};
+```
+
+The Spotify login of [spec/player/spotify.md](../../spec/player/spotify.md#account) on top of
+`SpotifyClient::Session` ([src/spotify/client](../spotify/client/README.md)). `Application` gives
+it `SpotifyCredentialsFile()`; a test gives it a file of its own.
+
+- `start()` (SPOT-04): with saved credentials, logs in with them; without, does nothing and says
+  nothing. The Yandex account's "Log in" prompt is not repeated for Spotify.
+- `login()` runs `Ui::SpotifyLoginDialog` modally; its token goes to `loginWithToken()`, which
+  says `Connecting to Spotify…` and logs in with `Credentials::FromAccessToken` (SPOT-01, SPOT-02).
+- A login that works (SPOT-03) saves the session's reusable credentials whenever they differ from
+  the saved ones (the access point may send new ones after a reconnect), says `Logged in to Spotify
+  as <username>` and emits `connected`. The token itself is never written.
+- A refused login: `BadCredentials` deletes the file and says `The Spotify login has expired: log
+  in again` (SPOT-04); `PremiumAccountRequired` says `Spotify Premium is needed to play` (SPOT-05);
+  any other code says `Spotify refused the login: <description or code>`. A network failure is the
+  session's: it reconnects and keeps the file.
+- `logout()` (SPOT-06) closes the session, forgets the web tokens, deletes the file and says `You
+  have logged out of Spotify`. It does not touch the play queue.
+- Tests: `tests/spotify_account_test.cpp`.
+
 ## `jam_bridge.h/.cpp` — `App::JamBridge`
 
 ```cpp
@@ -413,7 +464,8 @@ public:
     struct Parts { Core::Player* player; Audio::AudioEngine* engine; Yandex::Library* library;
                    YandexSource::Catalog* catalog; LocalSource::Catalog* local;
                    Core::SourceRegistry* sources; Core::LyricsFinder* lyrics; YandexSource::Source* yandex;
-                   Settings* settings; WindowSet* windows; Account* account; JamBridge* jam;
+                   Settings* settings; WindowSet* windows; Account* account;
+                   SpotifyAccount* spotify; JamBridge* jam;
                    TelemetryBridge* telemetry; const Translations* translations;
                    Ui::MainWindow* mainWindow; Ui::PlaylistWindow* playlistWindow; };
     explicit MainMenu(const Parts& parts, QObject* parent = nullptr);   // shortcuts, menu requests
@@ -441,9 +493,18 @@ traps). The playlist's ADD button and right-click open the full main menu: track
 `PlaylistWindow::sourcesMenuRequested`.
 
 The sources menu starts with "Open files…" (`openLocalFiles`) and "Open folder…"
-(`openLocalFolder`), then holds the Yandex items from `Ui::AddLibraryActions` (only "Log in to
-Yandex Music…" while logged out; it calls `Account::login()`). The texts here are the English
-sources; the user sees them in the interface language.
+(`openLocalFolder`), then holds the source items, the same in both menus:
+
+- "Yandex Music" (`yandexMenu`): the items of `Ui::AddLibraryActions`, only "Log in to Yandex
+  Music…" while logged out (`Account::login()`), else the library and, last, "Log out
+  (<displayName>)" (`Account::logout()`);
+- "Spotify" (`spotifyMenu`): `Ui::AddSpotifyActions`, "Log in to Spotify…" while logged out
+  (`SpotifyAccount::login()`), else "Log out (<username>)" (`SpotifyAccount::logout()`);
+- a separator, then the track's items at the root (`Ui::AddTrackActions`): Like or "Remove from
+  Liked", Dislike, "Open the track in the browser", each disabled when the track is not the
+  source's.
+
+The texts here are the English sources; the user sees them in the interface language.
 
 **Local files** (spec/player/local.md), in both menus and also without an account:
 - "Open files…" is a `QFileDialog::getOpenFileNames` titled "Open files", filtered to "Audio
@@ -456,7 +517,7 @@ sources; the user sees them in the interface language.
 The main menu, top to bottom:
 
 - "Open files…", "Open folder…";
-- the same Yandex items;
+- the same source items;
 - in a jam build, Jam (`JamBridge::addMenu`, below);
 - every window whose `WindowSet::Spec` has a `menuText`, with its `key`: Equalizer (Alt+G),
   Playlist (Alt+E), Now playing (no shortcut), Lyrics (Alt+L), Milkdrop (Ctrl+Shift+K, only in a
@@ -489,7 +550,6 @@ The main menu, top to bottom:
   in its own language) emit `languageChosen`;
 - Always on top: checkable, checked from the main window's current flag;
 - "Send statistics", only when `TelemetryBridge::available()`;
-- "Log out (<displayName>)", only while logged in: `Account::logout()`;
 - "Quit QiYaa": `quitChosen`.
 
 **Shortcuts.** The constructor adds one `QAction` per key to every window of the `WindowSet` (the
@@ -697,9 +757,9 @@ public:
     QString directory() const;                        // absolute folder of settings.ini
     bool wasEmpty() const;                            // no key when it was opened: the first run
     // language, skin, scale, alwaysOnTop, shuffleAlgorithm, quality, lastLocalFolder,
-    // continueWithVibe (read only), lyricsThirdParty, mainWindow, equalizer, equalizerAuto, milkdrop, jam,
-    // telemetryEnabled, machine: a getter with the key's default, and a setter that writes the
-    // key(s) at once
+    // continueWithVibe (read only), lyricsThirdParty, spotifyDeviceId, mainWindow, equalizer,
+    // equalizerAuto, milkdrop, jam, telemetryEnabled, machine: a getter with the key's default, and a
+    // setter that writes the key(s) at once
     WindowState window(const QString& group, bool visibleByDefault, QSize stepsByDefault = {}) const;
     void setWindowPos(const QString& group, QPoint pos);   // and setWindowVisible, setWindowShaded,
                                                             // setWindowSteps: one key each
@@ -719,6 +779,10 @@ public:
   first pick; `setLastLocalFolder` writes it only when it changes.
 - `lyrics/thirdParty` is false until the user turns LRCLIB on in the menu (spec: services are off
   by default).
+- `spotify/deviceId` is the device id Spotify knows this installation by
+  ([spec/player/spotify.md](../../spec/player/spotify.md#what-the-app-tells-spotify-about-itself)).
+  It stays empty until the first Spotify login: `Application` makes a new id for each run and
+  saves it when a login succeeds, so a start without Spotify writes nothing.
 - The `milkdrop/*` keys are read and written only in a build with `QIYAA_HAVE_MILKDROP`, the
   `jam/*` and `jamWindow/*` keys only in a jam build, the `telemetry/*` keys only in a telemetry
   build. Another build leaves them as they are.
@@ -804,6 +868,7 @@ namespace App {
 QString ConfigDirectory();            // created if missing
 QStringList YaampDataDirectories();    // old Yaamp data folders, may not exist
 QString TokenFile();            // <ConfigDirectory>/token
+QString SpotifyCredentialsFile();  // <ConfigDirectory>/spotify-credentials
 QStringList YaampTokenFiles();  // <dir>/token.json for each YaampDataDirectories() entry, same order
 QString SettingsFile(const QString& chosen, const QTemporaryDir* temporaryDirectory);
 QString LocalCoversDirectory(const QTemporaryDir* temporaryDirectory);
@@ -824,7 +889,8 @@ product name spelled `Yaamp` and then `yaamp`:
 | Windows | `%LOCALAPPDATA%\QiYaa` | `%APPDATA%\Yaamp`, `%APPDATA%\yaamp`; none when `APPDATA` is unset |
 | macOS | `~/Library/Preferences/QiYaa` | `~/Library/Application Support/Yaamp`, `…/yaamp` |
 
-What lives in `ConfigDirectory()`: `settings.ini`, `token`, in a Milkdrop build `milkdrop/` (the
+What lives in `ConfigDirectory()`: `settings.ini`, `token`, `spotify-credentials` (the Spotify
+username and reusable credentials, format in [src/spotify/client](../spotify/client/README.md)), in a Milkdrop build `milkdrop/` (the
 user's own presets), and while a jam is on `jam-session.json` (next to `settings.ini`, see
 [src/jam](../jam/README.md#session_storeh)). The cover cache is not there: [src/core](../core/README.md) chooses its
 place.

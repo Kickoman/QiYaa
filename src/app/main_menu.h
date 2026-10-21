@@ -42,6 +42,7 @@ namespace App {
 class Account;
 class JamBridge;
 class Settings;
+class SpotifyAccount;
 class TelemetryBridge;
 class WindowSet;
 
@@ -62,6 +63,7 @@ public:
         Settings* settings = nullptr;
         WindowSet* windows = nullptr;
         Account* account = nullptr;
+        SpotifyAccount* spotify = nullptr;
         JamBridge* jam = nullptr;
         TelemetryBridge* telemetry = nullptr;
         const Translations* translations = nullptr;
@@ -83,6 +85,7 @@ Q_SIGNALS:
 private:
     void installShortcuts(QWidget* widget);
     void addLocalActions(QMenu* menu);
+    void addSourceMenus(QMenu* menu, const Core::Track* track);
     void openLocalFiles();
     void openLocalFolder();
     QString localStartFolder() const;
