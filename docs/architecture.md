@@ -15,7 +15,7 @@ source is a module `src/sources/<name>` with the namespace `<Name>Source` and th
 module to its right:
 
 ```
-audio, yandex, skins, telemetry  →  vis, core  →  sources/yandex, sources/local  →  jam  →  ui, integrations  →  app  →  qiyaa (src/app/main.cpp)
+audio, yandex, skins, telemetry  →  vis, core  →  sources/yandex, sources/local, lrclib  →  jam  →  ui, integrations  →  app  →  qiyaa (src/app/main.cpp)
 ```
 
 | Module | Namespace | What it does | Links PUBLIC | Links PRIVATE |
@@ -28,6 +28,7 @@ audio, yandex, skins, telemetry  →  vis, core  →  sources/yandex, sources/lo
 | [src/core](../src/core/README.md) | `Core` | `Track` and `TrackKey` (a track of any source), `TrackSource` and `SourceRegistry` (what a source answers about its tracks, and how it opens their files), `Player` (queue, transport, downloads, preload, track events), `JamMode` (the jam over the host's queue, as the queue's layer) and `CoverCache`; `LyricsFinder` (the lyrics the lyrics view shows, from the track's source and a lyrics service) | audio, Qt Gui, Network | |
 | [src/sources/yandex](../src/sources/yandex/README.md) | `YandexSource` | Yandex Music as a source: `Yandex::Track` ↔ `Core::Track`, its `TrackSource` (cover, web page, the file and its quality, the play report, the lyrics from `/supplement`), `Catalog` (what a pick plays, likes), and the continuations `Vibe` (a vibe or station) and `HistoryWave` (the vibe after a queue's head, the jam vibe during a jam) | core, yandex, Qt Core | |
 | [src/sources/local](../src/sources/local/README.md) | `LocalSource` | The user's own files as a source: `Catalog` (opening files and folders on a thread of its own), their tags and covers through TagLib with every size bounded, and its `TrackSource`, which hands the engine the file on disk and reads a file's lyrics from its `.lrc` and its tags | core, Qt Core | TagLib |
+| [src/lrclib](../src/lrclib/README.md) | `Lrclib` | LRCLIB, the lyrics service the lyrics view asks when the user turns it on: the search, the record that fits the track, one retry, the size bound | core, Qt Core, Network | |
 | [src/jam](../src/jam/README.md) | `Jam` | The jam: protocol messages and their JSON, the WebSocket connection to a jam server, the host's stored session, and `HostSession` (create, resume, the guests' search and checks, end). Optional (Qt WebSockets) | core, yandex, Qt Core, WebSockets | sources/yandex |
 | [src/ui](../src/ui/README.md) | `Ui` | The skinned windows, snapping and docking, the Yandex menus, the login dialog, the jam window | audio, vis, Qt Widgets (+ jam) | core, skins, sources/yandex, yandex (+ qrcodegen) |
 | [src/integrations](../src/integrations/README.md) | `Integrations` | Media keys and system media panels: MPRIS (Linux), SMTC (Windows) or MediaPlayer (macOS) | Qt Gui (+ DBus) | core |
@@ -129,6 +130,7 @@ audio device that does not open — is data: an error string in a callback or a 
 | an API call, a new pick, login | [src/yandex](../src/yandex/README.md), then [src/sources/yandex](../src/sources/yandex/README.md) and the menu in `src/ui/library_menu.cpp` |
 | a new music source | [src/sources](../src/sources/README.md) |
 | the spectrum, the oscilloscope, Milkdrop rendering | [src/vis](../src/vis/README.md) |
+| lyrics: where they come from and in which order | [spec/player/lyrics.md](../spec/player/lyrics.md), then `LyricsFinder` in [src/core](../src/core/README.md), a source's `lyrics`, [src/lrclib](../src/lrclib/README.md) |
 | media keys, MPRIS, SMTC, MediaPlayer | [src/integrations](../src/integrations/README.md) |
 | usage statistics, crash reports | [spec/telemetry](../spec/telemetry/README.md), then [src/telemetry](../src/telemetry/README.md) |
 | menus, shortcuts, settings, start-up and shut-down order, command-line options | [src/app](../src/app/README.md) |
