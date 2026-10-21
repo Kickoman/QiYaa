@@ -56,6 +56,7 @@ SpotifyClient::Endpoints EndpointsOf(const Tests::MockHttpServer& server) {
     endpoints.accounts = server.baseUrl();
     endpoints.clientToken = server.baseUrl();
     endpoints.login5 = server.baseUrl();
+    endpoints.pathfinder = server.baseUrl();
     endpoints.spclientScheme = QStringLiteral("http");
     return endpoints;
 }
@@ -429,10 +430,7 @@ private Q_SLOTS:
         int answered = 0;
         for (int i = 0; i < 2; ++i) {
             stack.web.spclient(
-                "GET",
-                QStringLiteral("/thing"),
-                {},
-                "application/json",
+                SpotifyClient::WebRequest{.path = QStringLiteral("/thing"), .accept = "application/json"},
                 [&](const SpotifyClient::WebReply& reply) {
                     QVERIFY(reply.ok());
                     ++answered;
@@ -449,6 +447,37 @@ private Q_SLOTS:
             clientTokens += recorded.path == QLatin1String("/v1/clienttoken") ? 1 : 0;
         }
         QCOMPARE(clientTokens, 1);
+    }
+
+    void webLeavesTheAccountOutOfTheQueryWhenAskedAndPostsPathfinderQueries() {
+        Stack stack;
+        QVERIFY(stack.loginStored());
+        stack.http.json("GET", QStringLiteral("/context-resolve/v1/spotify:station:track:x"), QByteArray("{}"));
+        stack.http.json("POST", QStringLiteral("/pathfinder/v2/query"), QByteArray("{}"));
+        int answered = 0;
+        const auto count = [&](const SpotifyClient::WebReply& reply) {
+            QVERIFY(reply.ok());
+            ++answered;
+        };
+        stack.web.spclient(
+            SpotifyClient::WebRequest{
+                .path = QStringLiteral("/context-resolve/v1/spotify:station:track:x"),
+                .accept = "application/json",
+                .accountQuery = false,
+            },
+            count
+        );
+        QTRY_COMPARE(answered, 1);
+        const MockRequest* station = stack.http.last(QStringLiteral("/context-resolve/v1/spotify:station:track:x"));
+        QVERIFY(station->query.isEmpty());
+        QCOMPARE(station->headers.value("accept"), QByteArray("application/json"));
+        stack.web.pathfinder(QByteArray(R"({"operationName":"home"})"), count);
+        QTRY_COMPARE(answered, 2);
+        const MockRequest* query = stack.http.last(QStringLiteral("/pathfinder/v2/query"));
+        QCOMPARE(query->body, QByteArray(R"({"operationName":"home"})"));
+        QVERIFY(query->headers.value("content-type").startsWith("application/json"));
+        QCOMPARE(query->headers.value("authorization"), QByteArray("Bearer bearer-token"));
+        QVERIFY(query->query.isEmpty());
     }
 
     void aFileIsDecryptedWithoutSpotifysHeader() {  // SPOT-13

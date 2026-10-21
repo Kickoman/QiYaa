@@ -75,9 +75,11 @@ Q_SIGNALS: loggedInChanged(bool), loginRefused(int code, QString), accountChange
 
 ## `Web`
 
-`spclient(method, path, body, contentType, done)` sends to the first spclient host with
-`Authorization: Bearer <login5>`, `client-token`, QiYaa's `User-Agent` and
-`product=0&country=<cc>&salt=<random>` added to the query. Before that it gets the tokens:
+`spclient(WebRequest, done)` sends to the first spclient host with `Authorization: Bearer <login5>`,
+`client-token`, QiYaa's `User-Agent`, the request's `Content-Type` and `Accept` (protobuf by default) and, unless
+`accountQuery` is false, `product=0&country=<cc>&salt=<random>` added to the query (context-resolve takes it
+without). `pathfinder(query, done)` posts a persisted GraphQL query (JSON) to
+`https://api-partner.spotify.com/pathfinder/v2/query` with the same tokens. Before that it gets the tokens:
 client-token (solving hashcash when asked, kept `refresh_after_seconds` less a minute), then login5
 with the session's reusable credentials (kept `expires_in` less a minute). Requests that come while
 the tokens are fetched wait for them. A 401 forgets the bearer and sends once more; a 429 with a

@@ -144,6 +144,7 @@ qiyaa_add_module(spotify_protocol
     src/spotify/protocol/access_point.cpp src/spotify/protocol/access_point.h
     src/spotify/protocol/audio_file.cpp   src/spotify/protocol/audio_file.h
     src/spotify/protocol/bytes.cpp        src/spotify/protocol/bytes.h
+    src/spotify/protocol/catalog.cpp      src/spotify/protocol/catalog.h
     src/spotify/protocol/crypto.cpp       src/spotify/protocol/crypto.h
     src/spotify/protocol/ids.cpp          src/spotify/protocol/ids.h
     src/spotify/protocol/login.cpp        src/spotify/protocol/login.h

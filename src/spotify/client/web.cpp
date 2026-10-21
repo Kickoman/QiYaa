@@ -195,64 +195,62 @@ void Web::fetchBearer(const QByteArray& requestBody, int round) {
     });
 }
 
-void Web::spclient(
-    const QByteArray& method,
-    const QString& pathAndQuery,
-    const QByteArray& body,
-    const QByteArray& contentType,
-    TReply done
-) {
-    send(method, pathAndQuery, body, contentType, std::move(done), false);
+void Web::spclient(const WebRequest& request, TReply done) {
+    send(request, false, std::move(done), false);
 }
 
-void Web::send(
-    const QByteArray& method,
-    const QString& pathAndQuery,
-    const QByteArray& body,
-    const QByteArray& contentType,
-    TReply done,
-    bool retried
-) {
+void Web::pathfinder(const QByteArray& query, TReply done) {
+    const WebRequest request{
+        .method = "POST",
+        .path = QStringLiteral("/pathfinder/v2/query"),
+        .body = query,
+        .contentType = "application/json;charset=UTF-8",
+        .accept = "application/json",
+        .accountQuery = false,
+    };
+    send(request, true, std::move(done), false);
+}
+
+void Web::send(const WebRequest& request, bool onPathfinder, TReply done, bool retried) {
     withTokens([=, this](const WebReply* failure) {
         if (failure) {
             done(*failure);
             return;
         }
         const QStringList hosts = session->spclients();
-        if (hosts.isEmpty()) {
+        if (!onPathfinder && hosts.isEmpty()) {
             done(Failure(tr("Spotify gave no server to ask")));
             return;
         }
-        const QChar separator = pathAndQuery.contains(u'?') ? u'&' : u'?';
-        const QString salt = QString::number(QRandomGenerator::global()->generate());
-        const QString address =
-            QStringLiteral("%1://%2%3%4product=0&country=%5&salt=%6")
-                .arg(endpoints.spclientScheme, hosts.first(), pathAndQuery)
-                .arg(separator)
-                .arg(session->country(), salt);
-        QNetworkRequest request{QUrl(address)};
-        request.setRawHeader("Authorization", "Bearer " + bearer.toLatin1());
-        request.setRawHeader("client-token", clientToken.toLatin1());
-        request.setRawHeader("User-Agent", agent);
-        request.setRawHeader("Accept", contentType.isEmpty() ? kProtobuf : contentType);
-        if (!contentType.isEmpty()) {
-            request.setHeader(QNetworkRequest::ContentTypeHeader, contentType);
+        QString address = onPathfinder
+            ? endpoints.pathfinder + request.path
+            : QStringLiteral("%1://%2%3").arg(endpoints.spclientScheme, hosts.value(0), request.path);
+        if (request.accountQuery) {
+            const QChar separator = request.path.contains(u'?') ? u'&' : u'?';
+            const QString salt = QString::number(QRandomGenerator::global()->generate());
+            address += QStringLiteral("%1product=0&country=%2&salt=%3").arg(separator).arg(session->country(), salt);
         }
-        request.setTransferTimeout(kTimeoutMs);
-        QNetworkReply* reply = networkManager->sendCustomRequest(request, method, body);
+        QNetworkRequest message{QUrl(address)};
+        message.setRawHeader("Authorization", "Bearer " + bearer.toLatin1());
+        message.setRawHeader("client-token", clientToken.toLatin1());
+        message.setRawHeader("User-Agent", agent);
+        message.setRawHeader("Accept", request.accept);
+        if (!request.contentType.isEmpty()) {
+            message.setHeader(QNetworkRequest::ContentTypeHeader, request.contentType);
+        }
+        message.setTransferTimeout(kTimeoutMs);
+        QNetworkReply* reply = networkManager->sendCustomRequest(message, request.method, request.body);
         connect(reply, &QNetworkReply::finished, this, [=, this] {
             reply->deleteLater();
             const WebReply result = ReplyOf(reply);
             if (!retried && result.status == 401) {
                 bearer.clear();
-                send(method, pathAndQuery, body, contentType, done, true);
+                send(request, onPathfinder, done, true);
                 return;
             }
             const int retryAfterMs = reply->rawHeader("Retry-After").toInt() * 1000;
             if (!retried && result.status == 429 && retryAfterMs <= kLongestRetryAfterMs) {
-                QTimer::singleShot(retryAfterMs, this, [=, this] {
-                    send(method, pathAndQuery, body, contentType, done, true);
-                });
+                QTimer::singleShot(retryAfterMs, this, [=, this] { send(request, onPathfinder, done, true); });
                 return;
             }
             done(result);
