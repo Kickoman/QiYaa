@@ -11,8 +11,14 @@
 namespace LocalSource {
 
 inline const QString kSourceName = QStringLiteral("local");
-inline const QStringList kExtensions =
-    {QStringLiteral("mp3"), QStringLiteral("flac"), QStringLiteral("wav"), QStringLiteral("m4a"), QStringLiteral("mp4")
+inline const QStringList kExtensions = {
+    QStringLiteral("mp3"),
+    QStringLiteral("flac"),
+    QStringLiteral("wav"),
+    QStringLiteral("m4a"),
+    QStringLiteral("mp4"),
+    QStringLiteral("ogg"),
+    QStringLiteral("oga")
 };
 
 bool HasAudioExtension(const QString& path);

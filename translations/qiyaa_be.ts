@@ -261,8 +261,8 @@
         <translation>Адкрыць файлы</translation>
     </message>
     <message>
-        <source>Audio files (*.mp3 *.flac *.wav *.m4a *.mp4)</source>
-        <translation>Аўдыяфайлы (*.mp3 *.flac *.wav *.m4a *.mp4)</translation>
+        <source>Audio files (*.mp3 *.flac *.wav *.m4a *.mp4 *.ogg *.oga)</source>
+        <translation>Аўдыяфайлы (*.mp3 *.flac *.wav *.m4a *.mp4 *.ogg *.oga)</translation>
     </message>
     <message>
         <source>Open folder…</source>

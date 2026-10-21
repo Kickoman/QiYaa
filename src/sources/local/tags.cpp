@@ -15,6 +15,7 @@
 #include <tpropertymap.h>
 #include <tstring.h>
 #include <tvariant.h>
+#include <vorbisfile.h>
 #include <wavfile.h>
 
 #include <memory>
@@ -80,7 +81,8 @@ bool Playable(TagLib::File* file) {
     if (const auto* mpeg = dynamic_cast<TagLib::MPEG::File*>(file)) {
         return !mpeg->audioProperties() || !mpeg->audioProperties()->isADTS();
     }
-    return dynamic_cast<TagLib::FLAC::File*>(file) || dynamic_cast<TagLib::RIFF::WAV::File*>(file);
+    return dynamic_cast<TagLib::FLAC::File*>(file) || dynamic_cast<TagLib::RIFF::WAV::File*>(file)
+        || dynamic_cast<TagLib::Ogg::Vorbis::File*>(file);
 }
 
 std::unique_ptr<BoundedStream> OpenStream(const QString& path) {

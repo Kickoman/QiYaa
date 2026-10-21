@@ -193,6 +193,17 @@ private Q_SLOTS:
         QTRY_COMPARE(stack.engine.state(), Audio::AudioEngine::State::Playing);
     }
 
+    void anOggVorbisPlaysAndAnOggOfAnotherCodecIsLeftOut() {  // LOCAL-09
+        QVERIFY(!copied(QStringLiteral("sine440_3s.ogg"), QStringLiteral("ogg/Song.ogg")).isEmpty());
+        QVERIFY(!copied(QStringLiteral("sine440_1s_flac.ogg"), QStringLiteral("ogg/Flac.oga")).isEmpty());
+        Stack stack(covers());
+        stack.catalog.openFolder(path(QStringLiteral("ogg")));
+        QTRY_COMPARE(Titles(stack.player), (QStringList{"Song"}));
+        QVERIFY(stack.saw(Core::SourceNoticeCode::Loaded, QStringLiteral("ogg"), 1));
+        QVERIFY(stack.player.entries()[0].track.durationMs > 2900);
+        QTRY_COMPARE(stack.engine.state(), Audio::AudioEngine::State::Playing);
+    }
+
     void eachTrackComesWithItsTagsAndItsCoverKeptSmall() {  // LOCAL-04, LOCAL-05
         const std::atomic<bool> going{false};
         const LocalSource::ScanResult result = LocalSource::ScanFolder(path(QStringLiteral("music")), covers(), going);
