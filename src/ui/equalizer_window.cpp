@@ -20,6 +20,7 @@
 #include <QRect>
 #include <QString>
 #include <QStringList>
+#include <QTimer>
 #include <QWheelEvent>
 #include <QWidget>
 
@@ -567,8 +568,8 @@ void EqualizerWindow::showPresets() {
         Q_EMIT settingsChanged(equalizerSettings);
         update();
     });
-    menu->addAction(tr("Load .eqf…"), this, &EqualizerWindow::loadEqf);
-    menu->addAction(tr("Save to .eqf…"), this, &EqualizerWindow::saveEqf);
+    menu->addAction(tr("Load .eqf…"), this, [this] { QTimer::singleShot(0, this, &EqualizerWindow::loadEqf); });
+    menu->addAction(tr("Save to .eqf…"), this, [this] { QTimer::singleShot(0, this, &EqualizerWindow::saveEqf); });
     menu->addSeparator();
     for (const Audio::EqPreset& preset : Audio::BuiltinEqPresets()) {
         menu->addAction(preset.name, this, [this, preset] { applyPreset(preset); });

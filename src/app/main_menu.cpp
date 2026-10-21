@@ -25,6 +25,7 @@
 #include <QLatin1String>
 #include <QMenu>
 #include <QStringList>
+#include <QTimer>
 
 #include <cmath>
 #include <utility>
@@ -106,7 +107,7 @@ void MainMenu::showSources(QPoint globalPosition) {
         parts.sources,
         parts.player->currentTrack(),
         parts.mainWindow,
-        [this] { parts.account->login(); }
+        [this] { QTimer::singleShot(0, parts.account, &Account::login); }
     );
     menu->popup(globalPosition);
 }
@@ -116,7 +117,7 @@ void MainMenu::showMain(QPoint globalPosition, const Core::Track* track) {
     menu->setAttribute(Qt::WA_DeleteOnClose);
     addLocalActions(menu);
     Ui::AddLibraryActions(menu, parts.library, parts.catalog, parts.sources, track, parts.mainWindow, [this] {
-        parts.account->login();
+        QTimer::singleShot(0, parts.account, &Account::login);
     });
     menu->addSeparator();
     parts.jam->addMenu(menu);
@@ -134,24 +135,41 @@ void MainMenu::showMain(QPoint globalPosition, const Core::Track* track) {
 
 void MainMenu::addLocalActions(QMenu* menu) {
     QAction* files = menu->addAction(tr("Open files…"), this, [this] {
-        const QStringList paths = QFileDialog::getOpenFileNames(
-            parts.mainWindow, tr("Open files"), localStartFolder(), tr("Audio files (*.mp3 *.flac *.wav *.m4a *.mp4)")
-        );
-        if (!paths.isEmpty()) {
-            parts.settings->setLastLocalFolder(QFileInfo(paths.front()).absolutePath());
-            parts.local->openFiles(paths);
-        }
+        QTimer::singleShot(0, this, &MainMenu::openLocalFiles);
     });
     files->setObjectName(QStringLiteral("openLocalFiles"));
     QAction* folder = menu->addAction(tr("Open folder…"), this, [this] {
-        const QString path = QFileDialog::getExistingDirectory(parts.mainWindow, tr("Open folder"), localStartFolder());
-        if (!path.isEmpty()) {
-            parts.settings->setLastLocalFolder(path);
-            parts.local->openFolder(path);
-        }
+        QTimer::singleShot(0, this, &MainMenu::openLocalFolder);
     });
     folder->setObjectName(QStringLiteral("openLocalFolder"));
     menu->addSeparator();
+}
+
+void MainMenu::openLocalFiles() {
+    const QStringList paths = QFileDialog::getOpenFileNames(
+        parts.mainWindow, tr("Open files"), localStartFolder(), tr("Audio files (*.mp3 *.flac *.wav *.m4a *.mp4)")
+    );
+    if (!paths.isEmpty()) {
+        parts.settings->setLastLocalFolder(QFileInfo(paths.front()).absolutePath());
+        parts.local->openFiles(paths);
+    }
+}
+
+void MainMenu::openLocalFolder() {
+    const QString path = QFileDialog::getExistingDirectory(parts.mainWindow, tr("Open folder"), localStartFolder());
+    if (!path.isEmpty()) {
+        parts.settings->setLastLocalFolder(path);
+        parts.local->openFolder(path);
+    }
+}
+
+void MainMenu::loadSkinFile() {
+    const QString path = QFileDialog::getOpenFileName(
+        parts.mainWindow, tr("Winamp skin"), QDir::homePath(), tr("Winamp skins (*.wsz *.zip)")
+    );
+    if (!path.isEmpty()) {
+        Q_EMIT skinChosen(path);
+    }
 }
 
 QString MainMenu::localStartFolder() const {
@@ -242,14 +260,10 @@ void MainMenu::addLooks(QMenu* menu) {
         skinsMenu->addAction(QString(name).chopped(4), this, [this, path] { Q_EMIT skinChosen(path); });
     }
     skinsMenu->addSeparator();
-    skinsMenu->addAction(tr("Load a skin…"), this, [this] {
-        const QString path = QFileDialog::getOpenFileName(
-            parts.mainWindow, tr("Winamp skin"), QDir::homePath(), tr("Winamp skins (*.wsz *.zip)")
-        );
-        if (!path.isEmpty()) {
-            Q_EMIT skinChosen(path);
-        }
+    QAction* loadSkin = skinsMenu->addAction(tr("Load a skin…"), this, [this] {
+        QTimer::singleShot(0, this, &MainMenu::loadSkinFile);
     });
+    loadSkin->setObjectName(QStringLiteral("loadSkinFile"));
 
     QMenu* sizeMenu = menu->addMenu(tr("Size"));
     auto* sizeGroup = new QActionGroup(sizeMenu);

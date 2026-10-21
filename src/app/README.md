@@ -379,7 +379,8 @@ window; the bridge only connects them. A build without the jam compiles `jam_off
 - **The Jam submenu:** "Start…" (no jam) or "Jam window" (a jam is on or being created), which show
   the jam window; "Join…", disabled until Kickoman/QiYaa#16; "End", enabled while a jam is on,
   which asks "End the jam? The guests will see that it is over." in a modal `QMessageBox` and then
-  calls `HostSession::end()`; "Server settings…".
+  calls `HostSession::end()`; "Server settings…". Both open their dialog after the menu has closed
+  (the traps of `MainMenu`).
 - **"Server settings…"** (`showServerDialog()`, also the jam window's `serverSettingsRequested`):
   `Ui::JamServerDialog`, modal, which writes `jam/server`, `jam/waveFeedback` and `jam/shareAudio`
   on Save and tells the jam window the server's host (and a port that is not the default one).
@@ -424,7 +425,9 @@ options button and right-click, and the playlist's ADD button and right-click. T
 playlist row under the cursor for `trackMenuRequested`, and the current track for the other entry
 points. `showSources(globalPosition)` answers the main window's eject button with the current
 track. Both build a `QMenu` parented to the main window, open it with `popup()` and delete it on
-close. The playlist's ADD button and right-click open the full main menu: track rows emit
+close. An item that asks something (a file dialog, the login, the jam's questions, the search)
+opens its modal dialog on the next turn of the event loop, after the menu has closed (see the
+traps). The playlist's ADD button and right-click open the full main menu: track rows emit
 `PlaylistWindow::trackMenuRequested`; ADD and clicks outside the rows emit
 `PlaylistWindow::sourcesMenuRequested`.
 
@@ -489,6 +492,13 @@ shows the same key, so the label and the key that works cannot drift apart.
 | Ctrl+D | scale 2.0, or 1.0 when it is already 2.0 (saved) |
 | Ctrl+W | shade or unshade the main window |
 | Ctrl+Shift+K | show or hide Milkdrop (only in a Milkdrop build) |
+
+**Traps:**
+- A menu action never runs a modal dialog itself (`exec()`, `QFileDialog::get…`, `Ui::AskText`):
+  it posts it with `QTimer::singleShot(0, receiver, …)`. The dialog's event loop deletes the
+  closed menu (`WA_DeleteOnClose`), and Qt 6.4's `QMenu`, the system Qt of the .deb, writes into
+  it after the action returns. That corrupts the heap, and the app crashes then or later; Qt 6.8
+  guards against it. `tests/windows_test.cpp` checks every such item it can reach.
 
 ## `network_watch.h/.cpp` — `App::NetworkWatch`
 

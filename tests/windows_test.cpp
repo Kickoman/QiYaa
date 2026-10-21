@@ -29,8 +29,10 @@
 #include <QContextMenuEvent>
 #include <QCoreApplication>
 #include <QDesktopServices>
+#include <QDialog>
 #include <QEvent>
 #include <QGuiApplication>
+#include <QKeyEvent>
 #include <QLabel>
 #include <QList>
 #include <QMenu>
@@ -48,6 +50,7 @@
 #include <QString>
 #include <QTemporaryDir>
 #include <QTest>
+#include <QTimer>
 #include <QUrl>
 #include <QVariant>
 #include <QVariantMap>
@@ -92,6 +95,58 @@ QMenu* OpenContextMenu(QWidget* widget, QPoint local, QContextMenuEvent::Reason 
     QContextMenuEvent event(reason, local, widget->mapToGlobal(local));
     QCoreApplication::sendEvent(widget, &event);
     return qobject_cast<QMenu*>(QApplication::activePopupWidget());
+}
+
+void PressReturn(QMenu* menu, QAction* item) {
+    menu->setActiveAction(item);
+    QKeyEvent press(QEvent::KeyPress, Qt::Key_Return, Qt::NoModifier);
+    QCoreApplication::sendEvent(menu, &press);
+}
+
+QAction* OpenMenuItem(const QString& textOrName) {
+    const QWidget* menu = QApplication::activePopupWidget();
+    if (!menu) {
+        return nullptr;
+    }
+    const QList<QAction*> items = menu->findChildren<QAction*>();
+    const auto found = std::find_if(items.begin(), items.end(), [&textOrName](const QAction* item) {
+        return item->text() == textOrName || item->objectName() == textOrName;
+    });
+    return found == items.end() ? nullptr : *found;
+}
+
+QString DialogAfterChoosing(QAction* item) {
+    if (!item) {
+        return QStringLiteral("no such item");
+    }
+    QList<QMenu*> path;
+    for (auto* menu = qobject_cast<QMenu*>(item->parent()); menu; menu = qobject_cast<QMenu*>(menu->parent())) {
+        path.prepend(menu);
+    }
+    for (qsizetype i = 1; i < path.size(); ++i) {
+        PressReturn(path[i - 1], path[i]->menuAction());
+        if (!QTest::qWaitFor([&] { return path[i]->isVisible(); }, 1000)) {
+            return QStringLiteral("no submenu ") + path[i]->title();
+        }
+    }
+    const QPointer<QMenu> top = path.first();
+    QString during;
+    QString after;
+    bool choosing = true;
+    QTimer poll;
+    QObject::connect(&poll, &QTimer::timeout, [&] {
+        if (auto* dialog = qobject_cast<QDialog*>(QApplication::activeModalWidget())) {
+            (choosing ? during : after) = dialog->windowTitle();
+            dialog->reject();
+        }
+    });
+    poll.start(5);
+    PressReturn(path.last(), item);
+    choosing = false;
+    if (!QTest::qWaitFor([&] { return !during.isEmpty() || (!after.isEmpty() && !top); }, 5000)) {
+        return top ? QStringLiteral("menu still open") : QStringLiteral("no dialog");
+    }
+    return during.isEmpty() ? after : QStringLiteral("inside the menu: ") + during;
 }
 
 class NoMoreTracks : public Core::Continuation {
@@ -444,6 +499,25 @@ private Q_SLOTS:
         };
         check([&configured] { configured.mainWindow()->menuRequested(QPoint(100, 100)); });
         check([&configured] { Q_EMIT configured.mainWindow()->sourcesMenuRequested(QPoint(100, 100)); });
+    }
+
+    void menuItemsOpenTheirDialogsOnlyAfterTheMenuIsGone() {
+        const auto mainItem = [this](const QString& name) {
+            Q_EMIT main->menuRequested(QPoint(100, 100));
+            return OpenMenuItem(name);
+        };
+        QCOMPARE(DialogAfterChoosing(mainItem(QStringLiteral("openLocalFiles"))), QStringLiteral("Open files"));
+        QCOMPARE(DialogAfterChoosing(mainItem(QStringLiteral("openLocalFolder"))), QStringLiteral("Open folder"));
+        QCOMPARE(DialogAfterChoosing(mainItem(QStringLiteral("loadSkinFile"))), QStringLiteral("Winamp skin"));
+#ifdef QIYAA_HAVE_JAM
+        QCOMPARE(DialogAfterChoosing(mainItem(QStringLiteral("jamServerSettings"))), QStringLiteral("Jam server"));
+#endif
+        const auto presetsItem = [this](const QString& text) {
+            Click(eq, {217 + 5, 18 + 5});
+            return OpenMenuItem(text);
+        };
+        QCOMPARE(DialogAfterChoosing(presetsItem(QStringLiteral("Load .eqf…"))), QStringLiteral("Equalizer preset"));
+        QCOMPARE(DialogAfterChoosing(presetsItem(QStringLiteral("Save to .eqf…"))), QStringLiteral("Save the preset"));
     }
 
     void defaultLayoutIsStacked() {
@@ -1244,6 +1318,25 @@ private Q_SLOTS:
         QTRY_COMPARE(start.application->player()->entries().size(), 2);
         QCOMPARE(start.likesAsked, 1);
         QVERIFY(start.resumed());  // only to end it
+#else
+        QSKIP("built without the jam");
+#endif
+    }
+
+    void theAccountAndJamItemsAskOnlyAfterTheMenuIsGone() {
+#ifdef QIYAA_HAVE_JAM
+        StoredJamStart start;
+        QVERIFY(start.question);
+        QVERIFY(start.loggedIn());
+        start.answer(QStringLiteral("Continue"));
+        QCOMPARE(start.application->jamHost()->phase(), Jam::HostPhase::Active);
+        const auto mainItem = [&start](const QString& textOrName) {
+            Q_EMIT start.application->mainWindow()->menuRequested(QPoint(100, 100));
+            return OpenMenuItem(textOrName);
+        };
+        QCOMPARE(DialogAfterChoosing(mainItem(QStringLiteral("Search…"))), QStringLiteral("Search"));
+        QCOMPARE(DialogAfterChoosing(mainItem(QStringLiteral("endJam"))), QStringLiteral("End the jam"));
+        QCOMPARE(start.application->jamHost()->phase(), Jam::HostPhase::Active);
 #else
         QSKIP("built without the jam");
 #endif
