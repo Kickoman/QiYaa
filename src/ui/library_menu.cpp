@@ -2,6 +2,8 @@
 
 #include "core/track.h"
 #include "core/track_source.h"
+#include "sources/spotify/catalog.h"
+#include "sources/spotify/library.h"
 #include "sources/yandex/catalog.h"
 #include "ui/input_dialogs.h"
 #include "yandex/api_client.h"
@@ -31,9 +33,12 @@ using Yandex::WaveBatch;
 namespace {
 
 template <typename T>
+using TListLoaded = std::function<void(const QList<T>& items, const QString& error)>;
+
+template <typename T>
 void LazySubmenu(
     QMenu* submenu,
-    std::function<void(Yandex::Library::TCallback<QList<T>>)> load,
+    std::function<void(TListLoaded<T>)> load,
     std::function<void(QMenu*, const QList<T>&)> fill
 ) {
     auto loaded = std::make_shared<bool>(false);
@@ -63,6 +68,35 @@ void LazySubmenu(
             fill(guardedMenu, items);
         });
     });
+}
+
+void AddSpotifyList(
+    QMenu* menu,
+    const QString& title,
+    std::function<void(TListLoaded<SpotifySource::Item>)> load,
+    std::function<void(const SpotifySource::Item&)> play
+) {
+    LazySubmenu<SpotifySource::Item>(
+        menu->addMenu(title),
+        std::move(load),
+        [play](QMenu* submenu, const QList<SpotifySource::Item>& items) {
+            for (const SpotifySource::Item& item : items) {
+                submenu->addAction(item.name, submenu, [play, item] { play(item); });
+            }
+        }
+    );
+}
+
+void AskAndSearch(QWidget* dialogParent, const std::function<void(const QString&)>& search) {
+    const std::optional<QString> answer = AskText(
+        dialogParent,
+        QCoreApplication::translate("Ui::LibraryMenu", "Search"),
+        QCoreApplication::translate("Ui::LibraryMenu", "Artist, album or track:")
+    );
+    const QString text = answer.value_or(QString()).trimmed();
+    if (!text.isEmpty()) {
+        search(text);
+    }
 }
 
 QString StationTypeTitle(const QString& type) {
@@ -197,15 +231,7 @@ void AddLibraryActions(
 
     menu->addAction(QCoreApplication::translate("Ui::LibraryMenu", "Search…"), menu, [catalog, dialogParent] {
         QTimer::singleShot(0, catalog, [catalog, dialogParent] {
-            const std::optional<QString> answer = AskText(
-                dialogParent,
-                QCoreApplication::translate("Ui::LibraryMenu", "Search"),
-                QCoreApplication::translate("Ui::LibraryMenu", "Artist, album or track:")
-            );
-            const QString text = answer.value_or(QString()).trimmed();
-            if (!text.isEmpty()) {
-                catalog->search(text);
-            }
+            AskAndSearch(dialogParent, [catalog](const QString& text) { catalog->search(text); });
         });
     });
 
@@ -216,22 +242,23 @@ void AddLibraryActions(
 
 void AddTrackActions(
     QMenu* menu,
-    YandexSource::Catalog* catalog,
+    YandexSource::Catalog* yandex,
+    SpotifySource::Catalog* spotify,
     const Core::SourceRegistry* sources,
     const Core::Track* track
 ) {
     const Core::TrackKey key = track ? track->key : Core::TrackKey{};
-    const bool ownTrack = track && catalog->owns(key);
-    const bool liked = ownTrack && catalog->isLiked(key);
+    const bool ownTrack = track && yandex->owns(key);
+    const bool liked = ownTrack && yandex->isLiked(key);
     const QString likeText = liked
         ? QCoreApplication::translate("Ui::LibraryMenu", "Remove from Liked")
         : QCoreApplication::translate("Ui::LibraryMenu", "Like");
-    QAction* like = menu->addAction(likeText, menu, [catalog, key, liked] { catalog->setLiked(key, !liked); });
-    const bool isCurrent = ownTrack && catalog->isCurrent(key);
+    QAction* like = menu->addAction(likeText, menu, [yandex, key, liked] { yandex->setLiked(key, !liked); });
+    const bool isCurrent = ownTrack && yandex->isCurrent(key);
     const QString dislikeText = isCurrent
         ? QCoreApplication::translate("Ui::LibraryMenu", "Dislike (skip)")
         : QCoreApplication::translate("Ui::LibraryMenu", "Dislike");
-    QAction* dislike = menu->addAction(dislikeText, menu, [catalog, key] { catalog->dislikeAndSkip(key); });
+    QAction* dislike = menu->addAction(dislikeText, menu, [yandex, key] { yandex->dislikeAndSkip(key); });
     const QUrl webUrl = track ? sources->webPage(*track) : QUrl();
     QAction* open = menu->addAction(
         QCoreApplication::translate("Ui::LibraryMenu", "Open the track in the browser"),
@@ -241,11 +268,20 @@ void AddTrackActions(
     like->setEnabled(ownTrack);
     dislike->setEnabled(ownTrack);
     open->setEnabled(!webUrl.isEmpty());
+    if (track && spotify->owns(key)) {
+        const Core::Track seed = *track;
+        QAction* radio = menu->addAction(
+            QCoreApplication::translate("Ui::LibraryMenu", "Radio"), menu, [spotify, seed] { spotify->playRadio(seed); }
+        );
+        menu->insertAction(open, radio);
+    }
 }
 
 void AddSpotifyActions(
     QMenu* menu,
     const SpotifyMenuState& state,
+    SpotifySource::Catalog* catalog,
+    QWidget* dialogParent,
     std::function<void()> loginRequested,
     std::function<void()> logoutRequested
 ) {
@@ -253,6 +289,41 @@ void AddSpotifyActions(
         menu->addAction(QCoreApplication::translate("Ui::LibraryMenu", "Log in to Spotify…"), menu, loginRequested);
         return;
     }
+    SpotifySource::Library* library = catalog->library();
+    menu->addAction(QCoreApplication::translate("Ui::LibraryMenu", "Liked Songs"), menu, [catalog] {
+        catalog->playLikes();
+    });
+    const auto playPlaylist = [catalog](const SpotifySource::Item& item) { catalog->playPlaylist(item); };
+    AddSpotifyList(
+        menu,
+        QCoreApplication::translate("Ui::LibraryMenu", "For you"),
+        [library](auto loaded) { library->forYou(loaded); },
+        playPlaylist
+    );
+    AddSpotifyList(
+        menu,
+        QCoreApplication::translate("Ui::LibraryMenu", "Playlists"),
+        [library](auto loaded) { library->playlists(loaded); },
+        playPlaylist
+    );
+    AddSpotifyList(
+        menu,
+        QCoreApplication::translate("Ui::LibraryMenu", "Artists"),
+        [library](auto loaded) { library->followedArtists(loaded); },
+        [catalog](const SpotifySource::Item& item) { catalog->playArtist(item); }
+    );
+    AddSpotifyList(
+        menu,
+        QCoreApplication::translate("Ui::LibraryMenu", "Albums"),
+        [library](auto loaded) { library->savedAlbums(loaded); },
+        [catalog](const SpotifySource::Item& item) { catalog->playAlbum(item); }
+    );
+    menu->addAction(QCoreApplication::translate("Ui::LibraryMenu", "Search…"), menu, [catalog, dialogParent] {
+        QTimer::singleShot(0, catalog, [catalog, dialogParent] {
+            AskAndSearch(dialogParent, [catalog](const QString& text) { catalog->search(text); });
+        });
+    });
+    menu->addSeparator();
     menu->addAction(
         QCoreApplication::translate("Ui::LibraryMenu", "Log out (%1)").arg(state.username), menu, logoutRequested
     );

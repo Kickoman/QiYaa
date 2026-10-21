@@ -16,7 +16,7 @@ module `src/sources/<name>` with the namespace `<Name>Source` and the library
 module to its right:
 
 ```
-audio, yandex, spotify/protocol, skins, telemetry  →  vis, core, spotify/client  →  sources/yandex, sources/local, lrclib  →  jam  →  ui, integrations  →  app  →  qiyaa (src/app/main.cpp)
+audio, yandex, spotify/protocol, skins, telemetry  →  vis, core, spotify/client  →  sources/yandex, sources/local, sources/spotify, lrclib  →  jam  →  ui, integrations  →  app  →  qiyaa (src/app/main.cpp)
 ```
 
 | Module | Namespace | What it does | Links PUBLIC | Links PRIVATE |
@@ -32,10 +32,11 @@ audio, yandex, spotify/protocol, skins, telemetry  →  vis, core, spotify/clien
 | [src/sources/yandex](../src/sources/yandex/README.md) | `YandexSource` | Yandex Music as a source: `Yandex::Track` ↔ `Core::Track`, its `TrackSource` (cover, web page, the file and its quality, the play report, the lyrics from `/supplement`), `Catalog` (what a pick plays, likes), and the continuations `Vibe` (a vibe or station) and `HistoryWave` (the vibe after a queue's head, the jam vibe during a jam) | core, yandex, Qt Core | |
 | [src/sources/local](../src/sources/local/README.md) | `LocalSource` | The user's own files as a source: `Catalog` (opening files and folders on a thread of its own), their tags and covers through TagLib with every size bounded, and its `TrackSource`, which hands the engine the file on disk and reads a file's lyrics from its `.lrc` and its tags | core, Qt Core | TagLib |
 | [src/lrclib](../src/lrclib/README.md) | `Lrclib` | LRCLIB, the lyrics service the lyrics view asks when the user turns it on: the search, the record that fits the track, one retry, the size bound | core, Qt Core, Network | |
+| [src/sources/spotify](../src/sources/spotify/README.md) | `SpotifySource` | Spotify as a source: its tracks as `Core::Track`s, `Library` (liked songs, playlists, albums, artists, For you, search, stations and autoplay over the private endpoints, metadata a hundred at a time), `Catalog` (what a pick plays), the continuation `Autoplay` (after a pick, under the flag; a radio's pages) and its `TrackSource` (the file in the quality in effect, the cover, the web page) | core, spotify/protocol, Qt Core | spotify/client |
 | [src/jam](../src/jam/README.md) | `Jam` | The jam: protocol messages and their JSON, the WebSocket connection to a jam server, the host's stored session, and `HostSession` (create, resume, the guests' search and checks, end). Optional (Qt WebSockets) | core, yandex, Qt Core, WebSockets | sources/yandex |
-| [src/ui](../src/ui/README.md) | `Ui` | The skinned windows (the lyrics window among them), snapping and docking, the Yandex and Spotify menus, the login dialogs, the jam window | audio, vis, Qt Widgets (+ jam) | core, skins, sources/yandex, spotify/client, yandex (+ qrcodegen) |
+| [src/ui](../src/ui/README.md) | `Ui` | The skinned windows (the lyrics window among them), snapping and docking, the Yandex and Spotify menus, the login dialogs, the jam window | audio, vis, Qt Widgets (+ jam) | core, skins, sources/spotify, sources/yandex, spotify/client, yandex (+ qrcodegen) |
 | [src/integrations](../src/integrations/README.md) | `Integrations` | Media keys and system media panels: MPRIS (Linux), SMTC (Windows) or MediaPlayer (macOS) | Qt Gui (+ DBus) | core |
-| [src/app](../src/app/README.md) | `App` | `Application`: owns and wires everything, decides nothing; the controllers `Settings`, `WindowSet`, `MainMenu`, `Account`, `SpotifyAccount`, `JamBridge`, `TelemetryBridge`, `NetworkWatch`; `main()` | audio, core, lrclib, skins, sources/local, sources/yandex, spotify/client, yandex | integrations, jam, ui, vis (+ telemetry) |
+| [src/app](../src/app/README.md) | `App` | `Application`: owns and wires everything, decides nothing; the controllers `Settings`, `WindowSet`, `MainMenu`, `Account`, `SpotifyAccount`, `JamBridge`, `TelemetryBridge`, `NetworkWatch`; `main()` | audio, core, lrclib, skins, sources/local, sources/spotify, sources/yandex, spotify/client, yandex | integrations, jam, ui, vis (+ telemetry) |
 
 Vendored code lives in `contrib/` (miniaudio, miniz, qrcodegen, minimp4, fdk-aac's decoder, stb_vorbis, BearSSL) and is
 not changed. TagLib is fetched at configure time and linked statically

@@ -29,6 +29,11 @@ add_library(qiyaa_test_spotify STATIC support/fake_access_point.cpp support/fake
 target_link_libraries(qiyaa_test_spotify PUBLIC qiyaa_test_support qiyaa_spotify_protocol)
 qiyaa_target_defaults(qiyaa_test_spotify)
 
+# The Spotify client against MockHttpServer and a fake access point, logged in as "owner".
+add_library(qiyaa_test_spotify_client STATIC support/spotify_stack.cpp support/spotify_stack.h)
+target_link_libraries(qiyaa_test_spotify_client PUBLIC qiyaa_test_spotify qiyaa_spotify_client Qt6::Test)
+qiyaa_target_defaults(qiyaa_test_spotify_client)
+
 # qiyaa_add_test(<name> <modules...>): <name>.cpp linked with qiyaa_<module> for each module.
 function(qiyaa_add_test name)
     qt_add_executable(${name} ${name}.cpp)
@@ -66,7 +71,9 @@ qiyaa_add_test(spotify_protocol_test spotify_protocol)
 qiyaa_add_test(spotify_access_point_test spotify_protocol)
 target_link_libraries(spotify_access_point_test PRIVATE qiyaa_test_spotify)
 qiyaa_add_test(spotify_client_test spotify_client)
-target_link_libraries(spotify_client_test PRIVATE qiyaa_test_spotify)
+target_link_libraries(spotify_client_test PRIVATE qiyaa_test_spotify_client)
+qiyaa_add_test(spotify_source_test core sources_spotify)
+target_link_libraries(spotify_source_test PRIVATE qiyaa_test_spotify_client)
 qiyaa_add_test(mp4_aac_test audio)
 target_link_libraries(mp4_aac_test PRIVATE qiyaa_miniaudio)
 target_compile_definitions(mp4_aac_test PRIVATE QIYAA_TEST_DATA="${CMAKE_CURRENT_SOURCE_DIR}/data")

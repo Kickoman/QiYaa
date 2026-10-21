@@ -20,6 +20,10 @@ namespace YandexSource {
 class Catalog;
 }  // namespace YandexSource
 
+namespace SpotifySource {
+class Catalog;
+}  // namespace SpotifySource
+
 namespace Ui {
 
 void AddLibraryActions(
@@ -33,7 +37,8 @@ void AddLibraryActions(
 
 void AddTrackActions(
     QMenu* menu,
-    YandexSource::Catalog* catalog,
+    YandexSource::Catalog* yandex,
+    SpotifySource::Catalog* spotify,
     const Core::SourceRegistry* sources,
     const Core::Track* track
 );
@@ -46,6 +51,8 @@ struct SpotifyMenuState {
 void AddSpotifyActions(
     QMenu* menu,
     const SpotifyMenuState& state,
+    SpotifySource::Catalog* catalog,
+    QWidget* dialogParent,
     std::function<void()> loginRequested,
     std::function<void()> logoutRequested
 );

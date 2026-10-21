@@ -393,6 +393,43 @@
     </message>
 </context>
 <context>
+    <name>SpotifySource::Catalog</name>
+    <message>
+        <source>Liked Songs</source>
+        <translation>Любимые треки</translation>
+    </message>
+    <message>
+        <source>Search: %1</source>
+        <translation>Поиск: %1</translation>
+    </message>
+    <message>
+        <source>%1: radio</source>
+        <translation>%1: радио</translation>
+    </message>
+</context>
+<context>
+    <name>SpotifySource::Library</name>
+    <message>
+        <source>Spotify: HTTP %1</source>
+        <translation>Spotify: HTTP %1</translation>
+    </message>
+    <message>
+        <source>Spotify sent an answer QiYaa cannot read</source>
+        <translation>Spotify прислал ответ, который QiYaa не может прочитать</translation>
+    </message>
+</context>
+<context>
+    <name>SpotifySource::Source</name>
+    <message>
+        <source>not a Spotify track</source>
+        <translation>это не трек Spotify</translation>
+    </message>
+    <message>
+        <source>not logged in to Spotify</source>
+        <translation>нет входа в Spotify</translation>
+    </message>
+</context>
+<context>
     <name>Ui::EqualizerWindow</name>
     <message>
         <source>Equalizer preset</source>
@@ -845,6 +882,14 @@
     <message>
         <source>Log in to Spotify…</source>
         <translation>Войти в Spotify…</translation>
+    </message>
+    <message>
+        <source>Radio</source>
+        <translation>Радио</translation>
+    </message>
+    <message>
+        <source>Liked Songs</source>
+        <translation>Любимые треки</translation>
     </message>
 </context>
 <context>

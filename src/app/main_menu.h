@@ -37,6 +37,11 @@ class Catalog;
 class Source;
 }  // namespace YandexSource
 
+namespace SpotifySource {
+class Catalog;
+class Source;
+}  // namespace SpotifySource
+
 namespace App {
 
 class Account;
@@ -64,6 +69,8 @@ public:
         WindowSet* windows = nullptr;
         Account* account = nullptr;
         SpotifyAccount* spotify = nullptr;
+        SpotifySource::Catalog* spotifyCatalog = nullptr;
+        SpotifySource::Source* spotifySource = nullptr;
         JamBridge* jam = nullptr;
         TelemetryBridge* telemetry = nullptr;
         const Translations* translations = nullptr;

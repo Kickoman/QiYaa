@@ -54,6 +54,7 @@ void logout();
 bool loggedIn() const;
 const SpotifyProtocol::Credentials& credentials() const;      // the reusable ones once logged in
 QString username(), country(), product();
+bool hasAccount();                    // logged in, or reconnecting with credentials; false after logout or a refusal
 QStringList spclients() const;                                // from apresolve
 void audioKey(const TGid& track, const TFileId& file, TKeyDone done);
 Q_SIGNALS: loggedInChanged(bool), loginRefused(int code, QString), accountChanged()

@@ -10,6 +10,7 @@
 #include "core/lyrics_finder.h"
 #include "core/player.h"
 #include "sources/local/catalog.h"
+#include "sources/spotify/source.h"
 #include "sources/yandex/catalog.h"
 #include "sources/yandex/source.h"
 #include "ui/library_menu.h"
@@ -140,11 +141,13 @@ void MainMenu::addSourceMenus(QMenu* menu, const Core::Track* track) {
     Ui::AddSpotifyActions(
         spotify,
         state,
+        parts.spotifyCatalog,
+        parts.mainWindow,
         [this] { QTimer::singleShot(0, parts.spotify, &SpotifyAccount::login); },
         [this] { QTimer::singleShot(0, parts.spotify, &SpotifyAccount::logout); }
     );
     menu->addSeparator();
-    Ui::AddTrackActions(menu, parts.catalog, parts.sources, track);
+    Ui::AddTrackActions(menu, parts.catalog, parts.spotifyCatalog, parts.sources, track);
 }
 
 void MainMenu::addLocalActions(QMenu* menu) {
@@ -290,6 +293,7 @@ void MainMenu::addModes(QMenu* menu) {
     for (const auto& [quality, name] : qualities) {
         QAction* action = qualityMenu->addAction(name, this, [this, quality] {
             parts.yandex->setQuality(quality);
+            parts.spotifySource->setEconomy(quality == Yandex::Quality::Economy);
             parts.settings->setQuality(quality);
         });
         action->setCheckable(true);

@@ -21,7 +21,7 @@ to Yandex ([src/yandex](../yandex/README.md)), or create, lay out, connect and s
 | `now_playing_window.h/.cpp` | `NowPlayingWindow` — cover and details of the current track |
 | `lyrics_window.h/.cpp` | `LyricsWindow` — the current track's lyrics from `Core::LyricsFinder`: the synced line that follows the position, a click that seeks, the statuses |
 | `milkdrop_window.h/.cpp` | `MilkdropWindow` — projectM view in a GEN frame: preset switching, black-preset skipping, full screen. Built only with Milkdrop |
-| `library_menu.h/.cpp` | `AddLibraryActions`, `AddTrackActions`, `AddSpotifyActions`: the items of the Yandex and Spotify submenus and of the target track |
+| `library_menu.h/.cpp` | `AddLibraryActions`, `AddTrackActions`, `AddSpotifyActions`: the items of the Yandex and Spotify submenus and of the target track, which call the sources' catalogues |
 | `player_notices.h/.cpp` | `NoticeText`: what a `Core::PlayerNotice` says, in the user's language |
 | `source_notices.h/.cpp` | `SourceNoticeText`: what a `Core::SourceNotice` of a source's catalogue says, in the user's language |
 | `login_dialog.h/.cpp` | `LoginDialog` — Yandex login by device code or by a pasted token |
@@ -42,10 +42,11 @@ the next repaint; `SkinnedWindow::changeEvent` answers `QEvent::LanguageChange` 
 `qiyaa_ui` links PUBLIC `qiyaa_audio` (`equalizer_window.h` includes `audio/eq_presets.h` and
 `audio/equalizer.h`), `qiyaa_vis` (`main_window.h` includes `vis/visualizer.h`, `milkdrop_window.h`
 includes `vis/milkdrop_presets.h`) and `Qt6::Widgets`; PRIVATE `qiyaa_core`, `qiyaa_skins`,
-`qiyaa_sources_yandex`, `qiyaa_spotify_client` and `qiyaa_yandex` (the headers only
-forward-declare `Core::Player`, `Core::CoverCache`, `Skins::Skin`, `YandexSource::Catalog`,
-`Yandex::DeviceLogin`, `Yandex::Library`, `SpotifyClient::PairLogin`, `BrowserLogin` and
-`Endpoints`, and `Audio::AudioEngine` in `main_window.h`).
+`qiyaa_sources_spotify`, `qiyaa_sources_yandex`, `qiyaa_spotify_client` and `qiyaa_yandex` (the
+headers only forward-declare `Core::Player`, `Core::CoverCache`, `Skins::Skin`,
+`YandexSource::Catalog`, `SpotifySource::Catalog`, `Yandex::DeviceLogin`, `Yandex::Library`,
+`SpotifyClient::PairLogin`, `BrowserLogin` and `Endpoints`, and `Audio::AudioEngine` in
+`main_window.h`).
 `milkdrop_window.*` is added to the target only when Milkdrop is built; `QIYAA_HAVE_MILKDROP` then
 comes PUBLIC from `qiyaa_vis`. `jam_window.*` and `jam_server_dialog.*` are added only when the jam
 is built: `qiyaa_ui` then links PUBLIC `qiyaa_jam` (`QIYAA_HAVE_JAM` comes with it) and PRIVATE
@@ -936,13 +937,15 @@ void AddLibraryActions(
 );
 void AddTrackActions(
     QMenu* menu,
-    YandexSource::Catalog* catalog,        // likes and dislikes
+    YandexSource::Catalog* yandex,         // likes and dislikes
+    SpotifySource::Catalog* spotify,       // the radio of a Spotify track
     const Core::SourceRegistry* sources,   // the target's web page
-    const Core::Track* track               // target of like/dislike/open; nullptr disables them
+    const Core::Track* track               // target of like/dislike/radio/open; nullptr disables them
 );
 struct SpotifyMenuState { bool loggedIn = false; QString username; };
-void AddSpotifyActions(QMenu* menu, const SpotifyMenuState& state,
-                       std::function<void()> loginRequested, std::function<void()> logoutRequested);
+void AddSpotifyActions(QMenu* menu, const SpotifyMenuState& state, SpotifySource::Catalog* catalog,
+                       QWidget* dialogParent, std::function<void()> loginRequested,
+                       std::function<void()> logoutRequested);
 ```
 
 The menu only builds items; what they play, and every status they report, is
@@ -952,17 +955,20 @@ login and logout items only call their function: the caller queues the dialog.
 - `AddLibraryActions`, when logged in: My Vibe, Liked, submenus Wheel of vibes (the vibes around
   `Catalog::lastWaveSeeds()`), For you, Playlists (Listen / Similar tracks), Artists, Albums,
   Stations (grouped by station type), Search…, then "Log out (<displayName>)".
-- `AddTrackActions`: like/unlike, dislike and open in the browser. Like and dislike are enabled
-  only for a Yandex track (`Catalog::owns`), and open only for a track with a web page
-  (`SourceRegistry::webPage`); all three are disabled without a target track. They are added
+- `AddTrackActions`: like/unlike, dislike, Radio and open in the browser. Like and dislike are
+  enabled only for a Yandex track (`Catalog::owns`), and open only for a track with a web page
+  (`SourceRegistry::webPage`); they are disabled without a target track. Radio is there only for a
+  Spotify track (`SpotifySource::Catalog::playRadio`, SPOT-12). They are added
   whether or not anyone is logged in. The target's key, liked state and browser URL are captured
   when the menu is built, so changing the queue does not retarget an open menu.
   The dislike label includes "(skip)" when the target is current at menu creation; `Catalog`
   checks again when the action runs and skips only if that track is still current.
 - Submenus load their lists straight from `Yandex::Library` on their first `aboutToShow`, once per
   menu instance: a disabled `Loading…`, then the items, `(empty)` or a disabled `Error: …`.
-- `AddSpotifyActions`: "Log in to Spotify…" while logged out, else "Log out (<username>)". The
-  Spotify picks come with the Spotify source.
+- `AddSpotifyActions`: "Log in to Spotify…" while logged out; else Liked Songs, the submenus For
+  you, Playlists, Artists and Albums (loaded from `SpotifySource::Library` like Yandex's, each item
+  plays through `SpotifySource::Catalog`), Search… and, last, "Log out (<username>)"
+  (SPOT-07 to SPOT-11).
 
 **Traps:**
 - Menu actions capture `Player*`, `Catalog*` and `Library*` unguarded; that is safe only because

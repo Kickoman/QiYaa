@@ -351,7 +351,8 @@ next step of [#23](https://github.com/Kickoman/QiYaa/issues/23) makes the phases
 ### Continuations
 
 - The continuation the queue asks is its source's own (`QueueSource::continuation`); else, while the
-  queue's flag "continue with a vibe" is on, the **vibe from history**, which
+  queue's flag "continue with a vibe" is on, the **vibe from history**: the source's own
+  (`QueueSource::historyWave`, Spotify's autoplay, SPOT-20), else the one
   `setHistoryWaveFactory`'s factory made for this queue (spec
   [continuation.md](../../spec/player/continuation.md)). A queue with its own is endless: at its end
   `Queue::next()` returns -1 even with repeat on, so it never wraps, and `next()` waits for more
@@ -849,6 +850,7 @@ class Continuation {
 public:
     using TDone = std::function<void(const ContinuationReply& reply)>;
     virtual void begin(bool feedback) {}                   // the queue took this source
+    virtual bool followsJamSeeds() const { return false; } // true: a jam's seeds steer it (HOST-11)
     virtual bool more(const ContinuationRequest& request, TDone done) = 0;   // false: nothing to ask with
     virtual void trackEvent(TrackEvent event, const Track& track, double playedSeconds) = 0;
 };
@@ -866,10 +868,14 @@ What a queue goes on with after its head
   on to another source.
 - `jamSeeds` in a request are the jam server's seeds while a jam is on, and `seedsVersion` in a
   reply says that the tracks come from a session started on those seeds of that version; see
-  [The layer](#the-layer).
+  [The layer](#the-layer). Only a continuation whose `followsJamSeeds()` is true gets them, and
+  only its tracks are outdated by new seeds: the Yandex vibe from history. Spotify's autoplay does
+  not follow them, so new seeds neither ask it again nor drop what it gave (SPOT-22).
 - A source makes the continuation for its own tracks: Yandex's vibe is
   [`YandexSource::Vibe`](../sources/yandex/README.md), its vibe from history
-  `YandexSource::HistoryWave` (through `THistoryWaveFactory`, one per queue).
+  `YandexSource::HistoryWave` (through `THistoryWaveFactory`, one per queue). Spotify's picks bring
+  their own as `QueueSource::historyWave` ([`SpotifySource::Autoplay`](../sources/spotify/README.md)),
+  and its radio as `QueueSource::continuation`.
 
 ## `queue_source.h`: `QueueSource`, `QueueEntry`
 
@@ -880,6 +886,7 @@ struct QueueSource {
     std::shared_ptr<Continuation> continuation;   // may be null
     QList<Track> given;                       // the continuation's tracks so far (a vibe's first batch)
     bool waveFromHistory = true;              // false: never a vibe from history (CONT-12)
+    std::shared_ptr<Continuation> historyWave;    // the source's own vibe from history; null: the factory's
 };
 enum class EntryPart { Head, Continuation, Item, Other };
 struct QueueEntry {

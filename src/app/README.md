@@ -48,11 +48,12 @@ MPRIS, SMTC and macOS MediaPlayer in [src/integrations](../integrations/README.m
 `telemetry_bridge.cpp`/`telemetry_off.cpp`, as the build has the jam and telemetry or not:
 
 - PUBLIC `qiyaa_audio`, `qiyaa_core`, `qiyaa_lrclib`, `qiyaa_skins`, `qiyaa_sources_local`,
-  `qiyaa_sources_yandex`, `qiyaa_yandex`, `qiyaa_spotify_client`: `application.h` holds
-  `Audio::AudioEngine`, `Core::Player`, `Core::SourceRegistry`, `Core::JamMode`, `Core::LyricsFinder`,
-  `Skins::Skin`, `YandexSource::Source`, `YandexSource::Catalog`, `Yandex::ApiClient`,
-  `Yandex::Library`, `SpotifyClient::Session` and `SpotifyClient::Web` by value, and
-  `Lrclib::Service` through a `std::unique_ptr`.
+  `qiyaa_sources_spotify`, `qiyaa_sources_yandex`, `qiyaa_yandex`, `qiyaa_spotify_client`:
+  `application.h` holds `Audio::AudioEngine`, `Core::Player`, `Core::SourceRegistry`,
+  `Core::JamMode`, `Core::LyricsFinder`, `Skins::Skin`, the sources and catalogues of Yandex, local
+  files and Spotify, `Yandex::ApiClient`, `Yandex::Library`, `SpotifyClient::Session`,
+  `SpotifyClient::Web` and `SpotifySource::Library` by value, and `Lrclib::Service` through a
+  `std::unique_ptr`.
 - PRIVATE `qiyaa_integrations`, `qiyaa_ui`, `qiyaa_vis`: the header only forward-declares the
   windows, `Core::CoverCache` and `Integrations::MediaControls`.
 - PRIVATE `qiyaa_jam` in a jam build (`QIYAA_HAVE_JAM`), with `jam_bridge.cpp`; a build without
@@ -137,6 +138,8 @@ public:
     Account* account() const;                          // login and logout (below)
     SpotifyAccount* spotify() const;                   // the Spotify login (below)
     SpotifyClient::Session* spotifySession();          // the access point session, one per app
+    SpotifySource::Source* spotifyTracks();            // the Spotify source: its quality
+    SpotifySource::Catalog* spotifyPicks();            // what a Spotify pick plays
     TelemetryBridge* telemetry() const;                // never null; does nothing without telemetry
 
     bool loadSkin(const QString& path);                // false: message in the marquee
@@ -158,10 +161,12 @@ every method must be called from the GUI thread (the audio engine's decoder thre
 callback stay inside [src/audio](../audio/README.md)). `Application` owns everything it wires:
 `App::Settings`, the base and the current `Skins::Skin`, `ApiClient`, `Library`, `AudioEngine`,
 `YandexSource::Source`, `LocalSource::Source`, `Core::SourceRegistry` (the Yandex source under
-`"yandex"` and the local one under `"local"`, added first in the constructor, before any window),
+`"yandex"`, the local one under `"local"` and Spotify's under `"spotify"`, added first in the
+constructor, before any window),
 `Player`, `YandexSource::Catalog`, `LocalSource::Catalog`, `JamMode`, `Core::LyricsFinder`, the
-Spotify device id, `SpotifyClient::Session` and `SpotifyClient::Web` as members, the
-`Lrclib::Service` unless `offline`; its
+Spotify device id, `SpotifyClient::Session`, `SpotifyClient::Web`, `SpotifySource::Library`,
+`SpotifySource::Source` and `SpotifySource::Catalog` as members, the `Lrclib::Service` unless
+`offline`; its
 own `QNetworkAccessManager` unless `Options::network` lends one; the `Jam::HostSession`,
 `CoverCache`, `MediaControls`, the `Mpris`, `MacMediaControls` or `Smtc` object (held as
 `std::unique_ptr<QObject>`), the windows (six, and the jam window in a jam build) and the
@@ -171,10 +176,11 @@ the `Application` is destroyed.
 
 Member order is load-bearing. Members are constructed in declaration order, and the initialiser list
 relies on it: the settings file after the temporary directory, `ApiClient` after the network
-manager, the Spotify session after the device id and the network manager and the Spotify web
-client after the session, the Yandex source after the library, `Player` after the engine and the
-registry, `JamMode` after the player, the `LyricsFinder` after the player, the registry and the
-LRCLIB service it asks. The host session is declared after `JamMode` and destroyed before it. The windows
+manager, the Spotify session after the device id and the network manager, the Spotify web client
+after the session and the Spotify library after both, the Yandex source after the library,
+`Player` after the engine and the registry, `JamMode` after the player, the `LyricsFinder` after
+the player, the registry and the LRCLIB service it asks. The host session is declared after
+`JamMode` and destroyed before it. The windows
 are declared after everything they point at, and the controllers after the windows, so the
 controllers go first, then the windows, while the player, engine and skins they point at still
 exist. The `Mpris`/`Smtc`/`MacMediaControls` object dies before the `MediaControls` it wraps, and
@@ -188,8 +194,10 @@ exist. The `Mpris`/`Smtc`/`MacMediaControls` object dies before the `MediaContro
    Then installs the interface language (`Options::language`, else the `language` setting, else
    Belarusian), before any window takes its texts. The `Player` gets the shuffle algorithm, the
    `playback/continueWithVibe` setting and `YandexSource::HistoryWaves` as the vibe that goes on
-   after a queue's head (spec CONT-01, CONT-04). The `SourceRegistry` has both sources,
-   `YandexSource::Source` as `yandex` and `LocalSource::Source` as `local`; `LocalSource::Catalog`
+   after a queue's head (spec CONT-01, CONT-04); a Spotify pick brings its own (SPOT-20). The
+   `SourceRegistry` has the three sources, `YandexSource::Source` as `yandex`,
+   `LocalSource::Source` as `local` and `SpotifySource::Source` as `spotify`, and the `quality`
+   setting goes to Yandex's and, as economy or not, to Spotify's; `LocalSource::Catalog`
    writes covers to `LocalCoversDirectory()` (`<temp dir>/local-covers` when `readOnlySettings`).
    The `LyricsFinder` asks the registry and, unless `offline`, an `Lrclib::Service` on the app's
    network manager with the app's version: a screenshot run (`--screenshot` is offline) never
@@ -208,8 +216,8 @@ exist. The `Mpris`/`Smtc`/`MacMediaControls` object dies before the `MediaContro
    `readOnlySettings`). The `WindowSet` is created on the main window right after it, and each other
    window joins it with `add()`: it becomes "secondary" (no taskbar button on Windows) and gets its
    saved steps.
-6. Connects `YandexSource::Catalog::noticed` to the main window's marquee, worded by
-   `Ui::SourceNoticeText`. In a jam build it creates the `Jam::HostSession` (the server and the
+6. Connects the `noticed` of the Yandex, local and Spotify catalogues to the main window's marquee,
+   worded by `Ui::SourceNoticeText`. In a jam build it creates the `Jam::HostSession` (the server and the
    wave feedback from `App::Settings::jam()` at each use, the app's version for `hello`, the session
    file `jam-session.json` next to the settings file, so `readOnlySettings` and a test's
    `settingsFile` keep it in their own folder; `NetworkWatch::back` reconnects it, HOST-26) and the
@@ -465,7 +473,8 @@ public:
                    YandexSource::Catalog* catalog; LocalSource::Catalog* local;
                    Core::SourceRegistry* sources; Core::LyricsFinder* lyrics; YandexSource::Source* yandex;
                    Settings* settings; WindowSet* windows; Account* account;
-                   SpotifyAccount* spotify; JamBridge* jam;
+                   SpotifyAccount* spotify; SpotifySource::Catalog* spotifyCatalog;
+                   SpotifySource::Source* spotifySource; JamBridge* jam;
                    TelemetryBridge* telemetry; const Translations* translations;
                    Ui::MainWindow* mainWindow; Ui::PlaylistWindow* playlistWindow; };
     explicit MainMenu(const Parts& parts, QObject* parent = nullptr);   // shortcuts, menu requests
@@ -499,10 +508,11 @@ The sources menu starts with "Open files…" (`openLocalFiles`) and "Open folder
   Music…" while logged out (`Account::login()`), else the library and, last, "Log out
   (<displayName>)" (`Account::logout()`);
 - "Spotify" (`spotifyMenu`): `Ui::AddSpotifyActions`, "Log in to Spotify…" while logged out
-  (`SpotifyAccount::login()`), else "Log out (<username>)" (`SpotifyAccount::logout()`);
+  (`SpotifyAccount::login()`), else the Spotify picks and, last, "Log out (<username>)"
+  (`SpotifyAccount::logout()`);
 - a separator, then the track's items at the root (`Ui::AddTrackActions`): Like or "Remove from
-  Liked", Dislike, "Open the track in the browser", each disabled when the track is not the
-  source's.
+  Liked", Dislike (both disabled when the track is not Yandex's), Radio (only for a Spotify track),
+  "Open the track in the browser" (disabled without a web page).
 
 The texts here are the English sources; the user sees them in the interface language.
 
@@ -538,7 +548,8 @@ The main menu, top to bottom:
   files (CONT-12). It switches the current queue only (spec CONT-02), never the
   `playback/continueWithVibe` setting.
 - Quality (`qualityMenu`): "Standard" or "Economy: a third of the data" (exclusive); calls
-  `YandexSource::Source::setQuality` and saves `playback/quality` (spec/player/quality.md). The
+  `YandexSource::Source::setQuality` and `SpotifySource::Source::setEconomy`, and saves
+  `playback/quality` (spec/player/quality.md, SPOT-13). The
   track that plays goes on; the next one is fetched in the new quality.
 - Skins: every `*.wsz` in `:/skins`, sorted by name, shown without the extension; then "Load a
   skin…" (file dialog starting in the home directory, filter `*.wsz *.zip`); a choice emits
