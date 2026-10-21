@@ -13,8 +13,8 @@ them in memory and on disk. `LyricsFinder` decides which lyrics text the lyrics 
 service, and keeps their answers for the last tracks. The folder does not decide what a pick plays or talk to a source's
 catalogue ([src/sources](../sources/README.md)). It does not decode or output audio or chain streams
 at the sample level ([src/audio](../audio/README.md)). It speaks to no music service: links, files,
-cover URLs, play reports and lyrics are a source's ([src/sources](../sources/README.md)), and a
-lyrics service is a module outside core behind `LyricsService`. It builds no menus
+cover URLs, play reports and lyrics are a source's ([src/sources](../sources/README.md)), and the
+lyrics service is [src/lrclib](../lrclib/README.md) behind `LyricsService`. It builds no menus
 ([src/ui](../ui/README.md), `library_menu.cpp`), shows nothing on screen and holds no text for the
 user: the `Player` says what happened as `PlayerNotice` codes, and `src/ui` words them. Namespace
 `Core`, library `qiyaa_core`.
@@ -42,7 +42,7 @@ user: the `Player` says what happened as `PlayerNotice` codes, and `src/ui` word
   PRIVATE.
 - It deliberately does not link `qiyaa_yandex` (a source's business), `Qt6::Widgets`,
   `qiyaa_skins`, `qiyaa_vis`, or anything above it in the order `audio`, `yandex`, `skins` →
-  `vis`, `core` → `sources` → `jam` → `ui`, `integrations` → `app`. It reaches miniaudio only
+  `vis`, `core` → `sources`, `lrclib` → `jam` → `ui`, `integrations` → `app`. It reaches miniaudio only
   through `qiyaa_audio`, which links it PRIVATE. Which modules link `qiyaa_core` is in
   [docs/architecture.md](../../docs/architecture.md#modules).
 - `player` and `cover_cache` do not include each other. Only `player.cpp` includes `queue.h`:
@@ -55,7 +55,7 @@ user: the `Player` says what happened as `PlayerNotice` codes, and `src/ui` word
   lifetime](#threads-and-lifetime)).
 
 ```bash
-grep -rnE --include='*.h' --include='*.cpp' '#include "(sources|jam|ui|vis|skins|integrations|app)/' src/core/   # must print nothing
+grep -rnE --include='*.h' --include='*.cpp' '#include "(sources|lrclib|jam|ui|vis|skins|integrations|app)/' src/core/   # must print nothing
 grep -rnE --include='*.h' --include='*.cpp' '#include <(QWidget|QApplication|QDialog|QMenu|QtWidgets)' src/core/   # must print nothing
 grep -rnwE --include='*.h' --include='*.cpp' 'throw|catch' src/core/                                    # must print nothing
 grep -rnE --include='*.h' --include='*.cpp' '\btr\(|translate\(' src/core/                                # must print nothing
@@ -1048,7 +1048,7 @@ std::optional<Lyrics> PlainLyrics(QStringView text);            // plain whateve
   `track.key.source`. `LrcFile` and `FileTags` are a local file's. `ThirdParty` is the lyrics
   service's: `LyricsFinder` sets it on every answer of the service.
 - `serverError` lets a service say "nothing found" while counting a failure: LRCLIB answers some
-  misses with 503.
+  misses with 503 ([src/lrclib](../lrclib/README.md)).
 
 ## `lyrics_finder.h`: `LyricsFinder`
 

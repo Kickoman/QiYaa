@@ -108,7 +108,7 @@ endif()
 
 # One static library per module: a folder of src/ with sources in it (src/sources/yandex is qiyaa_sources_yandex).
 # Dependencies point one way:
-#   audio, yandex, skins  ->  vis, core  ->  sources/yandex, sources/local  ->  jam  ->  ui, integrations  ->  app  ->  qiyaa (main)
+#   audio, yandex, skins  ->  vis, core  ->  sources/yandex, sources/local, lrclib  ->  jam  ->  ui, integrations  ->  app  ->  qiyaa (main)
 function(qiyaa_target_defaults target)
     target_compile_definitions(${target} PUBLIC QT_NO_KEYWORDS)
     if(MSVC)
@@ -264,6 +264,11 @@ qiyaa_add_module(sources_local
     src/sources/local/tags.cpp      src/sources/local/tags.h
     src/sources/local/tracks.cpp    src/sources/local/tracks.h)
 target_link_libraries(qiyaa_sources_local PUBLIC qiyaa_core Qt6::Core PRIVATE TagLib::tag)
+
+qiyaa_add_module(lrclib
+    src/lrclib/search.cpp       src/lrclib/search.h
+    src/lrclib/service.cpp      src/lrclib/service.h)
+target_link_libraries(qiyaa_lrclib PUBLIC qiyaa_core Qt6::Core Qt6::Network)
 
 # Jam: a shared queue the app hosts for guests (spec/jam). Needs Qt WebSockets; without it the
 # app builds without the jam, like without Milkdrop.

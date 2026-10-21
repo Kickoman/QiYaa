@@ -78,6 +78,7 @@ target_compile_definitions(library_test PRIVATE QIYAA_TEST_DATA="${CMAKE_CURRENT
 qiyaa_add_test(track_navigator_test core)
 qiyaa_add_test(queue_test core)
 target_link_libraries(queue_test PRIVATE qiyaa_test_core)
+qiyaa_add_test(lrclib_test core lrclib)
 qiyaa_add_test(lyrics_test audio core)
 target_link_libraries(lyrics_test PRIVATE qiyaa_test_core)
 qiyaa_add_test(player_test audio core)
