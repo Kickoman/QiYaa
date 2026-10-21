@@ -24,6 +24,11 @@ add_library(qiyaa_test_core STATIC
 target_link_libraries(qiyaa_test_core PUBLIC qiyaa_test_support qiyaa_core)
 qiyaa_target_defaults(qiyaa_test_core)
 
+# A fake Spotify access point (the server side of the handshake and its packets), alone or over TCP.
+add_library(qiyaa_test_spotify STATIC support/fake_access_point.cpp support/fake_access_point.h)
+target_link_libraries(qiyaa_test_spotify PUBLIC qiyaa_test_support qiyaa_spotify_protocol)
+qiyaa_target_defaults(qiyaa_test_spotify)
+
 # qiyaa_add_test(<name> <modules...>): <name>.cpp linked with qiyaa_<module> for each module.
 function(qiyaa_add_test name)
     qt_add_executable(${name} ${name}.cpp)
@@ -56,6 +61,7 @@ qiyaa_add_test(audio_test audio core)
 target_compile_definitions(audio_test PRIVATE QIYAA_TEST_DATA="${CMAKE_CURRENT_SOURCE_DIR}/data")
 qiyaa_add_test(spotify_protocol_test spotify_protocol)
 qiyaa_add_test(spotify_access_point_test spotify_protocol)
+target_link_libraries(spotify_access_point_test PRIVATE qiyaa_test_spotify)
 qiyaa_add_test(mp4_aac_test audio)
 target_link_libraries(mp4_aac_test PRIVATE qiyaa_miniaudio)
 target_compile_definitions(mp4_aac_test PRIVATE QIYAA_TEST_DATA="${CMAKE_CURRENT_SOURCE_DIR}/data")
