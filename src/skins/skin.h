@@ -38,6 +38,8 @@ public:
         Gen,
     };
 
+    enum class GenFrame { Gen, Playlist };
+
     struct PlaylistStyle {
         QColor normal{0x00, 0xFF, 0x00};
         QColor current{0xFF, 0xFF, 0xFF};
@@ -55,6 +57,7 @@ public:
 
     const QImage& sheet(Sheet sheet) const;
     bool numbersAreExtended() const { return numbersEx; }
+    GenFrame genFrame() const { return genWindowFrame; }
 
     void draw(QPainter& painter, Sheet bitmap, const QRect& source, const QPoint& target) const;
 
@@ -63,6 +66,7 @@ public:
 
     int drawText(QPainter& painter, const QPoint& at, const QString& text, int maxWidth = -1) const;
     static int TextWidth(const QString& text);
+    QColor textBackground() const;
 
     const TRegionData& region() const { return regionData; }
     const QList<QColor>& visColors() const { return visualizationColors; }
@@ -80,6 +84,7 @@ private:
     void loadArchive(const QByteArray& archive, const Skin* fallback);
     void measureGenLetters();
     bool numbersEx = false;
+    GenFrame genWindowFrame = GenFrame::Gen;
 };
 
 size_t qHash(Skin::Sheet sheet, size_t seed = 0) noexcept;
