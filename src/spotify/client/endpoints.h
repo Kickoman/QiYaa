@@ -9,6 +9,7 @@ struct Endpoints {
     QString accounts = QStringLiteral("https://accounts.spotify.com");
     QString clientToken = QStringLiteral("https://clienttoken.spotify.com");
     QString login5 = QStringLiteral("https://login5.spotify.com");
+    QString pathfinder = QStringLiteral("https://api-partner.spotify.com");
     QString spclientScheme = QStringLiteral("https");
 };
 
