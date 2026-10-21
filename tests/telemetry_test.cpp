@@ -1,7 +1,10 @@
 #include "app/application.h"
+#include "app/spotify_account.h"
 #include "app/telemetry_bridge.h"
 #include "app/window_set.h"
 #include "core/lyrics_finder.h"
+#include "spotify/client/session.h"
+#include "spotify/client/web.h"
 #include "support/mock_http_server.h"
 #include "support/spec_fixtures.h"
 #include "telemetry/machine_id.h"
@@ -21,6 +24,7 @@
 #include <QProcess>
 #include <QRegularExpression>
 #include <QSet>
+#include <QStringList>
 #include <QSysInfo>
 #include <QTemporaryDir>
 #include <QTest>
@@ -77,6 +81,7 @@ QJsonObject StartFields() {
     fields.insert(QStringLiteral("jamBuilt"), true);
     fields.insert(QStringLiteral("audioBackend"), QStringLiteral("Null"));
     fields.insert(QStringLiteral("loggedIn"), false);
+    fields.insert(QStringLiteral("spotifyLoggedIn"), false);
     fields.insert(QStringLiteral("firstRun"), true);
     return fields;
 }
@@ -429,6 +434,60 @@ private Q_SLOTS:
         application.telemetry()->setEnabled(true);
         QVERIFY(application.telemetry()->reporter());
         QTRY_COMPARE(posts(), 2);
+    }
+
+    void spotifyLoginsAndFailuresAreSentAsCodes() {  // TEL-18
+        App::Application::Options options;
+        options.offline = true;
+        options.audio = false;
+        options.mediaIntegration = false;
+        options.settingsFile = directory->filePath(QStringLiteral("settings.ini"));
+        options.network = network.get();
+        options.telemetryUrl = QUrl(server->baseUrl() + kPath);
+        App::Application application(options);
+        application.start();
+        QTRY_COMPARE(posts(), 1);
+        QVERIFY(Events(lastPost()).at(0).toObject().value(QStringLiteral("spotifyLoggedIn")).isBool());
+        Q_EMIT application.spotify()->loggedInWith(App::SpotifyAccount::Way::Browser);
+        Q_EMIT application.spotify()->loggedOut();
+        Q_EMIT application.spotify()->refused(App::SpotifyAccount::Refusal::Expired);
+        Q_EMIT application.spotify()->refused(App::SpotifyAccount::Refusal::PremiumRequired);
+        Q_EMIT application.spotify()->refused(App::SpotifyAccount::Refusal::Other);
+        Q_EMIT application.spotifySession()->keyFailed(true);
+        Q_EMIT application.spotifySession()->keyFailed(false);
+        Q_EMIT application.spotifySession()->accessPointFailed();
+        application.spotifyApi()->report(SpotifyClient::WebProblem::Http, 503);
+        application.spotifyApi()->report(SpotifyClient::WebProblem::Content);
+        application.spotifyApi()->report(SpotifyClient::WebProblem::QueryOutdated);
+        application.telemetry()->reporter()->send();
+        QTRY_COMPARE(posts(), 2);
+        QStringList features;
+        QStringList errors;
+        for (const QJsonValue& value : Events(lastPost())) {
+            const QJsonObject event = value.toObject();
+            if (event.value(QStringLiteral("name")).toString() == QLatin1String("spotify")) {
+                features << event.value(QStringLiteral("value")).toString();
+            }
+            if (event.value(QStringLiteral("area")).toString() == QLatin1String("spotify")) {
+                const int status = event.value(QStringLiteral("httpStatus")).toInt();
+                errors << event.value(QStringLiteral("kind")).toString()
+                        + (status > 0 ? QStringLiteral(":%1").arg(status) : QString());
+            }
+        }
+        QCOMPARE(features, (QStringList{"login-browser", "logout"}));
+        QCOMPARE(
+            errors,
+            (QStringList{
+                "login-expired",
+                "premium-required",
+                "key-refused",
+                "key-failed",
+                "access-point",
+                "http:503",
+                "content",
+                "query-outdated"
+            })
+        );
     }
 
     void milkdropShownByHandIsAFeatureAndMinimisingIsNot() {

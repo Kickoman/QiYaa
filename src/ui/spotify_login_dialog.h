@@ -26,10 +26,13 @@ public:
         QWidget* parent = nullptr
     );
 
+    enum class Way { Code, Browser };
+
     QString token() const { return accessToken; }
+    Way way() const { return loginWay; }
 
 private:
-    void finishWith(const QString& token);
+    void finishWith(const QString& token, Way way);
     void fitToContents();
 
     SpotifyClient::PairLogin* pairLogin;
@@ -40,6 +43,7 @@ private:
     QLabel* browserStatus;
     QUrl pairUrl;
     QString accessToken;
+    Way loginWay = Way::Code;
 };
 
 }  // namespace Ui

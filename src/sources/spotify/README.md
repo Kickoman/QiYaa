@@ -73,6 +73,8 @@ void nextPage(const QString& pageUrl, TDone<ContextPage>);              // hm://
   result when it is an artist or an album; anything else plays the found tracks.
 - Pathfinder queries are persisted: only a hash of the query is sent. A list of known hashes is tried newest first;
   a 400, 405, 412, or a reply without `data` moves to the next one.
+- An answer it cannot read, and Pathfinder refusing every hash, are also reported through
+  `SpotifyClient::Web::report` (`Content`, `QueryOutdated`) for the telemetry.
 - A station, autoplay and their pages are JSON contexts: the `spotify:track:` URIs of the first page, then their
   metadata; `ContextPage::next` is the page after it, empty at the end.
 

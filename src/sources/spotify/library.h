@@ -72,6 +72,7 @@ public:
 private:
     using TEntities = QHash<QString, SpotifyProtocol::TBytes>;
 
+    QString unreadable();
     void metadata(const QStringList& uris, SpotifyProtocol::ExtensionKind kind, TDone<TEntities> done);
     void collection(const QString& set, TDone<QStringList> done);
     void collectionPage(const QString& set, const QString& token, QStringList uris, TDone<QStringList> done);

@@ -12,6 +12,7 @@
 #include <QJsonObject>
 #include <QNetworkAccessManager>
 #include <QObject>
+#include <QSignalSpy>
 #include <QStringList>
 #include <QTemporaryDir>
 #include <QTest>
@@ -87,8 +88,11 @@ private Q_SLOTS:
         Stack stack;
         stack.save({1, 2, 3});
         stack.accessPoint.welcomeBlob = {5, 6};
+        QSignalSpy ways(&stack.account, &App::SpotifyAccount::loggedInWith);
+        QVERIFY(stack.account.hasSavedLogin());
         stack.account.start();
         QTRY_VERIFY(stack.account.loggedIn());
+        QVERIFY(ways.isEmpty());
         QTRY_COMPARE(stack.texts.value(0), QStringLiteral("Logged in to Spotify as owner"));
         QCOMPARE(SpotifyClient::LoadCredentials(stack.file)->data, (SpotifyProtocol::TBytes{5, 6}));
     }
@@ -96,8 +100,12 @@ private Q_SLOTS:
     void aTokenLoginSavesTheReusableCredentialsNotTheToken() {  // SPOT-03
         Stack stack;
         stack.accessPoint.welcomeBlob = {7, 7};
-        stack.account.loginWithToken(QStringLiteral("BQ-token"));
+        QSignalSpy ways(&stack.account, &App::SpotifyAccount::loggedInWith);
+        QVERIFY(!stack.account.hasSavedLogin());
+        stack.account.loginWithToken(QStringLiteral("BQ-token"), App::SpotifyAccount::Way::Browser);
         QTRY_VERIFY(stack.account.loggedIn());
+        QCOMPARE(ways.size(), 1);
+        QCOMPARE(ways.first().at(0).value<App::SpotifyAccount::Way>(), App::SpotifyAccount::Way::Browser);
         const std::optional<SpotifyProtocol::Credentials> saved = SpotifyClient::LoadCredentials(stack.file);
         QVERIFY(saved);
         QCOMPARE(saved->data, (SpotifyProtocol::TBytes{7, 7}));
@@ -110,16 +118,26 @@ private Q_SLOTS:
         Stack stack;
         stack.save({1, 2, 3});
         stack.accessPoint.loginRefusal = static_cast<int>(SpotifyProtocol::LoginError::BadCredentials);
+        QSignalSpy refusals(&stack.account, &App::SpotifyAccount::refused);
         stack.account.start();
         QTRY_COMPARE(stack.texts.value(0), QStringLiteral("The Spotify login has expired: log in again"));
+        QCOMPARE(refusals.size(), 1);
+        QCOMPARE(refusals.first().at(0).value<App::SpotifyAccount::Refusal>(), App::SpotifyAccount::Refusal::Expired);
         QVERIFY(!QFile::exists(stack.file));
     }
 
     void anAccountWithoutPremiumIsToldSo() {  // SPOT-05
         Stack stack;
         stack.accessPoint.loginRefusal = static_cast<int>(SpotifyProtocol::LoginError::PremiumAccountRequired);
+        QSignalSpy refusals(&stack.account, &App::SpotifyAccount::refused);
+        QSignalSpy ways(&stack.account, &App::SpotifyAccount::loggedInWith);
         stack.account.loginWithToken(QStringLiteral("BQ-token"));
         QTRY_VERIFY(stack.texts.contains(QStringLiteral("Spotify Premium is needed to play")));
+        QCOMPARE(refusals.size(), 1);
+        QCOMPARE(
+            refusals.first().at(0).value<App::SpotifyAccount::Refusal>(), App::SpotifyAccount::Refusal::PremiumRequired
+        );
+        QVERIFY(ways.isEmpty());
         QVERIFY(!QFile::exists(stack.file));
     }
 
@@ -128,7 +146,10 @@ private Q_SLOTS:
         stack.save({1, 2, 3});
         stack.account.start();
         QTRY_VERIFY(stack.account.loggedIn());
+        QSignalSpy loggedOut(&stack.account, &App::SpotifyAccount::loggedOut);
         stack.account.logout();
+        QCOMPARE(loggedOut.size(), 1);
+        QVERIFY(!stack.account.hasSavedLogin());
         QVERIFY(!stack.account.loggedIn());
         QVERIFY(!QFile::exists(stack.file));
         QCOMPARE(stack.texts.last(), QStringLiteral("You have logged out of Spotify"));

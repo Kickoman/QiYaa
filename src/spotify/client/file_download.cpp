@@ -153,6 +153,9 @@ void FileDownload::resolveStorage() {
         const std::optional<SpotifyProtocol::StorageUrls> storage =
             SpotifyProtocol::ParseStorageResolve(View(answer.body));
         if (!storage || storage->result != SpotifyProtocol::StorageResult::Cdn || storage->urls.empty()) {
+            if (!storage) {
+                self->web->report(WebProblem::Content);
+            }
             self->fail(DownloadFailure::Kind::Track, tr("Spotify gave no link to this track's file"));
             return;
         }
@@ -218,6 +221,9 @@ void FileDownload::fetchFrom(int index) {
             return;
         }
         const bool network = status == 0 || (answered && current->error() != QNetworkReply::NoError);
+        if (!answered && status > 0) {
+            web->report(WebProblem::Http, status);
+        }
         const QString text = current->errorString();
         fail(network ? DownloadFailure::Kind::Network : DownloadFailure::Kind::Track, text);
     });

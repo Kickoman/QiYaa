@@ -67,6 +67,8 @@ Q_SIGNALS:
     void loggedInChanged(bool loggedIn);
     void loginRefused(int code, const QString& description);
     void accountChanged();
+    void keyFailed(bool refused);
+    void accessPointFailed();
 
 private:
     struct KeyRequest {

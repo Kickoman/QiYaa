@@ -237,6 +237,7 @@ void Session::process() {
     }
     if (accessPoint && accessPoint->failed()) {
         dropConnection();
+        Q_EMIT accessPointFailed();
         scheduleReconnect();
         return;
     }
@@ -335,6 +336,7 @@ void Session::retryOrFail(std::uint32_t sequence, KeyFailure failure) {
     }
     if (failure == KeyFailure::Refused || found->attempts >= 2) {
         finishKey(static_cast<std::size_t>(found - keys.begin()), KeyResult{std::nullopt, failure});
+        Q_EMIT keyFailed(failure == KeyFailure::Refused);
         return;
     }
     found->sequence.reset();

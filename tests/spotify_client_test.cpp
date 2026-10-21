@@ -307,6 +307,7 @@ private Q_SLOTS:
     void audioKeysComeBackRefusalsAreReportedAndCodeTwoIsRetried() {  // SPOT-16, SPOT-17
         Stack stack;
         QVERIFY(stack.loginStored());
+        QSignalSpy keyFailures(&stack.session, &SpotifyClient::Session::keyFailed);
         std::optional<SpotifyClient::KeyResult> result;
         const auto ask = [&] {
             result.reset();
@@ -337,6 +338,9 @@ private Q_SLOTS:
         stack.accessPoint.keyRefusal = [](int) { return std::optional<std::uint16_t>{2}; };
         QVERIFY(ask());
         QCOMPARE(result->failure, SpotifyClient::KeyFailure::Failed);
+        QCOMPARE(keyFailures.size(), 2);
+        QCOMPARE(keyFailures.at(0).at(0).toBool(), true);
+        QCOMPARE(keyFailures.at(1).at(0).toBool(), false);
     }
 
     void theSessionLogsInAgainAfterTheConnectionDrops() {  // SPOT-18
@@ -383,6 +387,25 @@ private Q_SLOTS:
             clientTokens += recorded.path == QLatin1String("/v1/clienttoken") ? 1 : 0;
         }
         QCOMPARE(clientTokens, 1);
+    }
+
+    void webReportsAFailedRequestOnceWithItsStatus() {
+        Stack stack;
+        QVERIFY(stack.loginStored());
+        stack.http.json("GET", QStringLiteral("/broken"), QByteArray("{}"), 503);
+        QSignalSpy problems(&stack.web, &SpotifyClient::Web::problem);
+        bool answered = false;
+        stack.web.spclient(
+            SpotifyClient::WebRequest{.path = QStringLiteral("/broken")},
+            [&](const SpotifyClient::WebReply& reply) {
+                QCOMPARE(reply.status, 503);
+                answered = true;
+            }
+        );
+        QTRY_VERIFY(answered);
+        QCOMPARE(problems.size(), 1);
+        QCOMPARE(problems.first().at(0).value<SpotifyClient::WebProblem>(), SpotifyClient::WebProblem::Http);
+        QCOMPARE(problems.first().at(1).toInt(), 503);
     }
 
     void webLeavesTheAccountOutOfTheQueryWhenAskedAndPostsPathfinderQueries() {

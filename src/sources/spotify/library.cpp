@@ -190,6 +190,11 @@ QString Library::username() const {
     return session->username();
 }
 
+QString Library::unreadable() {
+    web->report(SpotifyClient::WebProblem::Content);
+    return Unreadable();
+}
+
 void Library::metadata(const QStringList& uris, ExtensionKind kind, TDone<TEntities> done) {
     if (uris.isEmpty()) {
         done({}, {});
@@ -227,7 +232,8 @@ void Library::metadata(const QStringList& uris, ExtensionKind kind, TDone<TEntit
                     }
                 }
             } else {
-                state->error = state->error.isEmpty() ? Unreadable() : state->error;
+                const QString unreadable = self->unreadable();
+                state->error = state->error.isEmpty() ? unreadable : state->error;
             }
             if (--state->waiting == 0) {
                 done(state->error.isEmpty() ? state->found : TEntities{}, state->error);
@@ -284,7 +290,7 @@ void Library::collectionPage(const QString& set, const QString& token, QStringLi
         const std::optional<SpotifyProtocol::CollectionPage> page = SpotifyProtocol::ParseCollectionPage(View(reply.body
         ));
         if (!page) {
-            return done({}, Unreadable());
+            return done({}, self->unreadable());
         }
         for (const SpotifyProtocol::CollectionItem& item : page->items) {
             uris << QString::fromStdString(item.uri);
@@ -321,7 +327,7 @@ void Library::listUris(const QString& path, int from, QList<Item> items, TDone<Q
         }
         const std::optional<SpotifyProtocol::ListPage> page = SpotifyProtocol::ParseListPage(View(reply.body));
         if (!page) {
-            return done({}, Unreadable());
+            return done({}, self->unreadable());
         }
         for (const SpotifyProtocol::ListItem& item : page->items) {
             items << Item{QString::fromStdString(item.uri), QString::fromStdString(item.name)};
@@ -491,8 +497,11 @@ void Library::pathfinder(
             return;
         }
         const QJsonObject root = QJsonDocument::fromJson(reply.body).object();
-        if (!reply.network && StaleQuery(reply, root) && attempt + 1 < hashes.size()) {
-            return self->pathfinder(operation, hashes, variables, attempt + 1, done);
+        if (!reply.network && StaleQuery(reply, root)) {
+            if (attempt + 1 < hashes.size()) {
+                return self->pathfinder(operation, hashes, variables, attempt + 1, done);
+            }
+            self->web->report(SpotifyClient::WebProblem::QueryOutdated);
         }
         if (!reply.ok()) {
             return done({}, ErrorOf(reply));
@@ -519,12 +528,15 @@ void Library::forYou(TDone<QList<Item>> done) {
         kHomeHashes,
         variables,
         0,
-        [done](const QJsonObject& data, const QString& error) {
+        [self = QPointer<Library>(this), done](const QJsonObject& data, const QString& error) {
+            if (!self) {
+                return;
+            }
             if (!error.isEmpty()) {
                 return done({}, error);
             }
             const std::optional<QList<Item>> playlists = MadeForYouOf(data);
-            done(playlists.value_or(QList<Item>()), playlists ? QString() : Unreadable());
+            done(playlists.value_or(QList<Item>()), playlists ? QString() : self->unreadable());
         }
     );
 }
@@ -546,12 +558,15 @@ void Library::search(const QString& text, TDone<Found> done) {
         kSearchHashes,
         variables,
         0,
-        [done](const QJsonObject& data, const QString& error) {
+        [self = QPointer<Library>(this), done](const QJsonObject& data, const QString& error) {
+            if (!self) {
+                return;
+            }
             if (!error.isEmpty()) {
                 return done({}, error);
             }
             const std::optional<Found> found = FoundOf(data);
-            done(found.value_or(Found{}), found ? QString() : Unreadable());
+            done(found.value_or(Found{}), found ? QString() : self->unreadable());
         }
     );
 }
@@ -575,7 +590,7 @@ void Library::context(const QByteArray& method, const QString& path, const QByte
         }
         const std::optional<ContextUris> context = ContextOf(reply.body);
         if (!context) {
-            return done({}, Unreadable());
+            return done({}, self->unreadable());
         }
         const QString next = context->next;
         self->tracks(context->uris, [done, next](const QList<Core::Track>& tracks, const QString& error) {

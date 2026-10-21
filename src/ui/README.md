@@ -1013,7 +1013,9 @@ class SpotifyLoginDialog : public QDialog {
 public:
     SpotifyLoginDialog(QNetworkAccessManager* networkManager, const SpotifyClient::Endpoints& endpoints,
                        QWidget* parent = nullptr);
+    enum class Way { Code, Browser };
     QString token() const;                // the access token, set when the dialog was accepted
+    Way way() const;                      // which way gave it
 };
 ```
 

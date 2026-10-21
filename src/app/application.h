@@ -112,6 +112,7 @@ public:
     Account* account() const { return accountControl.get(); }
     SpotifyAccount* spotify() const { return spotifyAccountControl.get(); }
     SpotifyClient::Session* spotifySession() { return &spotifyClientSession; }
+    SpotifyClient::Web* spotifyApi() { return &spotifyWeb; }
     SpotifySource::Source* spotifyTracks() { return &spotifySource; }
     SpotifySource::Catalog* spotifyPicks() { return &spotifyCatalog; }
 

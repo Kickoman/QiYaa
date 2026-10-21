@@ -397,7 +397,10 @@ Application::Application(const Options& options, QObject* parent)
             milkdropWindowInstance.get(),
             jamHostSession.get(),
             &lyricsFinder,
-            lyricsWindowInstance.get()
+            lyricsWindowInstance.get(),
+            spotifyAccountControl.get(),
+            &spotifyClientSession,
+            &spotifyWeb
         },
         TelemetryBridge::Config{
             startOptions.telemetryUrl, networkManager, startOptions.skinOverride, startOptions.audio, audioFailed
