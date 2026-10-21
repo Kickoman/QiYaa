@@ -1,6 +1,7 @@
 #include "audio/decoder.h"
 
 #include "audio/mp4_aac_backend.h"
+#include "audio/ogg_vorbis_backend.h"
 
 #include <miniaudio.h>
 
@@ -15,13 +16,14 @@ namespace {
 constexpr auto kRecheck = std::chrono::milliseconds(10);
 constexpr size_t kId3HeaderBytes = 10;
 
-enum class Container { Mp4, Flac, Wav, Other };
+enum class Container { Mp4, Ogg, Flac, Wav, Other };
 
 ma_encoding_format EncodingOf(Container container) {
     switch (container) {
         case Container::Flac: return ma_encoding_format_flac;
         case Container::Wav: return ma_encoding_format_wav;
         case Container::Mp4:
+        case Container::Ogg:
         case Container::Other: break;
     }
     return ma_encoding_format_mp3;
@@ -139,6 +141,8 @@ struct Decoder::Source {
         Container found = Container::Other;
         if (IsMp4(head, filled)) {
             found = Container::Mp4;
+        } else if (IsOgg(head, filled)) {
+            found = Container::Ogg;
         } else if (filled >= 12 && std::memcmp(head, "RIFF", 4) == 0 && std::memcmp(head + 8, "WAVE", 4) == 0) {
             found = Container::Wav;
         } else {
@@ -341,13 +345,14 @@ bool Decoder::open(Source& source) {
     ma_decoder_config config = ma_decoder_config_init(ma_format_f32, kBlockChannels, outputRate);
     ma_result result = MA_NO_BACKEND;
     const Container container = source.sniff();
-    if (container == Container::Mp4) {
-        ma_decoding_backend_vtable* mp4Backends[] = {Mp4AacBackend()};
-        config.ppCustomBackendVTables = mp4Backends;
+    if (container == Container::Mp4 || container == Container::Ogg) {
+        ma_decoding_backend_vtable* backend = container == Container::Mp4 ? Mp4AacBackend() : OggVorbisBackend();
+        ma_decoding_backend_vtable* backends[] = {backend};
+        config.ppCustomBackendVTables = backends;
         config.customBackendCount = 1;
         result = ma_decoder_init(&Source::OnRead, &Source::OnSeek, &source, &config, &source.decoder);
-        // The mp3 decoder would find "frames" in an MP4 file it does not understand.
-        if (result == MA_SUCCESS && source.decoder.pBackendVTable != Mp4AacBackend()) {
+        // The mp3 decoder would find "frames" in a file our own backend does not understand.
+        if (result == MA_SUCCESS && source.decoder.pBackendVTable != backend) {
             ma_decoder_uninit(&source.decoder);
             result = MA_NO_BACKEND;
         }

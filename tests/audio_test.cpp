@@ -195,6 +195,45 @@ private Q_SLOTS:
         QVERIFY(engine.positionSeconds() >= 2.5);
     }
 
+    void anOggVorbisPlaysBeforeItHasFullyArrived() {  // SPOT-13, LOCAL-09
+        const QByteArray ogg = Fixture(QStringLiteral("sine440_3s.ogg"));
+        QVERIFY(!ogg.isEmpty());
+        QSignalSpy finished(&engine, &Audio::AudioEngine::trackFinished);
+        engine.beginStream();
+        const qsizetype half = ogg.size() / 2;
+        for (qsizetype offset = 0; offset < half; offset += 2048) {
+            engine.appendData(ogg.mid(offset, std::min<qsizetype>(2048, half - offset)));
+            engine.poll();
+            QTest::qWait(10);
+        }
+        pumpUntil([&] { return engine.state() == Audio::AudioEngine::State::Playing; }, 3000);
+        QCOMPARE(engine.state(), Audio::AudioEngine::State::Playing);
+        QCOMPARE(engine.sourceSampleRate(), 44'100);
+        QCOMPARE(engine.sourceChannels(), 2);
+        engine.appendData(ogg.mid(half));
+        engine.finishData();
+        QVERIFY(engine.seek(2.5));
+        pumpUntil([&] { return finished.count() > 0; }, 4000);
+        QCOMPARE(finished.count(), 1);
+        QVERIFY(engine.positionSeconds() >= 2.5);
+    }
+
+    void aQueuedOggVorbisFollowsWithoutGap() {  // LOCAL-09
+        QSignalSpy finished(&engine, &Audio::AudioEngine::trackFinished);
+        QSignalSpy advanced(&engine, &Audio::AudioEngine::trackAdvanced);
+        startNearEnd();
+        const auto nextStream = queueWhole(Fixture(QStringLiteral("sine440_3s.ogg")));
+        QVERIFY(nextStream != 0);
+        pumpUntil([&] { return advanced.count() > 0 || finished.count() > 0; }, 3000);
+        QVERIFY2(advanced.count() == 1, qPrintable(describeEngine(advanced.count(), finished.count())));
+        QCOMPARE(finished.count(), 0);
+        QCOMPARE(engine.currentStream(), nextStream);
+        QVERIFY(engine.seek(2.7));
+        pumpUntil([&] { return finished.count() > 0; }, 3000);
+        QCOMPARE(finished.count(), 1);
+        engine.stop();
+    }
+
     void pauseStopsTheClock() {
         engine.beginStream();
         engine.appendData(mp3);

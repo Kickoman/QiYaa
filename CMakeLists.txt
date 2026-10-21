@@ -60,6 +60,17 @@ else()
 endif()
 add_subdirectory(contrib/fdk-aac)
 
+# The Ogg Vorbis decoder behind Spotify's files and local .ogg files (spec/player/spotify.md, LOCAL-09).
+add_library(qiyaa_stb_vorbis STATIC src/audio/stb_vorbis_impl.c)
+target_include_directories(qiyaa_stb_vorbis PUBLIC contrib/stb_vorbis)
+target_compile_definitions(qiyaa_stb_vorbis PUBLIC STB_VORBIS_NO_PULLDATA_API)
+set_target_properties(qiyaa_stb_vorbis PROPERTIES POSITION_INDEPENDENT_CODE ON)
+if(MSVC)
+    target_compile_options(qiyaa_stb_vorbis PRIVATE /w)
+else()
+    target_compile_options(qiyaa_stb_vorbis PRIVATE -w)
+endif()
+
 # One static library per module: a folder of src/ with sources in it (src/sources/yandex is qiyaa_sources_yandex).
 # Dependencies point one way:
 #   audio, yandex, skins  ->  vis, core  ->  sources/yandex, sources/local  ->  jam  ->  ui, integrations  ->  app  ->  qiyaa (main)
@@ -88,10 +99,11 @@ qiyaa_add_module(audio
     src/audio/equalizer.cpp     src/audio/equalizer.h
     src/audio/file_byte_source.cpp src/audio/file_byte_source.h
     src/audio/mp4_aac_backend.cpp src/audio/mp4_aac_backend.h
+    src/audio/ogg_vorbis_backend.cpp src/audio/ogg_vorbis_backend.h
     src/audio/stream_buffer.cpp src/audio/stream_buffer.h
     src/audio/vis_tap.cpp       src/audio/vis_tap.h)
 target_link_libraries(qiyaa_audio PUBLIC Qt6::Core
-    PRIVATE qiyaa_miniaudio qiyaa_minimp4 qiyaa_fdk_aac)
+    PRIVATE qiyaa_miniaudio qiyaa_minimp4 qiyaa_fdk_aac qiyaa_stb_vorbis)
 
 qiyaa_add_module(yandex
     src/yandex/api_client.cpp   src/yandex/api_client.h
