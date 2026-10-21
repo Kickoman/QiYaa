@@ -14,7 +14,7 @@ cover images or decide what plays next: that is [src/core](../core/README.md) (`
 
 | File | Contains |
 |---|---|
-| `api_client.h/.cpp` | `ApiClient` — authorised GET/POST, the `{"result": …}` envelope, the pending-POST count; `Account`, `Track`, `ResolvedUrl`, `RequestError`, `ClassifyReply`, `TForm`; `accountStatus`, `tracks`, `resolveTrackUrl`, `reportPlayStarted` |
+| `api_client.h/.cpp` | `ApiClient` — authorised GET/POST, the `{"result": …}` envelope, the pending-POST count; `Account`, `Track`, `ResolvedUrl`, `RequestError`, `ClassifyReply`, `TForm`; `accountStatus`, `tracks`, `resolveTrackUrl`, `lyricsText`, `reportPlayStarted` |
 | `download.h/.cpp` | `Download` — a track file's bytes as they arrive, made by `ApiClient::download` |
 | `file_info.h/.cpp` | `Quality`, `QualityKey`, `QualityFromKey`; `FileInfoRequest`, `FileInfo`, `SignFileInfo`, `FileInfoQuery`, `ParseFileInfo`, `IsUsable`, `kFileInfoClient` — `GET /get-file-info`, the economy file |
 | `library.h/.cpp` | `Library` — the logged-in account, likes and dislikes, playlists, "For you" playlists, artists, albums, stations, waves (rotor sessions, feedback, the wheel), search; `NamedReference`, `PlaylistReference`, `Station`, `WaveBatch`, `Wave`, `WaveEvent`, `SearchResult` |
@@ -103,17 +103,20 @@ public:
     void tracks(const QStringList& ids, TCallback<QList<Track>> callback);
     using TUrlCallback = std::function<void(const ResolvedUrl& link, const RequestError& error)>;
     void resolveTrackUrl(const QString& trackId, Quality quality, TUrlCallback callback);
+    using TLyricsTextCallback = std::function<void(const std::optional<QString>& text, const RequestError& error)>;
+    void lyricsText(const QString& trackId, TLyricsTextCallback callback);
     void reportPlayStarted(const Account& account, const QString& trackId, qint64 durationMs, const QString& playId);
     std::unique_ptr<Download> download(const QUrl& url);   // see download.h
 
     int pendingPosts() const;   // POSTs whose reply has not finished
 
     static Track ParseTrack(const QJsonValue& value);
+    static std::optional<QString> ParseSupplementLyrics(const QJsonValue& result);
     static QString IdString(const QJsonValue& value);   // JSON number or string -> text
 
 Q_SIGNALS:
     void postsSettled();   // pendingPosts() dropped to 0
-    void requestFailed(Yandex::RequestError::Kind kind, int httpStatus);  // a JSON request, download-info or get-file-info
+    void requestFailed(Yandex::RequestError::Kind kind, int httpStatus);  // a JSON request (lyricsText too), download-info or get-file-info
 };
 ```
 
@@ -141,6 +144,12 @@ Q_SIGNALS:
   `codec`; a network failure is the callback's error, as for any link (spec QUAL-04); any other
   failure takes the standard path for the same track, with no error (QUAL-03), after
   `requestFailed` (so telemetry counts it: a revoked key shows up there) and a `qInfo` line.
+- `lyricsText(trackId)` asks `GET /tracks/<id>/supplement` with the part of `trackId` before the
+  first `:` (spec LYR-02). Its callback gets the text, or `nullopt` when the track has none: the
+  reply then has no `lyrics`, an empty `fullLyrics` or `hasRights: false`
+  (`ParseSupplementLyrics`). "No text" is a 200, so it is never an error and never
+  `requestFailed`. An HTTP error or a broken connection is one, with `requestFailed`, like every
+  `getClassifiedJson`.
 - `reportPlayStarted` posts `/play-audio` and reports a start only: the played and end positions are
   always 0. `trackId` is `<id>` or `<id>:<albumId>`, the form `resolveTrackUrl` takes: the part
   before the first `:` is `track-id`, the rest `album-id` (empty without one). It has no callback; a
@@ -581,6 +590,7 @@ Replies are listed after unwrapping. `<uid>` is the logged-in account's uid.
 | `tracks`, `tracksByIds` | `POST /tracks/` form `track-ids=<id,id,…>`, `with-positions=false` | array of [track objects](#track-objects) |
 | `resolveTrackUrl` | `GET /tracks/<id>/download-info`, then see [below](#download-info-and-the-signed-link) | array of `{codec, bitrateInKbps, preview, downloadInfoUrl}` |
 | `resolveTrackUrl` at `Quality::Economy` | `GET /get-file-info` ([below](#get-file-info-the-economy-file)) | `{downloadInfo: {quality, codec, bitrate, transport, url, urls}}` |
+| `lyricsText` | `GET /tracks/<id>/supplement` | `lyrics.fullLyrics` and `lyrics.hasRights` ([spec/player/lyrics.md](../../spec/player/lyrics.md#yandex-music)); `result` without `lyrics` when the track has no text |
 | `reportPlayStarted` | `POST /play-audio` form `track-id`, `album-id` (both from `trackId`), `from=web-own_tracks-track-track-main`, `play-id`, `uid`, `timestamp` and `client-now` (both the current UTC time, ISO 8601 with ms), `track-length-seconds` (`durationMs / 1000.0`, may have a fraction), `total-played-seconds=0`, `end-position-seconds=0` | none |
 | `likedTracks` | `GET /users/<uid>/likes/tracks` | `library.tracks[].id`, then `tracksByIds` |
 | `userPlaylists` | `GET /users/<uid>/playlists/list` | array of playlists: `uid` (or `owner.uid`), `kind`, `title`, `trackCount`; entries without `kind` dropped |
