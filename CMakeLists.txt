@@ -60,6 +60,36 @@ else()
 endif()
 add_subdirectory(contrib/fdk-aac)
 
+# The crypto behind the Spotify protocol: a subset of BearSSL 7bea48e (contrib/bearssl).
+add_library(qiyaa_bearssl STATIC
+    contrib/bearssl/src/codec/ccopy.c
+    contrib/bearssl/src/codec/dec32be.c
+    contrib/bearssl/src/codec/enc32be.c
+    contrib/bearssl/src/hash/sha1.c
+    contrib/bearssl/src/int/i31_add.c
+    contrib/bearssl/src/int/i31_bitlen.c
+    contrib/bearssl/src/int/i31_decmod.c
+    contrib/bearssl/src/int/i31_decode.c
+    contrib/bearssl/src/int/i31_encode.c
+    contrib/bearssl/src/int/i31_fmont.c
+    contrib/bearssl/src/int/i31_modpow2.c
+    contrib/bearssl/src/int/i31_montmul.c
+    contrib/bearssl/src/int/i31_muladd.c
+    contrib/bearssl/src/int/i31_ninv31.c
+    contrib/bearssl/src/int/i31_rshift.c
+    contrib/bearssl/src/int/i31_sub.c
+    contrib/bearssl/src/int/i31_tmont.c
+    contrib/bearssl/src/int/i32_div32.c
+    contrib/bearssl/src/mac/hmac.c
+    contrib/bearssl/src/rsa/rsa_i31_pkcs1_vrfy.c
+    contrib/bearssl/src/rsa/rsa_i31_pub.c
+    contrib/bearssl/src/rsa/rsa_pkcs1_sig_unpad.c
+    contrib/bearssl/src/symcipher/aes_ct.c
+    contrib/bearssl/src/symcipher/aes_ct_ctr.c
+    contrib/bearssl/src/symcipher/aes_ct_enc.c)
+target_include_directories(qiyaa_bearssl PUBLIC contrib/bearssl/inc PRIVATE contrib/bearssl/src)
+set_target_properties(qiyaa_bearssl PROPERTIES POSITION_INDEPENDENT_CODE ON)
+
 # One static library per module: a folder of src/ with sources in it (src/sources/yandex is qiyaa_sources_yandex).
 # Dependencies point one way:
 #   audio, yandex, skins  ->  vis, core  ->  sources/yandex, sources/local  ->  jam  ->  ui, integrations  ->  app  ->  qiyaa (main)
@@ -102,6 +132,28 @@ qiyaa_add_module(yandex
     src/yandex/token.cpp        src/yandex/token.h
     src/yandex/track_url.cpp    src/yandex/track_url.h)
 target_link_libraries(qiyaa_yandex PUBLIC Qt6::Core Qt6::Network)
+
+qiyaa_add_module(spotify
+    src/spotify/access_point.cpp src/spotify/access_point.h
+    src/spotify/audio_file.cpp  src/spotify/audio_file.h
+    src/spotify/bytes.cpp       src/spotify/bytes.h
+    src/spotify/crypto.cpp      src/spotify/crypto.h
+    src/spotify/ids.cpp         src/spotify/ids.h
+    src/spotify/login.cpp       src/spotify/login.h
+    src/spotify/metadata.cpp    src/spotify/metadata.h
+    src/spotify/modpow.c        src/spotify/modpow.h
+    src/spotify/protobuf.cpp    src/spotify/protobuf.h
+    src/spotify/shannon.cpp     src/spotify/shannon.h)
+target_include_directories(qiyaa_spotify PRIVATE contrib/bearssl/src)
+target_link_libraries(qiyaa_spotify PRIVATE qiyaa_bearssl)
+
+option(QIYAA_SPOTIFY_SPIKE "Build tools/spotify_spike, the Spotify protocol spike (#52)" OFF)
+if(QIYAA_SPOTIFY_SPIKE)
+    qt_add_executable(spotify_spike tools/spotify_spike/main.cpp)
+    target_link_libraries(spotify_spike PRIVATE qiyaa_spotify Qt6::Core Qt6::Network)
+    qiyaa_target_defaults(spotify_spike)
+    target_compile_definitions(spotify_spike PRIVATE QIYAA_VERSION="${PROJECT_VERSION}")
+endif()
 
 qiyaa_add_module(skins
     src/skins/error.h
