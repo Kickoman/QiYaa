@@ -165,25 +165,14 @@ private Q_SLOTS:
         QVERIFY(!stack.saw(Core::SourceNoticeCode::Failed));
     }
 
-    void searchIsOnePickAcrossItsRequests() {  // SRC-03
+    void anArtistIsOnePickAcrossItsRequests() {  // SRC-03
         Stack stack(&library);
-        server.fixture("GET", "/search", "search/best-artist");
         server.fixture("GET", "/artists/9/track-ids-by-rating", "artists-track-ids-by-rating/ok", 400);
         server.fixture("POST", "/tracks/", "tracks/two-tracks");
         server.fixture("POST", "/rotor/session/new", "rotor-session-new/ok");
-        const auto before = server.requests().size();
-        stack.sources.search(QStringLiteral("кино"));
-        QVERIFY(QTest::qWaitFor(
-            [&] {
-                for (qsizetype i = before; i < server.requests().size(); ++i) {
-                    if (server.requests()[i].path == "/artists/9/track-ids-by-rating") {
-                        return true;
-                    }
-                }
-                return false;
-            },
-            3000
-        ));
+        stack.sources.playPick(Core::SearchPick{
+            .kind = Core::SearchPick::Kind::Artist, .id = QStringLiteral("9"), .name = QStringLiteral("Кино")
+        });
         stack.sources.playMyWave();
         QVERIFY(QTest::qWaitFor([&] { return stack.player.queueTitle() == QStringLiteral("My Vibe"); }, 3000));
         QTest::qWait(800);  // the artist's tracks arrive now
@@ -262,32 +251,30 @@ private Q_SLOTS:
         QVERIFY(feedbackEvents(before).isEmpty());  // no radioStarted for a wave that never starts
     }
 
-    void searchQueuesTheBestResult_data() {  // SRC-09 to SRC-12
-        QTest::addColumn<QString>("name");
+    void aSearchsArtistOrAlbumQueuesItsTracks_data() {  // SRC-09, SRC-10
+        QTest::addColumn<int>("kind");
+        QTest::addColumn<QString>("id");
         QTest::addColumn<QString>("title");
         QTest::addColumn<int>("count");
-        QTest::newRow("artist") << QStringLiteral("search/best-artist") << QStringLiteral("Кино") << 2;
-        QTest::newRow("album") << QStringLiteral("search/best-album") << QStringLiteral("Звезда по имени Солнце") << 3;
-        QTest::newRow("track") << QStringLiteral("search/best-track") << QStringLiteral("Search: кино") << 1;
-        QTest::newRow("playlist") << QStringLiteral("search/best-playlist") << QStringLiteral("Search: кино") << 1;
-        QTest::newRow("nothing") << QStringLiteral("search/no-best") << QString() << 0;
+        QTest::newRow("artist"
+        ) << static_cast<int>(Core::SearchPick::Kind::Artist)
+          << QStringLiteral("9") << QStringLiteral("Кино") << 2;
+        QTest::newRow("album"
+        ) << static_cast<int>(Core::SearchPick::Kind::Album)
+          << QStringLiteral("4053") << QStringLiteral("Звезда по имени Солнце") << 3;
     }
-    void searchQueuesTheBestResult() {
-        QFETCH(QString, name);
+    void aSearchsArtistOrAlbumQueuesItsTracks() {
+        QFETCH(int, kind);
+        QFETCH(QString, id);
         QFETCH(QString, title);
         QFETCH(int, count);
         Stack stack(&library);
-        stack.player.setSource(Core::QueueSource{.title = QStringLiteral("Kept"), .head = {KeptTrack()}}, false);
-        server.fixture("GET", "/search", name);
         server.fixture("GET", "/artists/9/track-ids-by-rating", "artists-track-ids-by-rating/ok");
         server.fixture("POST", "/tracks/", "tracks/two-tracks");
         server.fixture("GET", "/albums/4053/with-tracks", "albums-with-tracks/two-volumes");
-        stack.sources.search(QStringLiteral("кино"));
-        if (title.isEmpty()) {
-            QVERIFY(QTest::qWaitFor([&] { return stack.saw(Core::SourceNoticeCode::NothingFound); }, 3000));
-            QCOMPARE(stack.player.queueTitle(), QStringLiteral("Kept"));
-            return;
-        }
+        stack.sources.playPick(
+            Core::SearchPick{.kind = static_cast<Core::SearchPick::Kind>(kind), .id = id, .name = title}
+        );
         QVERIFY(QTest::qWaitFor([&] { return stack.player.queueTitle() == title; }, 3000));
         QCOMPARE(stack.player.entries().size(), count);
     }

@@ -5,7 +5,6 @@
 #include "sources/spotify/catalog.h"
 #include "sources/spotify/library.h"
 #include "sources/yandex/catalog.h"
-#include "ui/input_dialogs.h"
 #include "yandex/api_client.h"
 #include "yandex/library.h"
 
@@ -16,11 +15,9 @@
 #include <QMap>
 #include <QMenu>
 #include <QPointer>
-#include <QTimer>
 
 #include <algorithm>
 #include <memory>
-#include <optional>
 
 namespace Ui {
 
@@ -87,18 +84,6 @@ void AddSpotifyList(
     );
 }
 
-void AskAndSearch(QWidget* dialogParent, const std::function<void(const QString&)>& search) {
-    const std::optional<QString> answer = AskText(
-        dialogParent,
-        QCoreApplication::translate("Ui::LibraryMenu", "Search"),
-        QCoreApplication::translate("Ui::LibraryMenu", "Artist, album or track:")
-    );
-    const QString text = answer.value_or(QString()).trimmed();
-    if (!text.isEmpty()) {
-        search(text);
-    }
-}
-
 QString StationTypeTitle(const QString& type) {
     // Translated on each call: the language can change while the app runs.
     static const QMap<QString, const char*> names{
@@ -114,14 +99,13 @@ QString StationTypeTitle(const QString& type) {
     const char* name = names.value(type, nullptr);
     return name ? QCoreApplication::translate("Ui::LibraryMenu", name) : type;
 }
-
 }  // namespace
 
 void AddLibraryActions(
     QMenu* menu,
     Yandex::Library* library,
     YandexSource::Catalog* catalog,
-    QWidget* dialogParent,
+    std::function<void()> searchRequested,
     std::function<void()> loginRequested,
     std::function<void()> logoutRequested
 ) {
@@ -229,11 +213,7 @@ void AddLibraryActions(
         }
     );
 
-    menu->addAction(QCoreApplication::translate("Ui::LibraryMenu", "Search…"), menu, [catalog, dialogParent] {
-        QTimer::singleShot(0, catalog, [catalog, dialogParent] {
-            AskAndSearch(dialogParent, [catalog](const QString& text) { catalog->search(text); });
-        });
-    });
+    menu->addAction(QCoreApplication::translate("Ui::LibraryMenu", "Search…"), menu, searchRequested);
 
     menu->addSeparator();
     const QString name = library->account().displayName;
@@ -281,7 +261,7 @@ void AddSpotifyActions(
     QMenu* menu,
     const SpotifyMenuState& state,
     SpotifySource::Catalog* catalog,
-    QWidget* dialogParent,
+    std::function<void()> searchRequested,
     std::function<void()> loginRequested,
     std::function<void()> logoutRequested
 ) {
@@ -318,11 +298,7 @@ void AddSpotifyActions(
         [library](auto loaded) { library->savedAlbums(loaded); },
         [catalog](const SpotifySource::Item& item) { catalog->playAlbum(item); }
     );
-    menu->addAction(QCoreApplication::translate("Ui::LibraryMenu", "Search…"), menu, [catalog, dialogParent] {
-        QTimer::singleShot(0, catalog, [catalog, dialogParent] {
-            AskAndSearch(dialogParent, [catalog](const QString& text) { catalog->search(text); });
-        });
-    });
+    menu->addAction(QCoreApplication::translate("Ui::LibraryMenu", "Search…"), menu, searchRequested);
     menu->addSeparator();
     menu->addAction(
         QCoreApplication::translate("Ui::LibraryMenu", "Log out (%1)").arg(state.username), menu, logoutRequested

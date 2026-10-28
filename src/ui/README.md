@@ -29,6 +29,7 @@ to Yandex ([src/yandex](../yandex/README.md)), or create, lay out, connect and s
 | `input_dialogs.h/.cpp` | `AskText`, `AskItem`: `QInputDialog` questions with the app's own OK and Cancel |
 | `form_canvas.h/.cpp` | `FormCanvas`, `FormControl`: one pass that draws a GEN window's page of text, buttons and lights in the PLEDIT.TXT colours and lists what can be clicked |
 | `line_edit.h/.cpp` | `LineEdit`: a one-line field drawn on a `FormCanvas`, with a caret, a selection, words and the clipboard |
+| `search_window.h/.cpp` | `SearchWindow` — the search in a GEN frame: a tab per source, the field, the best result, tracks, artists and albums, an artist or album opened in place; play, play next, add to the end |
 | `jam_window.h/.cpp` | `JamWindow` — the host's jam in a GEN frame: start, QR code and link, settings, guests, end, search that adds tracks. Built only with the jam |
 | `jam_server_dialog.h/.cpp` | `JamServerDialog` — the jam server's address, "Teach the jam vibe" and "Guests may listen". Built only with the jam |
 
@@ -710,21 +711,83 @@ class LineEdit {
 ```
 
 - Keys, by the platform's `QKeySequence` standard keys: text at the caret (replacing a selection),
-  Backspace and Delete, the same by a word, Left/Right by a letter or a word, Home/End (the platform's start and end of the line or document), each with Shift to
-  select, Select all, Copy, Cut and Paste (the clipboard's text on one line, `simplified()`). Left
-  or Right without Shift collapses a selection to its start or end. Text beyond `maxLength` is cut.
-  Enter and Esc are the caller's (`Enter`, `Escape`); anything else is `Ignored`.
+  Backspace and Delete, the same by a word, Left/Right by a letter or a word, Home/End (the
+  platform's start and end of the line or document), each with Shift to select, Select all, Copy,
+  Cut and Paste (the clipboard's text on one line, `simplified()`). Left or Right without Shift
+  collapses a selection to its start or end. Text beyond `maxLength` is cut. Enter and Esc are the
+  caller's (`Enter`, `Escape`); anything else is `Ignored`.
 - The caret moves and erases by whole characters (graphemes: a surrogate pair, a letter with its
-  marks), and words are Unicode's (`QTextBoundaryFinder`: "don't" is one). A cut at `maxLength` never
-  leaves half a surrogate pair.
+  marks), and words are Unicode's (`QTextBoundaryFinder`: "don't" is one). A cut at `maxLength`
+  never leaves half a surrogate pair.
 - `takes` is what the window answers to `ShortcutOverride` while a field has the focus: every key
   without Ctrl, Alt or Meta (Shift, keypad and AltGr's group switch allowed), and the editing keys
-  above. So typing "x" or pressing Left edits the
-  field instead of starting playback or seeking.
-- Drawing: a box (`current` while focused, `normal` otherwise), the hint in `dim` while empty and not
-  focused, else the text in `current`. A text that fits starts at the left; a longer one scrolls so
-  the caret stays in sight. The selection is drawn on `selected` and the caret as a line while
+  above. So typing "x" or pressing Left edits the field instead of starting playback or seeking.
+- Drawing: a box (`current` while focused, `normal` otherwise), the hint in `dim` while empty and
+  not focused, else the text in `current`. A text that fits starts at the left; a longer one scrolls
+  so the caret stays in sight. The selection is drawn on `selected` and the caret as a line while
   focused. A field whose caret is at the end of a text that fits draws as the jam window's did.
+
+## SearchWindow — `search_window.h/.cpp`
+
+```cpp
+class SearchWindow : public GenWindow {
+public:
+    struct Tab { const char* name; Core::SearchCatalog* catalog; };   // name: a QT_TRANSLATE_NOOP of Ui::SearchWindow
+    enum class Part { Best, Tracks, Artists, Albums };
+    SearchWindow(QList<Tab> tabs, Core::Player* player, const Skins::Skin* skin, QWidget* parent = nullptr);
+    void showTab(int index);                  // the same text is searched again on that tab
+    int currentTab() const;
+    void focusField();
+    void search(const QString& text);         // trimmed; empty, or a tab that cannot search: nothing
+    void setTextFont(const std::optional<QFont>& font);   // tests: Tiny5
+    QList<FormControl> controls();            // what can be clicked now, in skin pixels; for the tests
+    int selectedRow() const;                  // -1: none
+Q_SIGNALS:
+    void loginRequested(int tab);             // the tab's catalogue cannot search: its login
+};
+```
+
+The search of spec/player/sources.md (SRC-13 to SRC-19, SPOT-11) and its adds (spec/player/queue.md),
+title `SEARCH`, drawn on a [`FormCanvas`](#formcanvas--form_canvashcpp) in the PLEDIT.TXT colours
+and font like the jam window. The app makes one with the tabs Yandex Music and Spotify; the menus'
+"Search…" opens it on their tab, and Ctrl+F shows or hides it.
+
+- **The page:** the tabs (the current one on `selectedBackground`), the field
+  ([`LineEdit`](#lineedit--line_edithcpp), 100 characters) and "Search". Then, by the state: a
+  hint before the first search; "Searching…"; "The search failed: …" with "Try again"; "Nothing
+  found"; or the results. A tab whose catalogue cannot search (`canSearch()`, not logged in) shows
+  "Log in…" instead, which emits `loginRequested`.
+- **The results** (SRC-13): "Best" (an artist, an album or a track), "Tracks · N" (6 at first),
+  "Artists · N" and "Albums · N" (3 each); "All" and "Fewer" fold a part. A track row is "n.
+  Artists - Title", its duration, Play and Add; an artist "Name · artist" and Play; an album
+  "Title · Artists · Year[ · single]", Play and Add. The track that is current in the `Player` is
+  drawn in `current`. A track added from here gets a line under it: "plays next" or "at the end of
+  the queue", until the next search. The rows scroll with the wheel and with the selection.
+- **What the controls do**, all through the tab's `Core::SearchCatalog`:
+  - Play on a track: `playTracks("Search: <text>", results.playable(), its index, none)` (SRC-18);
+    in an opened artist or album, `playTracks(<its name>, its tracks, the index, it)` (SRC-16).
+  - Play on an artist or album: `playPick` (SRC-09, SRC-10, SPOT-09).
+  - Add on a track: `add(<the title above>, {track}, Next)`, or `End` with Shift held
+    (SRC-17, ADD-01, ADD-03); on an album: `addAlbum`.
+  - Enter or a double click on an artist or album opens it: `open`, then its tracks in place of the
+    results, with "Back", "Play all", "Next" and "To the end" (SRC-16). Back shows the results as
+    they were, with no new search.
+- **Keys:** in the field, Enter searches, Down goes to the rows and Esc leaves the field. In the
+  rows: Up/Down, PgUp/PgDn, Home/End move the selection (Up from the first row goes back to the
+  field); Enter plays a track or opens an artist or album; Ins adds next and Shift+Ins to the end;
+  Backspace and Esc go back from an opened artist or album, else to the field. A click on a row
+  selects it.
+- **Requests:** a newer search, or a newer open, drops the answer of the older one (SRC-14,
+  SRC-16), by a counter the window keeps; the catalogues do not drop answers themselves. Switching
+  the tab searches the same text on the new tab.
+- The pictures `tests/data/golden/search-*.png` are drawn with the Tiny5 font, like the jam window's.
+
+**Traps:**
+- The rows are ordered Best, Tracks, Artists, Albums, and `selectedRow` counts the rows shown, so
+  folding a part changes which row an index means; the selection is reset by each search, open and
+  back.
+- While the field has the focus the window takes `ShortcutOverride` for `LineEdit::takes`; with the
+  rows focused only for the plain list keys above, so Z, X, C, V and B still drive the player.
 
 ## JamWindow — `jam_window.h/.cpp`
 
@@ -987,7 +1050,7 @@ void AddLibraryActions(
     QMenu* menu,                           // the Yandex Music submenu
     Yandex::Library* library,              // logged in or not, and the lists the items offer
     YandexSource::Catalog* catalog,        // what every item plays
-    QWidget* dialogParent,                 // parent of the search input dialog
+    std::function<void()> searchRequested, // "Search…": the caller opens the search window
     std::function<void()> loginRequested,  // the only item when not logged in
     std::function<void()> logoutRequested  // the last item when logged in
 );
@@ -1000,13 +1063,14 @@ void AddTrackActions(
 );
 struct SpotifyMenuState { bool loggedIn = false; QString username; };
 void AddSpotifyActions(QMenu* menu, const SpotifyMenuState& state, SpotifySource::Catalog* catalog,
-                       QWidget* dialogParent, std::function<void()> loginRequested,
+                       std::function<void()> searchRequested, std::function<void()> loginRequested,
                        std::function<void()> logoutRequested);
 ```
 
 The menu only builds items; what they play, and every status they report, is
 `YandexSource::Catalog` ([src/sources/yandex](../sources/yandex/README.md#catalogh-catalog)). The
-login and logout items only call their function: the caller queues the dialog.
+login, logout and search items only call their function: the caller queues the dialog or opens
+the [search window](#searchwindow--search_windowhcpp).
 
 - `AddLibraryActions`, when logged in: My Vibe, Liked, submenus Wheel of vibes (the vibes around
   `Catalog::lastWaveSeeds()`), For you, Playlists (Listen / Similar tracks), Artists, Albums,
@@ -1030,9 +1094,6 @@ login and logout items only call their function: the caller queues the dialog.
 - Menu actions capture `Player*`, `Catalog*` and `Library*` unguarded; that is safe only because
   the app owns them for the whole run.
 - Submenus never reload: build a new menu for fresh data.
-- "Search…" asks after the menu has closed (`QTimer::singleShot(0, catalog, …)`): a modal dialog
-  inside a menu action crashes the app on Qt 6.4 (the traps of
-  [`App::MainMenu`](../app/README.md#main_menuhcpp--appmainmenu)).
 
 ## LoginDialog — `login_dialog.h/.cpp`
 

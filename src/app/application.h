@@ -53,6 +53,7 @@ class LyricsWindow;
 class MilkdropWindow;
 class NowPlayingWindow;
 class PlaylistWindow;
+class SearchWindow;
 class SkinnedWindow;
 }  // namespace Ui
 
@@ -96,6 +97,7 @@ public:
     Ui::MilkdropWindow* milkdropWindow() const { return milkdropWindowInstance.get(); }
     Ui::LyricsWindow* lyricsWindow() const { return lyricsWindowInstance.get(); }
     Ui::JamWindow* jamWindow() const { return jamWindowInstance.get(); }  // null without the jam
+    Ui::SearchWindow* searchWindow() const { return searchWindowInstance.get(); }
     Core::CoverCache* covers() const { return coverCache.get(); }
     Core::Player* player() { return &corePlayer; }
     Audio::AudioEngine* engine() { return &audioEngine; }
@@ -173,6 +175,7 @@ private:
     std::unique_ptr<Ui::PlaylistWindow> playlistWindowInstance;
     std::unique_ptr<Ui::NowPlayingWindow> nowPlayingWindowInstance;
     std::unique_ptr<Ui::LyricsWindow> lyricsWindowInstance;
+    std::unique_ptr<Ui::SearchWindow> searchWindowInstance;
     std::unique_ptr<Ui::MilkdropWindow> milkdropWindowInstance;
     std::unique_ptr<Ui::JamWindow> jamWindowInstance;
     std::unique_ptr<WindowSet> windowSet;

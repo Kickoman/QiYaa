@@ -16,6 +16,7 @@
 #include "ui/library_menu.h"
 #include "ui/main_window.h"
 #include "ui/playlist_window.h"
+#include "ui/search_window.h"
 #include "yandex/library.h"
 
 #include <QAction>
@@ -131,7 +132,7 @@ void MainMenu::addSourceMenus(QMenu* menu, const Core::Track* track) {
         yandex,
         parts.library,
         parts.catalog,
-        parts.mainWindow,
+        [this] { openSearch(0); },
         [this] { QTimer::singleShot(0, parts.account, &Account::login); },
         [this] { QTimer::singleShot(0, parts.account, &Account::logout); }
     );
@@ -142,12 +143,21 @@ void MainMenu::addSourceMenus(QMenu* menu, const Core::Track* track) {
         spotify,
         state,
         parts.spotifyCatalog,
-        parts.mainWindow,
+        [this] { openSearch(1); },
         [this] { QTimer::singleShot(0, parts.spotify, &SpotifyAccount::login); },
         [this] { QTimer::singleShot(0, parts.spotify, &SpotifyAccount::logout); }
     );
     menu->addSeparator();
     Ui::AddTrackActions(menu, parts.catalog, parts.spotifyCatalog, parts.sources, track);
+}
+
+void MainMenu::openSearch(int tab) {
+    QTimer::singleShot(0, this, [this, tab] {
+        parts.windows->setVisible(parts.searchWindow, true);
+        parts.searchWindow->showTab(tab);
+        parts.searchWindow->focusField();
+        parts.searchWindow->activateWindow();
+    });
 }
 
 void MainMenu::addLocalActions(QMenu* menu) {

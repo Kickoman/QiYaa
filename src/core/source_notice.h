@@ -6,12 +6,9 @@ namespace Core {
 
 enum class SourceNoticeCode {
     Loading,
-    Searching,
     Failed,
     VibeFailed,
-    SearchFailed,
     Empty,
-    NothingFound,
     Loaded,
     LoadedFirst,
     AddedNext,

@@ -178,32 +178,6 @@ void Catalog::playMyWave() {
     playWave({kMyWaveSeed}, tr("My Vibe"));
 }
 
-void Catalog::search(const QString& text) {
-    Yandex::Library* library = yandexLibrary;
-    const QString title = tr("Search: %1").arg(text);
-    notify(NoticeOf(SourceNoticeCode::Searching, text));
-    QPointer<Catalog> self(this);
-    const quint64 ticket = corePlayer->newSourceRequest();
-    library->search(text, [self, library, title, ticket](const Yandex::SearchResult& result, const QString& error) {
-        if (!self || !self->corePlayer->isLatestSourceRequest(ticket)) {
-            return;
-        }
-        if (!error.isEmpty()) {
-            return self->notify(NoticeOf(SourceNoticeCode::SearchFailed, title, error));
-        }
-        if (result.bestKind == Yandex::SearchResult::Kind::Artist && !result.bestId.isEmpty()) {
-            return library->artistTopTracks(result.bestId, self->queueLoader(result.bestName, ticket));
-        }
-        if (result.bestKind == Yandex::SearchResult::Kind::Album && !result.bestId.isEmpty()) {
-            return library->albumTracks(result.bestId, self->queueLoader(result.bestName, ticket));
-        }
-        if (!HasAvailable(result.tracks)) {  // SRC-12
-            return self->notify(NoticeOf(SourceNoticeCode::NothingFound, title));
-        }
-        self->corePlayer->setSource(Core::QueueSource{.title = title, .head = TracksOf(result.tracks)}, true);
-    });
-}
-
 void Catalog::searchTracks(
     const QString& text,
     std::function<void(const QList<Core::Track>&, const Yandex::RequestError&)> callback

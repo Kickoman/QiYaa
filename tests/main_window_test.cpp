@@ -214,14 +214,13 @@ private Q_SLOTS:
             );
         };
         QCOMPARE(text(Code::Loading, "Liked"), QStringLiteral("Liked: loading…"));
-        QCOMPARE(text(Code::Searching, "кино"), QStringLiteral("Search: кино…"));
         QCOMPARE(text(Code::Failed, "Звезда", "HTTP 500"), QStringLiteral("Error: HTTP 500"));
         QCOMPARE(text(Code::VibeFailed, "My Vibe", "HTTP 500"), QStringLiteral("Vibe error: HTTP 500"));
-        QCOMPARE(text(Code::SearchFailed, "Search: кино", "HTTP 500"), QStringLiteral("Search error: HTTP 500"));
         QCOMPARE(text(Code::Empty, "My Vibe"), QStringLiteral("My Vibe: empty"));
-        QCOMPARE(text(Code::NothingFound), QStringLiteral("Nothing found"));
         QCOMPARE(text(Code::Loaded, "Liked", {}, 2), QStringLiteral("Liked: 2 track(s)"));
         QCOMPARE(text(Code::LoadedFirst, "Music", {}, 10'000), QStringLiteral("Music: the first 10000 track(s)"));
+        QCOMPARE(text(Code::AddedNext, "Кукушка", {}, 1), QStringLiteral("Plays next: Кукушка"));
+        QCOMPARE(text(Code::AddedToEnd, "Звезда", {}, 3), QStringLiteral("Added to the end: Звезда"));
         QCOMPARE(text(Code::AddedToLiked), QStringLiteral("Added to Liked"));
         QCOMPARE(text(Code::RemovedFromLiked), QStringLiteral("Removed from Liked"));
         QCOMPARE(text(Code::Disliked), QStringLiteral("Disliked"));

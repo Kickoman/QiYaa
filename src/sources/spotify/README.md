@@ -18,7 +18,7 @@ It shows no dialog and holds no menu (those are [src/ui](../../ui/README.md)'s a
 |---|---|
 | `tracks.h/.cpp` | `kSourceName` (`spotify`), `TrackOf`, `UriOf`, `IdOfUri`, `GidOf`, `TrackUriOf`, `CoverUrlOf`, `WebPageOf`: a Spotify track as a `Core::Track` and back |
 | `library.h/.cpp` | `Library`, `Item`, `ContextPage`, `Found`: the picks and the metadata over `SpotifyClient::Web` |
-| `catalog.h/.cpp` | `Catalog`: a pick, a search or a radio into the player's queue, with a ticket each, and the statuses |
+| `catalog.h/.cpp` | `Catalog`: a pick or a radio into the player's queue, with a ticket each, and the statuses; the search window's `Core::SearchCatalog` |
 | `autoplay.h/.cpp` | `Autoplay`: a `Core::Continuation` over Spotify's autoplay or a track's station, page by page |
 | `source.h/.cpp` | `Source`, the `Core::TrackSource` of Spotify tracks: opening a file in the quality in effect |
 
@@ -72,8 +72,7 @@ void nextPage(const QString& pageUrl, TDone<ContextPage>);              // hm://
   (SPOT-10); search is Pathfinder's `searchDesktop`, `kSearchLimit` (50) of each part. The best result is the first
   top result when it is an artist, an album or a track (`Found::Kind`); `Found` also lists the `spotify:artist:`
   items of `artists` and the `spotify:album:` items of `albumsV2` (`FoundAlbum`: the name, the artists, `date.year`,
-  `type` `SINGLE`), each item through `item` when it has one and then `data` (SPOT-11). The old `search` plays a
-  best artist or album and anything else the found tracks.
+  `type` `SINGLE`), each item through `item` when it has one and then `data` (SPOT-11).
 - Pathfinder queries are persisted: only a hash of the query is sent. A list of known hashes is tried newest first;
   a 400, 405, 412, or a reply without `data` moves to the next one.
 - An answer it cannot read, and Pathfinder refusing every hash, are also reported through
@@ -84,8 +83,8 @@ void nextPage(const QString& pageUrl, TDone<ContextPage>);              // hm://
 ## `catalog.h`: `Catalog`
 
 - Each pick takes a ticket from `Player::newSourceRequest()`; an answer to an older ticket is dropped, as Yandex's
-  (SRC-01 to SRC-08). A pick with no available track says `Empty`; a failure says `Failed` (`SearchFailed` for a
-  search, `VibeFailed` for a radio). Liked Songs say `Loading` first and `Loaded` with the count after.
+  (SRC-01 to SRC-08). A pick with no available track says `Empty`; a failure says `Failed` (`VibeFailed` for a
+  radio). Liked Songs say `Loading` first and `Loaded` with the count after.
 - A pick's queue is its tracks as the head and `Autoplay::Of(<the pick's URI>)` as `QueueSource::historyWave`: the
   liked songs' `spotify:user:<username>:collection`, the playlist's, the album's or the artist's own URI, and for
   found tracks the first one's (SPOT-20).

@@ -192,7 +192,9 @@ void WindowSet::setScale(double scale, ScaleScope scope) {
         );
         frame.moveTopLeft(Ui::SnapToOthers(frame, placed, 4));
         window->move(frame.topLeft());
-        placed << frame;
+        if (window->isVisible()) {
+            placed << frame;
+        }
     }
     QRect bounds = mainWindow->frameGeometry();
     for (const auto& [window, offset] : docked) {
