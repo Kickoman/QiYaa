@@ -89,8 +89,8 @@ The scenarios are [spec/player/sources.md](../../../spec/player/sources.md),
   tracks under its title, anything else the found tracks as `Search: <text>`.
 - **The search window** (`Core::SearchCatalog`, [src/core](../../core/README.md#searchh-searchcatalog-searchresults),
   SRC-13 to SRC-19): `find` turns `Library::search` into `Core::SearchResults` (a best artist or
-  album when its id is not empty, a best track, the found tracks, artists and albums, then
-  `Core::Shown`); `open` is the artist's top tracks or the album's tracks. `playTracks` and `add`
+  album when its id is not empty, a best track when its id is not empty and without the found
+  track of the same catalog id, the found tracks, artists and albums, then `Core::Shown`); `open` is the artist's top tracks or the album's tracks. `playTracks` and `add`
   build a `QueueSource` of the tracks and no continuation of its own: the `Player` gives it the vibe
   from history. A vibe's load-more sends only Yandex tracks among the queue's last ones, since
   `CatalogId` of another source's key is empty (WAVE-05, spec/player/queue.md).

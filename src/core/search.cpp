@@ -1,7 +1,5 @@
 #include "core/search.h"
 
-#include <utility>
-
 namespace Core {
 
 namespace {

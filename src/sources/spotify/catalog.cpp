@@ -15,6 +15,13 @@ using Core::SourceNoticeCode;
 
 namespace {
 
+QString FirstAvailableUri(const QList<Core::Track>& tracks) {
+    const auto first = std::find_if(tracks.cbegin(), tracks.cend(), [](const Core::Track& track) {
+        return track.available;
+    });
+    return first != tracks.cend() ? UriOf(first->key) : QString();
+}
+
 int AvailableCount(const QList<Core::Track>& tracks) {
     return static_cast<int>(std::count_if(tracks.cbegin(), tracks.cend(), [](const Core::Track& track) {
         return track.available;
@@ -190,7 +197,7 @@ void Catalog::playRadio(const Core::Track& track) {
 }
 
 bool Catalog::canSearch() const {
-    return !spotifyLibrary->username().isEmpty();
+    return loggedIn;
 }
 
 void Catalog::find(const QString& text, TFound done) {
@@ -226,7 +233,9 @@ void Catalog::open(const Core::SearchPick& pick, TTracks done) {
     QPointer<Catalog> self(this);
     const auto opened = [self, done](const QList<Core::Track>& tracks, const QString& error) {
         if (self) {
-            done(tracks, error);
+            QList<Core::Track> available = tracks;
+            available.removeIf([](const Core::Track& track) { return !track.available; });
+            done(available, error);
         }
     };
     if (pick.kind == Core::SearchPick::Kind::Artist) {
@@ -251,7 +260,7 @@ void Catalog::playTracks(const QString& title, const QList<Core::Track>& tracks,
     if (available == 0) {
         return notify(NoticeOf(SourceNoticeCode::Empty, title));
     }
-    const QString context = from ? from->id : UriOf(tracks.front().key);
+    const QString context = from ? from->id : FirstAvailableUri(tracks);
     const Core::QueueSource source{
         .title = title,
         .head = tracks,
@@ -264,12 +273,12 @@ void Catalog::playTracks(const QString& title, const QList<Core::Track>& tracks,
 
 void Catalog::add(const QString& title, const QList<Core::Track>& tracks, Core::AddPlacement placement) {
     if (AvailableCount(tracks) == 0) {
-        return notify(NoticeOf(SourceNoticeCode::Empty, title));
+        return;
     }
     const Core::QueueSource source{
         .title = title,
         .head = tracks,
-        .historyWave = Autoplay::Of(spotifyLibrary, UriOf(tracks.front().key)),
+        .historyWave = Autoplay::Of(spotifyLibrary, FirstAvailableUri(tracks)),
     };
     corePlayer->add(source, placement);
     notify(Core::AddedNotice(title, tracks, placement));
@@ -277,16 +286,19 @@ void Catalog::add(const QString& title, const QList<Core::Track>& tracks, Core::
 
 void Catalog::addAlbum(const Core::SearchPick& album, Core::AddPlacement placement) {
     QPointer<Catalog> self(this);
-    spotifyLibrary
-        ->albumTracks(album.id, [self, album, placement](const QList<Core::Track>& tracks, const QString& error) {
-            if (!self) {
-                return;
-            }
-            if (!error.isEmpty()) {
-                return self->notify(NoticeOf(SourceNoticeCode::Failed, album.name, error));
-            }
-            self->add(album.name, tracks, placement);
-        });
+    const auto loaded = [self, album, placement](const QList<Core::Track>& tracks, const QString& error) {
+        if (!self) {
+            return;
+        }
+        if (!error.isEmpty()) {
+            return self->notify(NoticeOf(SourceNoticeCode::Failed, album.name, error));
+        }
+        if (AvailableCount(tracks) == 0) {
+            return self->notify(NoticeOf(SourceNoticeCode::Empty, album.name));
+        }
+        self->add(album.name, tracks, placement);
+    };
+    spotifyLibrary->albumTracks(album.id, loaded);
 }
 
 bool Catalog::owns(const Core::TrackKey& key) const {
