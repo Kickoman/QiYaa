@@ -52,8 +52,6 @@ public:
     void playWave(const QStringList& seeds, const QString& title);        // vibes and stations
     void playMyWave();                                           // {kMyWaveSeed}, "My Vibe"
     // Core::SearchCatalog: canSearch, find, open, playPick, playTracks, add, addAlbum
-    void searchTracks(const QString& text,                       // tracks only, for the jam window
-                      std::function<void(const QList<Core::Track>&, const Yandex::RequestError&)> callback);
 
     bool owns(const Core::TrackKey& key) const;                  // a Yandex track
     bool isLiked(const Core::TrackKey& key) const;

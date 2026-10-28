@@ -418,7 +418,8 @@ class JamBridge : public QObject {
 public:
     struct Parts { Jam::HostSession* host; Ui::JamWindow* window; Core::JamMode* jamMode; Core::Player* player;
                    Settings* settings; WindowSet* windows; Account* account;
-                   Ui::MainWindow* mainWindow; Ui::PlaylistWindow* playlistWindow; };
+                   Ui::MainWindow* mainWindow; Ui::PlaylistWindow* playlistWindow;
+                   Ui::SearchWindow* searchWindow; };
     explicit JamBridge(const Parts& parts, QObject* parent = nullptr);   // connects it all
     void offerStored();                                // HOST-23, when a jam is stored
     void addMenu(QMenu* menu);                         // the Jam submenu and a separator
@@ -444,6 +445,13 @@ window; the bridge only connects them. A build without the jam compiles `jam_off
   `Ui::JamTrackNote` of their entry through `trackNote`, and the playlist repaints on the session's
   `changed`. A pick during a jam replaces the jam's base (HOST-21), and the playlist's remove and
   clear go to the `Player` as ever.
+- **The search window** (HOST-38): the jam window's "Add tracks…" shows it on the Yandex Music tab
+  with the field focused. Its `JamHooks`: a jam is on while the session's phase is Active; `canAdd`
+  is `HostSession::canAdd`; `add` is `HostSession::add`, or `playNext` for "next" (which pins a
+  waiting item); `waitingFrom` is the name of who added the room's waiting item with the track's
+  catalog id. The session's `changed` calls `jamChanged()`, and `addRefused` calls `jamRefused()`
+  with the tracks of that catalog id and the refusal's words (below); every refusal is also the
+  status.
 - **The account:** `Account::connected` gives the jam window the host's name; `loggingOut` ends a
   jam being created or on (`cancelCreate()`, `end()`, HOST-32); the likes of a login are on hold
   while a jam is on or the question below is open.
@@ -739,7 +747,8 @@ defaults use the sizes the windows have at that moment, after shade and scale.
    and may move itself back onto the screen, so the main window's position is read only after
    this step.
 3. Puts each docked window back at main position + offset × new scale, snapped with
-   `Ui::SnapToOthers(frame, placed, 4)` to the windows already placed, hidden ones included. Then
+   `Ui::SnapToOthers(frame, placed, 4)` to the windows already placed (in the group's order, hidden
+   ones included). Then
    each side that touched an already placed window before the scale touches it again: the top under
    that window's new bottom, and so for the other sides. Window sizes are rounded one by one, so the
    offsets alone leave 1 px gaps or overlaps; and a snap alone could pick a hidden window whose edge

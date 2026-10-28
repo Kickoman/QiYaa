@@ -20,6 +20,7 @@ namespace Ui {
 class JamWindow;
 class MainWindow;
 class PlaylistWindow;
+class SearchWindow;
 }  // namespace Ui
 
 namespace App {
@@ -41,6 +42,7 @@ public:
         Account* account = nullptr;
         Ui::MainWindow* mainWindow = nullptr;
         Ui::PlaylistWindow* playlistWindow = nullptr;
+        Ui::SearchWindow* searchWindow = nullptr;
     };
 
     explicit JamBridge(const Parts& parts, QObject* parent = nullptr);

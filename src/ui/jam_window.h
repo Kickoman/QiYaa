@@ -1,6 +1,5 @@
 #pragma once
 
-#include "core/track.h"
 #include "ui/form_canvas.h"
 #include "ui/gen_window.h"
 #include "ui/line_edit.h"
@@ -26,28 +25,17 @@ namespace Jam {
 class HostSession;
 }  // namespace Jam
 
-namespace YandexSource {
-class Catalog;
-}  // namespace YandexSource
-
 namespace Ui {
 
 QString JamTrackNote(const Core::QueueEntry& entry, bool jamActive, const Jam::HostSession* host);
 
-// The host's jam window (spec/jam/host.md HOST-20, HOST-25, HOST-35): the start of a jam, then
-// its QR code and link, the room's settings, the guests and the end on one page, and a search
-// that adds tracks on the other. Drawn in the skin's playlist colours and font.
+// The host's jam window (spec/jam/host.md HOST-25, HOST-35): the start of a jam, then its QR code
+// and link, the room's settings, the guests and the end. "Add tracks…" asks for the search window
+// (HOST-38). Drawn in the skin's playlist colours and font.
 class JamWindow : public GenWindow {
     Q_OBJECT
 public:
-    enum class Page { Jam, Search };
-
-    JamWindow(
-        Jam::HostSession* host,
-        YandexSource::Catalog* catalog,
-        const Skins::Skin* skin,
-        QWidget* parent = nullptr
-    );
+    JamWindow(Jam::HostSession* host, const Skins::Skin* skin, QWidget* parent = nullptr);
 
     // The name the start page offers, until the user types another.
     void setHostName(const QString& name);
@@ -55,9 +43,6 @@ public:
     void setServerName(const QString& server);
     // Tests: a font that draws the same on every system; otherwise the skin's playlist font.
     void setTextFont(const std::optional<QFont>& font);
-    Page page() const { return currentPage; }
-    void showPage(Page page);
-    void search(const QString& text);
 
     using Control = FormControl;
     // What the current page shows that can be clicked, in skin pixels; for the tests.
@@ -66,6 +51,7 @@ public:
 Q_SIGNALS:
     void statusText(const QString& text);
     void serverSettingsRequested();
+    void searchRequested();
 
 protected:
     void retranslate() override;
@@ -76,40 +62,30 @@ protected:
     void wheelEvent(QWheelEvent* event) override;
 
 private:
-    enum class Field { None, Name, Search };
-    enum class Results { None, Loading, Found, Failed };
+    enum class Field { None, Name };
 
     // Draws the page when `painter` is set, and returns its controls either way: one pass for
     // both, so what is drawn and what a click finds never differ.
     QList<Control> render(QPainter* painter);
     void renderStart(FormCanvas& canvas);
     void renderCreating(FormCanvas& canvas);
-    void renderTabs(FormCanvas& canvas);
+    void renderTop(FormCanvas& canvas);
     void renderJam(FormCanvas& canvas);
-    void renderSearch(FormCanvas& canvas);
     void field(FormCanvas& canvas, const QRect& rect, Field which, const QString& hint);
     const QImage& qrCode();
     void start();
     void copyLink();
     void end();
     void send(bool sent, const QString& done = {});
-    LineEdit& fieldEdit(Field field);
     QFont textFont() const;
 
     Jam::HostSession* jamHost;
-    YandexSource::Catalog* yandexCatalog;
-    Page currentPage = Page::Jam;
     std::optional<QFont> fontOverride;
     Field focus = Field::None;
     LineEdit nameField;
     bool nameEdited = false;
     QString serverName;
-    LineEdit searchField;
     QString startProblem;
-    Results results = Results::None;
-    QList<Core::Track> foundTracks;
-    QString searchProblem;
-    int searchRequest = 0;
     int listScroll = 0;
     int listRows = 0;
     bool endArmed = false;

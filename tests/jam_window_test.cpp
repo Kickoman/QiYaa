@@ -7,7 +7,6 @@
 #include "jam/host_session.h"
 #include "jam/session_store.h"
 #include "skins/skin.h"
-#include "sources/yandex/catalog.h"
 #include "support/jam_stub_server.h"
 #include "support/mock_http_server.h"
 #include "support/spec_fixtures.h"
@@ -24,7 +23,6 @@
 #include <QFontDatabase>
 #include <QGuiApplication>
 #include <QImage>
-#include <QJsonArray>
 #include <QJsonDocument>
 #include <QJsonObject>
 #include <QKeySequence>
@@ -52,17 +50,6 @@ QJsonObject Example(const QString& name) {
 
 QByteArray Text(const QJsonObject& object) {
     return QJsonDocument(object).toJson(QJsonDocument::Compact);
-}
-
-QJsonObject YandexTrack(const QString& id, const QString& title) {
-    return {
-        {QStringLiteral("id"), id},
-        {QStringLiteral("title"), title},
-        {QStringLiteral("artists"), QJsonArray{QJsonObject{{QStringLiteral("name"), QStringLiteral("КИНО")}}}},
-        {QStringLiteral("albums"), QJsonArray{QJsonObject{{QStringLiteral("id"), 7}}}},
-        {QStringLiteral("durationMs"), 200'000},
-        {QStringLiteral("available"), true}
-    };
 }
 
 template <typename T>
@@ -113,7 +100,6 @@ private:
         Audio::AudioEngine engine;
         Tests::YandexSources ports;
         Core::Player player;
-        YandexSource::Catalog catalog;
         Core::JamMode jam;
         Jam::HostSession host;
         Ui::JamWindow window;
@@ -122,10 +108,9 @@ private:
         Stack(Yandex::Library* library, const Skins::Skin* skin, const QFont& font)
             : ports(library)
             , player(&engine, &ports.registry)
-            , catalog(&player, library)
             , jam(&player)
             , host(&jam, library, Jam::SessionStore(directory.filePath(QStringLiteral("jam.json"))), options())
-            , window(&host, &catalog, skin)
+            , window(&host, skin)
             , status(&window, &Ui::JamWindow::statusText) {
             window.setTextFont(font);
             window.setSizeSteps(QSize(1, 8));
@@ -182,14 +167,6 @@ private:
             return true;
         }
     };
-
-    static QByteArray searchResults() {
-        const QJsonArray tracks{
-            YandexTrack(QStringLiteral("11"), QStringLiteral("Группа крови")),
-            YandexTrack(QStringLiteral("22"), QStringLiteral("Кукушка"))
-        };
-        return Text({{QStringLiteral("tracks"), QJsonObject{{QStringLiteral("results"), tracks}}}});
-    }
 
     void compareWithGolden(QWidget* window, const QString& name) {
         const QImage actual = window->grab().toImage().convertToFormat(QImage::Format_ARGB32);
@@ -349,31 +326,15 @@ private Q_SLOTS:
         }
         QVERIFY(stack.control(QStringLiteral("Copy"))->enabled);
         QVERIFY(stack.control(QStringLiteral("End the jam"))->enabled);
-        stack.window.showPage(Ui::JamWindow::Page::Search);
-        QVERIFY(stack.control(QStringLiteral("Jam"))->enabled);
+        QVERIFY(stack.control(QStringLiteral("Add tracks…"))->enabled);
     }
 
-    void theSearchAddsAndPlaysNext() {  // HOST-20
+    void addTracksAsksForTheSearchWindow() {  // HOST-38
         Stack stack(&library, &baseSkin, pixelFont);
         QVERIFY(stack.created());
-        catalog.result("GET", "/search", searchResults());
-        QVERIFY(stack.click(QStringLiteral("Add tracks")));
-        QCOMPARE(stack.window.page(), Ui::JamWindow::Page::Search);
-        for (const QChar letter : QStringLiteral("кино")) {
-            QTest::sendKeyEvent(QTest::Click, &stack.window, Qt::Key_unknown, letter, {});
-        }
-        QTest::keyClick(&stack.window, Qt::Key_Return);
-        QTRY_VERIFY(stack.control(QStringLiteral("To the jam")));
-        QCOMPARE(
-            catalog.last(QStringLiteral("/search"))->query.queryItemValue(QStringLiteral("text")),
-            QStringLiteral("кино")
-        );
-        QVERIFY(stack.click(QStringLiteral("To the jam")));
-        QTRY_COMPARE(OfType<Jam::Add>(stack.sent()).size(), static_cast<size_t>(1));
-        QCOMPARE(OfType<Jam::Add>(stack.sent()).front().track->id, QStringLiteral("11"));
-        QCOMPARE(stack.status.last().at(0).toString(), QStringLiteral("Sent to the jam"));
-        QVERIFY(stack.click(QStringLiteral("Next")));
-        QTRY_COMPARE(OfType<Jam::Add>(stack.sent()).size(), static_cast<size_t>(2));
+        QSignalSpy asked(&stack.window, &Ui::JamWindow::searchRequested);
+        QVERIFY(stack.click(QStringLiteral("Add tracks…")));
+        QCOMPARE(asked.size(), 1);
     }
 
     void looksLikeTheSkin_data() {
@@ -403,18 +364,6 @@ private Q_SLOTS:
         Stack stack(&library, &baseSkin, pixelFont);
         stack.window.setHostName(QStringLiteral("Маша"));
         compareWithGolden(&stack.window, QStringLiteral("jam-start"));
-    }
-
-    void theSearchPageLooksAsRecorded() {  // HOST-20
-        App::Translations translations;  // the pictures are in the default language
-        QVERIFY(translations.apply(App::kDefaultLanguage));
-        Stack stack(&library, &baseSkin, pixelFont);
-        QVERIFY(stack.created());
-        catalog.result("GET", "/search", searchResults());
-        stack.window.showPage(Ui::JamWindow::Page::Search);
-        stack.window.search(QStringLiteral("кино"));
-        QTRY_VERIFY(stack.control(QCoreApplication::translate("Ui::JamWindow", "To the jam")));
-        compareWithGolden(&stack.window, QStringLiteral("jam-search"));
     }
 
     void theOfflinePageLooksAsRecorded() {  // HOST-25

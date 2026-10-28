@@ -233,6 +233,12 @@ Application::Application(const Options& options, QObject* parent)
     connect(accountControl.get(), &Account::loggingOut, this, [this] {
         QTimer::singleShot(0, searchWindowInstance.get(), qOverload<>(&Ui::SearchWindow::update));
     });
+    connect(
+        searchWindowInstance.get(),
+        &Ui::SearchWindow::statusText,
+        mainWindowInstance.get(),
+        &Ui::MainWindow::setStatusText
+    );
     connect(searchWindowInstance.get(), &Ui::SearchWindow::loginRequested, this, [this](int tab) {
         if (tab == 0) {
             QTimer::singleShot(0, accountControl.get(), &Account::login);
@@ -311,7 +317,7 @@ Application::Application(const Options& options, QObject* parent)
     const Jam::SessionStore jamStore(settings.directory() + QStringLiteral("/jam-session.json"));
     jamHostSession = std::make_unique<Jam::HostSession>(&jamMode, &yandexLibrary, jamStore, std::move(jamOptions));
     connect(&networkWatch, &NetworkWatch::back, jamHostSession.get(), &Jam::HostSession::networkBack);  // HOST-26
-    jamWindowInstance = std::make_unique<Ui::JamWindow>(jamHostSession.get(), &catalog, currentSkin.get());
+    jamWindowInstance = std::make_unique<Ui::JamWindow>(jamHostSession.get(), currentSkin.get());
     windowSet->add(
         jamWindowInstance.get(),
         {.group = QStringLiteral("jamWindow"),
@@ -329,7 +335,8 @@ Application::Application(const Options& options, QObject* parent)
         windowSet.get(),
         accountControl.get(),
         mainWindowInstance.get(),
-        playlistWindowInstance.get()
+        playlistWindowInstance.get(),
+        searchWindowInstance.get()
     });
     connect(jamBridge.get(), &JamBridge::statusText, mainWindowInstance.get(), &Ui::MainWindow::setStatusText);
 

@@ -16,6 +16,7 @@
 #include <QString>
 #include <QWidget>
 
+#include <functional>
 #include <optional>
 
 class QPainter;
@@ -34,6 +35,13 @@ public:
         Core::SearchCatalog* catalog = nullptr;
     };
     enum class Part { Best, Tracks, Artists, Albums };
+    struct JamHooks {
+        std::function<bool()> active{};
+        std::function<bool()> connected{};
+        std::function<bool(const Core::Track&)> canAdd{};
+        std::function<bool(const Core::Track&, bool next)> add{};
+        std::function<std::optional<QString>(const Core::Track&)> waitingFrom{};
+    };
     using Control = FormControl;
 
     SearchWindow(QList<Tab> tabs, Core::Player* player, const Skins::Skin* skin, QWidget* parent = nullptr);
@@ -45,9 +53,13 @@ public:
     void setTextFont(const std::optional<QFont>& font);
     QList<Control> controls();
     int selectedRow() const { return selected; }
+    void setJam(JamHooks hooks);
+    void jamChanged();
+    void jamRefused(const std::function<bool(const Core::Track&)>& refused, const QString& text);
 
 Q_SIGNALS:
     void loginRequested(int tab);
+    void statusText(const QString& text);
 
 protected:
     void retranslate() override;
@@ -106,6 +118,13 @@ private:
     void revealSelected();
     Core::AddPlacement placementNow() const;
     QFont textFont() const;
+    bool inJam() const;
+    struct Note {
+        QString text;
+        bool loud = false;
+    };
+    Note noteOf(const Core::Track& track) const;
+    void addToJam(const Core::Track& track, bool next);
 
     QList<Tab> tabs;
     Core::Player* corePlayer;
@@ -129,8 +148,12 @@ private:
     int listHeight = 0;
     QList<int> lineHeights;
     QList<int> rowLines;
+    QSet<int> titleLines;
     Qt::KeyboardModifiers pressModifiers;
     QList<QPair<QRect, int>> rowRects;
+    JamHooks jam;
+    QHash<QString, Core::Track> sending;
+    QHash<QString, QString> refusals;
 };
 
 }  // namespace Ui

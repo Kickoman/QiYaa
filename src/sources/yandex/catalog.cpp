@@ -178,15 +178,6 @@ void Catalog::playMyWave() {
     playWave({kMyWaveSeed}, tr("My Vibe"));
 }
 
-void Catalog::searchTracks(
-    const QString& text,
-    std::function<void(const QList<Core::Track>&, const Yandex::RequestError&)> callback
-) {
-    yandexLibrary->searchTracks(text, [callback](const QList<Track>& tracks, const Yandex::RequestError& error) {
-        callback(TracksOf(tracks), error);
-    });
-}
-
 bool Catalog::canSearch() const {
     return yandexLibrary->isLoggedIn();
 }
