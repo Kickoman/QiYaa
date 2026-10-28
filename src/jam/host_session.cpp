@@ -289,7 +289,15 @@ bool HostSession::canAdd(const Core::Track& track) const {
 
 bool HostSession::add(const Core::Track& track) {
     const std::optional<Track> jamTrack = JamTrackOf(track);
-    return jamTrack && request([&](const QString& id) { return Add{id, {}, *jamTrack}; });
+    if (!jamTrack || !connected) {
+        return false;
+    }
+    const QString id = nextId();
+    if (!client.send(Add{id, {}, *jamTrack})) {
+        return false;
+    }
+    addRequests.insert(id, jamTrack->id);
+    return true;
 }
 
 bool HostSession::playNext(const Core::Track& track) {
@@ -308,6 +316,7 @@ bool HostSession::playNext(const Core::Track& track) {
     }
     pendingPinTrack = catalogId;
     pendingPinAdd = id;
+    addRequests.insert(id, jamTrack->id);
     return true;
 }
 
@@ -426,6 +435,9 @@ void HostSession::resumed() {
 
 void HostSession::rejected(const Rejected& message) {
     const QString& id = message.id;
+    if (const QString trackId = addRequests.take(id); !trackId.isEmpty()) {
+        Q_EMIT addRefused(trackId, message.reason);
+    }
     if (!id.isEmpty() && id == pendingPinAdd) {
         pendingPinTrack.clear();
         pendingPinAdd.clear();
@@ -459,6 +471,9 @@ void HostSession::applyState(const State& message) {
     }
     lastVersion = message.version;
     currentRoom = message.room;
+    for (const QueueItem& item : currentRoom->queue) {
+        addRequests.removeIf([&item](const auto& request) { return request.value() == item.track.id; });
+    }
     QList<Core::JamEntry> entries;
     for (const QueueItem& item : message.room.queue) {
         entries << Core::JamEntry{item.itemId, CoreTrackOf(item.track), item.addedBy};
@@ -616,6 +631,7 @@ void HostSession::endLocally(HostEnd why) {
     session.reset();
     pendingPinTrack.clear();
     pendingPinAdd.clear();
+    addRequests.clear();
     requestId.clear();
     dropConnection();
     client.clearOutbox();

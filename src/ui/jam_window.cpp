@@ -4,8 +4,6 @@
 #include "core/queue_source.h"
 #include "jam/host_session.h"
 #include "skins/skin.h"
-#include "sources/yandex/catalog.h"
-#include "yandex/api_client.h"
 
 #include <QClipboard>
 #include <QCoreApplication>
@@ -13,7 +11,6 @@
 #include <QGuiApplication>
 #include <QKeyEvent>
 #include <QPainter>
-#include <QPointer>
 #include <QWheelEvent>
 #include <qrcodegen.hpp>
 
@@ -28,7 +25,6 @@ constexpr int kGap = FormCanvas::kGap;
 constexpr int kMaxQrSide = 120;
 constexpr int kQuietZone = 4;
 constexpr int kEndConfirmMs = 3000;
-constexpr int kMaxSearchLength = 100;
 
 QString KindText(Jam::ParticipantKind kind) {
     switch (kind) {
@@ -52,12 +48,10 @@ QString JamTrackNote(const Core::QueueEntry& entry, bool jamActive, const Jam::H
     return entry.fromHistory ? QCoreApplication::translate("Ui::JamWindow", "jam vibe") : QString();
 }
 
-JamWindow::JamWindow(Jam::HostSession* host, YandexSource::Catalog* catalog, const Skins::Skin* skin, QWidget* parent)
+JamWindow::JamWindow(Jam::HostSession* host, const Skins::Skin* skin, QWidget* parent)
     : GenWindow(skin, QStringLiteral("JAM"), parent)
     , jamHost(host)
-    , yandexCatalog(catalog)
-    , nameField(Jam::kMaxHostNameLength)
-    , searchField(kMaxSearchLength) {
+    , nameField(Jam::kMaxHostNameLength) {
     retranslate();
     setFocusPolicy(Qt::StrongFocus);
     endTimer.setSingleShot(true);
@@ -69,7 +63,6 @@ JamWindow::JamWindow(Jam::HostSession* host, YandexSource::Catalog* catalog, con
     connect(jamHost, &Jam::HostSession::changed, this, [this, last = jamHost->phase()]() mutable {
         const Jam::HostPhase now = jamHost->phase();
         if (now != last) {
-            currentPage = Page::Jam;
             listScroll = 0;
             endArmed = false;
             startProblem.clear();
@@ -99,16 +92,6 @@ void JamWindow::setTextFont(const std::optional<QFont>& font) {
     update();
 }
 
-void JamWindow::showPage(Page page) {
-    if (page == currentPage) {
-        return;
-    }
-    currentPage = page;
-    listScroll = 0;
-    focus = page == Page::Search ? Field::Search : Field::None;
-    update();
-}
-
 QFont JamWindow::textFont() const {
     if (fontOverride) {
         return *fontOverride;
@@ -133,12 +116,8 @@ QList<JamWindow::Control> JamWindow::render(QPainter* painter) {
         case Jam::HostPhase::None: renderStart(canvas); break;
         case Jam::HostPhase::Creating: renderCreating(canvas); break;
         case Jam::HostPhase::Active:
-            renderTabs(canvas);
-            if (currentPage == Page::Jam) {
-                renderJam(canvas);
-            } else {
-                renderSearch(canvas);
-            }
+            renderTop(canvas);
+            renderJam(canvas);
             break;
     }
     return canvas.controls;
@@ -177,18 +156,10 @@ void JamWindow::renderCreating(FormCanvas& canvas) {
     canvas.button(canvas.left, canvas.y, tr("Cancel"), true, [this] { jamHost->cancelCreate(); });
 }
 
-void JamWindow::renderTabs(FormCanvas& canvas) {
-    const QRect jamTab = canvas.button(
-        canvas.left, canvas.y, tr("Jam"), true, [this] { showPage(Page::Jam); }, currentPage == Page::Jam
-    );
-    const QRect searchTab = canvas.button(
-        jamTab.right() + 1 + kGap,
-        canvas.y,
-        tr("Add tracks"),
-        true,
-        [this] { showPage(Page::Search); },
-        currentPage == Page::Search
-    );
+void JamWindow::renderTop(FormCanvas& canvas) {
+    const QRect addTracks = canvas.button(canvas.left, canvas.y, tr("Add tracks…"), true, [this] {
+        Q_EMIT searchRequested();
+    });
     const bool connected = jamHost->isConnected();
     const Jam::Status status = jamHost->connection();
     QString state = tr("No connection");
@@ -199,10 +170,12 @@ void JamWindow::renderTabs(FormCanvas& canvas) {
     }
     const int stateWidth = canvas.textWidth(state) + 2;  // advances are fractional
     const int stateX = canvas.right - stateWidth;
-    if (stateX - 8 > searchTab.right() + kGap) {
-        canvas.light(stateX - 7, jamTab.center().y(), connected);
+    if (stateX - 8 > addTracks.right() + kGap) {
+        canvas.light(stateX - 7, addTracks.center().y(), connected);
         canvas.text(
-            QRect(stateX, jamTab.y(), stateWidth, jamTab.height()), state, connected ? canvas.normal : canvas.current
+            QRect(stateX, addTracks.y(), stateWidth, addTracks.height()),
+            state,
+            connected ? canvas.normal : canvas.current
         );
     }
     canvas.y += canvas.buttonHeight() + kGap;
@@ -318,74 +291,15 @@ void JamWindow::renderJam(FormCanvas& canvas) {
     );
 }
 
-void JamWindow::renderSearch(FormCanvas& canvas) {
-    const QString find = tr("Search");
-    const int findX = canvas.right - canvas.buttonWidth(find);
-    field(
-        canvas,
-        QRect(canvas.left, canvas.y, findX - kGap - canvas.left, canvas.buttonHeight()),
-        Field::Search,
-        tr("Search tracks for the jam")
-    );
-    canvas.button(findX, canvas.y, find, !searchField.text().trimmed().isEmpty(), [this] {
-        search(searchField.text());
-    });
-    canvas.y += canvas.buttonHeight() + kGap * 2;
-
-    switch (results) {
-        case Results::None:
-            canvas.paragraph(
-                tr("Find a track: “To the jam” puts it in the guests' queue, “Next” plays it "
-                   "next."),
-                canvas.dim
-            );
-            return;
-        case Results::Loading: canvas.line(tr("Searching…"), canvas.normal); return;
-        case Results::Failed:
-            canvas.paragraph(tr("The search failed: %1").arg(searchProblem), canvas.current, 3);
-            return;
-        case Results::Found: break;
-    }
-    if (foundTracks.isEmpty()) {
-        canvas.line(tr("Nothing found"), canvas.normal);
-        return;
-    }
-    const int rowHeight = canvas.buttonHeight() + 1;
-    listRows = std::max(0, (canvas.bottom - canvas.y) / rowHeight);
-    listScroll = std::clamp(listScroll, 0, std::max(0, static_cast<int>(foundTracks.size()) - listRows));
-    const QString add = tr("To the jam");
-    const QString next = tr("Next");
-    for (int i = listScroll; i < foundTracks.size() && i < listScroll + listRows; ++i) {
-        const Core::Track track = foundTracks[i];
-        const int nextX = canvas.right - canvas.buttonWidth(next);
-        const int addX = nextX - kGap - canvas.buttonWidth(add);
-        QString title = track.title;
-        if (!track.artists.isEmpty()) {
-            title += QStringLiteral(" — ") + track.artists.join(QStringLiteral(", "));
-        }
-        canvas.text(
-            QRect(canvas.left, canvas.y, addX - kGap - canvas.left, canvas.buttonHeight()), title, canvas.normal
-        );
-        const bool addable = jamHost->canAdd(track);
-        canvas.button(addX, canvas.y, add, addable, [this, track] {
-            send(jamHost->add(track), tr("Sent to the jam"));
-        });
-        canvas.button(nextX, canvas.y, next, addable, [this, track] {
-            send(jamHost->playNext(track), tr("Sent to the jam, plays next"));
-        });
-        canvas.y += rowHeight;
-    }
-}
-
 void JamWindow::field(FormCanvas& canvas, const QRect& rect, Field which, const QString& hint) {
-    fieldEdit(which).paint(canvas, rect, focus == which, hint);
+    nameField.paint(canvas, rect, focus == which, hint);
     const auto focusField = [this, which] {
         focus = which;
         update();
     };
     const auto placeCaret = [this, which, rect, metrics = canvas.metrics](QPoint pos) {
         focus = which;
-        fieldEdit(which).pressAt(rect, pos, metrics);
+        nameField.pressAt(rect, pos, metrics);
         update();
     };
     canvas.controls << Control{rect, hint, true, focusField, placeCaret};
@@ -457,44 +371,6 @@ void JamWindow::send(bool sent, const QString& done) {
     }
 }
 
-void JamWindow::search(const QString& text) {
-    const QString query = text.trimmed();
-    if (query.isEmpty()) {
-        return;
-    }
-    if (query != searchField.text()) {
-        searchField.setText(query);
-    }
-    results = Results::Loading;
-    listScroll = 0;
-    const int request = ++searchRequest;
-    QPointer<JamWindow> self(this);
-    auto showResults = [self, request](const QList<Core::Track>& tracks, const Yandex::RequestError& error) {
-        if (!self || request != self->searchRequest) {
-            return;
-        }
-        self->foundTracks.clear();
-        if (error.isError()) {
-            self->results = Results::Failed;
-            self->searchProblem = error.text;
-        } else {
-            self->results = Results::Found;
-            for (const Core::Track& track : tracks) {
-                if (track.available && self->foundTracks.size() < Jam::kMaxSearchResults) {
-                    self->foundTracks << track;
-                }
-            }
-        }
-        self->update();
-    };
-    yandexCatalog->searchTracks(query, showResults);
-    update();
-}
-
-LineEdit& JamWindow::fieldEdit(Field which) {
-    return which == Field::Name ? nameField : searchField;
-}
-
 bool JamWindow::contentMousePress(QPoint pos, Qt::MouseButton button) {
     if (button != Qt::LeftButton) {
         return false;
@@ -532,17 +408,10 @@ void JamWindow::keyPressEvent(QKeyEvent* event) {
     if (focus == Field::None) {
         return GenWindow::keyPressEvent(event);
     }
-    const Field which = focus;
-    switch (fieldEdit(which).press(event)) {
-        case LineEdit::KeyResult::Enter:
-            if (which == Field::Name) {
-                start();
-            } else {
-                search(searchField.text());
-            }
-            break;
+    switch (nameField.press(event)) {
+        case LineEdit::KeyResult::Enter: start(); break;
         case LineEdit::KeyResult::Escape: focus = Field::None; break;
-        case LineEdit::KeyResult::Edited: nameEdited = nameEdited || which == Field::Name; break;
+        case LineEdit::KeyResult::Edited: nameEdited = true; break;
         case LineEdit::KeyResult::Moved: break;
         case LineEdit::KeyResult::Ignored: return GenWindow::keyPressEvent(event);
     }

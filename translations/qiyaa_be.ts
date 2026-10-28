@@ -593,14 +593,6 @@
         <translation>Скасаваць</translation>
     </message>
     <message>
-        <source>Jam</source>
-        <translation>Джэм</translation>
-    </message>
-    <message>
-        <source>Add tracks</source>
-        <translation>Дадаць трэкі</translation>
-    </message>
-    <message>
         <source>Connected</source>
         <translation>На сувязі</translation>
     </message>
@@ -693,46 +685,6 @@
         <translation>Скончыць джэм</translation>
     </message>
     <message>
-        <source>Search</source>
-        <translation>Шукаць</translation>
-    </message>
-    <message>
-        <source>Search tracks for the jam</source>
-        <translation>Пошук трэкаў для джэма</translation>
-    </message>
-    <message>
-        <source>Find a track: “To the jam” puts it in the guests&apos; queue, “Next” plays it next.</source>
-        <translation>Знайдзіце трэк: «У джэм» ставіць яго ў чаргу гасцей, «Следам» — зайграе наступным.</translation>
-    </message>
-    <message>
-        <source>Searching…</source>
-        <translation>Шукаю…</translation>
-    </message>
-    <message>
-        <source>The search failed: %1</source>
-        <translation>Пошук не ўдаўся: %1</translation>
-    </message>
-    <message>
-        <source>Nothing found</source>
-        <translation>Нічога не знайшлося</translation>
-    </message>
-    <message>
-        <source>To the jam</source>
-        <translation>У джэм</translation>
-    </message>
-    <message>
-        <source>Next</source>
-        <translation>Следам</translation>
-    </message>
-    <message>
-        <source>Sent to the jam</source>
-        <translation>Адпраўлена ў джэм</translation>
-    </message>
-    <message>
-        <source>Sent to the jam, plays next</source>
-        <translation>Адпраўлена ў джэм, зайграе наступным</translation>
-    </message>
-    <message>
         <source>Set the jam server first</source>
         <translation>Спачатку задайце сервер джэма</translation>
     </message>
@@ -755,6 +707,10 @@
     <message>
         <source>jam vibe</source>
         <translation>хваля джэма</translation>
+    </message>
+    <message>
+        <source>Add tracks…</source>
+        <translation>Дадаць трэкі…</translation>
     </message>
 </context>
 <context>
@@ -1289,6 +1245,42 @@ Right click or ADD: pick what to listen to.</source>
     <message>
         <source>QiYaa: search</source>
         <translation>QiYaa: пошук</translation>
+    </message>
+    <message>
+        <source>No connection to the jam server</source>
+        <translation>Няма сувязі з серверам джэма</translation>
+    </message>
+    <message>
+        <source>Sent to the jam, plays next</source>
+        <translation>Адпраўлена ў джэм, зайграе наступным</translation>
+    </message>
+    <message>
+        <source>Sent to the jam</source>
+        <translation>Адпраўлена ў джэм</translation>
+    </message>
+    <message>
+        <source>in the jam</source>
+        <translation>у джэме</translation>
+    </message>
+    <message>
+        <source>in the jam from %1</source>
+        <translation>у джэме · %1</translation>
+    </message>
+    <message>
+        <source>sending…</source>
+        <translation>адпраўляю…</translation>
+    </message>
+    <message>
+        <source>Jam</source>
+        <translation>Джэм</translation>
+    </message>
+    <message>
+        <source>Enter: play or open · Ins: to the jam · Shift+Ins: to the jam, next</source>
+        <translation>Enter — іграць ці адкрыць · Ins — у джэм · Shift+Ins — у джэм следам</translation>
+    </message>
+    <message>
+        <source>Enter: play · Ins: to the jam · Shift+Ins: to the jam, next · Backspace: back</source>
+        <translation>Enter — іграць · Ins — у джэм · Shift+Ins — у джэм следам · Backspace — назад</translation>
     </message>
 </context>
 <context>

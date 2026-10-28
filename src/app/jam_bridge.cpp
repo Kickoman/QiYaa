@@ -6,10 +6,12 @@
 #include "core/jam_mode.h"
 #include "core/player.h"
 #include "jam/host_session.h"
+#include "sources/yandex/tracks.h"
 #include "ui/jam_server_dialog.h"
 #include "ui/jam_window.h"
 #include "ui/main_window.h"
 #include "ui/playlist_window.h"
+#include "ui/search_window.h"
 
 #include <QAction>
 #include <QCoreApplication>
@@ -20,6 +22,8 @@
 #include <QPushButton>
 #include <QTimer>
 #include <QUrl>
+
+#include <optional>
 
 namespace App {
 
@@ -54,6 +58,23 @@ QString EndText(Jam::HostEnd why) {
     return {};
 }
 
+bool AddToJam(Jam::HostSession* host, const Core::Track& track, bool next) {
+    return next ? host->playNext(track) : host->add(track);
+}
+
+std::optional<QString> WaitingFrom(const Jam::HostSession* host, const Core::Track& track) {
+    const QString id = YandexSource::CatalogId(track.key);
+    if (!host->room() || id.isEmpty()) {
+        return std::nullopt;
+    }
+    for (const Jam::QueueItem& item : host->room()->queue) {
+        if (item.track.id == id) {
+            return host->participantName(item.addedBy);
+        }
+    }
+    return std::nullopt;
+}
+
 // What the jam window shows of the server: its host, and a port that is not the default one.
 QString ServerName(const QString& server) {
     const QUrl url(server);
@@ -68,16 +89,38 @@ JamBridge::JamBridge(const Parts& bridgeParts, QObject* parent)
     parts.window->setServerName(ServerName(parts.settings->jam().server));
     connect(parts.window, &Ui::JamWindow::statusText, this, &JamBridge::statusText);
     connect(parts.window, &Ui::JamWindow::serverSettingsRequested, this, &JamBridge::showServerDialog);
+    connect(parts.window, &Ui::JamWindow::searchRequested, this, [this] {
+        parts.windows->setVisible(parts.searchWindow, true);
+        parts.searchWindow->showTab(0);
+        parts.searchWindow->focusField();
+        parts.searchWindow->activateWindow();
+    });
+    parts.searchWindow->setJam(Ui::SearchWindow::JamHooks{
+        .active = [this] { return parts.host->phase() == Jam::HostPhase::Active; },
+        .connected = [this] { return parts.host->isConnected(); },
+        .canAdd = [this](const Core::Track& track) { return parts.host->canAdd(track); },
+        .add = [this](const Core::Track& track, bool next) { return AddToJam(parts.host, track, next); },
+        .waitingFrom = [this](const Core::Track& track) { return WaitingFrom(parts.host, track); },
+    });
 
     const auto note = [this](int row) { return trackNote(row); };
     parts.mainWindow->setTrackNote(note);
     parts.playlistWindow->setTrackNote(note);
-    connect(parts.host, &Jam::HostSession::changed, this, [this] { parts.playlistWindow->update(); });
+    connect(parts.host, &Jam::HostSession::changed, this, [this] {
+        parts.playlistWindow->update();
+        parts.searchWindow->jamChanged();
+    });
     connect(parts.host, &Jam::HostSession::offline, this, [this] {
         Q_EMIT statusText(tr("No connection to the jam server"));
     });
     connect(parts.host, &Jam::HostSession::refused, this, [this](const QString& reason) {
         Q_EMIT statusText(RefusalText(reason));
+    });
+    connect(parts.host, &Jam::HostSession::addRefused, this, [this](const QString& trackId, const QString& reason) {
+        const auto refused = [trackId](const Core::Track& track) {
+            return YandexSource::CatalogId(track.key) == trackId;
+        };
+        parts.searchWindow->jamRefused(refused, RefusalText(reason));
     });
     connect(parts.host, &Jam::HostSession::ended, this, [this](Jam::HostEnd why) { Q_EMIT statusText(EndText(why)); });
     connect(parts.host, &Jam::HostSession::connectedChanged, this, [this](bool connected) {

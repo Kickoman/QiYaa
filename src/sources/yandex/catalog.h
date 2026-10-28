@@ -18,7 +18,6 @@ class Player;
 namespace Yandex {
 class Library;
 struct PlaylistReference;
-struct RequestError;
 struct Track;
 }  // namespace Yandex
 
@@ -38,10 +37,6 @@ public:
     void playAlbum(const QString& albumId, const QString& title);
     void playWave(const QStringList& seeds, const QString& title);
     void playMyWave();
-    void searchTracks(
-        const QString& text,
-        std::function<void(const QList<Core::Track>&, const Yandex::RequestError&)> callback
-    );
 
     bool canSearch() const override;
     void find(const QString& text, TFound done) override;
