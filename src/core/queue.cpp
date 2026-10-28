@@ -120,9 +120,7 @@ bool Queue::remove(QList<int> indices) {
         if (queued[index].part == EntryPart::Head) {
             headChanged = true;
             headMark -= ordinal <= headMark ? 1 : 0;
-            if (headStart && ordinal == *headStart) {
-                headStart.reset();
-            } else if (headStart && ordinal < *headStart) {
+            if (headStart && ordinal < *headStart) {
                 --*headStart;
             }
         } else if (queued[index].part == EntryPart::Continuation) {
@@ -146,6 +144,9 @@ bool Queue::remove(QList<int> indices) {
             markCurrent();
         }
     }
+    if (headStart && *headStart >= countOf(EntryPart::Head)) {
+        headStart.reset();
+    }
     if (headChanged) {
         resetNavigator();
     }
@@ -153,7 +154,7 @@ bool Queue::remove(QList<int> indices) {
 }
 
 void Queue::add(const QList<Track>& tracks, AddPlacement placement) {
-    if (placement == AddPlacement::End && inHead) {  // ADD-03
+    if (placement == AddPlacement::End && inHead && countOf(EntryPart::Head) > 0) {  // ADD-03
         const QList<QueueEntry> added = EntriesOf(tracks, EntryPart::Head, nullptr);
         if (added.isEmpty()) {
             return;
