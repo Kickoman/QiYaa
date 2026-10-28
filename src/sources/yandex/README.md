@@ -51,6 +51,7 @@ public:
     void playWave(const QStringList& seeds, const QString& title);        // vibes and stations
     void playMyWave();                                           // {kMyWaveSeed}, "My Vibe"
     void search(const QString& text);                            // "Search: <text>"
+    // Core::SearchCatalog: canSearch, find, open, playPick, playTracks, add, addAlbum
     void searchTracks(const QString& text,                       // tracks only, for the jam window
                       std::function<void(const QList<Core::Track>&, const Yandex::RequestError&)> callback);
 
@@ -86,6 +87,13 @@ The scenarios are [spec/player/sources.md](../../../spec/player/sources.md),
   `Nothing found`) and nothing else happens: no `setSource`, and for a vibe no `RadioStarted`.
 - **Search** (SRC-09 to SRC-12): a best artist queues its top 100 under its name, a best album its
   tracks under its title, anything else the found tracks as `Search: <text>`.
+- **The search window** (`Core::SearchCatalog`, [src/core](../../core/README.md#searchh-searchcatalog-searchresults),
+  SRC-13 to SRC-19): `find` turns `Library::search` into `Core::SearchResults` (a best artist or
+  album when its id is not empty, a best track, the found tracks, artists and albums, then
+  `Core::Shown`); `open` is the artist's top tracks or the album's tracks. `playTracks` and `add`
+  build a `QueueSource` of the tracks and no continuation of its own: the `Player` gives it the vibe
+  from history. A vibe's load-more sends only Yandex tracks among the queue's last ones, since
+  `CatalogId` of another source's key is empty (WAVE-05, spec/player/queue.md).
 - **A vibe** (`playWave`): `Library::startWave(seeds)`. On success the source is an empty head
   and a [`Vibe`](#vibeh-vibe) with the first batch as its tracks; the seeds become
   `lastWaveSeeds()`.

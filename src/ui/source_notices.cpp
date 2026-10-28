@@ -34,6 +34,10 @@ QString SourceNoticeText(const Core::SourceNotice& notice) {
         case Core::SourceNoticeCode::LoadedFirst:
             return QCoreApplication::translate("Ui::SourceNotices", "%1: the first %n track(s)", nullptr, notice.count)
                 .arg(notice.subject);
+        case Core::SourceNoticeCode::AddedNext:
+            return QCoreApplication::translate("Ui::SourceNotices", "Plays next: %1").arg(notice.subject);
+        case Core::SourceNoticeCode::AddedToEnd:
+            return QCoreApplication::translate("Ui::SourceNotices", "Added to the end: %1").arg(notice.subject);
         case Core::SourceNoticeCode::AddedToLiked:
             return QCoreApplication::translate("Ui::SourceNotices", "Added to Liked");
         case Core::SourceNoticeCode::RemovedFromLiked:

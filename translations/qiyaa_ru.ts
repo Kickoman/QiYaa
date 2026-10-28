@@ -1210,6 +1210,14 @@ Right click or ADD: pick what to listen to.</source>
             <numerusform>%1: первые %n треков</numerusform>
         </translation>
     </message>
+    <message>
+        <source>Plays next: %1</source>
+        <translation>Следом: %1</translation>
+    </message>
+    <message>
+        <source>Added to the end: %1</source>
+        <translation>В конец: %1</translation>
+    </message>
 </context>
 <context>
     <name>Ui::SpotifyLoginDialog</name>

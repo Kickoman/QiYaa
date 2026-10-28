@@ -209,6 +209,7 @@ qiyaa_add_module(core
     src/core/player.cpp         src/core/player.h
     src/core/queue.cpp          src/core/queue.h
     src/core/queue_source.h
+    src/core/search.cpp         src/core/search.h
     src/core/source_notice.h
     src/core/track.cpp          src/core/track.h
     src/core/track_navigator.cpp src/core/track_navigator.h

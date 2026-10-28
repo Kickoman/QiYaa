@@ -1,5 +1,6 @@
 #pragma once
 
+#include "core/search.h"
 #include "core/source_notice.h"
 #include "core/track.h"
 
@@ -23,7 +24,7 @@ struct Track;
 
 namespace YandexSource {
 
-class Catalog : public QObject {
+class Catalog : public QObject, public Core::SearchCatalog {
     Q_OBJECT
 public:
     static inline const QString kMyWaveSeed = QStringLiteral("user:onyourwave");
@@ -42,6 +43,14 @@ public:
         const QString& text,
         std::function<void(const QList<Core::Track>&, const Yandex::RequestError&)> callback
     );
+
+    bool canSearch() const override;
+    void find(const QString& text, TFound done) override;
+    void open(const Core::SearchPick& pick, TTracks done) override;
+    void playPick(const Core::SearchPick& pick) override;
+    void playTracks(const QString& title, const QList<Core::Track>& tracks, int start, const TFrom& from) override;
+    void add(const QString& title, const QList<Core::Track>& tracks, Core::AddPlacement placement) override;
+    void addAlbum(const Core::SearchPick& album, Core::AddPlacement placement) override;
 
     bool owns(const Core::TrackKey& key) const;
     bool isLiked(const Core::TrackKey& key) const;

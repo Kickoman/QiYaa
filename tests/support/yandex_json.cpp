@@ -53,6 +53,23 @@ QJsonObject ToJson(const Yandex::SearchResult& result) {
     object.insert(QStringLiteral("bestType"), type);
     object.insert(QStringLiteral("bestId"), result.bestId);
     object.insert(QStringLiteral("bestName"), result.bestName);
+    object.insert(QStringLiteral("bestTrack"), result.bestTrack ? QJsonValue(ToJson(*result.bestTrack)) : QJsonValue());
+    QJsonArray artists;
+    for (const Yandex::NamedReference& artist : result.artists) {
+        artists << QJsonObject{{QStringLiteral("id"), artist.id}, {QStringLiteral("name"), artist.name}};
+    }
+    object.insert(QStringLiteral("artists"), artists);
+    QJsonArray albums;
+    for (const Yandex::AlbumReference& album : result.albums) {
+        albums << QJsonObject{
+            {QStringLiteral("id"), album.id},
+            {QStringLiteral("title"), album.title},
+            {QStringLiteral("artists"), QJsonArray::fromStringList(album.artists)},
+            {QStringLiteral("year"), album.year ? QJsonValue(album.year) : QJsonValue()},
+            {QStringLiteral("single"), album.single}
+        };
+    }
+    object.insert(QStringLiteral("albums"), albums);
     return object;
 }
 
