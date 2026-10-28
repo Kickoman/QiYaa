@@ -58,6 +58,7 @@ protected:
     void keyPressEvent(QKeyEvent* event) override;
     void wheelEvent(QWheelEvent* event) override;
     void showEvent(QShowEvent* event) override;
+    void mousePressEvent(QMouseEvent* event) override;
 
 private:
     enum class State { Idle, Searching, Found, Failed };
@@ -80,6 +81,8 @@ private:
         State state = State::Searching;
         QList<Core::Track> tracks;
         QString problem;
+        int resultsScroll = 0;
+        int resultsSelected = -1;
     };
 
     QList<Control> render(QPainter* painter);
@@ -100,6 +103,8 @@ private:
     void back();
     void select(int index);
     void moveSelection(int by);
+    void revealSelected();
+    Core::AddPlacement placementNow() const;
     QFont textFont() const;
 
     QList<Tab> tabs;
@@ -120,6 +125,11 @@ private:
     int selected = -1;
     int scroll = 0;
     int shownRows = 0;
+    int maxScroll = 0;
+    int listHeight = 0;
+    QList<int> lineHeights;
+    QList<int> rowLines;
+    Qt::KeyboardModifiers pressModifiers;
     QList<QPair<QRect, int>> rowRects;
 };
 

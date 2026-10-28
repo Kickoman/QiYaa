@@ -201,11 +201,14 @@ Application::Application(const Options& options, QObject* parent)
             settings.setSpotifyDeviceId(spotifyDeviceId);
         }
         spotifyCatalog.setLoggedIn(true);
+        searchWindowInstance->update();
     });
-    connect(spotifyAccountControl.get(), &SpotifyAccount::loggedOut, this, [this] {
+    const auto spotifyGone = [this] {
         spotifyCatalog.setLoggedIn(false);
-    });
-    connect(spotifyAccountControl.get(), &SpotifyAccount::refused, this, [this] { spotifyCatalog.setLoggedIn(false); });
+        searchWindowInstance->update();
+    };
+    connect(spotifyAccountControl.get(), &SpotifyAccount::loggedOut, this, spotifyGone);
+    connect(spotifyAccountControl.get(), &SpotifyAccount::refused, this, spotifyGone);
     spotifyCatalog.setLoggedIn(spotifyAccountControl->loggedIn());
     searchWindowInstance = std::make_unique<Ui::SearchWindow>(
         QList<Ui::SearchWindow::Tab>{
@@ -224,6 +227,12 @@ Application::Application(const Options& options, QObject* parent)
          .menuText = QT_TRANSLATE_NOOP("App::MainMenu", "Search"),
          .key = QKeySequence(Qt::CTRL | Qt::Key_F)}
     );
+    connect(
+        accountControl.get(), &Account::connected, searchWindowInstance.get(), qOverload<>(&Ui::SearchWindow::update)
+    );
+    connect(accountControl.get(), &Account::loggingOut, this, [this] {
+        QTimer::singleShot(0, searchWindowInstance.get(), qOverload<>(&Ui::SearchWindow::update));
+    });
     connect(searchWindowInstance.get(), &Ui::SearchWindow::loginRequested, this, [this](int tab) {
         if (tab == 0) {
             QTimer::singleShot(0, accountControl.get(), &Account::login);

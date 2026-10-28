@@ -5,9 +5,9 @@
 
 #include <QCoreApplication>
 #include <QEvent>
-#include <QGuiApplication>
 #include <QKeyEvent>
 #include <QKeySequence>
+#include <QMouseEvent>
 #include <QPainter>
 #include <QPointer>
 #include <QWheelEvent>
@@ -31,12 +31,6 @@ QString DurationText(qint64 ms) {
 
 QString KeyText(const Core::TrackKey& key) {
     return key.source + QLatin1Char('/') + key.id;
-}
-
-Core::AddPlacement PlacementNow() {
-    return QGuiApplication::keyboardModifiers().testFlag(Qt::ShiftModifier)
-        ? Core::AddPlacement::End
-        : Core::AddPlacement::Next;
 }
 
 bool IsListKey(int key) {
@@ -259,11 +253,22 @@ void SearchWindow::renderOpenedHead(FormCanvas& canvas) {
     const QRect play = canvas.button(canvas.left, canvas.y, tr("Play all"), true, [this, pick] {
         catalog()->playTracks(pick.name, opened->tracks, 0, pick);
     });
-    const QRect next = canvas.button(play.right() + 1 + kGap, canvas.y, tr("Next"), true, [this, pick] {
-        catalog()->add(pick.name, opened->tracks, Core::AddPlacement::Next);
+    if (!album) {
+        canvas.y += canvas.buttonHeight() + kGap * 2;
+        return;
+    }
+    const auto addAll = [this, pick](Core::AddPlacement placement) {
+        catalog()->add(pick.name, opened->tracks, placement);
+        for (const Core::Track& track : opened->tracks) {
+            added.insert(KeyText(track.key), placement);
+        }
+        update();
+    };
+    const QRect next = canvas.button(play.right() + 1 + kGap, canvas.y, tr("Next"), true, [addAll] {
+        addAll(Core::AddPlacement::Next);
     });
-    canvas.button(next.right() + 1 + kGap, canvas.y, tr("To the end"), true, [this, pick] {
-        catalog()->add(pick.name, opened->tracks, Core::AddPlacement::End);
+    canvas.button(next.right() + 1 + kGap, canvas.y, tr("To the end"), true, [addAll] {
+        addAll(Core::AddPlacement::End);
     });
     canvas.y += canvas.buttonHeight() + kGap * 2;
 }
@@ -343,45 +348,67 @@ void SearchWindow::renderRows(FormCanvas& canvas, const QList<Section>& parts) {
     canvas.text(QRect(canvas.left, hintTop, canvas.width(), canvas.lineHeight), hint, canvas.dim);
     const int listBottom = hintTop - kGap;
     const int rowHeight = canvas.buttonHeight() + 1;
-    int line = 0;
+    struct Line {
+        const Section* section = nullptr;
+        const Row* row = nullptr;
+        int index = -1;
+        int height = 0;
+    };
+    QList<Line> lines;
+    rowLines.clear();
     int index = 0;
-    int shown = 0;
     for (const Section& section : parts) {
         if (!section.title.isEmpty()) {
-            if (line >= scroll && canvas.y + rowHeight <= listBottom) {
-                const bool more = section.total > section.rows.size() || expanded.contains(section.part);
-                const bool foldable = section.part != Part::Best
-                    && section.total > (section.part == Part::Tracks ? kFirstTracks : kFirstPicks);
-                int textRight = canvas.right;
-                if (more && foldable) {
-                    const QString label = expanded.contains(section.part) ? tr("Fewer") : tr("All");
-                    const int x = canvas.right - canvas.buttonWidth(label);
-                    const Part part = section.part;
-                    canvas.button(x, canvas.y, label, true, [this, part] {
-                        if (!expanded.remove(part)) {
-                            expanded.insert(part);
-                        }
-                        update();
-                    });
-                    textRight = x - kGap;
-                }
-                const QRect titleRect(canvas.left, canvas.y, textRight - canvas.left, canvas.buttonHeight());
-                canvas.text(titleRect, section.title, canvas.current, true);
-                canvas.controls << Control{titleRect, section.title, true, {}};
-                canvas.y += rowHeight;
-            }
-            ++line;
+            lines << Line{.section = &section, .height = rowHeight};
         }
         for (const Row& row : section.rows) {
             const bool note = row.kind == RowKind::Track && added.contains(KeyText(row.track.key));
-            const int height = rowHeight + (note ? canvas.lineHeight : 0);
-            if (line >= scroll && canvas.y + height <= listBottom) {
-                renderRow(canvas, row, index);
-                ++shown;
-            }
-            ++line;
-            ++index;
+            rowLines << static_cast<int>(lines.size());
+            lines << Line{&section, &row, index++, rowHeight + (note ? canvas.lineHeight : 0)};
         }
+    }
+    listHeight = listBottom - canvas.y;
+    lineHeights.clear();
+    for (const Line& line : lines) {
+        lineHeights << line.height;
+    }
+    maxScroll = static_cast<int>(lines.size());
+    for (int i = static_cast<int>(lines.size()) - 1, used = 0; i >= 0; --i) {
+        used += lines[i].height;
+        if (used > listHeight) {
+            break;
+        }
+        maxScroll = i;
+    }
+    scroll = std::clamp(scroll, 0, std::max(0, maxScroll));
+    int shown = 0;
+    for (qsizetype i = scroll; i < lines.size() && canvas.y + lines[i].height <= listBottom; ++i) {
+        if (lines[i].row) {
+            renderRow(canvas, *lines[i].row, lines[i].index);
+            ++shown;
+            continue;
+        }
+        const Section& section = *lines[i].section;
+        const bool foldable =
+            section.part != Part::Best && section.total > (section.part == Part::Tracks ? kFirstTracks : kFirstPicks);
+        int textRight = canvas.right;
+        if (foldable) {
+            const QString label = expanded.contains(section.part) ? tr("Fewer") : tr("All");
+            const int x = canvas.right - canvas.buttonWidth(label);
+            const Part part = section.part;
+            canvas.button(x, canvas.y, label, true, [this, part] {
+                if (!expanded.remove(part)) {
+                    expanded.insert(part);
+                }
+                selected = -1;
+                update();
+            });
+            textRight = x - kGap;
+        }
+        const QRect titleRect(canvas.left, canvas.y, textRight - canvas.left, canvas.buttonHeight());
+        canvas.text(titleRect, section.title, canvas.current, true);
+        canvas.controls << Control{titleRect, section.title, true, {}};
+        canvas.y += rowHeight;
     }
     shownRows = std::max(1, shown);
 }
@@ -391,7 +418,7 @@ void SearchWindow::renderRow(FormCanvas& canvas, const Row& row, int index) {
     const int top = canvas.y;
     int buttonsX = canvas.right - side;
     if (row.kind != RowKind::Artist) {
-        const auto addRow = [this, row] { add(row, PlacementNow()); };
+        const auto addRow = [this, row] { add(row, placementNow()); };
         canvas.glyphButton(buttonsX, top, FormCanvas::Glyph::Add, tr("Add"), true, addRow);
         buttonsX -= side + kGap;
     }
@@ -476,7 +503,9 @@ void SearchWindow::add(const Row& row, Core::AddPlacement placement) {
 }
 
 void SearchWindow::open(const Core::SearchPick& pick) {
-    opened = Opened{.pick = pick};
+    const int resultsScroll = opened ? opened->resultsScroll : scroll;
+    const int resultsSelected = opened ? opened->resultsSelected : selected;
+    opened = Opened{.pick = pick, .resultsScroll = resultsScroll, .resultsSelected = resultsSelected};
     selected = -1;
     scroll = 0;
     const int asked = ++openRequest;
@@ -501,10 +530,10 @@ void SearchWindow::back() {
     if (!opened) {
         return;
     }
+    scroll = opened->resultsScroll;
+    selected = opened->resultsSelected;
     opened.reset();
     ++openRequest;
-    selected = -1;
-    scroll = 0;
     update();
 }
 
@@ -520,12 +549,34 @@ void SearchWindow::moveSelection(int by) {
         return;
     }
     selected = std::clamp(selected + by, 0, count - 1);
-    if (selected < scroll) {
-        scroll = selected;
-    } else if (selected >= scroll + shownRows) {
-        scroll = selected - shownRows + 1;
-    }
+    render(nullptr);
+    revealSelected();
     update();
+}
+
+void SearchWindow::revealSelected() {
+    if (selected < 0 || selected >= rowLines.size()) {
+        return;
+    }
+    const int line = rowLines[selected];
+    scroll = std::min(scroll, line);
+    int used = 0;
+    for (int i = scroll; i <= line; ++i) {
+        used += lineHeights[i];
+    }
+    while (used > listHeight && scroll < line) {
+        used -= lineHeights[scroll];
+        ++scroll;
+    }
+}
+
+Core::AddPlacement SearchWindow::placementNow() const {
+    return pressModifiers.testFlag(Qt::ShiftModifier) ? Core::AddPlacement::End : Core::AddPlacement::Next;
+}
+
+void SearchWindow::mousePressEvent(QMouseEvent* event) {
+    pressModifiers = event->modifiers();
+    GenWindow::mousePressEvent(event);
 }
 
 bool SearchWindow::contentMousePress(QPoint pos, Qt::MouseButton button) {
@@ -555,15 +606,15 @@ bool SearchWindow::skinMouseDoubleClick(QPoint pos, Qt::MouseButton button) {
         return false;
     }
     render(nullptr);
+    const QList<Row> rows = selectableRows();
     for (const auto& [rect, index] : rowRects) {
-        const QList<Row> rows = selectableRows();
         if (rect.contains(pos) && index < rows.size()) {
             select(index);
             activate(rows[index]);
             return true;
         }
     }
-    return false;
+    return contentRect().contains(pos);
 }
 
 bool SearchWindow::event(QEvent* event) {
@@ -586,7 +637,7 @@ void SearchWindow::keyPressEvent(QKeyEvent* event) {
             case LineEdit::KeyResult::Edited:
             case LineEdit::KeyResult::Moved: break;
             case LineEdit::KeyResult::Ignored:
-                if (event->key() != Qt::Key_Down) {
+                if (event->key() != Qt::Key_Down || selectableRows().isEmpty()) {
                     return GenWindow::keyPressEvent(event);
                 }
                 fieldFocused = false;
@@ -639,7 +690,8 @@ void SearchWindow::keyPressEvent(QKeyEvent* event) {
 void SearchWindow::wheelEvent(QWheelEvent* event) {
     const int steps = wheelSteps(event);
     if (steps != 0) {
-        scroll = std::max(0, scroll - steps);
+        render(nullptr);
+        scroll = std::clamp(scroll - steps, 0, std::max(0, maxScroll));
         update();
     }
 }
