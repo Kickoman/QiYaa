@@ -271,12 +271,21 @@ private Q_SLOTS:
         play->setShortcut(QKeySequence(Qt::Key_X));
         stack.window.addAction(play);
         QSignalSpy played(play, &QAction::triggered);
+        auto* seek = new QAction(&stack.window);
+        seek->setShortcut(QKeySequence(Qt::Key_Left));
+        stack.window.addAction(seek);
+        QSignalSpy seeked(seek, &QAction::triggered);
         QVERIFY(stack.click(QStringLiteral("How the guests will see you")));
         stack.window.activateWindow();
         QVERIFY(QTest::qWaitForWindowActive(&stack.window));
         QTest::keyClicks(&stack.window, QStringLiteral("Max"));
+        QTest::keyClick(&stack.window, Qt::Key_Left);
+        QTest::keyClick(&stack.window, Qt::Key_Right);
+        QTest::keyClick(&stack.window, Qt::Key_A, Qt::ControlModifier);
+        QTest::keyClick(&stack.window, Qt::Key_End);
         QTest::keyClick(&stack.window, Qt::Key_Backspace);
         QCOMPARE(played.size(), 0);
+        QCOMPARE(seeked.size(), 0);
         stack.window.setHostName(QStringLiteral("Маша"));  // typed by the user: not replaced
         QVERIFY(stack.click(QStringLiteral("Start the jam")));
         QTRY_VERIFY(!stack.server.received().isEmpty());

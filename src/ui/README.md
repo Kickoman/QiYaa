@@ -710,12 +710,16 @@ class LineEdit {
 ```
 
 - Keys, by the platform's `QKeySequence` standard keys: text at the caret (replacing a selection),
-  Backspace and Delete, the same by a word (Ctrl), Left/Right by a letter or a word, Home/End, each
-  with Shift to select, Select all, Copy, Cut and Paste (the clipboard's text on one line,
-  `simplified()`). Text beyond `maxLength` is cut. Enter and Esc are the caller's (`Enter`,
-  `Escape`); anything else is `Ignored`.
+  Backspace and Delete, the same by a word, Left/Right by a letter or a word, Home/End (the platform's start and end of the line or document), each with Shift to
+  select, Select all, Copy, Cut and Paste (the clipboard's text on one line, `simplified()`). Left
+  or Right without Shift collapses a selection to its start or end. Text beyond `maxLength` is cut.
+  Enter and Esc are the caller's (`Enter`, `Escape`); anything else is `Ignored`.
+- The caret moves and erases by whole characters (graphemes: a surrogate pair, a letter with its
+  marks), and words are Unicode's (`QTextBoundaryFinder`: "don't" is one). A cut at `maxLength` never
+  leaves half a surrogate pair.
 - `takes` is what the window answers to `ShortcutOverride` while a field has the focus: every key
-  without Ctrl, Alt or Meta, and the editing keys above. So typing "x" or pressing Left edits the
+  without Ctrl, Alt or Meta (Shift, keypad and AltGr's group switch allowed), and the editing keys
+  above. So typing "x" or pressing Left edits the
   field instead of starting playback or seeking.
 - Drawing: a box (`current` while focused, `normal` otherwise), the hint in `dim` while empty and not
   focused, else the text in `current`. A text that fits starts at the left; a longer one scrolls so
@@ -786,8 +790,8 @@ Esc drops the focus; the name is cut to 24 and the search to 100 characters.
 
 **Traps:**
 - The app's shortcuts are actions on every window (Z, X, C, V, B, arrows…). While a field has the
-  focus, the window takes `ShortcutOverride` for keys without Ctrl or Alt (and for Paste), or
-  typing "x" would start playback.
+  focus, the window takes `ShortcutOverride` for the keys of `LineEdit::takes`
+  ([LineEdit](#lineedit--line_edithcpp)), or typing "x" would start playback and Left would seek.
 - `qrcodegen::QrCode::encodeText` throws `data_too_long` for text no QR code holds; the window
   catches it there (a warning, no code). A join link is far below that limit.
 - The pictures in `tests/data/golden/jam-*.png` are drawn with `setTextFont` set to the Tiny5

@@ -15,7 +15,7 @@ class LineEdit {
 public:
     enum class KeyResult { Edited, Moved, Enter, Escape, Ignored };
 
-    explicit LineEdit(int maxLength);
+    explicit LineEdit(int limit);
 
     const QString& text() const { return content; }
     void setText(const QString& text);
@@ -34,8 +34,11 @@ private:
     void erase(int from, int to);
     void moveTo(int position, bool select);
     bool removeSelection();
+    int before(int position) const;
+    int after(int position) const;
     int wordBefore(int position) const;
     int wordAfter(int position) const;
+    void moveByLetter(bool forward, bool select);
 
     int maxLength;
     QString content;
