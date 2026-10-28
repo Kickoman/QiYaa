@@ -231,7 +231,14 @@ private Q_SLOTS:
     void searchReportsTheBestResult_data() {
         QTest::addColumn<QString>("name");
         for (const char* name :
-             {"best-artist", "best-album", "best-track", "best-playlist", "best-podcast", "no-best"}) {
+             {"best-artist",
+              "best-album",
+              "best-track",
+              "best-playlist",
+              "best-podcast",
+              "no-best",
+              "all-parts",
+              "album-filter"}) {
             QTest::newRow(name) << QStringLiteral("search/%1").arg(name);
         }
     }

@@ -31,11 +31,20 @@ struct ContextPage {
     QString next;
 };
 
+struct FoundAlbum {
+    Item album;
+    QStringList artists;
+    int year = 0;
+    bool single = false;
+};
+
 struct Found {
-    enum class Kind { Artist, Album, Tracks };
+    enum class Kind { Artist, Album, Track, Tracks };
     Kind kind = Kind::Tracks;
     Item best;
     QStringList trackUris;
+    QList<Item> artists;
+    QList<FoundAlbum> albums;
 };
 
 class Library : public QObject {

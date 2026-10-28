@@ -27,7 +27,8 @@ user: the `Player` says what happened as `PlayerNotice` codes, and `src/ui` word
 | `track_source.h/.cpp` | `TrackSource`, what each music source implements; `TrackDownload`, `OpenedTrack`, `TrackFailure`, `TOpenResult`; `SourceRegistry`, the sources by name |
 | `lyrics.h/.cpp` | `Lyrics`, `LyricsLine`, `LyricsKind`, `LyricsFrom`, `LyricsAnswer`, `TLyricsDone`: a track's lyrics as a source or a service answers them; `ParseLyricsText` (LRC or plain) and `PlainLyrics`, with the limits |
 | `lyrics_finder.h/.cpp` | `LyricsFinder`: the text the lyrics view shows, from the source and the service in their order; `LyricsService`, the port of a lyrics service; `LyricsLookup`, what a lookup ended with |
-| `source_notice.h` | `SourceNotice`, `SourceNoticeCode`: what a source's catalogue says about a pick, a like or a dislike, as a code for `src/ui` to word |
+| `source_notice.h` | `SourceNotice`, `SourceNoticeCode`: what a source's catalogue says about a pick, an add, a like or a dislike, as a code for `src/ui` to word |
+| `search.h/.cpp` | `SearchCatalog`, what a source's catalogue offers the search window; `SearchResults`, `SearchPick`, `Shown`, `AddedNotice`: a search's parts as the window shows them (spec SRC-13 to SRC-19) |
 | `continuation.h` | `Continuation`, what follows a queue's head: more tracks on request and the events of the tracks it gave; `ContinuationRequest`, `ContinuationReply`, `SeedHint` |
 | `queue_source.h` | `QueueSource` (a title, a head, a continuation and the tracks it already gave), `QueueEntry` and `EntryPart`: what a source puts into the queue and what each entry is; `LayerItem`, `QueueRules` and `QueueLayer`: what a layer over the queue (the jam) brings |
 | `track_navigator.h/.cpp` | `TrackNavigator`, `ShuffleAlgorithm`, `MakeTrackNavigator`: sequential, random and stored shuffled traversal |
@@ -163,9 +164,9 @@ Q_SIGNALS:
 - `currentIndex()` is a cursor. It is -1 when the queue is empty, when it holds only waiting
   items (a layer's items that came into an empty queue), and after the current entry was removed
   with a waiting item behind it; `next()` and `play()` then play the first waiting item. Otherwise
-  it is a valid index, also while nothing plays. `setSource` sets it to the start track (`QueueSource::start`, else 0) and plays only with
-  `autoplay`. A continuation's first tracks in an empty queue move it from -1 to 0 and do not
-  play.
+  it is a valid index, also while nothing plays. `setSource` sets it to the start track
+  (`QueueSource::start`, else 0) and plays only with `autoplay`. A continuation's first tracks in an
+  empty queue move it from -1 to 0 and do not play.
 - `removeRows` takes rows of the queue before the removal. Duplicates and out-of-range rows are
   ignored. Removing rows before the cursor shifts the cursor down. If the current entry is
   removed, playback stops (it does not skip), and the cursor moves to the entry that followed it,
@@ -442,9 +443,9 @@ next step of [#23](https://github.com/Kickoman/QiYaa/issues/23) makes the phases
   changes only the preference. Audio, position and pause state are preserved in either case.
 - A new source, removing a head row, or switching shuffle resets the navigator from the last head
   entry that became current (or, under a layer, from before the head's first or before the start
-track of `QueueSource::start`). Such a reset starts
-  a new shuffled pass, which can include tracks heard before. The layer's items, a continuation's
-  tracks and jumps keep the pass. A direct `playIndex` selects the entry in the existing order.
+  track of `QueueSource::start`). Such a reset starts a new shuffled pass, which can include tracks
+  heard before. The layer's items, a continuation's tracks and jumps keep the pass. A direct
+  `playIndex` selects the entry in the existing order.
 - `next()` and preload read the same next entry. Looking ahead never consumes it. Explicit Next
   and gapless advance call `select` when a track becomes current.
 - Repeat with a single track replays it, including through gapless preload. An endless queue with
@@ -850,7 +851,8 @@ Q_SIGNALS:
 
 ```cpp
 enum class SourceNoticeCode { Loading, Searching, Failed, VibeFailed, SearchFailed, Empty, NothingFound,
-                              Loaded, LoadedFirst, AddedToLiked, RemovedFromLiked, Disliked };
+                              Loaded, LoadedFirst, AddedNext, AddedToEnd, AddedToLiked, RemovedFromLiked,
+                              Disliked };
 struct SourceNotice {
     SourceNoticeCode code;
     QString subject;          // the pick's title (a search's text for Searching)
@@ -859,10 +861,49 @@ struct SourceNotice {
 };
 ```
 
+`AddedNext` and `AddedToEnd` say that tracks were added with "Play next" or "Add to the end"
+(ADD-01 to ADD-05): `subject` is the track's title when one track was added, else the title of what
+they came from (an album), and `count` the available tracks added.
+
 A catalogue tells what became of the user's pick as a code, never as text, as the `Player` does
 with `PlayerNotice`: `YandexSource::Catalog::noticed`, worded by `Ui::SourceNoticeText`. `subject`
 is a title the catalogue gives the queue, already in the user's language; `detail` is not
 translated.
+
+## `search.h`: `SearchCatalog`, `SearchResults`
+
+```cpp
+struct SearchPick { enum class Kind { Artist, Album }; Kind kind; QString id, name; QStringList artists;
+                    int year = 0; bool single = false; };   // id: Yandex's id, or Spotify's URI
+struct SearchResults {
+    std::optional<Track> bestTrack; std::optional<SearchPick> bestArtist, bestAlbum;
+    QList<Track> tracks; QList<SearchPick> artists, albums;
+    bool isEmpty() const;               // nothing to show: SRC-19
+    QList<Track> playable() const;      // the best track, then the tracks: SRC-18's queue
+};
+SearchResults Shown(SearchResults results);   // unavailable tracks out, the best result once (SRC-13)
+SourceNotice AddedNotice(const QString& title, const QList<Track>& tracks, AddPlacement placement);
+class SearchCatalog {
+    virtual bool canSearch() const = 0;                                // logged in
+    virtual void find(const QString& text, TFound done) = 0;           // SRC-13, SRC-15
+    virtual void open(const SearchPick& pick, TTracks done) = 0;       // SRC-16: an artist's or album's tracks
+    virtual void playPick(const SearchPick& pick) = 0;                 // SRC-09, SRC-10, SPOT-09
+    virtual void playTracks(const QString& title, const QList<Track>& tracks, int start,
+                            const TFrom& from) = 0;           // SRC-16, SRC-18; TFrom = optional<SearchPick>
+    virtual void add(const QString& title, const QList<Track>& tracks, AddPlacement placement) = 0;
+    virtual void addAlbum(const SearchPick& album, AddPlacement placement) = 0;   // SRC-17
+};
+```
+
+`YandexSource::Catalog` and `SpotifySource::Catalog` implement `SearchCatalog`; the search window
+holds them as such. `find` and `open` change nothing in the queue and send no notice: their reply,
+or the error's English text, goes to `done`, which a catalogue that is gone never calls. A newer
+request does not drop an older one here: the caller keeps the last. `playTracks` is a source request
+with no request of its own: a new ticket, then `Player::setSource` with `start` and autoplay, and
+the notice `Loaded`; `from` is the opened artist or album (Spotify's autoplay context, SPOT-20).
+`add` is `Player::add` and the notice of `AddedNotice`, or `Empty` when no track is available;
+`addAlbum` loads the album first, takes no ticket, adds what arrives to the queue as it is then, and
+says `Failed` when the load fails.
 
 ## `continuation.h`: `Continuation`
 

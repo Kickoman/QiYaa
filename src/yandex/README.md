@@ -240,12 +240,16 @@ struct Wave {       // an entry of the wheel of waves: a preset with seeds
 
 enum class WaveEvent { RadioStarted, TrackStarted, TrackFinished, Skip };
 
+struct AlbumReference { QString id, title; QStringList artists; int year = 0; bool single = false; };
 struct SearchResult {
     enum class Kind { None, Artist, Album, Track, Playlist, Other };
     Kind bestKind = Kind::None;  // the "type" of "best": None when absent, Other when unknown
     QString bestId;
     QString bestName;
+    std::optional<Track> bestTrack;      // best.result when the type is track
     QList<Track> tracks;
+    QList<NamedReference> artists;       // artists.results
+    QList<AlbumReference> albums;        // albums.results: metaType music, available not false
 };
 
 class Library : public QObject {
@@ -607,7 +611,7 @@ Replies are listed after unwrapping. `<uid>` is the logged-in account's uid.
 | `stations` | `GET /rotor/stations/list?language=ru` | `[].station.{id.type, id.tag, name}`; entries without `id.type` dropped |
 | `startWave` | `POST /rotor/session/new` JSON `{"seeds": [...], "includeTracksInResponse": true, "includeWaveModel": true, "interactive": true}` | `radioSessionId` (required), `batchId`, `sequence[]` |
 | `moreWave` | `POST /rotor/session/<sessionId>/tracks` JSON `{"queue": ["<track id>", ...]}` | `radioSessionId` (optional), `batchId`, `sequence[]` |
-| `search` | `GET /search?text=<text>&type=all&page=0` | `best.type`, `best.result.id`, `best.result.name` or else `best.result.title`, `tracks.results[]` |
+| `search` | `GET /search?text=<text>&type=all&page=0` | `best.type`, `best.result.id`, `best.result.name` or else `best.result.title`, `best.result` as a track for a best track, `tracks.results[]`, `artists.results[]` (`id`, `name`), `albums.results[]` (`id`, `title`, the artists' names, `year`, `type` `single`) with `metaType` `music` and `available` not `false` |
 | `searchTracks` | `GET /search?text=<text>&type=track&page=0` (the jam's search for guests, HOST-28) | `tracks.results[]`; the error by kind and HTTP status, so a 401 or 403 can be told apart |
 | `setLiked` | `POST /users/<uid>/likes/tracks/add-multiple` (like) or `…/likes/tracks/remove` (unlike), form `track-ids=<id>` | none |
 | `dislike` | `POST /users/<uid>/dislikes/tracks/add-multiple` form `track-ids=<id>` | none |

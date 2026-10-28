@@ -30,6 +30,51 @@ Core::SourceNotice NoticeOf(SourceNoticeCode code, const QString& subject = {}, 
     return Core::SourceNotice{.code = code, .subject = subject, .detail = detail};
 }
 
+Core::SearchPick ArtistPick(const QString& id, const QString& name) {
+    return Core::SearchPick{.kind = Core::SearchPick::Kind::Artist, .id = id, .name = name};
+}
+
+Core::SearchPick AlbumPick(const Yandex::AlbumReference& album) {
+    return Core::SearchPick{
+        .kind = Core::SearchPick::Kind::Album,
+        .id = album.id,
+        .name = album.title,
+        .artists = album.artists,
+        .year = album.year,
+        .single = album.single,
+    };
+}
+
+Core::SearchResults ResultsOf(const Yandex::SearchResult& found) {
+    Core::SearchResults results{.tracks = TracksOf(found.tracks)};
+    if (found.bestTrack) {
+        results.bestTrack = TrackOf(*found.bestTrack);
+    }
+    if (found.bestKind == Yandex::SearchResult::Kind::Artist && !found.bestId.isEmpty()) {
+        results.bestArtist = ArtistPick(found.bestId, found.bestName);
+    }
+    if (found.bestKind == Yandex::SearchResult::Kind::Album && !found.bestId.isEmpty()) {
+        results.bestAlbum =
+            Core::SearchPick{.kind = Core::SearchPick::Kind::Album, .id = found.bestId, .name = found.bestName};
+    }
+    for (const Yandex::NamedReference& artist : found.artists) {
+        results.artists << ArtistPick(artist.id, artist.name);
+    }
+    for (const Yandex::AlbumReference& album : found.albums) {
+        results.albums << AlbumPick(album);
+        if (results.bestAlbum && results.bestAlbum->id == album.id) {
+            results.bestAlbum = results.albums.back();
+        }
+    }
+    return Core::Shown(results);
+}
+
+int AvailableCount(const QList<Core::Track>& tracks) {
+    return static_cast<int>(std::count_if(tracks.cbegin(), tracks.cend(), [](const Core::Track& track) {
+        return track.available;
+    }));
+}
+
 }  // namespace
 
 Catalog::Catalog(Player* player, Yandex::Library* library, QObject* parent)
@@ -163,6 +208,77 @@ void Catalog::searchTracks(
 ) {
     yandexLibrary->searchTracks(text, [callback](const QList<Track>& tracks, const Yandex::RequestError& error) {
         callback(TracksOf(tracks), error);
+    });
+}
+
+bool Catalog::canSearch() const {
+    return yandexLibrary->isLoggedIn();
+}
+
+void Catalog::find(const QString& text, TFound done) {
+    QPointer<Catalog> self(this);
+    yandexLibrary->search(text, [self, done](const Yandex::SearchResult& found, const QString& error) {
+        if (!self) {
+            return;
+        }
+        if (!error.isEmpty()) {
+            return done({}, error);
+        }
+        done(ResultsOf(found), {});
+    });
+}
+
+void Catalog::open(const Core::SearchPick& pick, TTracks done) {
+    QPointer<Catalog> self(this);
+    const auto opened = [self, done](const QList<Track>& tracks, const QString& error) {
+        if (self) {
+            done(TracksOf(tracks), error);
+        }
+    };
+    if (pick.kind == Core::SearchPick::Kind::Artist) {
+        yandexLibrary->artistTopTracks(pick.id, opened);
+    } else {
+        yandexLibrary->albumTracks(pick.id, opened);
+    }
+}
+
+void Catalog::playPick(const Core::SearchPick& pick) {
+    if (pick.kind == Core::SearchPick::Kind::Artist) {
+        playArtist(pick.id, pick.name);
+    } else {
+        playAlbum(pick.id, pick.name);
+    }
+}
+
+void Catalog::playTracks(const QString& title, const QList<Core::Track>& tracks, int start, const TFrom&) {
+    const int available = AvailableCount(tracks);
+    corePlayer->newSourceRequest();
+    if (available == 0) {
+        return notify(NoticeOf(SourceNoticeCode::Empty, title));
+    }
+    corePlayer->setSource(Core::QueueSource{.title = title, .head = tracks, .start = start}, true);
+    notify(Core::SourceNotice{.code = SourceNoticeCode::Loaded, .subject = title, .count = available});
+}
+
+void Catalog::add(const QString& title, const QList<Core::Track>& tracks, Core::AddPlacement placement) {
+    const int available = AvailableCount(tracks);
+    if (available == 0) {
+        return notify(NoticeOf(SourceNoticeCode::Empty, title));
+    }
+    corePlayer->add(Core::QueueSource{.title = title, .head = tracks}, placement);
+    notify(Core::AddedNotice(title, tracks, placement));
+}
+
+void Catalog::addAlbum(const Core::SearchPick& album, Core::AddPlacement placement) {
+    QPointer<Catalog> self(this);
+    yandexLibrary->albumTracks(album.id, [self, album, placement](const QList<Track>& tracks, const QString& error) {
+        if (!self) {
+            return;
+        }
+        if (!error.isEmpty()) {
+            return self->notify(NoticeOf(SourceNoticeCode::Failed, album.name, error));
+        }
+        self->add(album.name, TracksOf(tracks), placement);
     });
 }
 

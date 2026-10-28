@@ -4,6 +4,7 @@
 #include <QJsonArray>
 #include <QJsonObject>
 #include <QJsonValue>
+#include <QLatin1String>
 #include <QPointer>
 #include <QUrl>
 
@@ -20,6 +21,24 @@ constexpr int kArtistTopLimit = 100;
 QString StringField(const QJsonObject& object, const char* key) {
     return ApiClient::IdString(object.value(QLatin1String(key)));
 }
+QJsonArray ResultsOf(const QJsonObject& reply, const char* part) {
+    return reply.value(QLatin1String(part)).toObject().value(QStringLiteral("results")).toArray();
+}
+
+AlbumReference AlbumOf(const QJsonObject& album) {
+    AlbumReference reference{
+        .id = StringField(album, "id"),
+        .title = album.value(QStringLiteral("title")).toString(),
+        .artists = {},
+        .year = album.value(QStringLiteral("year")).toInt(),
+        .single = album.value(QStringLiteral("type")).toString() == QLatin1String("single"),
+    };
+    for (const QJsonValue& artist : album.value(QStringLiteral("artists")).toArray()) {
+        reference.artists << artist.toObject().value(QStringLiteral("name")).toString();
+    }
+    return reference;
+}
+
 SearchResult::Kind ParseSearchKind(const QString& type) {
     if (type.isEmpty()) {
         return SearchResult::Kind::None;
@@ -590,9 +609,23 @@ void Library::search(const QString& text, TCallback<SearchResult> callback) {
         const QString nameKey =
             item.contains(QStringLiteral("name")) ? QStringLiteral("name") : QStringLiteral("title");
         searchResult.bestName = item.value(nameKey).toString();
-        searchResult.tracks = ParseTrackArray(
-            object.value(QStringLiteral("tracks")).toObject().value(QStringLiteral("results")).toArray()
-        );
+        if (searchResult.bestKind == SearchResult::Kind::Track) {
+            searchResult.bestTrack = ApiClient::ParseTrack(item);
+        }
+        searchResult.tracks = ParseTrackArray(ResultsOf(object, "tracks"));
+        for (const QJsonValue& value : ResultsOf(object, "artists")) {
+            const QJsonObject artist = value.toObject();
+            searchResult.artists << NamedReference{
+                StringField(artist, "id"), artist.value(QStringLiteral("name")).toString()
+            };
+        }
+        for (const QJsonValue& value : ResultsOf(object, "albums")) {
+            const QJsonObject album = value.toObject();
+            if (album.value(QStringLiteral("metaType")).toString() == QLatin1String("music")
+                && album.value(QStringLiteral("available")).toBool(true)) {
+                searchResult.albums << AlbumOf(album);
+            }
+        }
         callback(searchResult, {});
     });
 }

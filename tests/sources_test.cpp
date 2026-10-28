@@ -1,5 +1,7 @@
 #include "audio/audio_engine.h"
 #include "core/player.h"
+#include "core/queue_source.h"
+#include "core/search.h"
 #include "core/source_notice.h"
 #include "sources/yandex/catalog.h"
 #include "sources/yandex/history_wave.h"
@@ -87,6 +89,22 @@ private:
             });
         }
     };
+
+    struct Found {
+        Core::SearchResults results;
+        QString error;
+    };
+
+    static Found find(YandexSource::Catalog& catalog, const QString& text) {
+        Found found;
+        bool done = false;
+        catalog.find(text, [&](const Core::SearchResults& results, const QString& error) {
+            found = Found{results, error};
+            done = true;
+        });
+        QTest::qWaitFor([&] { return done; }, 3000);
+        return found;
+    }
 
     QList<QJsonObject> feedbackEvents(qsizetype from) const {
         QList<QJsonObject> events;
@@ -272,6 +290,102 @@ private Q_SLOTS:
         }
         QVERIFY(QTest::qWaitFor([&] { return stack.player.queueTitle() == title; }, 3000));
         QCOMPARE(stack.player.entries().size(), count);
+    }
+
+    void aSearchShowsItsPartsAndTheBestOnce() {  // SRC-13
+        Stack stack(&library);
+        stack.player.setSource(Core::QueueSource{.title = QStringLiteral("Kept"), .head = {KeptTrack()}}, false);
+        server.fixture("GET", "/search", "search/all-parts");
+        const Found found = find(stack.sources, QStringLiteral("кино"));
+        QVERIFY(found.error.isEmpty());
+        QCOMPARE(found.results.bestArtist->id, QStringLiteral("41075"));
+        QCOMPARE(found.results.bestArtist->name, QStringLiteral("КИНО"));
+        QCOMPARE(found.results.artists.size(), 2);
+        QCOMPARE(found.results.artists.front().name, QStringLiteral("Кинотеатр"));
+        QCOMPARE(found.results.tracks.size(), 3);
+        QCOMPARE(found.results.albums.size(), 3);
+        QCOMPARE(found.results.albums.front().artists, QStringList{"MACAN"});
+        QCOMPARE(found.results.albums.front().year, 2020);
+        QVERIFY(found.results.albums.front().single);
+        QCOMPARE(stack.player.queueTitle(), QStringLiteral("Kept"));
+        QVERIFY(stack.notices.isEmpty());
+    }
+
+    void aBestTrackIsShownOnceAndPlaysFirst() {  // SRC-13, SRC-18
+        Stack stack(&library);
+        server.fixture("GET", "/search", "search/best-track");
+        const Found found = find(stack.sources, QStringLiteral("кино"));
+        QCOMPARE(found.results.bestTrack->title, QStringLiteral("Кукушка"));
+        QVERIFY(found.results.tracks.isEmpty());
+        stack.sources.playTracks(QStringLiteral("Search: кино"), found.results.playable(), 0, std::nullopt);
+        QCOMPARE(stack.player.queueTitle(), QStringLiteral("Search: кино"));
+        QCOMPARE(stack.player.entries().size(), 1);
+        QVERIFY(stack.saw(Core::SourceNoticeCode::Loaded, QStringLiteral("Search: кино"), 1));
+    }
+
+    void aFailedSearchKeepsTheQueueAndSaysNothing() {  // SRC-15
+        Stack stack(&library);
+        stack.player.setSource(Core::QueueSource{.title = QStringLiteral("Kept"), .head = {KeptTrack()}}, false);
+        server.fixture("GET", "/search", "users-likes-artists/401-session-expired");
+        const Found found = find(stack.sources, QStringLiteral("кино"));
+        QVERIFY(!found.error.isEmpty());
+        QVERIFY(found.results.isEmpty());
+        QCOMPARE(stack.player.queueTitle(), QStringLiteral("Kept"));
+        QVERIFY(stack.notices.isEmpty());
+    }
+
+    void anOpenedAlbumPlaysFromTheChosenTrack() {  // SRC-16
+        Stack stack(&library);
+        server.fixture("GET", "/albums/4053/with-tracks", "albums-with-tracks/two-volumes");
+        const Core::SearchPick album{
+            .kind = Core::SearchPick::Kind::Album, .id = QStringLiteral("4053"), .name = QStringLiteral("Звезда")
+        };
+        QList<Core::Track> tracks;
+        bool opened = false;
+        stack.sources.open(album, [&](const QList<Core::Track>& found, const QString& error) {
+            QVERIFY(error.isEmpty());
+            tracks = found;
+            opened = true;
+        });
+        QVERIFY(QTest::qWaitFor([&] { return opened; }, 3000));
+        QCOMPARE(tracks.size(), 3);
+        QVERIFY(stack.player.entries().isEmpty());
+        stack.sources.playTracks(album.name, tracks, 2, album);
+        QCOMPARE(stack.player.queueTitle(), QStringLiteral("Звезда"));
+        QCOMPARE(stack.player.currentIndex(), 2);
+        QCOMPARE(stack.player.currentTrack()->title, ExpectedTitle("albums-with-tracks/two-volumes", 2));
+    }
+
+    void tracksAndAlbumsAreAddedNextOrToTheEnd() {  // SRC-17, ADD-01, ADD-03
+        Stack stack(&library);
+        stack.player.setSource(Core::QueueSource{.title = QStringLiteral("Kept"), .head = {KeptTrack()}}, false);
+        stack.sources.add(QStringLiteral("Search: кино"), {HeadTrack(QStringLiteral("7"))}, Core::AddPlacement::Next);
+        QCOMPARE(stack.player.entries().size(), 2);
+        QCOMPARE(stack.player.entries()[1].part, Core::EntryPart::Item);
+        QVERIFY(stack.saw(Core::SourceNoticeCode::AddedNext, QStringLiteral("T7"), 1));
+        server.fixture("GET", "/albums/4053/with-tracks", "albums-with-tracks/two-volumes");
+        const Core::SearchPick album{
+            .kind = Core::SearchPick::Kind::Album, .id = QStringLiteral("4053"), .name = QStringLiteral("Звезда")
+        };
+        stack.sources.addAlbum(album, Core::AddPlacement::End);
+        QVERIFY(QTest::qWaitFor([&] { return stack.player.entries().size() == 5; }, 3000));
+        QCOMPARE(stack.player.entries()[2].part, Core::EntryPart::Head);
+        QVERIFY(stack.saw(Core::SourceNoticeCode::AddedToEnd, QStringLiteral("Звезда"), 3));
+        QCOMPARE(stack.player.queueTitle(), QStringLiteral("Kept"));
+    }
+
+    void anAlbumThatFailsToLoadAddsNothing() {  // SRC-17
+        Stack stack(&library);
+        stack.player.setSource(Core::QueueSource{.title = QStringLiteral("Kept"), .head = {KeptTrack()}}, false);
+        server.fixture("GET", "/albums/9/with-tracks", "users-likes-artists/401-session-expired");
+        const Core::SearchPick album{
+            .kind = Core::SearchPick::Kind::Album, .id = QStringLiteral("9"), .name = QStringLiteral("Broken")
+        };
+        stack.sources.addAlbum(album, Core::AddPlacement::Next);
+        QVERIFY(
+            QTest::qWaitFor([&] { return stack.saw(Core::SourceNoticeCode::Failed, QStringLiteral("Broken")); }, 3000)
+        );
+        QCOMPARE(stack.player.entries().size(), 1);
     }
 
     // WAVE-01, WAVE-02, WAVE-05, WAVE-08, TRK-03, TRK-04, TRK-06, TRK-07: a wave played through

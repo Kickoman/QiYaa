@@ -44,13 +44,24 @@ struct Wave {
 
 enum class WaveEvent { RadioStarted, TrackStarted, TrackFinished, Skip };
 
+struct AlbumReference {
+    QString id;
+    QString title;
+    QStringList artists;
+    int year = 0;
+    bool single = false;
+};
+
 struct SearchResult {
     enum class Kind { None, Artist, Album, Track, Playlist, Other };
 
     Kind bestKind = Kind::None;
     QString bestId;
     QString bestName;
+    std::optional<Track> bestTrack;
     QList<Track> tracks;
+    QList<NamedReference> artists;
+    QList<AlbumReference> albums;
 };
 
 class Library : public QObject {
