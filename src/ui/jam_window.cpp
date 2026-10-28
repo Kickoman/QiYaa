@@ -27,16 +27,11 @@ namespace Ui {
 
 namespace {
 
-constexpr int kPadding = 4;
-constexpr int kGap = 3;
+constexpr int kGap = FormCanvas::kGap;
 constexpr int kMaxQrSide = 120;
 constexpr int kQuietZone = 4;
 constexpr int kEndConfirmMs = 3000;
 constexpr int kMaxSearchLength = 100;
-
-QColor Mix(const QColor& a, const QColor& b) {
-    return QColor((a.red() + b.red()) / 2, (a.green() + b.green()) / 2, (a.blue() + b.blue()) / 2);
-}
 
 QString KindText(Jam::ParticipantKind kind) {
     switch (kind) {
@@ -60,127 +55,12 @@ QString JamTrackNote(const Core::QueueEntry& entry, bool jamActive, const Jam::H
     return entry.fromHistory ? QCoreApplication::translate("Ui::JamWindow", "jam vibe") : QString();
 }
 
-// Where the page is drawn and what it collects: a cursor down the content area, the colours of
-// the skin's playlist, and the controls met on the way.
-class JamWindow::Canvas {
-public:
-    Canvas(QPainter* target, const QRect& area, const QFont& font, const Skins::Skin& skin)
-        : painter(target)
-        , regular(font)
-        , strong(font)
-        , metrics(font)
-        , left(area.x() + kPadding)
-        , right(area.right() + 1 - kPadding)
-        , bottom(area.bottom() + 1 - kPadding)
-        , y(area.y() + kPadding) {
-        strong.setBold(true);
-        const Skins::Skin::PlaylistStyle& style = skin.playlistStyle();
-        normal = style.normal;
-        current = style.current;
-        background = style.normalBackground;
-        selected = style.selectedBackground;
-        dim = Mix(style.normal, style.normalBackground);
-        lineHeight = metrics.height() + 1;
-    }
-
-    int width() const { return right - left; }
-    int textWidth(const QString& text) const { return metrics.horizontalAdvance(text); }
-    int buttonHeight() const { return lineHeight + 3; }
-    int buttonWidth(const QString& label) const { return textWidth(label) + 8; }
-
-    void text(
-        const QRect& rect,
-        const QString& content,
-        const QColor& color,
-        bool bold = false,
-        int flags = Qt::AlignLeft | Qt::AlignVCenter
-    ) {
-        if (!painter) {
-            return;
-        }
-        painter->setFont(bold ? strong : regular);
-        painter->setPen(color);
-        const QFontMetrics fontMetrics(bold ? strong : regular);
-        painter->drawText(rect, flags, fontMetrics.elidedText(content, Qt::ElideRight, rect.width()));
-    }
-
-    // One line across the width; moves down.
-    void line(const QString& content, const QColor& color, bool bold = false) {
-        text(QRect(left, y, width(), lineHeight), content, color, bold);
-        y += lineHeight;
-    }
-
-    // Wrapped text, at most `maxLines` lines (0: all); moves down.
-    void paragraph(
-        const QString& content,
-        const QColor& color,
-        int maxLines = 0,
-        int flags = Qt::TextWordWrap,
-        int from = -1,
-        int to = -1
-    ) {
-        const int x = from < 0 ? left : from;
-        const int w = (to < 0 ? right : to) - x;
-        const QRect bounds =
-            metrics.boundingRect(QRect(x, y, w, 10'000), Qt::AlignLeft | Qt::AlignTop | flags, content);
-        int height = bounds.height();
-        if (maxLines > 0) {
-            height = std::min(height, maxLines * metrics.lineSpacing());
-        }
-        if (painter) {
-            painter->save();
-            painter->setClipRect(QRect(x, y, w, height), Qt::IntersectClip);
-            painter->setFont(regular);
-            painter->setPen(color);
-            painter->drawText(QRect(x, y, w, 10'000), Qt::AlignLeft | Qt::AlignTop | flags, content);
-            painter->restore();
-        }
-        y += height;
-    }
-
-    QRect button(int x, int top, const QString& label, bool enabled, std::function<void()> action, bool on = false) {
-        const QRect rect(x, top, buttonWidth(label), buttonHeight());
-        if (painter) {
-            if (on) {
-                painter->fillRect(rect, selected);
-            }
-            painter->setPen(enabled ? normal : dim);
-            painter->drawRect(rect.adjusted(0, 0, -1, -1));
-            // On the selection colour, like a selected row of the playlist.
-            text(rect, label, enabled ? normal : dim, false, Qt::AlignCenter);
-        }
-        controls << Control{rect, label, enabled, std::move(action)};
-        return rect;
-    }
-
-    // A small square light: on for online.
-    void light(int x, int centerY, bool on) {
-        if (!painter) {
-            return;
-        }
-        const QRect rect(x, centerY - 2, 4, 4);
-        if (on) {
-            painter->fillRect(rect, current);
-        } else {
-            painter->setPen(dim);
-            painter->drawRect(rect.adjusted(0, 0, -1, -1));
-        }
-    }
-
-    QPainter* painter;
-    QFont regular;
-    QFont strong;
-    QFontMetrics metrics;
-    QColor normal, current, background, selected, dim;
-    int lineHeight = 0;
-    int left, right, bottom, y;
-    QList<Control> controls;
-};
-
 JamWindow::JamWindow(Jam::HostSession* host, YandexSource::Catalog* catalog, const Skins::Skin* skin, QWidget* parent)
     : GenWindow(skin, QStringLiteral("JAM"), parent)
     , jamHost(host)
-    , yandexCatalog(catalog) {
+    , yandexCatalog(catalog)
+    , nameField(Jam::kMaxHostNameLength)
+    , searchField(kMaxSearchLength) {
     retranslate();
     setFocusPolicy(Qt::StrongFocus);
     endTimer.setSingleShot(true);
@@ -207,7 +87,7 @@ JamWindow::JamWindow(Jam::HostSession* host, YandexSource::Catalog* catalog, con
 
 void JamWindow::setHostName(const QString& name) {
     if (!nameEdited) {
-        nameText = name.left(Jam::kMaxHostNameLength);
+        nameField.setText(name);
         update();
     }
 }
@@ -251,7 +131,7 @@ void JamWindow::paintContent(QPainter& painter, const QRect& area) {
 }
 
 QList<JamWindow::Control> JamWindow::render(QPainter* painter) {
-    Canvas canvas(painter, contentRect(), textFont(), skin());
+    FormCanvas canvas(painter, contentRect(), textFont(), skin());
     switch (jamHost->phase()) {
         case Jam::HostPhase::None: renderStart(canvas); break;
         case Jam::HostPhase::Creating: renderCreating(canvas); break;
@@ -267,7 +147,7 @@ QList<JamWindow::Control> JamWindow::render(QPainter* painter) {
     return canvas.controls;
 }
 
-void JamWindow::renderStart(Canvas& canvas) {
+void JamWindow::renderStart(FormCanvas& canvas) {
     canvas.line(tr("New jam"), canvas.current, true);
     canvas.paragraph(
         tr("Friends open the link or the QR code on their phones and add tracks to your queue. "
@@ -279,7 +159,7 @@ void JamWindow::renderStart(Canvas& canvas) {
     const QRect nameRect(canvas.left, canvas.y, canvas.width(), canvas.buttonHeight());
     field(canvas, nameRect, Field::Name, tr("How the guests will see you"));
     canvas.y += nameRect.height() + kGap;
-    const bool ready = !nameText.trimmed().isEmpty() && !serverName.isEmpty();
+    const bool ready = !nameField.text().trimmed().isEmpty() && !serverName.isEmpty();
     canvas.button(canvas.left, canvas.y, tr("Start the jam"), ready, [this] { start(); });
     canvas.y += canvas.buttonHeight() + kGap;
     if (!startProblem.isEmpty()) {
@@ -293,14 +173,14 @@ void JamWindow::renderStart(Canvas& canvas) {
     canvas.button(canvas.left, canvas.y, tr("Server settings…"), true, [this] { Q_EMIT serverSettingsRequested(); });
 }
 
-void JamWindow::renderCreating(Canvas& canvas) {
+void JamWindow::renderCreating(FormCanvas& canvas) {
     canvas.line(tr("New jam"), canvas.current, true);
     canvas.paragraph(tr("Connecting to the jam server…"), canvas.normal);
     canvas.y += kGap;
     canvas.button(canvas.left, canvas.y, tr("Cancel"), true, [this] { jamHost->cancelCreate(); });
 }
 
-void JamWindow::renderTabs(Canvas& canvas) {
+void JamWindow::renderTabs(FormCanvas& canvas) {
     const QRect jamTab = canvas.button(
         canvas.left, canvas.y, tr("Jam"), true, [this] { showPage(Page::Jam); }, currentPage == Page::Jam
     );
@@ -335,7 +215,7 @@ void JamWindow::renderTabs(Canvas& canvas) {
     }
 }
 
-void JamWindow::renderJam(Canvas& canvas) {
+void JamWindow::renderJam(FormCanvas& canvas) {
     const bool connected = jamHost->isConnected();
     const QImage& code = qrCode();
     const int top = canvas.y;
@@ -441,7 +321,7 @@ void JamWindow::renderJam(Canvas& canvas) {
     );
 }
 
-void JamWindow::renderSearch(Canvas& canvas) {
+void JamWindow::renderSearch(FormCanvas& canvas) {
     const QString find = tr("Search");
     const int findX = canvas.right - canvas.buttonWidth(find);
     field(
@@ -450,7 +330,9 @@ void JamWindow::renderSearch(Canvas& canvas) {
         Field::Search,
         tr("Search tracks for the jam")
     );
-    canvas.button(findX, canvas.y, find, !searchText.trimmed().isEmpty(), [this] { search(searchText); });
+    canvas.button(findX, canvas.y, find, !searchField.text().trimmed().isEmpty(), [this] {
+        search(searchField.text());
+    });
     canvas.y += canvas.buttonHeight() + kGap * 2;
 
     switch (results) {
@@ -498,31 +380,18 @@ void JamWindow::renderSearch(Canvas& canvas) {
     }
 }
 
-void JamWindow::field(Canvas& canvas, const QRect& rect, Field which, const QString& hint) {
-    const bool focused = focus == which;
-    const QString& content = fieldText(which);
-    if (canvas.painter) {
-        canvas.painter->setPen(focused ? canvas.current : canvas.normal);
-        canvas.painter->drawRect(rect.adjusted(0, 0, -1, -1));
-        const QRect inner = rect.adjusted(3, 0, -3, 0);
-        if (content.isEmpty() && !focused) {
-            canvas.text(inner, hint, canvas.dim);
-        } else {
-            // The end of a long text stays in sight, where the caret is.
-            const QString shown = canvas.metrics.elidedText(content, Qt::ElideLeft, inner.width() - 2);
-            canvas.text(inner, shown, canvas.current);
-            if (focused) {
-                const int caretX = inner.x() + canvas.textWidth(shown) + 1;
-                canvas.painter->setPen(canvas.current);
-                canvas.painter->drawLine(caretX, rect.y() + 2, caretX, rect.bottom() - 2);
-            }
-        }
-    }
+void JamWindow::field(FormCanvas& canvas, const QRect& rect, Field which, const QString& hint) {
+    fieldEdit(which).paint(canvas, rect, focus == which, hint);
     const auto focusField = [this, which] {
         focus = which;
         update();
     };
-    canvas.controls << Control{rect, hint, true, focusField};
+    const auto placeCaret = [this, which, rect, metrics = canvas.metrics](QPoint pos) {
+        focus = which;
+        fieldEdit(which).pressAt(rect, pos, metrics);
+        update();
+    };
+    canvas.controls << Control{rect, hint, true, focusField, placeCaret};
 }
 
 const QImage& JamWindow::qrCode() {
@@ -558,7 +427,7 @@ const QImage& JamWindow::qrCode() {
 
 void JamWindow::start() {
     startProblem.clear();
-    if (!jamHost->create(nameText)) {
+    if (!jamHost->create(nameField.text())) {
         startProblem =
             serverName.isEmpty() ? tr("Set the jam server first") : tr("Cannot start: check the name and the server");
     }
@@ -596,7 +465,7 @@ void JamWindow::search(const QString& text) {
     if (query.isEmpty()) {
         return;
     }
-    searchText = query;
+    searchField.setText(query);
     results = Results::Loading;
     listScroll = 0;
     const int request = ++searchRequest;
@@ -623,8 +492,8 @@ void JamWindow::search(const QString& text) {
     update();
 }
 
-QString& JamWindow::fieldText(Field which) {
-    return which == Field::Name ? nameText : searchText;
+LineEdit& JamWindow::fieldEdit(Field which) {
+    return which == Field::Name ? nameField : searchField;
 }
 
 bool JamWindow::contentMousePress(QPoint pos, Qt::MouseButton button) {
@@ -635,7 +504,9 @@ bool JamWindow::contentMousePress(QPoint pos, Qt::MouseButton button) {
     focus = Field::None;
     for (const Control& control : render(nullptr)) {
         if (control.rect.contains(pos)) {
-            if (control.enabled && control.action) {
+            if (control.enabled && control.pressAt) {
+                control.pressAt(pos);
+            } else if (control.enabled && control.action) {
                 control.action();
             }
             update();
@@ -650,13 +521,10 @@ bool JamWindow::contentMousePress(QPoint pos, Qt::MouseButton button) {
 
 bool JamWindow::event(QEvent* event) {
     // While a field has the focus, the keys type into it instead of driving the player.
-    if (event->type() == QEvent::ShortcutOverride && focus != Field::None) {
-        auto* key = static_cast<QKeyEvent*>(event);
-        const Qt::KeyboardModifiers modifiers = key->modifiers() & ~Qt::ShiftModifier;
-        if (modifiers == Qt::NoModifier || key->matches(QKeySequence::Paste)) {
-            event->accept();
-            return true;
-        }
+    if (event->type() == QEvent::ShortcutOverride && focus != Field::None
+        && LineEdit::takes(static_cast<QKeyEvent*>(event))) {
+        event->accept();
+        return true;
     }
     return GenWindow::event(event);
 }
@@ -665,28 +533,19 @@ void JamWindow::keyPressEvent(QKeyEvent* event) {
     if (focus == Field::None) {
         return GenWindow::keyPressEvent(event);
     }
-    QString& content = fieldText(focus);
-    const int maxLength = focus == Field::Name ? Jam::kMaxHostNameLength : kMaxSearchLength;
-    if (event->matches(QKeySequence::Paste)) {
-        QString pasted = QGuiApplication::clipboard()->text().simplified();
-        content = (content + pasted).left(maxLength);
-    } else if (event->key() == Qt::Key_Return || event->key() == Qt::Key_Enter) {
-        if (focus == Field::Name) {
-            start();
-        } else {
-            search(content);
-        }
-    } else if (event->key() == Qt::Key_Backspace) {
-        content.chop(1);
-    } else if (event->key() == Qt::Key_Escape) {
-        focus = Field::None;
-    } else if (const QString typed = event->text(); !typed.isEmpty() && typed.at(0).isPrint()) {
-        content = (content + typed).left(maxLength);
-    } else {
-        return GenWindow::keyPressEvent(event);
-    }
-    if (focus == Field::Name) {
-        nameEdited = true;
+    const Field which = focus;
+    switch (fieldEdit(which).press(event)) {
+        case LineEdit::KeyResult::Enter:
+            if (which == Field::Name) {
+                start();
+            } else {
+                search(searchField.text());
+            }
+            break;
+        case LineEdit::KeyResult::Escape: focus = Field::None; break;
+        case LineEdit::KeyResult::Edited: nameEdited = nameEdited || which == Field::Name; break;
+        case LineEdit::KeyResult::Moved: break;
+        case LineEdit::KeyResult::Ignored: return GenWindow::keyPressEvent(event);
     }
     update();
 }
