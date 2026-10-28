@@ -17,6 +17,7 @@
 #include "ui/jam_window.h"
 #include "ui/main_window.h"
 #include "ui/playlist_window.h"
+#include "ui/search_window.h"
 #include "yandex/api_client.h"
 #include "yandex/library.h"
 
@@ -60,6 +61,7 @@ private:
         Ui::MainWindow mainWindow;
         Ui::PlaylistWindow playlistWindow;
         Ui::JamWindow window;
+        Ui::SearchWindow search;
         App::Settings settings;
         App::WindowSet windows;
         App::Account account;
@@ -75,18 +77,30 @@ private:
             , host(&jam, library, Jam::SessionStore(directory.filePath(QStringLiteral("jam.json"))), options())
             , mainWindow(&player, &engine, skin)
             , playlistWindow(&player, skin)
-            , window(&host, &catalog, skin)
+            , window(&host, skin)
+            , search({{"Yandex Music", &catalog}}, &player, skin)
             , settings(directory.filePath(QStringLiteral("settings.ini")))
             , windows(&settings, &mainWindow, App::WindowSet::Spec{.group = QStringLiteral("mainWindow")})
             , account(
                   App::Account::Parts{api, library, &player, &catalog, nullptr, nullptr},
                   App::Account::TokenFiles{directory.filePath(QStringLiteral("token")), {}, directory.path()}
               )
-            , bridge(
-                  App::JamBridge::
-                      Parts{&host, &window, &jam, &player, &settings, &windows, &account, &mainWindow, &playlistWindow}
-              ) {
+            , bridge(App::JamBridge::Parts{
+                  &host,
+                  &window,
+                  &jam,
+                  &player,
+                  &settings,
+                  &windows,
+                  &account,
+                  &mainWindow,
+                  &playlistWindow,
+                  &search
+              }) {
             windows.add(&window, App::WindowSet::Spec{.group = QStringLiteral("jamWindow")});
+            windows.add(
+                &search, App::WindowSet::Spec{.group = QStringLiteral("search"), .stepsByDefault = QSize(3, 12)}
+            );
             QObject::connect(&bridge, &App::JamBridge::statusText, [this](const QString& text) { texts << text; });
             QObject::connect(&catalog, &YandexSource::Catalog::noticed, [this](const Core::SourceNotice& notice) {
                 likesAsked += notice.code == Core::SourceNoticeCode::Loading ? 1 : 0;
@@ -119,6 +133,26 @@ private:
             created[QStringLiteral("id")] = QStringLiteral("r1");
             server.send(Message(created));
             return QTest::qWaitFor([&] { return host.isConnected(); }, 5000);
+        }
+
+        std::optional<Ui::SearchWindow::Control> searchControl(const QString& label, int skip = 0) {
+            for (const Ui::SearchWindow::Control& control : search.controls()) {
+                if (control.label == label && skip-- == 0) {
+                    return control;
+                }
+            }
+            return std::nullopt;
+        }
+
+        QJsonObject lastSent(const QString& type) const {
+            const QStringList received = server.received();
+            for (auto it = received.crbegin(); it != received.crend(); ++it) {
+                const QJsonObject message = QJsonDocument::fromJson(it->toUtf8()).object();
+                if (message.value(QStringLiteral("type")).toString() == type) {
+                    return message;
+                }
+            }
+            return {};
         }
 
         void refuse(const QString& id, const QString& reason) {
@@ -183,6 +217,60 @@ private Q_SLOTS:
         stack.account.logout();
         QCOMPARE(stack.host.phase(), Jam::HostPhase::None);
         QCOMPARE(stack.texts.last(), QStringLiteral("The jam is over"));
+    }
+
+    void theSearchWindowAddsToTheJamWhileOneRuns() {  // HOST-38, HOST-20
+        Stack stack(&api, &library, &baseSkin);
+        catalogServer.fixture("GET", "/search", "search/best-track");
+        QVERIFY(stack.created());
+        stack.account.applyToken(QStringLiteral("test-token"), false);
+        QTRY_VERIFY(library.isLoggedIn());
+        stack.search.search(QStringLiteral("кино"));
+        QTRY_VERIFY(stack.searchControl(QStringLiteral("Add")));
+        stack.search.show();
+        QTest::mouseClick(&stack.search, Qt::LeftButton, {}, stack.searchControl(QStringLiteral("Add"))->rect.center());
+        QTRY_VERIFY(!stack.lastSent(QStringLiteral("add")).isEmpty());
+        QCOMPARE(
+            stack.lastSent(QStringLiteral("add")).value(QStringLiteral("track")).toObject().value(QStringLiteral("id")),
+            QStringLiteral("33311009")
+        );
+        QVERIFY(!stack.searchControl(QStringLiteral("Add"))->enabled);
+        const QString addId = stack.lastSent(QStringLiteral("add")).value(QStringLiteral("id")).toString();
+        stack.refuse(addId, QStringLiteral("duplicate"));
+        QTRY_VERIFY(stack.texts.contains(QStringLiteral("This track is already in the jam queue")));
+        QVERIFY(stack.searchControl(QStringLiteral("Add"))->enabled);
+        stack.host.end();
+        QTRY_VERIFY(stack.host.phase() == Jam::HostPhase::None);
+        QVERIFY(stack.searchControl(QStringLiteral("Add"))->enabled);
+        stack.account.logout();
+    }
+
+    void aRefusalStaysOnTheRowOfItsAdd() {  // HOST-38
+        Stack stack(&api, &library, &baseSkin);
+        catalogServer.fixture("GET", "/search", "search/all-parts");
+        QVERIFY(stack.created());
+        stack.account.applyToken(QStringLiteral("test-token"), false);
+        QTRY_VERIFY(library.isLoggedIn());
+        stack.search.show();
+        stack.search.search(QStringLiteral("кино"));
+        QTRY_VERIFY(stack.searchControl(QStringLiteral("Add"), 1));
+        QTest::mouseClick(&stack.search, Qt::LeftButton, {}, stack.searchControl(QStringLiteral("Add"))->rect.center());
+        QTRY_VERIFY(!stack.lastSent(QStringLiteral("add")).isEmpty());
+        const QString firstAdd = stack.lastSent(QStringLiteral("add")).value(QStringLiteral("id")).toString();
+        const QPoint second = stack.searchControl(QStringLiteral("Add"), 1)->rect.center();
+        QTest::mouseClick(&stack.search, Qt::LeftButton, {}, second);
+        QTRY_VERIFY(stack.lastSent(QStringLiteral("add")).value(QStringLiteral("id")).toString() != firstAdd);
+        stack.refuse(QStringLiteral("not-an-add"), QStringLiteral("not-allowed"));
+        QTRY_VERIFY(stack.texts.contains(QStringLiteral("The jam server does not allow this")));
+        QVERIFY(!stack.searchControl(QStringLiteral("Add"))->enabled);
+        QVERIFY(!stack.searchControl(QStringLiteral("Add"), 1)->enabled);
+        stack.refuse(firstAdd, QStringLiteral("queue-limit"));
+        QTRY_VERIFY(stack.searchControl(QStringLiteral("Add"))->enabled);
+        QVERIFY(!stack.searchControl(QStringLiteral("Add"), 1)->enabled);
+        stack.host.end();
+        QTRY_COMPARE(stack.host.phase(), Jam::HostPhase::None);
+        QVERIFY(stack.searchControl(QStringLiteral("Add"), 1)->enabled);
+        stack.account.logout();
     }
 };
 

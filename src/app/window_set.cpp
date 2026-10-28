@@ -6,7 +6,6 @@
 #include "ui/snap.h"
 
 #include <QGuiApplication>
-#include <QHash>
 #include <QPainter>
 #include <QPoint>
 #include <QPointF>
@@ -207,9 +206,7 @@ void WindowSet::setScale(double scale, ScaleScope scope) {
     const double newScale = mainWindow->scale();
     const QPoint mainPosition = mainWindow->pos();
 
-    QHash<Ui::SkinnedWindow*, std::pair<QRect, QRect>> placed{
-        {mainWindow, {frames.front(), mainWindow->frameGeometry()}}
-    };
+    QList<std::pair<QRect, QRect>> placed{{frames.front(), mainWindow->frameGeometry()}};
     for (const auto& [window, offset] : docked) {
         QRect frame(
             mainPosition + QPoint(qRound(offset.x() * newScale), qRound(offset.y() * newScale)), window->size()
@@ -224,7 +221,7 @@ void WindowSet::setScale(double scale, ScaleScope scope) {
             frame = DockedTo(frame, before, neighbourBefore, neighbourAfter);
         }
         window->move(frame.topLeft());
-        placed.insert(window, {before, frame});
+        placed.append({before, frame});
     }
     QRect bounds = mainWindow->frameGeometry();
     for (const auto& [window, offset] : docked) {

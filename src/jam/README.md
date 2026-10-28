@@ -189,6 +189,7 @@ class HostSession : public QObject {
     void networkBack();
 Q_SIGNALS:
     void changed();  void refused(const QString& reason);  void ended(Jam::HostEnd why);
+    void addRefused(const QString& trackId, const QString& reason);   // which add: the track's catalog id
     void activeChanged(bool active);                  // edges of phase() == Active
     void connectedChanged(bool connected);            // edges of the connection while the jam is on
     void offline();                                   // the host removed jam items without a connection
@@ -198,6 +199,11 @@ Q_SIGNALS:
 The host's side of `spec/jam/host.md`, a port of the Android app's `JamHost`: the `Client` to the
 server, `Core::JamMode` for the queue, `Yandex::Library` for the guests' search and checks, the
 `SessionStore` for the jam between runs.
+
+`addRefused` comes before `refused` when the request the server rejected was an `add` (also the add
+of `playNext`): the session keeps each add's id with its track until a state lists the track, the
+server rejects it or the session ends. The search window shows the refusal on that track's row
+(HOST-38); `refused` is still the status for every rejection.
 
 - **Create.** `create` trims the name and cuts it to 24 characters; it returns false while a jam is
   on or being created, without a server address (`config().serverUrl`), and for a name or settings

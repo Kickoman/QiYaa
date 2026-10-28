@@ -30,7 +30,7 @@ to Yandex ([src/yandex](../yandex/README.md)), or create, lay out, connect and s
 | `form_canvas.h/.cpp` | `FormCanvas`, `FormControl`: one pass that draws a GEN window's page of text, buttons and lights in the PLEDIT.TXT colours and lists what can be clicked |
 | `line_edit.h/.cpp` | `LineEdit`: a one-line field drawn on a `FormCanvas`, with a caret, a selection, words and the clipboard |
 | `search_window.h/.cpp` | `SearchWindow` — the search in a GEN frame: a tab per source, the field, the best result, tracks, artists and albums, an artist or album opened in place; play, play next, add to the end |
-| `jam_window.h/.cpp` | `JamWindow` — the host's jam in a GEN frame: start, QR code and link, settings, guests, end, search that adds tracks. Built only with the jam |
+| `jam_window.h/.cpp` | `JamWindow` — the host's jam in a GEN frame: start, QR code and link, settings, guests, end, "Add tracks…" that asks for the search window. Built only with the jam |
 | `jam_server_dialog.h/.cpp` | `JamServerDialog` — the jam server's address, "Teach the jam vibe" and "Guests may listen". Built only with the jam |
 
 The windows' texts are English sources in `tr()` (in free functions
@@ -742,8 +742,15 @@ public:
     void setTextFont(const std::optional<QFont>& font);   // tests: Tiny5
     QList<FormControl> controls();            // what can be clicked now, in skin pixels; for the tests
     int selectedRow() const;                  // -1: none
+    struct JamHooks { std::function<bool()> active, connected; std::function<bool(const Core::Track&)> canAdd;
+                      std::function<bool(const Core::Track&, bool next)> add;
+                      std::function<std::optional<QString>(const Core::Track&)> waitingFrom; };
+    void setJam(JamHooks hooks);              // empty hooks: no jam
+    void jamChanged();                        // the session's state or connection changed
+    void jamRefused(const std::function<bool(const Core::Track&)>& refused, const QString& text);
 Q_SIGNALS:
     void loginRequested(int tab);             // the tab's catalogue cannot search: its login
+    void statusText(const QString& text);     // for the marquee: a jam add sent or not
 };
 ```
 
@@ -781,6 +788,18 @@ and font like the jam window. The app makes one with the tabs Yandex Music and S
 - **Requests:** a newer search, or a newer open, drops the answer of the older one (SRC-14,
   SRC-16), by a counter the window keeps; the catalogues do not drop answers themselves. Switching
   the tab searches the same text on the new tab.
+- **During a jam** (`setJam`, the app's `JamBridge` gives the hooks; HOST-38): the tabs show "Jam"
+  with a light for the connection. Add on a track sends it to the jam, and with Shift (or Shift+Ins)
+  as "play next", through `JamHooks::add`, and says "Sent to the jam" or "No connection to the jam
+  server" (`statusText`). A track that waits in the jam (`waitingFrom`) has no Add and says "in the
+  jam from <name>"; Shift+Ins on it pins it (`add(track, true)`). A track just sent says "sending…",
+  with Add disabled and Ins ignored, until the jam's state brings it, the connection drops
+  (`jamChanged`), a new search starts, or the server refuses that add: `jamRefused` with the tracks
+  it concerns (the bridge matches the catalog id of `HostSession::addRefused`), the refusal under
+  each such row. Add is disabled where `canAdd` says no (a track only the host can play, HOST-37; no
+  connection, HOST-25). Albums and artists have no Add, and an opened album shows only "Play all".
+  Play is HOST-21 with the start of SRC-18. When the jam ends, the sending marks and the refusals
+  go.
 - The pictures `tests/data/golden/search-*.png` are drawn with the Tiny5 font, like the jam window's.
 
 **Traps:**
@@ -788,9 +807,9 @@ and font like the jam window. The app makes one with the tabs Yandex Music and S
   folding a part changes which row an index means: "All" and "Fewer" drop the selection, as each
   search and open does.
 - The list scrolls by lines (a part's title, a row, a row with its note), clamped so its end stays
-  at the bottom. The layout of the last `render` is what the keys and the wheel move in, so they
-  render without a painter first. A line that does not fit ends the drawing: the rows below it are
-  not drawn either.
+  at the bottom; the first row of a part shows with its title. The layout of the last `render` is
+  what the keys and the wheel move in, so they render without a painter first. A line that does not
+  fit ends the drawing: the rows below it are not drawn either.
 - Down leaves the field only when there are rows: otherwise the field keeps the keys, and "x" would
   start playback.
 - While the field has the focus the window takes `ShortcutOverride` for `LineEdit::takes`; with the
@@ -802,18 +821,16 @@ and font like the jam window. The app makes one with the tabs Yandex Music and S
 QString JamTrackNote(const Core::QueueEntry& entry, bool jamActive, const Jam::HostSession* host);
 class JamWindow : public GenWindow {
 public:
-    enum class Page { Jam, Search };
-    JamWindow(Jam::HostSession* host, YandexSource::Catalog* catalog, const Skins::Skin* skin, QWidget* parent = nullptr);
+    JamWindow(Jam::HostSession* host, const Skins::Skin* skin, QWidget* parent = nullptr);
     void setHostName(const QString& name);       // offered on the start page until the user types
     void setServerName(const QString& server);   // shown on the start page; empty: "not set"
     void setTextFont(const std::optional<QFont>& font);  // tests; default: PLEDIT.TXT font, 9 px
-    Page page() const;  void showPage(Page page);
-    void search(const QString& text);
-    struct Control { QRect rect; QString label; bool enabled; std::function<void()> action; };
+    using Control = FormControl;
     QList<Control> controls();                   // what can be clicked now, in skin pixels
 Q_SIGNALS:
     void statusText(const QString& text);        // for the marquee
     void serverSettingsRequested();
+    void searchRequested();                      // "Add tracks…": the app opens the search window
 };
 ```
 
@@ -823,7 +840,7 @@ the room does not list it), and "jam vibe" (context `Ui::JamWindow`) for a track
 history; nothing for any other row (a base track only the host can play too, HOST-37), and nothing
 at all without a jam.
 
-The host's side of the jam on screen (spec/jam/host.md HOST-20, HOST-25, HOST-35), title `JAM`,
+The host's side of the jam on screen (spec/jam/host.md HOST-25, HOST-35, HOST-38), title `JAM`,
 in the PLEDIT.TXT colours and font like the "Now playing" window. What it shows follows
 `HostSession::phase()`:
 
@@ -831,32 +848,27 @@ in the PLEDIT.TXT colours and font like the "Now playing" window. What it shows 
   and a server), a problem line when `create` refused, the server and "Server settings…"
   (`serverSettingsRequested`).
 - **Creating:** "Connecting to the jam server…" and "Cancel" (`cancelCreate`).
-- **Active:** two tabs, "Jam" and "Add tracks", with the connection on the right ("Connected",
-  "Connecting…", "No connection" and a light), and without a connection the line "No connection to
-  the jam server · trying again by itself".
-  - **Jam page:** the QR code of `joinUrl`, dark on white whatever the skin (not every camera
-    reads an inverted code), ECC M with a 4-module quiet zone, the largest whole number of pixels
-    per module within 120 px and half the width; "Link for the guests" with the link (up to three
-    lines), "Copy" (to the clipboard, `statusText("The link is copied")`) and "New
-    link" (`rotateLink`); the settings, each a label and a button with its value that flips
-    it ("Order": "Taking turns" / "First come", "Guests can skip": "Yes" / "No", "New
-    guests": "Let in" / "Closed"); "Guests · N" with a row per guest (light for online, name,
-    kind, "waiting: N", "Remove" to kick), scrolled by the wheel; at the bottom "End the jam",
-    which asks "Press again to end" and ends on a second click within 3 s.
-  - **Search page:** a field and "Search" (Enter too), then `Catalog::searchTracks`: the available
-    tracks, 20 at most, each with "To the jam" (`add`) and "Next" (`playNext`), and their
-    `statusText`; "Searching…", "Nothing found", "The search failed: …". A newer search replaces an
-    older one's answer. "To the jam" and "Next" follow `HostSession::canAdd(track)`: dim for a
-    track only the host can play (HOST-37), though for now the search gives only the catalog's.
-- Without a connection (`!isConnected()`, and so `!canAdd`) "New link", the settings, "Remove",
-  "To the jam" and "Next" are drawn dim and do nothing (HOST-25); the link, the tabs, the search
-  and the end work. An action the session refuses says `No connection to the jam server`.
+- **Active:** "Add tracks…" (`searchRequested`: the tracks are added from the [search
+  window](#searchwindow--search_windowhcpp), HOST-38), with the connection on the right
+  ("Connected", "Connecting…", "No connection" and a light), and without a connection the line "No
+  connection to the jam server · trying again by itself". Then the QR code of `joinUrl`, dark on
+  white whatever the skin (not every camera reads an inverted code), ECC M with a 4-module quiet
+  zone, the largest whole number of pixels per module within 120 px and half the width; "Link for
+  the guests" with the link (up to three lines), "Copy" (to the clipboard, `statusText("The link is
+  copied")`) and "New link" (`rotateLink`); the settings, each a label and a button with its value
+  that flips it ("Order": "Taking turns" / "First come", "Guests can skip": "Yes" / "No", "New
+  guests": "Let in" / "Closed"); "Guests · N" with a row per guest (light for online, name, kind,
+  "waiting: N", "Remove" to kick), scrolled by the wheel; at the bottom "End the jam", which asks
+  "Press again to end" and ends on a second click within 3 s.
+- Without a connection (`!isConnected()`) "New link", the settings and "Remove" are drawn dim and do
+  nothing (HOST-25); the link, "Add tracks…" and the end work. An action the session refuses says
+  `No connection to the jam server`.
 
 **How it is drawn.** One pass, `render(QPainter*)`, both paints the page (with a painter) and
 lists its controls (without one), on a [`FormCanvas`](#formcanvas--form_canvashcpp), so a click
-always finds what is drawn. The fields are [`LineEdit`s](#lineedit--line_edithcpp): a click on one
-focuses it and puts the caret there, a click elsewhere drops the focus, Enter starts or searches and
-Esc drops the focus; the name is cut to 24 and the search to 100 characters.
+always finds what is drawn. The name field is a [`LineEdit`](#lineedit--line_edithcpp): a click on
+it focuses it and puts the caret there, a click elsewhere drops the focus, Enter starts the jam and
+Esc drops the focus; the name is cut to 24 characters.
 
 **Traps:**
 - The app's shortcuts are actions on every window (Z, X, C, V, B, arrows…). While a field has the

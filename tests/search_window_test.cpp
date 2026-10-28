@@ -437,6 +437,20 @@ private Q_SLOTS:
         QVERIFY(stack.control(QStringLiteral("Кукушка · КИНО · 2026 · single")));
     }
 
+    void homeShowsTheFirstPartWithItsTitle() {
+        Stack stack(&baseSkin, pixelFont);
+        stack.window.setSizeSteps(QSize(3, 2));
+        stack.window.search(QStringLiteral("кино"));
+        stack.answer(Results());
+        stack.window.focusField();
+        QTest::keyClick(&stack.window, Qt::Key_Down);
+        QTest::keyClick(&stack.window, Qt::Key_End);
+        QVERIFY(!stack.control(Source("Best")));
+        QTest::keyClick(&stack.window, Qt::Key_Home);
+        QCOMPARE(stack.window.selectedRow(), 0);
+        QVERIFY(stack.control(Source("Best")));
+    }
+
     void theWheelStopsAtTheEndOfTheList() {
         Stack stack(&baseSkin, pixelFont);
         stack.window.setSizeSteps(QSize(3, 2));
@@ -480,6 +494,98 @@ private Q_SLOTS:
         QCOMPARE(stack.window.selectedRow(), 0);
         QVERIFY(!takes(Qt::Key_X));
         QVERIFY(takes(Qt::Key_Down));
+    }
+
+    void duringAJamTheSearchAddsToTheJam() {  // HOST-38, HOST-20, HOST-37
+        Stack stack(&baseSkin, pixelFont);
+        QList<std::pair<QString, bool>> sent;
+        bool connected = true;
+        stack.window.setJam(Ui::SearchWindow::JamHooks{
+            .active = [] { return true; },
+            .connected = [&connected] { return connected; },
+            .canAdd =
+                [&connected](const Core::Track& track) { return connected && track.key.id != QStringLiteral("5"); },
+            .add =
+                [&sent](const Core::Track& track, bool next) {
+                    sent << std::pair(track.title, next);
+                    return true;
+                },
+            .waitingFrom = [](const Core::Track& track) -> std::optional<QString> {
+                if (track.key.id == QStringLiteral("1")) {
+                    return QStringLiteral("Аня");
+                }
+                return std::nullopt;
+            },
+        });
+        QSignalSpy status(&stack.window, &Ui::SearchWindow::statusText);
+        stack.window.search(QStringLiteral("кино"));
+        stack.answer(Results());
+        QVERIFY(!stack.buttonOf(RowText(1, QStringLiteral("Группа крови")), Source("Add")));
+        QVERIFY(!stack.buttonOf(RowText(5, QStringLiteral("Пачка сигарет")), Source("Add"))->enabled);
+        QVERIFY(!stack.buttonOf(QStringLiteral("Группа крови · КИНО · 1988"), Source("Add")));
+        QVERIFY(stack.click(stack.buttonOf(RowText(2, QStringLiteral("Кукушка")), Source("Add"))));
+        QCOMPARE(sent.back(), std::pair(QStringLiteral("Кукушка"), false));
+        QCOMPARE(status.back().front().toString(), Source("Sent to the jam"));
+        QVERIFY(!stack.buttonOf(RowText(2, QStringLiteral("Кукушка")), Source("Add"))->enabled);
+        stack.window.jamRefused(
+            [](const Core::Track& track) { return track.key.id == QStringLiteral("2"); },
+            QStringLiteral("This track is already in the jam queue")
+        );
+        QVERIFY(stack.buttonOf(RowText(2, QStringLiteral("Кукушка")), Source("Add"))->enabled);
+        QVERIFY(stack.click(stack.control(RowText(1, QStringLiteral("Группа крови")))));
+        QTest::keyClick(&stack.window, Qt::Key_Insert, Qt::ShiftModifier);
+        QCOMPARE(sent.back(), std::pair(QStringLiteral("Группа крови"), true));
+        QTest::keyClick(&stack.window, Qt::Key_Insert);
+        QCOMPARE(sent.size(), 2);
+        QVERIFY(stack.click(stack.control(RowText(4, QStringLiteral("Хочу перемен!")))));
+        QTest::keyClick(&stack.window, Qt::Key_Insert);
+        QTest::keyClick(&stack.window, Qt::Key_Insert);
+        QCOMPARE(sent.size(), 3);
+        QVERIFY(stack.yandex.added.isEmpty());
+        connected = false;
+        stack.window.jamChanged();
+        QVERIFY(!stack.buttonOf(RowText(3, QStringLiteral("Звезда по имени Солнце")), Source("Add"))->enabled);
+    }
+
+    void anAlbumOpenedDuringAJamIsNotAddedWhole() {  // HOST-38
+        Stack stack(&baseSkin, pixelFont);
+        stack.window.setJam(Ui::SearchWindow::JamHooks{
+            .active = [] { return true; },
+            .connected = [] { return true; },
+            .canAdd = [](const Core::Track&) { return true; },
+            .add = [](const Core::Track&, bool) { return true; },
+            .waitingFrom = [](const Core::Track&) { return std::optional<QString>(); },
+        });
+        stack.window.search(QStringLiteral("кино"));
+        stack.answer(Results());
+        QVERIFY(stack.click(QStringLiteral("Группа крови · КИНО · 1988")));
+        QTest::keyClick(&stack.window, Qt::Key_Return);
+        stack.yandex.opened.front().second({TrackOf(1, QStringLiteral("Группа крови"))}, {});
+        QVERIFY(stack.control(Source("Play all")));
+        QVERIFY(!stack.control(Source("Next")));
+        QVERIFY(!stack.control(Source("To the end")));
+    }
+
+    void theJamLooksAsRecorded() {  // HOST-38
+        App::Translations translations;  // the pictures are in the default language
+        QVERIFY(translations.apply(App::kDefaultLanguage));
+        Stack stack(&baseSkin, pixelFont);
+        stack.window.setJam(Ui::SearchWindow::JamHooks{
+            .active = [] { return true; },
+            .connected = [] { return true; },
+            .canAdd = [](const Core::Track& track) { return track.key.id != QStringLiteral("5"); },
+            .add = [](const Core::Track&, bool) { return true; },
+            .waitingFrom = [](const Core::Track& track) -> std::optional<QString> {
+                if (track.key.id == QStringLiteral("1")) {
+                    return QStringLiteral("Аня");
+                }
+                return std::nullopt;
+            },
+        });
+        stack.window.search(QStringLiteral("кино"));
+        stack.answer(Results());
+        QVERIFY(stack.click(stack.buttonOf(RowText(2, QStringLiteral("Кукушка")), Source("Add"))));
+        compareWithGolden(&stack.window, QStringLiteral("search-jam"));
     }
 
     void theResultsLookAsRecorded() {  // SRC-13

@@ -94,6 +94,8 @@ void SearchWindow::search(const QString& text) {
     results = {};
     opened.reset();
     added.clear();
+    sending.clear();
+    refusals.clear();
     expanded.clear();
     selected = -1;
     scroll = 0;
@@ -109,6 +111,68 @@ void SearchWindow::search(const QString& text) {
         self->update();
     });
     update();
+}
+
+void SearchWindow::setJam(JamHooks hooks) {
+    jam = std::move(hooks);
+    update();
+}
+
+bool SearchWindow::inJam() const {
+    return jam.active && jam.active();
+}
+
+void SearchWindow::jamChanged() {
+    if (!inJam() || !jam.connected()) {
+        sending.clear();
+    }
+    if (!inJam()) {
+        refusals.clear();
+    }
+    sending.removeIf([this](const auto& waiting) { return jam.waitingFrom(waiting.value()).has_value(); });
+    update();
+}
+
+void SearchWindow::jamRefused(const std::function<bool(const Core::Track&)>& refused, const QString& text) {
+    for (auto it = sending.begin(); it != sending.end();) {
+        if (refused(it.value())) {
+            refusals.insert(it.key(), text);
+            it = sending.erase(it);
+        } else {
+            ++it;
+        }
+    }
+    update();
+}
+
+void SearchWindow::addToJam(const Core::Track& track, bool next) {
+    if (!jam.add(track, next)) {
+        Q_EMIT statusText(tr("No connection to the jam server"));
+        return;
+    }
+    const QString key = KeyText(track.key);
+    sending.insert(key, track);
+    refusals.remove(key);
+    Q_EMIT statusText(next ? tr("Sent to the jam, plays next") : tr("Sent to the jam"));
+    update();
+}
+
+SearchWindow::Note SearchWindow::noteOf(const Core::Track& track) const {
+    const QString key = KeyText(track.key);
+    if (inJam()) {
+        if (const std::optional<QString> from = jam.waitingFrom(track)) {
+            return {from->isEmpty() ? tr("in the jam") : tr("in the jam from %1").arg(*from)};
+        }
+        if (sending.contains(key)) {
+            return {tr("sending…")};
+        }
+        return {refusals.value(key), true};
+    }
+    const auto note = added.constFind(key);
+    if (note == added.cend()) {
+        return {};
+    }
+    return {*note == Core::AddPlacement::Next ? tr("plays next") : tr("at the end of the queue")};
 }
 
 void SearchWindow::setTextFont(const std::optional<QFont>& font) {
@@ -174,6 +238,13 @@ void SearchWindow::renderTabs(FormCanvas& canvas) {
         const QString name = QCoreApplication::translate("Ui::SearchWindow", tabs[index].name);
         const QRect rect = canvas.button(x, canvas.y, name, true, [this, index] { showTab(index); }, index == tab);
         x = rect.right() + 1 + kGap;
+    }
+    if (inJam()) {
+        const QString label = tr("Jam");
+        const int labelWidth = canvas.textWidth(label) + 2;
+        const int labelX = canvas.right - labelWidth;
+        canvas.light(labelX - 7, canvas.y + canvas.buttonHeight() / 2, jam.connected());
+        canvas.text(QRect(labelX, canvas.y, labelWidth, canvas.buttonHeight()), label, canvas.normal);
     }
     canvas.y += canvas.buttonHeight() + kGap;
 }
@@ -253,7 +324,7 @@ void SearchWindow::renderOpenedHead(FormCanvas& canvas) {
     const QRect play = canvas.button(canvas.left, canvas.y, tr("Play all"), true, [this, pick] {
         catalog()->playTracks(pick.name, opened->tracks, 0, pick);
     });
-    if (!album) {
+    if (inJam() || !album) {
         canvas.y += canvas.buttonHeight() + kGap * 2;
         return;
     }
@@ -342,9 +413,14 @@ QList<SearchWindow::Row> SearchWindow::selectableRows() const {
 
 void SearchWindow::renderRows(FormCanvas& canvas, const QList<Section>& parts) {
     const int hintTop = canvas.bottom - canvas.lineHeight;
-    const QString hint = opened
+    QString hint = opened
         ? tr("Enter: play · Ins: next · Shift+Ins: to the end · Backspace: back")
         : tr("Enter: play or open · Ins: next · Shift+Ins: to the end");
+    if (inJam() && opened) {
+        hint = tr("Enter: play · Ins: to the jam · Shift+Ins: to the jam, next · Backspace: back");
+    } else if (inJam()) {
+        hint = tr("Enter: play or open · Ins: to the jam · Shift+Ins: to the jam, next");
+    }
     canvas.text(QRect(canvas.left, hintTop, canvas.width(), canvas.lineHeight), hint, canvas.dim);
     const int listBottom = hintTop - kGap;
     const int rowHeight = canvas.buttonHeight() + 1;
@@ -356,13 +432,15 @@ void SearchWindow::renderRows(FormCanvas& canvas, const QList<Section>& parts) {
     };
     QList<Line> lines;
     rowLines.clear();
+    titleLines.clear();
     int index = 0;
     for (const Section& section : parts) {
         if (!section.title.isEmpty()) {
+            titleLines.insert(static_cast<int>(lines.size()));
             lines << Line{.section = &section, .height = rowHeight};
         }
         for (const Row& row : section.rows) {
-            const bool note = row.kind == RowKind::Track && added.contains(KeyText(row.track.key));
+            const bool note = row.kind == RowKind::Track && !noteOf(row.track).text.isEmpty();
             rowLines << static_cast<int>(lines.size());
             lines << Line{&section, &row, index++, rowHeight + (note ? canvas.lineHeight : 0)};
         }
@@ -417,9 +495,17 @@ void SearchWindow::renderRow(FormCanvas& canvas, const Row& row, int index) {
     const int side = canvas.buttonHeight();
     const int top = canvas.y;
     int buttonsX = canvas.right - side;
-    if (row.kind != RowKind::Artist) {
+    bool withAdd = row.kind != RowKind::Artist;
+    bool addable = true;
+    if (inJam()) {
+        withAdd = row.kind == RowKind::Track && !jam.waitingFrom(row.track);
+        addable = jam.canAdd(row.track) && !sending.contains(KeyText(row.track.key));
+    }
+    if (withAdd) {
         const auto addRow = [this, row] { add(row, placementNow()); };
-        canvas.glyphButton(buttonsX, top, FormCanvas::Glyph::Add, tr("Add"), true, addRow);
+        canvas.glyphButton(buttonsX, top, FormCanvas::Glyph::Add, tr("Add"), addable, addRow);
+    }
+    if (row.kind != RowKind::Artist) {
         buttonsX -= side + kGap;
     }
     canvas.glyphButton(buttonsX, top, FormCanvas::Glyph::Play, tr("Play"), true, [this, row] { play(row); });
@@ -461,11 +547,10 @@ void SearchWindow::renderRow(FormCanvas& canvas, const Row& row, int index) {
     rowRects << qMakePair(textRect, index);
     canvas.y += side + 1;
     if (row.kind == RowKind::Track) {
-        const auto note = added.constFind(KeyText(row.track.key));
-        if (note != added.cend()) {
-            const QString noteText =
-                *note == Core::AddPlacement::Next ? tr("plays next") : tr("at the end of the queue");
-            canvas.text(QRect(canvas.left + 8, canvas.y, canvas.width() - 8, canvas.lineHeight), noteText, canvas.dim);
+        const Note note = noteOf(row.track);
+        if (!note.text.isEmpty()) {
+            const QRect noteRect(canvas.left + 8, canvas.y, canvas.width() - 8, canvas.lineHeight);
+            canvas.text(noteRect, note.text, note.loud ? canvas.current : canvas.dim);
             canvas.y += canvas.lineHeight;
         }
     }
@@ -490,6 +575,15 @@ void SearchWindow::play(const Row& row) {
 }
 
 void SearchWindow::add(const Row& row, Core::AddPlacement placement) {
+    if (inJam()) {
+        const bool next = placement == Core::AddPlacement::End;
+        const bool waiting = row.kind == RowKind::Track && jam.waitingFrom(row.track).has_value();
+        const bool sent = row.kind == RowKind::Track && sending.contains(KeyText(row.track.key));
+        if (row.kind == RowKind::Track && (next || !waiting) && !sent && jam.canAdd(row.track)) {
+            addToJam(row.track, next);
+        }
+        return;
+    }
     if (row.kind == RowKind::Album) {
         catalog()->addAlbum(row.pick, placement);
         return;
@@ -559,7 +653,7 @@ void SearchWindow::revealSelected() {
         return;
     }
     const int line = rowLines[selected];
-    scroll = std::min(scroll, line);
+    scroll = std::min(scroll, titleLines.contains(line - 1) ? line - 1 : line);
     int used = 0;
     for (int i = scroll; i <= line; ++i) {
         used += lineHeights[i];

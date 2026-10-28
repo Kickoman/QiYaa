@@ -4,6 +4,7 @@
 #include "jam/protocol.h"
 #include "jam/session_store.h"
 
+#include <QHash>
 #include <QObject>
 #include <QString>
 #include <QTimer>
@@ -93,6 +94,7 @@ Q_SIGNALS:
     void activeChanged(bool active);
     void connectedChanged(bool connected);
     void refused(const QString& reason);
+    void addRefused(const QString& trackId, const QString& reason);
     void ended(Jam::HostEnd why);
     void offline();
 
@@ -141,6 +143,7 @@ private:
     qint64 lastVersion = -1;
     QString pendingPinTrack;
     QString pendingPinAdd;
+    QHash<QString, QString> addRequests;
     QString serverUrl;
     QTimer retryTimer;
 };
