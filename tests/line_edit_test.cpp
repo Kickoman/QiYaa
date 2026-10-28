@@ -111,6 +111,63 @@ private Q_SLOTS:
         QVERIFY(Takes(Qt::Key_A, Qt::ControlModifier));
         QVERIFY(!Takes(Qt::Key_D, Qt::ControlModifier));
         QVERIFY(!Takes(Qt::Key_E, Qt::AltModifier));
+        QVERIFY(!Takes(Qt::Key_W, Qt::ControlModifier));
+        QVERIFY(!Takes(Qt::Key_G, Qt::AltModifier));
+        QVERIFY(!Takes(Qt::Key_L, Qt::AltModifier));
+        QVERIFY(!Takes(Qt::Key_K, Qt::ControlModifier | Qt::ShiftModifier));
+    }
+
+    void surrogatePairsAndMarksMoveAndGoWhole() {
+        Ui::LineEdit edit(100);
+        edit.setText(QStringLiteral("a🎵"));
+        Press(edit, Qt::Key_Left);
+        QCOMPARE(edit.cursor(), 1);
+        Press(edit, Qt::Key_End);
+        Press(edit, Qt::Key_Backspace);
+        QCOMPARE(edit.text(), QStringLiteral("a"));
+        const QString decomposed = QStringLiteral("и") + QChar(0x0306);
+        edit.setText(decomposed);
+        Press(edit, Qt::Key_Backspace);
+        QVERIFY(edit.text().isEmpty());
+        Ui::LineEdit short3(3);
+        Type(short3, QStringLiteral("ab"));
+        QGuiApplication::clipboard()->setText(QStringLiteral("🎵"));
+        Press(short3, Qt::Key_V, Qt::ControlModifier);
+        QCOMPARE(short3.text(), QStringLiteral("ab"));
+    }
+
+    void aPasteLongerThanTheRoomIsCut() {
+        Ui::LineEdit edit(6);
+        Type(edit, QStringLiteral("ab"));
+        QGuiApplication::clipboard()->setText(QStringLiteral("cdefgh"));
+        Press(edit, Qt::Key_V, Qt::ControlModifier);
+        QCOMPARE(edit.text(), QStringLiteral("abcdef"));
+        QCOMPARE(edit.cursor(), 6);
+    }
+
+    void aSelectionBothWaysIsDeletedAndCollapsedByTheArrows() {
+        Ui::LineEdit edit(100);
+        edit.setText(QStringLiteral("hello"));
+        Press(edit, Qt::Key_Left, Qt::ShiftModifier);
+        Press(edit, Qt::Key_Left, Qt::ShiftModifier);
+        QCOMPARE(edit.selectedText(), QStringLiteral("lo"));
+        Press(edit, Qt::Key_Delete);
+        QCOMPARE(edit.text(), QStringLiteral("hel"));
+        Press(edit, Qt::Key_A, Qt::ControlModifier);
+        Press(edit, Qt::Key_Left);
+        QCOMPARE(edit.cursor(), 0);
+        QVERIFY(!edit.hasSelection());
+        Press(edit, Qt::Key_A, Qt::ControlModifier);
+        Press(edit, Qt::Key_Right);
+        QCOMPARE(edit.cursor(), 3);
+    }
+
+    void anApostropheStaysInsideAWord() {
+        Ui::LineEdit edit(100);
+        edit.setText(QStringLiteral("don't stop"));
+        Press(edit, Qt::Key_Home);
+        Press(edit, Qt::Key_Right, Qt::ControlModifier);
+        QCOMPARE(edit.cursor(), 5);
     }
 
     void aClickPutsTheCaretAtTheNearestLetter() {

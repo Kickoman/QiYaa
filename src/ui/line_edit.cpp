@@ -7,10 +7,12 @@
 #include <QKeyEvent>
 #include <QKeySequence>
 #include <QPainter>
+#include <QTextBoundaryFinder>
 
 #include <algorithm>
 #include <array>
 #include <cstdlib>
+#include <initializer_list>
 
 namespace Ui {
 
@@ -30,25 +32,38 @@ constexpr std::array kEditKeys{
     QKeySequence::MoveToNextWord,
     QKeySequence::MoveToStartOfLine,
     QKeySequence::MoveToEndOfLine,
+    QKeySequence::MoveToStartOfDocument,
+    QKeySequence::MoveToEndOfDocument,
     QKeySequence::SelectPreviousChar,
     QKeySequence::SelectNextChar,
     QKeySequence::SelectPreviousWord,
     QKeySequence::SelectNextWord,
     QKeySequence::SelectStartOfLine,
     QKeySequence::SelectEndOfLine,
+    QKeySequence::SelectStartOfDocument,
+    QKeySequence::SelectEndOfDocument,
 };
 
-bool IsWordCharacter(QChar character) {
-    return character.isLetterOrNumber();
+QString WholeCharacters(QString text) {
+    if (!text.isEmpty() && text.back().isHighSurrogate()) {
+        text.chop(1);
+    }
+    return text;
+}
+
+bool AnyOf(const QKeyEvent* event, std::initializer_list<QKeySequence::StandardKey> keys) {
+    return std::any_of(keys.begin(), keys.end(), [event](QKeySequence::StandardKey key) {
+        return event->matches(key);
+    });
 }
 
 }  // namespace
 
-LineEdit::LineEdit(int maxLength)
-    : maxLength(maxLength) { }
+LineEdit::LineEdit(int limit)
+    : maxLength(limit) { }
 
 void LineEdit::setText(const QString& text) {
-    content = text.left(maxLength);
+    content = WholeCharacters(text.left(maxLength));
     caret = static_cast<int>(content.size());
     anchor = caret;
 }
@@ -59,7 +74,8 @@ QString LineEdit::selectedText() const {
 }
 
 bool LineEdit::takes(const QKeyEvent* event) {
-    const Qt::KeyboardModifiers modifiers = event->modifiers() & ~(Qt::ShiftModifier | Qt::KeypadModifier);
+    const Qt::KeyboardModifiers modifiers =
+        event->modifiers() & ~(Qt::ShiftModifier | Qt::KeypadModifier | Qt::GroupSwitchModifier);
     return modifiers == Qt::NoModifier
         || std::any_of(kEditKeys.cbegin(), kEditKeys.cend(), [event](QKeySequence::StandardKey key) {
                return event->matches(key);
@@ -68,6 +84,7 @@ bool LineEdit::takes(const QKeyEvent* event) {
 
 LineEdit::KeyResult LineEdit::press(const QKeyEvent* event) {
     const int end = static_cast<int>(content.size());
+    const Qt::KeyboardModifiers modifiers = event->modifiers() & ~(Qt::ShiftModifier | Qt::KeypadModifier);
     if (event->matches(QKeySequence::Paste)) {
         insert(QGuiApplication::clipboard()->text().simplified());
     } else if (event->matches(QKeySequence::Copy) || event->matches(QKeySequence::Cut)) {
@@ -91,29 +108,41 @@ LineEdit::KeyResult LineEdit::press(const QKeyEvent* event) {
         }
     } else if (event->matches(QKeySequence::Delete)) {
         if (!removeSelection()) {
-            erase(caret, std::min(caret + 1, end));
+            erase(caret, after(caret));
         }
-    } else if (event->key() == Qt::Key_Backspace) {
+    } else if (event->key() == Qt::Key_Backspace && modifiers == Qt::NoModifier) {
         if (!removeSelection()) {
-            erase(std::max(caret - 1, 0), caret);
+            erase(before(caret), caret);
         }
-    } else if (event->matches(QKeySequence::MoveToPreviousWord) || event->matches(QKeySequence::SelectPreviousWord)) {
+    } else if (AnyOf(event, {QKeySequence::MoveToPreviousWord, QKeySequence::SelectPreviousWord})) {
         moveTo(wordBefore(caret), event->matches(QKeySequence::SelectPreviousWord));
         return KeyResult::Moved;
-    } else if (event->matches(QKeySequence::MoveToNextWord) || event->matches(QKeySequence::SelectNextWord)) {
+    } else if (AnyOf(event, {QKeySequence::MoveToNextWord, QKeySequence::SelectNextWord})) {
         moveTo(wordAfter(caret), event->matches(QKeySequence::SelectNextWord));
         return KeyResult::Moved;
-    } else if (event->matches(QKeySequence::MoveToPreviousChar) || event->matches(QKeySequence::SelectPreviousChar)) {
-        moveTo(std::max(caret - 1, 0), event->matches(QKeySequence::SelectPreviousChar));
+    } else if (AnyOf(event, {QKeySequence::MoveToPreviousChar, QKeySequence::SelectPreviousChar})) {
+        moveByLetter(false, event->matches(QKeySequence::SelectPreviousChar));
         return KeyResult::Moved;
-    } else if (event->matches(QKeySequence::MoveToNextChar) || event->matches(QKeySequence::SelectNextChar)) {
-        moveTo(std::min(caret + 1, end), event->matches(QKeySequence::SelectNextChar));
+    } else if (AnyOf(event, {QKeySequence::MoveToNextChar, QKeySequence::SelectNextChar})) {
+        moveByLetter(true, event->matches(QKeySequence::SelectNextChar));
         return KeyResult::Moved;
-    } else if (event->matches(QKeySequence::MoveToStartOfLine) || event->matches(QKeySequence::SelectStartOfLine)) {
-        moveTo(0, event->matches(QKeySequence::SelectStartOfLine));
+    } else if (AnyOf(
+                   event,
+                   {QKeySequence::MoveToStartOfLine,
+                    QKeySequence::SelectStartOfLine,
+                    QKeySequence::MoveToStartOfDocument,
+                    QKeySequence::SelectStartOfDocument}
+               )) {
+        moveTo(0, AnyOf(event, {QKeySequence::SelectStartOfLine, QKeySequence::SelectStartOfDocument}));
         return KeyResult::Moved;
-    } else if (event->matches(QKeySequence::MoveToEndOfLine) || event->matches(QKeySequence::SelectEndOfLine)) {
-        moveTo(end, event->matches(QKeySequence::SelectEndOfLine));
+    } else if (AnyOf(
+                   event,
+                   {QKeySequence::MoveToEndOfLine,
+                    QKeySequence::SelectEndOfLine,
+                    QKeySequence::MoveToEndOfDocument,
+                    QKeySequence::SelectEndOfDocument}
+               )) {
+        moveTo(end, AnyOf(event, {QKeySequence::SelectEndOfLine, QKeySequence::SelectEndOfDocument}));
         return KeyResult::Moved;
     } else if (event->key() == Qt::Key_Return || event->key() == Qt::Key_Enter) {
         return KeyResult::Enter;
@@ -141,7 +170,8 @@ void LineEdit::paint(FormCanvas& canvas, const QRect& rect, bool focused, const 
     const int room = inner.width() - 2;
     const int caretX = canvas.textWidth(content.left(caret));
     const int full = canvas.textWidth(content);
-    scroll = std::clamp(scroll, std::max(0, caretX - room), std::max(0, std::min(caretX, full - room)));
+    const int lowest = std::max(0, caretX - room);
+    scroll = std::clamp(scroll, lowest, std::max(lowest, std::min(caretX, full - room)));
     canvas.painter->save();
     canvas.painter->setClipRect(inner, Qt::IntersectClip);
     const int origin = inner.x() - scroll;
@@ -169,7 +199,8 @@ void LineEdit::paint(FormCanvas& canvas, const QRect& rect, bool focused, const 
 void LineEdit::pressAt(const QRect& rect, QPoint pos, const QFontMetrics& metrics) {
     const int target = pos.x() - (rect.x() + 3) + scroll;
     int best = 0;
-    for (int position = 1; position <= content.size(); ++position) {
+    for (int position = 0; position < content.size();) {
+        position = after(position);
         if (std::abs(metrics.horizontalAdvance(content.left(position)) - target)
             < std::abs(metrics.horizontalAdvance(content.left(best)) - target)) {
             best = position;
@@ -181,7 +212,7 @@ void LineEdit::pressAt(const QRect& rect, QPoint pos, const QFontMetrics& metric
 
 void LineEdit::insert(const QString& text) {
     removeSelection();
-    const QString taken = text.left(std::max(0, maxLength - static_cast<int>(content.size())));
+    const QString taken = WholeCharacters(text.left(std::max(0, maxLength - static_cast<int>(content.size()))));
     content.insert(caret, taken);
     caret += static_cast<int>(taken.size());
     anchor = caret;
@@ -208,25 +239,45 @@ bool LineEdit::removeSelection() {
     return true;
 }
 
+int LineEdit::before(int position) const {
+    QTextBoundaryFinder finder(QTextBoundaryFinder::Grapheme, content);
+    finder.setPosition(position);
+    return std::max(0, static_cast<int>(finder.toPreviousBoundary()));
+}
+
+int LineEdit::after(int position) const {
+    QTextBoundaryFinder finder(QTextBoundaryFinder::Grapheme, content);
+    finder.setPosition(position);
+    const qsizetype next = finder.toNextBoundary();
+    return next < 0 ? static_cast<int>(content.size()) : static_cast<int>(next);
+}
+
 int LineEdit::wordBefore(int position) const {
-    while (position > 0 && !IsWordCharacter(content.at(position - 1))) {
-        --position;
+    QTextBoundaryFinder finder(QTextBoundaryFinder::Word, content);
+    finder.setPosition(position);
+    qsizetype found = finder.toPreviousBoundary();
+    while (found > 0 && !finder.boundaryReasons().testFlag(QTextBoundaryFinder::StartOfItem)) {
+        found = finder.toPreviousBoundary();
     }
-    while (position > 0 && IsWordCharacter(content.at(position - 1))) {
-        --position;
-    }
-    return position;
+    return std::max(0, static_cast<int>(found));
 }
 
 int LineEdit::wordAfter(int position) const {
-    const int end = static_cast<int>(content.size());
-    while (position < end && !IsWordCharacter(content.at(position))) {
-        ++position;
+    QTextBoundaryFinder finder(QTextBoundaryFinder::Word, content);
+    finder.setPosition(position);
+    qsizetype found = finder.toNextBoundary();
+    while (found >= 0 && found < content.size() && !finder.boundaryReasons().testFlag(QTextBoundaryFinder::EndOfItem)) {
+        found = finder.toNextBoundary();
     }
-    while (position < end && IsWordCharacter(content.at(position))) {
-        ++position;
+    return found < 0 ? static_cast<int>(content.size()) : static_cast<int>(found);
+}
+
+void LineEdit::moveByLetter(bool forward, bool select) {
+    if (hasSelection() && !select) {
+        moveTo(forward ? std::max(anchor, caret) : std::min(anchor, caret), false);
+        return;
     }
-    return position;
+    moveTo(forward ? after(caret) : before(caret), select);
 }
 
 }  // namespace Ui
