@@ -21,6 +21,7 @@ constexpr int kArtistTopLimit = 100;
 QString StringField(const QJsonObject& object, const char* key) {
     return ApiClient::IdString(object.value(QLatin1String(key)));
 }
+
 QJsonArray ResultsOf(const QJsonObject& reply, const char* part) {
     return reply.value(QLatin1String(part)).toObject().value(QStringLiteral("results")).toArray();
 }

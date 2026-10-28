@@ -47,8 +47,10 @@ Core::SearchPick AlbumPick(const Yandex::AlbumReference& album) {
 
 Core::SearchResults ResultsOf(const Yandex::SearchResult& found) {
     Core::SearchResults results{.tracks = TracksOf(found.tracks)};
-    if (found.bestTrack) {
+    if (found.bestTrack && !found.bestId.isEmpty()) {
         results.bestTrack = TrackOf(*found.bestTrack);
+        const QString bestId = CatalogId(results.bestTrack->key);
+        results.tracks.removeIf([&bestId](const Core::Track& track) { return CatalogId(track.key) == bestId; });
     }
     if (found.bestKind == Yandex::SearchResult::Kind::Artist && !found.bestId.isEmpty()) {
         results.bestArtist = ArtistPick(found.bestId, found.bestName);
@@ -232,7 +234,9 @@ void Catalog::open(const Core::SearchPick& pick, TTracks done) {
     QPointer<Catalog> self(this);
     const auto opened = [self, done](const QList<Track>& tracks, const QString& error) {
         if (self) {
-            done(TracksOf(tracks), error);
+            QList<Core::Track> available = TracksOf(tracks);
+            available.removeIf([](const Core::Track& track) { return !track.available; });
+            done(available, error);
         }
     };
     if (pick.kind == Core::SearchPick::Kind::Artist) {
@@ -261,9 +265,8 @@ void Catalog::playTracks(const QString& title, const QList<Core::Track>& tracks,
 }
 
 void Catalog::add(const QString& title, const QList<Core::Track>& tracks, Core::AddPlacement placement) {
-    const int available = AvailableCount(tracks);
-    if (available == 0) {
-        return notify(NoticeOf(SourceNoticeCode::Empty, title));
+    if (AvailableCount(tracks) == 0) {
+        return;
     }
     corePlayer->add(Core::QueueSource{.title = title, .head = tracks}, placement);
     notify(Core::AddedNotice(title, tracks, placement));
@@ -277,6 +280,9 @@ void Catalog::addAlbum(const Core::SearchPick& album, Core::AddPlacement placeme
         }
         if (!error.isEmpty()) {
             return self->notify(NoticeOf(SourceNoticeCode::Failed, album.name, error));
+        }
+        if (!HasAvailable(tracks)) {
+            return self->notify(NoticeOf(SourceNoticeCode::Empty, album.name));
         }
         self->add(album.name, TracksOf(tracks), placement);
     });
