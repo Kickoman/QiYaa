@@ -104,6 +104,61 @@ private Q_SLOTS:
         QCOMPARE(navigator->next(false), 0);
         QCOMPARE(navigator->remaining(false), 1);
     }
+
+    void eachNavigatorCanBeginWithAChosenTrack_data() { emptyAndSingleTrackQueues_data(); }
+    void eachNavigatorCanBeginWithAChosenTrack() {  // HOST-38
+        QFETCH(int, algorithm);
+        auto navigator = Core::MakeTrackNavigator(
+            algorithm < 0 ? std::nullopt : std::optional(static_cast<Core::ShuffleAlgorithm>(algorithm))
+        );
+        navigator->resetBefore(6, 4);
+        QCOMPARE(navigator->next(false), 4);
+        navigator->select(4);
+        const int after = navigator->next(false);
+        QVERIFY(after >= 0 && after < 6 && after != 4);
+    }
+
+    void tracksAppendedToASequentialPassPlayAfterItsLast() {  // ADD-03
+        auto navigator = Core::MakeTrackNavigator(std::nullopt);
+        navigator->reset(3, 2);
+        QCOMPARE(navigator->next(false), -1);
+        navigator->append(2);
+        QCOMPARE(navigator->next(false), 3);
+        navigator->select(4);
+        QCOMPARE(navigator->next(true), 0);
+    }
+
+    void tracksAppendedToARandomTrackCanComeNext() {  // ADD-03, SHUF-08
+        auto navigator = Core::MakeTrackNavigator(Core::ShuffleAlgorithm::Random);
+        navigator->reset(1, 0);
+        QCOMPARE(navigator->next(false), -1);
+        navigator->append(1);
+        QCOMPARE(navigator->next(false), 1);
+        QCOMPARE(navigator->remaining(false), Core::kEndlessTracks);
+    }
+
+    void tracksAppendedToAShuffledPassComeAmongTheRestOfIt() {  // ADD-03, SHUF-01
+        for (int attempt = 0; attempt < 50; ++attempt) {
+            auto navigator = Core::MakeTrackNavigator(Core::ShuffleAlgorithm::WithoutRepeats);
+            navigator->reset(6, 0);
+            QList<int> played{0};
+            for (int step = 0; step < 2; ++step) {
+                played << navigator->next(false);
+                navigator->select(played.back());
+            }
+            navigator->append(3);
+            QCOMPARE(navigator->remaining(false), 6);
+            QList<int> rest;
+            for (int next = navigator->next(false); next >= 0; next = navigator->next(false)) {
+                rest << next;
+                navigator->select(next);
+            }
+            QCOMPARE(rest.size(), 6);
+            for (int index = 0; index < 9; ++index) {
+                QCOMPARE(played.count(index) + rest.count(index), 1);
+            }
+        }
+    }
 };
 
 QTEST_GUILESS_MAIN(TestTrackNavigator)

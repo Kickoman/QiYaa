@@ -20,7 +20,10 @@ struct QueueSource {
     QList<Track> given{};
     bool waveFromHistory = true;
     std::shared_ptr<Continuation> historyWave{};
+    std::optional<int> start{};
 };
+
+enum class AddPlacement { Next, End };
 
 enum class EntryPart { Head, Continuation, Item, Other };
 

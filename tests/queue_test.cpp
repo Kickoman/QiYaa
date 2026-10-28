@@ -420,6 +420,146 @@ private Q_SLOTS:
         QCOMPARE(IdAt(queue, queue.next()), QStringLiteral("w0"));
     }
 
+    void playNextWaitsRightBehindTheCurrentTrackInFrontOfEarlierOnes() {  // ADD-01
+        Core::Queue queue;
+        queue.replace(HeadOf(Tracks(4)));
+        queue.select(1);
+        queue.add(Tracks(1, QStringLiteral("a")), Core::AddPlacement::Next);
+        QList<Core::Track> later = Tracks(3, QStringLiteral("b"));
+        later[1].available = false;
+        queue.add(later, Core::AddPlacement::Next);
+        QCOMPARE(Ids(queue), (QStringList{"0", "1", "b0", "b2", "a0", "2", "3"}));
+        QCOMPARE(queue.cursor(), 1);
+        QCOMPARE(PlayOrder(queue), (QList<int>{1, 2, 3, 4, 5, 6}));
+    }
+
+    void waitingTracksPlayOnceOutsideTheShuffledPass() {  // ADD-02
+        Core::Queue queue;
+        queue.replace(HeadOf(Tracks(4)));
+        queue.setShuffle(true);
+        queue.add(Tracks(1, QStringLiteral("a")), Core::AddPlacement::Next);
+        QCOMPARE(IdAt(queue, queue.next()), QStringLiteral("a0"));
+        const QList<int> order = PlayOrder(queue);
+        QCOMPARE(order.size(), 5);
+        QStringList played;
+        for (int index : order) {
+            played << IdAt(queue, index);
+        }
+        QCOMPARE(played.count(QStringLiteral("a0")), 1);
+        queue.setRepeat(true);
+        QVERIFY(IdAt(queue, queue.next()) != QStringLiteral("a0"));
+        QVERIFY(!queue.entries()[queue.cursor()].pending);
+    }
+
+    void addingToTheEndJoinsTheHeadInFrontOfTheContinuation() {  // ADD-03
+        Core::Queue queue;
+        queue.replace(HeadOf(Tracks(2)));
+        queue.appendContinuation(Tracks(2, QStringLiteral("w")), std::make_shared<Tests::FakeContinuation>(), {});
+        queue.add(Tracks(2, QStringLiteral("e")), Core::AddPlacement::End);
+        QCOMPARE(Ids(queue), (QStringList{"0", "1", "e0", "e1", "w0", "w1"}));
+        QCOMPARE(queue.entries()[2].part, Core::EntryPart::Head);
+        QCOMPARE(PlayOrder(queue), (QList<int>{0, 1, 2, 3, 4, 5}));
+        queue.select(3);
+        queue.setRepeat(true);
+        QCOMPARE(queue.next(), 0);
+    }
+
+    void addingToTheEndKeepsTheWaitingTracksRightBehindTheCurrentOne() {  // ADD-03
+        Core::Queue queue;
+        queue.replace(HeadOf(Tracks(2)));
+        queue.select(1);
+        queue.add(Tracks(1, QStringLiteral("a")), Core::AddPlacement::Next);
+        queue.add(Tracks(1, QStringLiteral("e")), Core::AddPlacement::End);
+        QCOMPARE(Ids(queue), (QStringList{"0", "1", "a0", "e0"}));
+        queue.select(2);
+        queue.add(Tracks(1, QStringLiteral("f")), Core::AddPlacement::End);
+        QCOMPARE(Ids(queue), (QStringList{"0", "1", "a0", "e0", "f0"}));
+        QCOMPARE(PlayOrder(queue), (QList<int>{2, 3, 4}));
+    }
+
+    void addingToTheEndBeforeAPlayedWaitingTrackKeepsTheCursorOnIt() {  // ADD-03
+        Core::Queue queue;
+        queue.replace(HeadOf(Tracks(2)));
+        queue.select(1);
+        queue.add(Tracks(1, QStringLiteral("a")), Core::AddPlacement::Next);
+        queue.select(2);
+        queue.add(Tracks(1, QStringLiteral("e")), Core::AddPlacement::End);
+        QCOMPARE(Ids(queue), (QStringList{"0", "1", "e0", "a0"}));
+        QCOMPARE(IdAt(queue, queue.cursor()), QStringLiteral("a0"));
+        QCOMPARE(IdAt(queue, queue.next()), QStringLiteral("e0"));
+    }
+
+    void addingToTheEndOfAShuffledPassPlaysEachTrackOnce() {  // ADD-03, SHUF-01
+        Core::Queue queue;
+        queue.replace(HeadOf(Tracks(5)));
+        queue.setShuffle(true);
+        queue.select(queue.next());
+        queue.add(Tracks(3, QStringLiteral("e")), Core::AddPlacement::End);
+        const QList<int> order = PlayOrder(queue);
+        QCOMPARE(order.size(), 7);
+        QCOMPARE(QSet<int>(order.cbegin(), order.cend()).size(), 7);
+    }
+
+    void addingToTheEndOfARunOutHeadWaitsBehindTheWaitingTracks() {  // ADD-04
+        Core::Queue queue;
+        queue.replace(HeadOf(Tracks(1)));
+        queue.appendContinuation(Tracks(2, QStringLiteral("w")), std::make_shared<Tests::FakeContinuation>(), {});
+        queue.select(1);
+        queue.add(Tracks(1, QStringLiteral("e")), Core::AddPlacement::End);
+        queue.add(Tracks(1, QStringLiteral("a")), Core::AddPlacement::Next);
+        queue.add(Tracks(1, QStringLiteral("f")), Core::AddPlacement::End);
+        QCOMPARE(Ids(queue), (QStringList{"0", "w0", "a0", "e0", "f0", "w1"}));
+        QCOMPARE(PlayOrder(queue), (QList<int>{1, 2, 3, 4, 5}));
+    }
+
+    void aWaveAddsToTheEndAsWaitingTracks() {  // ADD-04
+        Core::Queue queue;
+        queue.replace(Core::QueueSource{
+            .continuation = std::make_shared<Tests::FakeContinuation>(), .given = Tracks(2, QStringLiteral("w"))
+        });
+        queue.add(Tracks(1, QStringLiteral("e")), Core::AddPlacement::End);
+        QCOMPARE(Ids(queue), (QStringList{"w0", "e0", "w1"}));
+        QCOMPARE(queue.entries()[1].part, Core::EntryPart::Item);
+    }
+
+    void removedWaitingTracksDoNotPlay() {  // ADD-07
+        Core::Queue queue;
+        queue.replace(HeadOf(Tracks(3)));
+        queue.add(Tracks(2, QStringLiteral("a")), Core::AddPlacement::Next);
+        queue.add(Tracks(1, QStringLiteral("e")), Core::AddPlacement::End);
+        QVERIFY(!queue.remove({1, 5}));
+        QCOMPARE(Ids(queue), (QStringList{"0", "a1", "1", "2"}));
+        QCOMPARE(PlayOrder(queue), (QList<int>{0, 1, 2, 3}));
+    }
+
+    void aNewQueueBeginsWithTheChosenTrack() {  // SRC-16, SRC-18, SHUF-01
+        QList<Core::Track> tracks = Tracks(5);
+        tracks[1].available = false;
+        Core::Queue queue;
+        queue.replace(Core::QueueSource{.head = tracks, .start = 3});
+        QCOMPARE(IdAt(queue, queue.cursor()), QStringLiteral("3"));
+        QCOMPARE(PlayOrder(queue), (QList<int>{2, 3}));
+        queue.setShuffle(true);
+        queue.replace(Core::QueueSource{.head = tracks, .start = 4});
+        const QList<int> order = PlayOrder(queue);
+        QCOMPARE(IdAt(queue, order.first()), QStringLiteral("4"));
+        QCOMPARE(QSet<int>(order.cbegin(), order.cend()).size(), 4);
+    }
+
+    void anotherBaseBeginsWithTheChosenTrack() {  // HOST-38
+        Core::Queue queue;
+        queue.replace(HeadOf(Tracks(3)));
+        queue.select(1);
+        queue.setItems(Items({"a"}), Core::SeedHint{});
+        queue.replaceBase(Core::QueueSource{.head = Tracks(4, QStringLiteral("x")), .start = 2});
+        QCOMPARE(Ids(queue), (QStringList{"1", "a", "x0", "x1", "x2", "x3"}));
+        QCOMPARE(PlayOrder(queue), (QList<int>{0, 1, 4, 5}));
+        queue.setShuffle(true);
+        queue.replaceBase(Core::QueueSource{.head = Tracks(4, QStringLiteral("y")), .start = 1});
+        queue.setShuffle(true);
+        QCOMPARE(IdAt(queue, queue.next()), QStringLiteral("y1"));
+    }
+
     void aNewSourceStartsANewGeneration() {
         Core::Queue queue;
         const quint64 before = queue.generation();
