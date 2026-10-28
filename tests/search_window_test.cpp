@@ -13,12 +13,15 @@
 #include <QFont>
 #include <QFontDatabase>
 #include <QImage>
+#include <QKeyEvent>
 #include <QList>
 #include <QObject>
+#include <QPoint>
 #include <QSignalSpy>
 #include <QString>
 #include <QStringList>
 #include <QTest>
+#include <QWheelEvent>
 
 #include <optional>
 #include <utility>
@@ -377,6 +380,106 @@ private Q_SLOTS:
         QVERIFY(stack.click(Source("Log in…")));
         QCOMPARE(login.size(), 1);
         QCOMPARE(login.front().front().toInt(), 1);
+    }
+
+    void shiftOnAddPutsItAtTheEndAndADoubleClickAddsOnce() {  // SRC-17, ADD-03
+        Stack stack(&baseSkin, pixelFont);
+        stack.window.search(QStringLiteral("кино"));
+        stack.answer(Results());
+        const QString kukushka = RowText(2, QStringLiteral("Кукушка"));
+        QVERIFY(stack.click(stack.buttonOf(kukushka, Source("Add")), Qt::ShiftModifier));
+        QCOMPARE(stack.yandex.added.back().placement, Core::AddPlacement::End);
+        const QPoint add =
+            stack.buttonOf(RowText(3, QStringLiteral("Звезда по имени Солнце")), Source("Add"))->rect.center();
+        QTest::mouseClick(&stack.window, Qt::LeftButton, {}, add);
+        QTest::mouseDClick(&stack.window, Qt::LeftButton, {}, add);
+        QCOMPARE(stack.yandex.added.size(), 2);
+    }
+
+    void anOpenAnsweredLateIsDropped() {  // SRC-16
+        Stack stack(&baseSkin, pixelFont);
+        stack.window.search(QStringLiteral("кино"));
+        stack.answer(Results());
+        const QString first = QStringLiteral("Группа крови · КИНО · 1988");
+        const QString second = QStringLiteral("Звезда по имени Солнце · КИНО · 1989");
+        QVERIFY(stack.click(first));
+        QTest::keyClick(&stack.window, Qt::Key_Return);
+        QVERIFY(stack.click(Source("Back")));
+        QVERIFY(stack.click(second));
+        QTest::keyClick(&stack.window, Qt::Key_Return);
+        stack.yandex.opened[0].second({TrackOf(1, QStringLiteral("Группа крови"))}, {});
+        QVERIFY(!stack.control(Source("Play all")));
+        stack.yandex.opened[1].second({TrackOf(2, QStringLiteral("Звезда"))}, {});
+        QVERIFY(stack.control(RowText(1, QStringLiteral("Звезда"))));
+        QVERIFY(stack.click(Source("Back")));
+        QVERIFY(stack.click(first));
+        QTest::keyClick(&stack.window, Qt::Key_Return);
+        stack.window.showTab(1);
+        stack.yandex.opened[2].second({TrackOf(1, QStringLiteral("Группа крови"))}, {});
+        QVERIFY(!stack.control(Source("Play all")));
+    }
+
+    void backShowsTheResultsWhereTheyWere() {  // SRC-16
+        Stack stack(&baseSkin, pixelFont);
+        stack.window.setSizeSteps(QSize(3, 2));
+        stack.window.search(QStringLiteral("кино"));
+        stack.answer(Results());
+        stack.window.focusField();
+        QTest::keyClick(&stack.window, Qt::Key_Down);
+        QTest::keyClick(&stack.window, Qt::Key_End);
+        const int last = stack.window.selectedRow();
+        QCOMPARE(last, 10);
+        QVERIFY(stack.control(QStringLiteral("Кукушка · КИНО · 2026 · single")));
+        QTest::keyClick(&stack.window, Qt::Key_Return);
+        stack.yandex.opened.front().second({TrackOf(1, QStringLiteral("Кукушка"))}, {});
+        QTest::keyClick(&stack.window, Qt::Key_Backspace);
+        QCOMPARE(stack.window.selectedRow(), last);
+        QVERIFY(stack.control(QStringLiteral("Кукушка · КИНО · 2026 · single")));
+    }
+
+    void theWheelStopsAtTheEndOfTheList() {
+        Stack stack(&baseSkin, pixelFont);
+        stack.window.setSizeSteps(QSize(3, 2));
+        stack.window.search(QStringLiteral("кино"));
+        stack.answer(Results());
+        const QPoint middle = stack.window.rect().center();
+        for (int notch = 0; notch < 40; ++notch) {
+            QWheelEvent wheel(
+                middle, stack.window.mapToGlobal(middle), {}, {0, -120}, Qt::NoButton, {}, Qt::NoScrollPhase, false
+            );
+            QCoreApplication::sendEvent(&stack.window, &wheel);
+        }
+        QVERIFY(stack.control(QStringLiteral("Кукушка · КИНО · 2026 · single")));
+        QVERIFY(stack.control(Source("Play")));
+    }
+
+    void foldingAPartDropsTheSelection() {
+        Stack stack(&baseSkin, pixelFont);
+        stack.window.search(QStringLiteral("кино"));
+        stack.answer(Results());
+        QVERIFY(stack.click(QStringLiteral("Виктор Цой · artist")));
+        QCOMPARE(stack.window.selectedRow(), 7);
+        QVERIFY(stack.click(stack.control(Source("All"))));
+        QCOMPARE(stack.window.selectedRow(), -1);
+    }
+
+    void theFieldKeepsTheKeysAndTheRowsLeaveThePlayersKeys() {
+        Stack stack(&baseSkin, pixelFont);
+        const auto takes = [&stack](int key) {
+            QKeyEvent override(QEvent::ShortcutOverride, key, Qt::NoModifier, QString(QChar(key).toLower()));
+            QCoreApplication::sendEvent(&stack.window, &override);
+            return override.isAccepted();
+        };
+        stack.window.focusField();
+        QVERIFY(takes(Qt::Key_X));
+        QTest::keyClick(&stack.window, Qt::Key_Down);
+        QVERIFY(takes(Qt::Key_X));
+        stack.window.search(QStringLiteral("кино"));
+        stack.answer(Results());
+        QTest::keyClick(&stack.window, Qt::Key_Down);
+        QCOMPARE(stack.window.selectedRow(), 0);
+        QVERIFY(!takes(Qt::Key_X));
+        QVERIFY(takes(Qt::Key_Down));
     }
 
     void theResultsLookAsRecorded() {  // SRC-13
