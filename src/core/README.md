@@ -163,7 +163,7 @@ Q_SIGNALS:
 - `currentIndex()` is a cursor. It is -1 when the queue is empty, when it holds only waiting
   items (a layer's items that came into an empty queue), and after the current entry was removed
   with a waiting item behind it; `next()` and `play()` then play the first waiting item. Otherwise
-  it is a valid index, also while nothing plays. `setSource` sets it to 0 and plays only with
+  it is a valid index, also while nothing plays. `setSource` sets it to the start track (`QueueSource::start`, else 0) and plays only with
   `autoplay`. A continuation's first tracks in an empty queue move it from -1 to 0 and do not
   play.
 - `removeRows` takes rows of the queue before the removal. Duplicates and out-of-range rows are
@@ -176,11 +176,14 @@ Q_SIGNALS:
 - `QueueSource::start` names the head track (by its index in `head`, before the filter) that a new
   queue begins with: the cursor is on it, `autoplay` plays it, and a shuffled pass begins with it
   (SRC-16, SRC-18). Under a layer nothing is current in the new base, and `next()` gives it first
-  in order and with shuffle alike (HOST-38). An unavailable or out-of-range start is the first track.
+  in order and with shuffle alike (HOST-38); a removed row before it keeps it, and removing it makes
+  its follower the start. An unavailable or out-of-range start is the first track.
 - `add(source, placement)` (spec/player/queue.md) takes the available tracks of `source.head` and
   takes no ticket. In an empty queue it is `setSource(source, false)` (ADD-05). Otherwise `Next`
   makes them waiting items in front of those that wait (ADD-01), and `End` appends them to the head
-  while the base is in its head (ADD-03) or makes them waiting items behind those that wait (ADD-04).
+  while the base is in its head and the head is not empty (ADD-03), or makes them waiting items
+  behind those that wait (ADD-04). `previous()` passes waiting items by only from a head track,
+  through the navigator; from any other track it gives the row above (ADD-02).
   These waiting items have no item id: they play once, shuffle and repeat leave them out, the
   layer's items come in front of them, and `replaceBase` drops them (ADD-02, ADD-09). Tracks
   appended to the head join the navigator's pass without a reset. While `next()` waits for more
@@ -252,11 +255,17 @@ The load-more request: idle, or in flight. It is independent of both phases abov
   2. The queue becomes the source's entries, and the title and the continuation are replaced. The
      rules go back to the defaults, the load-more and waiting flags are reset, and a new load-more
      generation starts.
-  3. The cursor goes to 0, or to -1 when the queue is empty.
+  3. The cursor goes to the start track (`QueueSource::start`, else the first), or to -1 when the
+     queue is empty.
   4. `queueReplaced`, then `playlistChanged`, then `currentTrackChanged`.
   5. With a continuation: `ShuffleOffInVibe` if shuffle is on, then `continuation->begin(true)`
      (a vibe's `radioStarted`, TRK-03).
-  6. If `autoplay` is set and the queue is not empty: `playIndex(0)`.
+  6. If `autoplay` is set and the queue is not empty: `playIndex` of the cursor.
+- **`add(source, placement)`** does nothing when `source.head` has no available track, and is
+  `setSource(source, false)` in an empty queue (ADD-05). Otherwise it changes the queue as in
+  [The queue and the cursor](#the-queue-and-the-cursor) and emits `playlistChanged` with the
+  preload refreshed, as an edit does; nothing stops and nothing starts, except that a `next()`
+  waiting for more plays the first added track that now comes next (ADD-08).
 - **`playIndex(i)`** does nothing after `shutDown()` or when `i` is out of range. Otherwise:
   1. The wait for more ends and the current track is closed: `Skipped` if its `Started` went out.
      Its open answer, download and network wait go with it. The cursor moves to `i`.
@@ -432,7 +441,8 @@ next step of [#23](https://github.com/Kickoman/QiYaa/issues/23) makes the phases
   algorithms while shuffle is active rebuilds navigation and refreshes preload; while inactive it
   changes only the preference. Audio, position and pause state are preserved in either case.
 - A new source, removing a head row, or switching shuffle resets the navigator from the last head
-  entry that became current (or from before the head's first, under a layer). Such a reset starts
+  entry that became current (or, under a layer, from before the head's first or before the start
+track of `QueueSource::start`). Such a reset starts
   a new shuffled pass, which can include tracks heard before. The layer's items, a continuation's
   tracks and jumps keep the pass. A direct `playIndex` selects the entry in the existing order.
 - `next()` and preload read the same next entry. Looking ahead never consumes it. Explicit Next
@@ -469,7 +479,8 @@ A layer lies over the queue's own source, the base, while it is on: the jam
   an item, anything else as `Other`), the layer's waiting items stay behind it, and the new head
   and continuation follow; played rows and the old base go, items an earlier layer left waiting
   among it, and the new base takes the flag of a new queue. Nothing stops or starts (`autoplay` is
-  ignored), the base begins before its head's first track, and its continuation gets
+  ignored), the base begins before its head's first track, or before its start track, which `next()`
+  gives first in order and with shuffle alike (HOST-38), and its continuation gets
   `begin(ownContinuationFeedback)` (HOST-15).
 - `removeRows` under a layer (HOST-36) hands the waiting items' ids to `QueueLayer::removeItems`
   (the server removes them, and the next state takes them out) and removes the other rows at once,

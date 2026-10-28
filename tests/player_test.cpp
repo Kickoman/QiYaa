@@ -529,7 +529,7 @@ private Q_SLOTS:
         QCOMPARE(stack.player.currentIndex(), 0);
     }
 
-    void aTrackAddedWhileWaitingForMorePlaysAtOnce() {  // ADD-04, WAVE-08
+    void aTrackAddedWhileWaitingForMorePlaysAtOnce() {  // ADD-08
         Stack stack;
         QVERIFY(stack.start(0));
         const auto vibe = std::make_shared<Tests::FakeContinuation>();
@@ -543,6 +543,47 @@ private Q_SLOTS:
         stack.player.add(HeadOf(Tracks(1, 7)), Core::AddPlacement::End);
         QCOMPARE(stack.player.currentTrack()->key.id, QStringLiteral("7"));
         QVERIFY(stack.player.state() != Core::Player::State::WaitingForMore);
+        vibe->answer(Tracks(1, 20));
+        QCOMPARE(stack.player.entries().back().track.key.id, QStringLiteral("20"));
+        QCOMPARE(stack.player.currentTrack()->key.id, QStringLiteral("7"));
+    }
+
+    void aStoppedQueueTakesAddedTracksWithoutStarting() {  // ADD-06
+        Stack next;
+        QVERIFY(next.start(2));
+        next.player.playIndex(1);
+        next.player.stop();
+        next.player.add(HeadOf(Tracks(1, 9)), Core::AddPlacement::Next);
+        QCOMPARE(next.player.state(), Core::Player::State::Stopped);
+        next.player.next();
+        QCOMPARE(next.player.currentTrack()->key.id, QStringLiteral("9"));
+        Stack play;
+        QVERIFY(play.start(2));
+        play.player.playIndex(1);
+        play.player.stop();
+        play.player.add(HeadOf(Tracks(1, 9)), Core::AddPlacement::End);
+        play.player.play();
+        QCOMPARE(play.player.currentTrack()->key.id, QStringLiteral("2"));
+    }
+
+    void anAddWithNothingAvailableChangesNothing() {  // ADD-05
+        Stack stack;
+        QVERIFY(stack.start(0));
+        QList<Core::Track> tracks = Tracks(1);
+        tracks[0].available = false;
+        QSignalSpy replaced(&stack.player, &Core::Player::queueReplaced);
+        stack.player.add(HeadOf(tracks, QStringLiteral("Other")), Core::AddPlacement::End);
+        QVERIFY(stack.player.entries().isEmpty());
+        QCOMPARE(replaced.count(), 0);
+    }
+
+    void aNewQueuePlaysItsStartTrack() {  // SRC-18
+        Stack stack;
+        QVERIFY(stack.start(0));
+        const Core::QueueSource found{.title = QStringLiteral("Search"), .head = Tracks(3), .start = 2};
+        stack.player.setSource(found, true);
+        QCOMPARE(stack.player.currentIndex(), 2);
+        QCOMPARE(stack.source.asked(), QStringList{"3"});
     }
 
     void eachPhaseShowsItsState() {
