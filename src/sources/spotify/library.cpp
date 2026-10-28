@@ -90,6 +90,17 @@ QJsonArray ItemsOf(const QJsonObject& object, const QString& list) {
     return object.value(list).toObject().value(QStringLiteral("items")).toArray();
 }
 
+QJsonObject FoundItemOf(const QJsonValue& value) {
+    const QJsonObject wrapper = value.toObject();
+    return DataOf(
+        wrapper.contains(QStringLiteral("item")) ? wrapper.value(QStringLiteral("item")).toObject() : wrapper
+    );
+}
+
+QString ProfileName(const QJsonObject& artist) {
+    return artist.value(QStringLiteral("profile")).toObject().value(QStringLiteral("name")).toString();
+}
+
 std::optional<QList<Item>> MadeForYouOf(const QJsonObject& data) {
     const QJsonObject home = data.value(QStringLiteral("home")).toObject();
     if (!home.contains(QStringLiteral("sectionContainer"))) {
@@ -129,6 +140,30 @@ std::optional<Found> FoundOf(const QJsonObject& data) {
             found.trackUris << uri;
         }
     }
+    for (const QJsonValue& value : ItemsOf(search, QStringLiteral("artists"))) {
+        const QJsonObject artist = FoundItemOf(value);
+        const QString uri = artist.value(QStringLiteral("uri")).toString();
+        if (uri.startsWith(kArtistPrefix)) {
+            found.artists << Item{uri, ProfileName(artist)};
+        }
+    }
+    for (const QJsonValue& value : ItemsOf(search, QStringLiteral("albumsV2"))) {
+        const QJsonObject album = FoundItemOf(value);
+        const QString uri = album.value(QStringLiteral("uri")).toString();
+        if (!uri.startsWith(kAlbumPrefix)) {
+            continue;
+        }
+        FoundAlbum entry{
+            .album = Item{uri, album.value(QStringLiteral("name")).toString()},
+            .artists = {},
+            .year = album.value(QStringLiteral("date")).toObject().value(QStringLiteral("year")).toInt(),
+            .single = album.value(QStringLiteral("type")).toString() == QLatin1String("SINGLE"),
+        };
+        for (const QJsonValue& artist : ItemsOf(album, QStringLiteral("artists"))) {
+            entry.artists << ProfileName(artist.toObject());
+        }
+        found.albums << entry;
+    }
     const QJsonArray top =
         search.value(QStringLiteral("topResultsV2")).toObject().value(QStringLiteral("itemsV2")).toArray();
     if (top.isEmpty()) {
@@ -137,9 +172,11 @@ std::optional<Found> FoundOf(const QJsonObject& data) {
     const QJsonObject best = DataOf(top.first().toObject().value(QStringLiteral("item")).toObject());
     const QString uri = best.value(QStringLiteral("uri")).toString();
     if (TypeOf(best) == QLatin1String("Artist") && uri.startsWith(kArtistPrefix)) {
-        const QString name = best.value(QStringLiteral("profile")).toObject().value(QStringLiteral("name")).toString();
         found.kind = Found::Kind::Artist;
-        found.best = Item{uri, name};
+        found.best = Item{uri, ProfileName(best)};
+    } else if (TypeOf(best) == QLatin1String("Track") && uri.startsWith(kTrackPrefix)) {
+        found.kind = Found::Kind::Track;
+        found.best = Item{uri, best.value(QStringLiteral("name")).toString()};
     } else if (TypeOf(best) == QLatin1String("Album") && uri.startsWith(kAlbumPrefix)) {
         found.kind = Found::Kind::Album;
         found.best = Item{uri, best.value(QStringLiteral("name")).toString()};

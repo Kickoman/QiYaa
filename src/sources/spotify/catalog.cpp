@@ -25,6 +25,41 @@ Core::SourceNotice NoticeOf(SourceNoticeCode code, const QString& subject = {}, 
     return Core::SourceNotice{.code = code, .subject = subject, .detail = detail};
 }
 
+Core::SearchPick PickOf(Core::SearchPick::Kind kind, const Item& item) {
+    return Core::SearchPick{.kind = kind, .id = item.uri, .name = item.name};
+}
+
+Core::SearchResults ResultsOf(const Found& found, const QList<Core::Track>& tracks) {
+    Core::SearchResults results;
+    for (const Core::Track& track : tracks) {
+        if (found.kind == Found::Kind::Track && UriOf(track.key) == found.best.uri && !results.bestTrack) {
+            results.bestTrack = track;
+        } else {
+            results.tracks << track;
+        }
+    }
+    if (found.kind == Found::Kind::Artist) {
+        results.bestArtist = PickOf(Core::SearchPick::Kind::Artist, found.best);
+    }
+    if (found.kind == Found::Kind::Album) {
+        results.bestAlbum = PickOf(Core::SearchPick::Kind::Album, found.best);
+    }
+    for (const Item& artist : found.artists) {
+        results.artists << PickOf(Core::SearchPick::Kind::Artist, artist);
+    }
+    for (const FoundAlbum& album : found.albums) {
+        Core::SearchPick pick = PickOf(Core::SearchPick::Kind::Album, album.album);
+        pick.artists = album.artists;
+        pick.year = album.year;
+        pick.single = album.single;
+        results.albums << pick;
+        if (results.bestAlbum && results.bestAlbum->id == pick.id) {
+            results.bestAlbum = pick;
+        }
+    }
+    return Core::Shown(results);
+}
+
 }  // namespace
 
 Catalog::Catalog(Core::Player* player, Library* library, QObject* parent)
@@ -107,6 +142,7 @@ void Catalog::search(const QString& text) {
                 return library->albumTracks(
                     found.best.uri, self->queueLoader(found.best.name, found.best.uri, ticket, false)
                 );
+            case Found::Kind::Track:
             case Found::Kind::Tracks: break;
         }
         if (found.trackUris.isEmpty()) {  // SRC-12
@@ -151,6 +187,106 @@ void Catalog::playRadio(const Core::Track& track) {
         };
         self->corePlayer->setSource(source, true);
     });
+}
+
+bool Catalog::canSearch() const {
+    return !spotifyLibrary->username().isEmpty();
+}
+
+void Catalog::find(const QString& text, TFound done) {
+    QPointer<Catalog> self(this);
+    spotifyLibrary->search(text, [self, done](const Found& found, const QString& error) {
+        if (!self) {
+            return;
+        }
+        if (!error.isEmpty()) {
+            return done({}, error);
+        }
+        QStringList uris = found.trackUris;
+        if (found.kind == Found::Kind::Track && !uris.contains(found.best.uri)) {
+            uris.prepend(found.best.uri);
+        }
+        if (uris.isEmpty()) {
+            return done(ResultsOf(found, {}), {});
+        }
+        const auto described = [self, found, done](const QList<Core::Track>& tracks, const QString& tracksError) {
+            if (!self) {
+                return;
+            }
+            if (!tracksError.isEmpty()) {
+                return done({}, tracksError);
+            }
+            done(ResultsOf(found, tracks), {});
+        };
+        self->spotifyLibrary->tracks(uris, described);
+    });
+}
+
+void Catalog::open(const Core::SearchPick& pick, TTracks done) {
+    QPointer<Catalog> self(this);
+    const auto opened = [self, done](const QList<Core::Track>& tracks, const QString& error) {
+        if (self) {
+            done(tracks, error);
+        }
+    };
+    if (pick.kind == Core::SearchPick::Kind::Artist) {
+        spotifyLibrary->artistTopTracks(pick.id, opened);
+    } else {
+        spotifyLibrary->albumTracks(pick.id, opened);
+    }
+}
+
+void Catalog::playPick(const Core::SearchPick& pick) {
+    const Item item{pick.id, pick.name};
+    if (pick.kind == Core::SearchPick::Kind::Artist) {
+        playArtist(item);
+    } else {
+        playAlbum(item);
+    }
+}
+
+void Catalog::playTracks(const QString& title, const QList<Core::Track>& tracks, int start, const TFrom& from) {
+    corePlayer->newSourceRequest();
+    const int available = AvailableCount(tracks);
+    if (available == 0) {
+        return notify(NoticeOf(SourceNoticeCode::Empty, title));
+    }
+    const QString context = from ? from->id : UriOf(tracks.front().key);
+    const Core::QueueSource source{
+        .title = title,
+        .head = tracks,
+        .historyWave = Autoplay::Of(spotifyLibrary, context),
+        .start = start,
+    };
+    corePlayer->setSource(source, true);
+    notify(Core::SourceNotice{.code = SourceNoticeCode::Loaded, .subject = title, .count = available});
+}
+
+void Catalog::add(const QString& title, const QList<Core::Track>& tracks, Core::AddPlacement placement) {
+    if (AvailableCount(tracks) == 0) {
+        return notify(NoticeOf(SourceNoticeCode::Empty, title));
+    }
+    const Core::QueueSource source{
+        .title = title,
+        .head = tracks,
+        .historyWave = Autoplay::Of(spotifyLibrary, UriOf(tracks.front().key)),
+    };
+    corePlayer->add(source, placement);
+    notify(Core::AddedNotice(title, tracks, placement));
+}
+
+void Catalog::addAlbum(const Core::SearchPick& album, Core::AddPlacement placement) {
+    QPointer<Catalog> self(this);
+    spotifyLibrary
+        ->albumTracks(album.id, [self, album, placement](const QList<Core::Track>& tracks, const QString& error) {
+            if (!self) {
+                return;
+            }
+            if (!error.isEmpty()) {
+                return self->notify(NoticeOf(SourceNoticeCode::Failed, album.name, error));
+            }
+            self->add(album.name, tracks, placement);
+        });
 }
 
 bool Catalog::owns(const Core::TrackKey& key) const {

@@ -1,5 +1,6 @@
 #pragma once
 
+#include "core/search.h"
 #include "core/source_notice.h"
 #include "core/track.h"
 #include "sources/spotify/library.h"
@@ -14,7 +15,7 @@ class Player;
 
 namespace SpotifySource {
 
-class Catalog : public QObject {
+class Catalog : public QObject, public Core::SearchCatalog {
     Q_OBJECT
 public:
     Catalog(Core::Player* player, Library* library, QObject* parent = nullptr);
@@ -27,6 +28,14 @@ public:
     void playArtist(const Item& artist);
     void search(const QString& text);
     void playRadio(const Core::Track& track);
+
+    bool canSearch() const override;
+    void find(const QString& text, TFound done) override;
+    void open(const Core::SearchPick& pick, TTracks done) override;
+    void playPick(const Core::SearchPick& pick) override;
+    void playTracks(const QString& title, const QList<Core::Track>& tracks, int start, const TFrom& from) override;
+    void add(const QString& title, const QList<Core::Track>& tracks, Core::AddPlacement placement) override;
+    void addAlbum(const Core::SearchPick& album, Core::AddPlacement placement) override;
 
     bool owns(const Core::TrackKey& key) const;
 

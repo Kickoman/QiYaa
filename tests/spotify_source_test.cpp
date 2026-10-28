@@ -1,5 +1,6 @@
 #include "audio/audio_engine.h"
 #include "core/player.h"
+#include "core/search.h"
 #include "core/track_source.h"
 #include "sources/spotify/autoplay.h"
 #include "sources/spotify/catalog.h"
@@ -503,6 +504,76 @@ private Q_SLOTS:
         stack.catalog.search(QStringLiteral("found"));
         QTRY_COMPARE(stack.player.queueTitle(), QStringLiteral("Search: found"));
         QCOMPARE(stack.queueTitles(), QStringList{QStringLiteral("Found")});
+    }
+
+    void searchShowsTheBestTrackOnceWithArtistsAndAlbums() {  // SPOT-11, SRC-13, ADD-05
+        Stack stack;
+        QVERIFY(stack.loginStored());
+        stack.add(TrackUri(1), Track(1, "Hit", true));
+        stack.add(TrackUri(2), Track(2, "Found", true));
+        stack.http.on("POST", QStringLiteral("/pathfinder/v2/query"), [](const MockRequest&) {
+            const auto wrapped = [](const QJsonObject& data) {
+                return QJsonObject{{QStringLiteral("item"), QJsonObject{{QStringLiteral("data"), data}}}};
+            };
+            const QJsonObject best{
+                {QStringLiteral("__typename"), QStringLiteral("Track")}, {QStringLiteral("uri"), TrackUri(2)}
+            };
+            const QJsonObject band{{QStringLiteral("name"), QStringLiteral("Band")}};
+            const QJsonObject artist{
+                {QStringLiteral("__typename"), QStringLiteral("Artist")},
+                {QStringLiteral("uri"), Uri("artist", 0x81)},
+                {QStringLiteral("profile"), band},
+            };
+            const QJsonObject album{
+                {QStringLiteral("__typename"), QStringLiteral("Album")},
+                {QStringLiteral("uri"), Uri("album", 0x71)},
+                {QStringLiteral("name"), QStringLiteral("Double")},
+                {QStringLiteral("type"), QStringLiteral("SINGLE")},
+                {QStringLiteral("date"), QJsonObject{{QStringLiteral("year"), 1991}}},
+                {QStringLiteral("artists"),
+                 QJsonObject{{QStringLiteral("items"), QJsonArray{QJsonObject{{QStringLiteral("profile"), band}}}}}},
+            };
+            const QJsonObject search{
+                {QStringLiteral("topResultsV2"), QJsonObject{{QStringLiteral("itemsV2"), QJsonArray{wrapped(best)}}}},
+                {QStringLiteral("tracksV2"),
+                 QJsonObject{
+                     {QStringLiteral("items"),
+                      QJsonArray{
+                          wrapped(QJsonObject{{QStringLiteral("uri"), TrackUri(1)}}),
+                          wrapped(QJsonObject{{QStringLiteral("uri"), TrackUri(2)}})
+                      }}
+                 }},
+                {QStringLiteral("artists"),
+                 QJsonObject{{QStringLiteral("items"), QJsonArray{QJsonObject{{QStringLiteral("data"), artist}}}}}},
+                {QStringLiteral("albumsV2"),
+                 QJsonObject{{QStringLiteral("items"), QJsonArray{QJsonObject{{QStringLiteral("data"), album}}}}}},
+            };
+            return MockResponse{
+                200, JsonOf(QJsonObject{{QStringLiteral("data"), QJsonObject{{QStringLiteral("searchV2"), search}}}})
+            };
+        });
+        QTRY_VERIFY(!stack.session.country().isEmpty());
+        std::optional<Core::SearchResults> results;
+        stack.catalog.find(QStringLiteral("found"), [&](const Core::SearchResults& found, const QString& error) {
+            QVERIFY(error.isEmpty());
+            results = found;
+        });
+        QTRY_VERIFY(results.has_value());
+        QCOMPARE(results->bestTrack->title, QStringLiteral("Found"));
+        QCOMPARE(results->tracks.size(), 1);
+        QCOMPARE(results->tracks.front().title, QStringLiteral("Hit"));
+        QCOMPARE(results->artists.size(), 1);
+        QCOMPARE(results->artists.front().id, Uri("artist", 0x81));
+        QCOMPARE(results->albums.size(), 1);
+        QCOMPARE(results->albums.front().artists, QStringList{"Band"});
+        QCOMPARE(results->albums.front().year, 1991);
+        QVERIFY(results->albums.front().single);
+        QVERIFY(stack.player.entries().isEmpty());
+        stack.catalog.add(QStringLiteral("Search: found"), results->playable(), Core::AddPlacement::End);
+        QCOMPARE(stack.player.queueTitle(), QStringLiteral("Search: found"));
+        QCOMPARE(stack.queueTitles(), (QStringList{"Found", "Hit"}));
+        QCOMPARE(stack.player.currentIndex(), 0);
+        QCOMPARE(stack.player.state(), Core::Player::State::Stopped);
     }
 
     void aPickGoesOnWithAutoplayFromItsOwnUriAndRecentTracks() {  // SPOT-20

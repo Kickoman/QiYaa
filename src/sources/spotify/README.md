@@ -69,8 +69,11 @@ void nextPage(const QString& pageUrl, TDone<ContextPage>);              // hm://
 - Playlists are the rootlist's, folders flattened, and a playlist's tracks are read `kListPage` (1000) a page
   (SPOT-08).
 - "For you" is the "Made For You" section (`spotify:section:0JQ5DAUnp4wcj0bCb3wh3S`) of Pathfinder's `home`
-  (SPOT-10); search is Pathfinder's `searchDesktop`, `kSearchLimit` (50) tracks. The best result is the first top
-  result when it is an artist or an album; anything else plays the found tracks.
+  (SPOT-10); search is Pathfinder's `searchDesktop`, `kSearchLimit` (50) of each part. The best result is the first
+  top result when it is an artist, an album or a track (`Found::Kind`); `Found` also lists the `spotify:artist:`
+  items of `artists` and the `spotify:album:` items of `albumsV2` (`FoundAlbum`: the name, the artists, `date.year`,
+  `type` `SINGLE`), each item through `item` when it has one and then `data` (SPOT-11). The old `search` plays a
+  best artist or album and anything else the found tracks.
 - Pathfinder queries are persisted: only a hash of the query is sent. A list of known hashes is tried newest first;
   a 400, 405, 412, or a reply without `data` moves to the next one.
 - An answer it cannot read, and Pathfinder refusing every hash, are also reported through
@@ -86,6 +89,10 @@ void nextPage(const QString& pageUrl, TDone<ContextPage>);              // hm://
 - A pick's queue is its tracks as the head and `Autoplay::Of(<the pick's URI>)` as `QueueSource::historyWave`: the
   liked songs' `spotify:user:<username>:collection`, the playlist's, the album's or the artist's own URI, and for
   found tracks the first one's (SPOT-20).
+- As `Core::SearchCatalog` (SRC-13 to SRC-19): `find` is `search` and then the metadata of the found tracks, the
+  best track first, into `Core::SearchResults` (`Core::Shown`); a pick's id is its URI. `playTracks` queues the tracks
+  with `Autoplay::Of` the opened artist's or album's URI, or for found tracks the first one's (SPOT-20); `add` gives
+  a queue it starts in an empty one the first added track's URI (ADD-05). `canSearch` is a session with a username.
 - `playRadio(track)` (SPOT-12) queues the track's station as the continuation of an empty head, titled
   "<title>: radio"; the flag changes nothing for it.
 
