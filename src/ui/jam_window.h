@@ -14,7 +14,6 @@
 #include <QTimer>
 #include <QWidget>
 
-#include <functional>
 #include <optional>
 
 class QPainter;

@@ -8,13 +8,10 @@
 #include "yandex/api_client.h"
 
 #include <QClipboard>
-#include <QColor>
 #include <QCoreApplication>
 #include <QEvent>
-#include <QFontMetrics>
 #include <QGuiApplication>
 #include <QKeyEvent>
-#include <QKeySequence>
 #include <QPainter>
 #include <QPointer>
 #include <QWheelEvent>
@@ -465,7 +462,9 @@ void JamWindow::search(const QString& text) {
     if (query.isEmpty()) {
         return;
     }
-    searchField.setText(query);
+    if (query != searchField.text()) {
+        searchField.setText(query);
+    }
     results = Results::Loading;
     listScroll = 0;
     const int request = ++searchRequest;
