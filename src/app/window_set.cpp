@@ -6,6 +6,7 @@
 #include "ui/snap.h"
 
 #include <QGuiApplication>
+#include <QHash>
 #include <QPainter>
 #include <QPoint>
 #include <QPointF>
@@ -17,6 +18,27 @@
 #include <utility>
 
 namespace App {
+
+namespace {
+
+QRect DockedTo(QRect frame, const QRect& before, const QRect& neighbourBefore, const QRect& neighbourAfter) {
+    if (!Ui::Touching(before, neighbourBefore)) {
+        return frame;
+    }
+    if (before.y() == neighbourBefore.y() + neighbourBefore.height()) {
+        frame.moveTop(neighbourAfter.y() + neighbourAfter.height());
+    } else if (before.y() + before.height() == neighbourBefore.y()) {
+        frame.moveTop(neighbourAfter.y() - frame.height());
+    }
+    if (before.x() == neighbourBefore.x() + neighbourBefore.width()) {
+        frame.moveLeft(neighbourAfter.x() + neighbourAfter.width());
+    } else if (before.x() + before.width() == neighbourBefore.x()) {
+        frame.moveLeft(neighbourAfter.x() - frame.width());
+    }
+    return frame;
+}
+
+}  // namespace
 
 WindowSet::WindowSet(Settings* appSettings, Ui::MainWindow* main, Spec spec, QObject* parent)
     : QObject(parent)
@@ -185,16 +207,24 @@ void WindowSet::setScale(double scale, ScaleScope scope) {
     const double newScale = mainWindow->scale();
     const QPoint mainPosition = mainWindow->pos();
 
-    QList<QRect> placed{mainWindow->frameGeometry()};
+    QHash<Ui::SkinnedWindow*, std::pair<QRect, QRect>> placed{
+        {mainWindow, {frames.front(), mainWindow->frameGeometry()}}
+    };
     for (const auto& [window, offset] : docked) {
         QRect frame(
             mainPosition + QPoint(qRound(offset.x() * newScale), qRound(offset.y() * newScale)), window->size()
         );
-        frame.moveTopLeft(Ui::SnapToOthers(frame, placed, 4));
-        window->move(frame.topLeft());
-        if (window->isVisible()) {
-            placed << frame;
+        QList<QRect> placedFrames;
+        for (const auto& [before, after] : placed) {
+            placedFrames << after;
         }
+        frame.moveTopLeft(Ui::SnapToOthers(frame, placedFrames, 4));
+        const QRect before = frames[windows.indexOf(window)];
+        for (const auto& [neighbourBefore, neighbourAfter] : placed) {
+            frame = DockedTo(frame, before, neighbourBefore, neighbourAfter);
+        }
+        window->move(frame.topLeft());
+        placed.insert(window, {before, frame});
     }
     QRect bounds = mainWindow->frameGeometry();
     for (const auto& [window, offset] : docked) {

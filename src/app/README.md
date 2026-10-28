@@ -739,10 +739,12 @@ defaults use the sizes the windows have at that moment, after shade and scale.
    and may move itself back onto the screen, so the main window's position is read only after
    this step.
 3. Puts each docked window back at main position + offset × new scale, snapped with
-   `Ui::SnapToOthers(frame, placed, 4)` to the visible windows already placed. Window sizes are
-   rounded one by one, and the 4 px snap closes the resulting 1 px gaps. A hidden window moves with
-   the group but attracts no snap: the search window, docked right of the main window and hidden,
-   would otherwise pull the playlist 1 px off the equalizer at a fractional scale.
+   `Ui::SnapToOthers(frame, placed, 4)` to the windows already placed, hidden ones included. Then
+   each side that touched an already placed window before the scale touches it again: the top under
+   that window's new bottom, and so for the other sides. Window sizes are rounded one by one, so the
+   offsets alone leave 1 px gaps or overlaps; and a snap alone could pick a hidden window whose edge
+   lands near (the search window right of the main window, at 1.35, pulled the playlist 1 px into
+   the equalizer).
 4. Moves the visible group as a whole into the screen it is on (`Ui::PickScreen`,
    `Ui::ClampInside`). If the group is wider or taller than that screen, it calls
    `ensureVisible()` on every window so each one can still be reached.

@@ -767,11 +767,12 @@ and font like the jam window. The app makes one with the tabs Yandex Music and S
   - Play on a track: `playTracks("Search: <text>", results.playable(), its index, none)` (SRC-18);
     in an opened artist or album, `playTracks(<its name>, its tracks, the index, it)` (SRC-16).
   - Play on an artist or album: `playPick` (SRC-09, SRC-10, SPOT-09).
-  - Add on a track: `add(<the title above>, {track}, Next)`, or `End` with Shift held
-    (SRC-17, ADD-01, ADD-03); on an album: `addAlbum`.
+  - Add on a track: `add(<the title above>, {track}, Next)`, or `End` with Shift held during the
+    press (the press event's modifiers) (SRC-17, ADD-01, ADD-03); on an album: `addAlbum`. A double
+    click on a button acts once: the window takes the double click everywhere in its content.
   - Enter or a double click on an artist or album opens it: `open`, then its tracks in place of the
-    results, with "Back", "Play all", "Next" and "To the end" (SRC-16). Back shows the results as
-    they were, with no new search.
+    results, with "Back", "Play all" and, for an album, "Next" and "To the end" (SRC-16, SRC-17). Back
+    shows the results as they were, scrolled and selected as before, with no new search.
 - **Keys:** in the field, Enter searches, Down goes to the rows and Esc leaves the field. In the
   rows: Up/Down, PgUp/PgDn, Home/End move the selection (Up from the first row goes back to the
   field); Enter plays a track or opens an artist or album; Ins adds next and Shift+Ins to the end;
@@ -784,8 +785,14 @@ and font like the jam window. The app makes one with the tabs Yandex Music and S
 
 **Traps:**
 - The rows are ordered Best, Tracks, Artists, Albums, and `selectedRow` counts the rows shown, so
-  folding a part changes which row an index means; the selection is reset by each search, open and
-  back.
+  folding a part changes which row an index means: "All" and "Fewer" drop the selection, as each
+  search and open does.
+- The list scrolls by lines (a part's title, a row, a row with its note), clamped so its end stays
+  at the bottom. The layout of the last `render` is what the keys and the wheel move in, so they
+  render without a painter first. A line that does not fit ends the drawing: the rows below it are
+  not drawn either.
+- Down leaves the field only when there are rows: otherwise the field keeps the keys, and "x" would
+  start playback.
 - While the field has the focus the window takes `ShortcutOverride` for `LineEdit::takes`; with the
   rows focused only for the plain list keys above, so Z, X, C, V and B still drive the player.
 

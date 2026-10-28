@@ -629,6 +629,14 @@ private Q_SLOTS:
         application->windows()->setScale(2.0);
         application->windows()->setVisible(application->equalizerWindow(), true);
         QCOMPARE(eq->pos(), main->pos() + QPoint(0, main->height()));
+        for (double scaleFactor : {1.25, 1.75, 1.35, 1.0, 2.5, 1.5}) {
+            application->windows()->setVisible(application->equalizerWindow(), false);
+            application->windows()->setScale(scaleFactor);
+            application->windows()->setVisible(application->equalizerWindow(), true);
+            QCOMPARE(eq->pos(), main->pos() + QPoint(0, main->height()));
+            QCOMPARE(playlist->pos(), eq->pos() + QPoint(0, eq->height()));
+            QCOMPARE(main->dockedWindows().size(), 2);
+        }
     }
 
     void newQueueClearsSelection() {
