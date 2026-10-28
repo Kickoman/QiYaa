@@ -112,6 +112,9 @@ void Player::setSource(QueueSource source, bool autoplay) {
 }
 
 void Player::add(QueueSource source, AddPlacement placement) {
+    if (std::none_of(source.head.cbegin(), source.head.cend(), [](const Track& track) { return track.available; })) {
+        return;  // ADD-05
+    }
     if (queue->entries().isEmpty()) {
         setSource(std::move(source), false);  // ADD-05
         return;

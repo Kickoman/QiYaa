@@ -51,10 +51,10 @@ class RandomNavigator final : public SequentialNavigator {
 public:
     void resetBefore(int size, int first) override {
         reset(size, -1);
-        nextIndex = trackCount < 2 ? -1 : first;
+        nextIndex = first;
     }
     void append(int count) override {
-        const bool hadChoice = trackCount >= 2;
+        const bool hadChoice = trackCount >= 2 || nextIndex >= 0;
         SequentialNavigator::append(count);
         if (!hadChoice) {
             select(currentIndex);
@@ -89,6 +89,7 @@ public:
     void reset(int size, int current) override {
         order.clear();
         position = -1;
+        firstPinned = false;
         if (size == 0) {
             return;
         }
@@ -107,14 +108,19 @@ public:
     void resetBefore(int size, int first) override {
         reset(size, first);
         position = -1;
+        firstPinned = !order.isEmpty();
     }
     void append(int count) override {
+        const int from = position + (firstPinned ? 2 : 1);
         for (int added = 0; added < count; ++added) {
             const int last = static_cast<int>(order.size());
-            order.insert(QRandomGenerator::global()->bounded(position + 1, last + 1), last);
+            order.insert(QRandomGenerator::global()->bounded(from, last + 1), last);
         }
     }
-    void select(int index) override { position = static_cast<int>(order.indexOf(index)); }
+    void select(int index) override {
+        position = static_cast<int>(order.indexOf(index));
+        firstPinned = false;
+    }
     int next(bool repeat) const override {
         if (order.isEmpty()) {
             return -1;
@@ -143,6 +149,7 @@ public:
 private:
     QList<int> order;
     int position = -1;
+    bool firstPinned = false;
 };
 
 }  // namespace

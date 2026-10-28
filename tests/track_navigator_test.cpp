@@ -111,6 +111,14 @@ private Q_SLOTS:
         auto navigator = Core::MakeTrackNavigator(
             algorithm < 0 ? std::nullopt : std::optional(static_cast<Core::ShuffleAlgorithm>(algorithm))
         );
+        for (int attempt = 0; attempt < 30; ++attempt) {
+            navigator->resetBefore(6, 4);
+            navigator->append(3);
+            QCOMPARE(navigator->next(false), 4);
+            navigator->resetBefore(1, 0);
+            navigator->append(3);
+            QCOMPARE(navigator->next(false), 0);
+        }
         navigator->resetBefore(6, 4);
         QCOMPARE(navigator->next(false), 4);
         navigator->select(4);
