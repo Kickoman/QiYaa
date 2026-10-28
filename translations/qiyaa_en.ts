@@ -12,6 +12,16 @@
     </message>
 </context>
 <context>
+    <name>Ui::SearchWindow</name>
+    <message numerus="yes">
+        <source>%n track(s)</source>
+        <translation>
+            <numerusform>%n track</numerusform>
+            <numerusform>%n tracks</numerusform>
+        </translation>
+    </message>
+</context>
+<context>
     <name>Ui::SourceNotices</name>
     <message numerus="yes">
         <source>%1: %n track(s)</source>

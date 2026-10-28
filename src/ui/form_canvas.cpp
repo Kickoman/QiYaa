@@ -3,6 +3,8 @@
 #include "skins/skin.h"
 
 #include <QPainter>
+#include <QPoint>
+#include <QPolygon>
 
 #include <algorithm>
 #include <utility>
@@ -79,6 +81,33 @@ QRect FormCanvas::button(int x, int top, const QString& label, bool enabled, std
         painter->setPen(enabled ? normal : dim);
         painter->drawRect(rect.adjusted(0, 0, -1, -1));
         text(rect, label, enabled ? normal : dim, false, Qt::AlignCenter);
+    }
+    controls << FormControl{rect, label, enabled, std::move(action)};
+    return rect;
+}
+
+QRect FormCanvas::
+    glyphButton(int x, int top, Glyph glyph, const QString& label, bool enabled, std::function<void()> action) {
+    const int side = buttonHeight();
+    const QRect rect(x, top, side, side);
+    if (painter) {
+        const QColor color = enabled ? normal : dim;
+        painter->setPen(color);
+        painter->drawRect(rect.adjusted(0, 0, -1, -1));
+        const QPoint center = rect.center();
+        const int half = std::max(2, side / 4);
+        if (glyph == Glyph::Play) {
+            painter->setBrush(color);
+            painter->drawPolygon(QPolygon{
+                QPoint(center.x() - half + 1, center.y() - half),
+                QPoint(center.x() + half, center.y()),
+                QPoint(center.x() - half + 1, center.y() + half)
+            });
+            painter->setBrush(Qt::NoBrush);
+        } else {
+            painter->drawLine(center.x() - half, center.y(), center.x() + half, center.y());
+            painter->drawLine(center.x(), center.y() - half, center.x(), center.y() + half);
+        }
     }
     controls << FormControl{rect, label, enabled, std::move(action)};
     return rect;

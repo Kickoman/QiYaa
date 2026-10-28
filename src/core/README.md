@@ -850,12 +850,11 @@ Q_SIGNALS:
 ## `source_notice.h`: `SourceNotice`
 
 ```cpp
-enum class SourceNoticeCode { Loading, Searching, Failed, VibeFailed, SearchFailed, Empty, NothingFound,
-                              Loaded, LoadedFirst, AddedNext, AddedToEnd, AddedToLiked, RemovedFromLiked,
-                              Disliked };
+enum class SourceNoticeCode { Loading, Failed, VibeFailed, Empty, Loaded, LoadedFirst, AddedNext, AddedToEnd,
+                              AddedToLiked, RemovedFromLiked, Disliked };
 struct SourceNotice {
     SourceNoticeCode code;
-    QString subject;          // the pick's title (a search's text for Searching)
+    QString subject;          // the pick's title
     QString detail;           // English: the request's error
     int count = 0;            // Loaded: the available tracks; LoadedFirst: those taken, the rest left out
 };

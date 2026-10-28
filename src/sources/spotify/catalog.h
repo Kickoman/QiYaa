@@ -26,7 +26,6 @@ public:
     void playPlaylist(const Item& playlist);
     void playAlbum(const Item& album);
     void playArtist(const Item& artist);
-    void search(const QString& text);
     void playRadio(const Core::Track& track);
 
     void setLoggedIn(bool on) { loggedIn = on; }

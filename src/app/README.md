@@ -123,6 +123,7 @@ public:
     Ui::LyricsWindow* lyricsWindow() const;
     Ui::MilkdropWindow* milkdropWindow() const;  // null without QIYAA_HAVE_MILKDROP
     Ui::JamWindow* jamWindow() const;            // null without QIYAA_HAVE_JAM
+    Ui::SearchWindow* searchWindow() const;
     Core::CoverCache* covers() const;
     Core::Player* player();
     Audio::AudioEngine* engine();
@@ -170,7 +171,7 @@ Spotify device id, `SpotifyClient::Session`, `SpotifyClient::Web`, `SpotifySourc
 `offline`; its
 own `QNetworkAccessManager` unless `Options::network` lends one; the `Jam::HostSession`,
 `CoverCache`, `MediaControls`, the `Mpris`, `MacMediaControls` or `Smtc` object (held as
-`std::unique_ptr<QObject>`), the windows (six, and the jam window in a jam build) and the
+`std::unique_ptr<QObject>`), the windows (seven, and the jam window in a jam build) and the
 controllers (`WindowSet`, `Account`, `SpotifyAccount`, `JamBridge`, `TelemetryBridge`, `MainMenu`) through
 `std::unique_ptr`; `NetworkWatch` is a member. The accessors return non-owning pointers, valid until
 the `Application` is destroyed.
@@ -227,7 +228,11 @@ exist. The `Mpris`/`Smtc`/`MacMediaControls` object dies before the `MediaContro
    `WindowSet::restore()`, which takes the jam window in. The `Account` and the `SpotifyAccount`
    (below) are created here too, both with their `statusText` on the marquee. The Spotify
    credentials file is `SpotifyCredentialsFile()`, or `<temp dir>/spotify-credentials` when
-   `readOnlySettings`.
+   `readOnlySettings`. The Spotify catalogue's `setLoggedIn` follows the account: true on
+   `connected`, false on `loggedOut` and `refused`, `loggedIn()` at the start. Then the search
+   window (`Ui::SearchWindow`, `search` in the `WindowSet`, Ctrl+F, menu text "Search"), with the
+   tabs Yandex Music and Spotify on their catalogues; its `loginRequested(tab)` posts that
+   account's `login()`.
 7. Restores the settings (`App::Settings`, below) and connects the windows:
    - the equalizer's shade mode shows and sets the main window's volume and balance (`setMixer`,
      `volumeRequested`, `balanceRequested`);
@@ -481,7 +486,8 @@ public:
                    SpotifyAccount* spotify; SpotifySource::Catalog* spotifyCatalog;
                    SpotifySource::Source* spotifySource; JamBridge* jam;
                    TelemetryBridge* telemetry; const Translations* translations;
-                   Ui::MainWindow* mainWindow; Ui::PlaylistWindow* playlistWindow; };
+                   Ui::MainWindow* mainWindow; Ui::PlaylistWindow* playlistWindow;
+                   Ui::SearchWindow* searchWindow; };
     explicit MainMenu(const Parts& parts, QObject* parent = nullptr);   // shortcuts, menu requests
     void showMain(QPoint globalPosition, const Core::Track* track);
     void showSources(QPoint globalPosition);
@@ -500,8 +506,8 @@ options button and right-click, and the playlist's ADD button and right-click. T
 playlist row under the cursor for `trackMenuRequested`, and the current track for the other entry
 points. `showSources(globalPosition)` answers the main window's eject button with the current
 track. Both build a `QMenu` parented to the main window, open it with `popup()` and delete it on
-close. An item that asks something (a file dialog, the login, the jam's questions, the search)
-opens its modal dialog on the next turn of the event loop, after the menu has closed (see the
+close. An item that asks something (a file dialog, the login, the jam's questions) opens its
+modal dialog on the next turn of the event loop, after the menu has closed (see the
 traps). The playlist's ADD button and right-click open the full main menu: track rows emit
 `PlaylistWindow::trackMenuRequested`; ADD and clicks outside the rows emit
 `PlaylistWindow::sourcesMenuRequested`.
@@ -510,11 +516,13 @@ The sources menu starts with "Open files…" (`openLocalFiles`) and "Open folder
 (`openLocalFolder`), then holds the source items, the same in both menus:
 
 - "Yandex Music" (`yandexMenu`): the items of `Ui::AddLibraryActions`, only "Log in to Yandex
-  Music…" while logged out (`Account::login()`), else the library and, last, "Log out
+  Music…" while logged out (`Account::login()`), else the library, "Search…" and, last, "Log out
   (<displayName>)" (`Account::logout()`);
 - "Spotify" (`spotifyMenu`): `Ui::AddSpotifyActions`, "Log in to Spotify…" while logged out
-  (`SpotifyAccount::login()`), else the Spotify picks and, last, "Log out (<username>)"
+  (`SpotifyAccount::login()`), else the Spotify picks, "Search…" and, last, "Log out (<username>)"
   (`SpotifyAccount::logout()`);
+- "Search…" in either opens the search window on that source's tab, on the next turn of the event
+  loop: shown (`WindowSet::setVisible`), its field focused and the window activated;
 - a separator, then the track's items at the root (`Ui::AddTrackActions`): Like or "Remove from
   Liked", Dislike (both disabled when the track is not Yandex's), Radio (only for a Spotify track),
   "Open the track in the browser" (disabled without a web page).
@@ -535,8 +543,8 @@ The main menu, top to bottom:
 - the same source items;
 - in a jam build, Jam (`JamBridge::addMenu`, below);
 - every window whose `WindowSet::Spec` has a `menuText`, with its `key`: Equalizer (Alt+G),
-  Playlist (Alt+E), Now playing (no shortcut), Lyrics (Alt+L), Milkdrop (Ctrl+Shift+K, only in a
-  Milkdrop build); checkable, checked when the window is visible;
+  Playlist (Alt+E), Now playing (no shortcut), Lyrics (Alt+L), Search (Ctrl+F), Milkdrop
+  (Ctrl+Shift+K, only in a Milkdrop build); checkable, checked when the window is visible;
 - "Lyrics from LRCLIB" (`lyricsFromLrclib`), only when the app has the service (not `offline`):
   checkable, off until chosen. Turning it on asks first, after the menu has closed, and says what
   LRCLIB gets (the title and first artist of a track without synced lyrics, and the computer's
@@ -581,6 +589,7 @@ shows the same key, so the label and the key that works cannot drift apart.
 | Alt+G | show or hide the equalizer |
 | Alt+E | show or hide the playlist |
 | Alt+L | show or hide the lyrics |
+| Ctrl+F | show or hide the search window |
 | Ctrl+D | scale 2.0, or 1.0 when it is already 2.0 (saved) |
 | Ctrl+W | shade or unshade the main window |
 | Ctrl+Shift+K | show or hide Milkdrop (only in a Milkdrop build) |
@@ -730,8 +739,10 @@ defaults use the sizes the windows have at that moment, after shade and scale.
    and may move itself back onto the screen, so the main window's position is read only after
    this step.
 3. Puts each docked window back at main position + offset × new scale, snapped with
-   `Ui::SnapToOthers(frame, placed, 4)` to the windows already placed. Window sizes are rounded one
-   by one, and the 4 px snap closes the resulting 1 px gaps.
+   `Ui::SnapToOthers(frame, placed, 4)` to the visible windows already placed. Window sizes are
+   rounded one by one, and the 4 px snap closes the resulting 1 px gaps. A hidden window moves with
+   the group but attracts no snap: the search window, docked right of the main window and hidden,
+   would otherwise pull the playlist 1 px off the equalizer at a fractional scale.
 4. Moves the visible group as a whole into the screen it is on (`Ui::PickScreen`,
    `Ui::ClampInside`). If the group is wider or taller than that screen, it calls
    `ensureVisible()` on every window so each one can still be reached.

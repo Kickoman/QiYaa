@@ -127,50 +127,6 @@ void Catalog::playArtist(const Item& artist) {
     );
 }
 
-void Catalog::search(const QString& text) {
-    const QString title = tr("Search: %1").arg(text);
-    notify(NoticeOf(SourceNoticeCode::Searching, text));
-    QPointer<Catalog> self(this);
-    const quint64 ticket = corePlayer->newSourceRequest();
-    spotifyLibrary->search(text, [self, title, ticket](const Found& found, const QString& error) {
-        if (!self || !self->corePlayer->isLatestSourceRequest(ticket)) {
-            return;
-        }
-        if (!error.isEmpty()) {
-            return self->notify(NoticeOf(SourceNoticeCode::SearchFailed, title, error));
-        }
-        Library* library = self->spotifyLibrary;
-        switch (found.kind) {
-            case Found::Kind::Artist:
-                return library->artistTopTracks(
-                    found.best.uri, self->queueLoader(found.best.name, found.best.uri, ticket, false)
-                );
-            case Found::Kind::Album:
-                return library->albumTracks(
-                    found.best.uri, self->queueLoader(found.best.name, found.best.uri, ticket, false)
-                );
-            case Found::Kind::Track:
-            case Found::Kind::Tracks: break;
-        }
-        if (found.trackUris.isEmpty()) {  // SRC-12
-            return self->notify(NoticeOf(SourceNoticeCode::NothingFound, title));
-        }
-        const QString context = found.trackUris.first();
-        library->tracks(
-            found.trackUris,
-            [self, title, context, ticket](const QList<Core::Track>& tracks, const QString& tracksError) {
-                if (!self || !self->corePlayer->isLatestSourceRequest(ticket)) {
-                    return;
-                }
-                if (tracksError.isEmpty() && AvailableCount(tracks) == 0) {
-                    return self->notify(NoticeOf(SourceNoticeCode::NothingFound, title));
-                }
-                self->queueLoader(title, context, ticket, false)(tracks, tracksError);
-            }
-        );
-    });
-}
-
 void Catalog::playRadio(const Core::Track& track) {
     const QString title = tr("%1: radio").arg(track.title);
     const QString trackUri = UriOf(track.key);

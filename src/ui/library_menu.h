@@ -5,7 +5,6 @@
 #include <functional>
 
 class QMenu;
-class QWidget;
 
 namespace Core {
 class SourceRegistry;
@@ -30,7 +29,7 @@ void AddLibraryActions(
     QMenu* menu,
     Yandex::Library* library,
     YandexSource::Catalog* catalog,
-    QWidget* dialogParent,
+    std::function<void()> searchRequested,
     std::function<void()> loginRequested,
     std::function<void()> logoutRequested
 );
@@ -52,7 +51,7 @@ void AddSpotifyActions(
     QMenu* menu,
     const SpotifyMenuState& state,
     SpotifySource::Catalog* catalog,
-    QWidget* dialogParent,
+    std::function<void()> searchRequested,
     std::function<void()> loginRequested,
     std::function<void()> logoutRequested
 );

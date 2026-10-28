@@ -20,6 +20,7 @@
 #include "ui/milkdrop_window.h"
 #include "ui/now_playing_window.h"
 #include "ui/playlist_window.h"
+#include "ui/search_window.h"
 #include "yandex/api_client.h"
 #include "yandex/file_info.h"
 
@@ -1467,7 +1468,9 @@ private Q_SLOTS:
             Q_EMIT start.application->mainWindow()->menuRequested(QPoint(100, 100));
             return OpenMenuItem(textOrName);
         };
-        QCOMPARE(DialogAfterChoosing(mainItem(QStringLiteral("Search…"))), QStringLiteral("Search"));
+        QCOMPARE(DialogAfterChoosing(mainItem(QStringLiteral("Search…"))), QStringLiteral("no dialog"));
+        QTRY_VERIFY(start.application->searchWindow()->isVisible());
+        QCOMPARE(start.application->searchWindow()->currentTab(), 0);
         QCOMPARE(
             DialogAfterChoosing(mainItem(QStringLiteral("endJam"))),
             QStringLiteral("End the jam? The guests will see that it is over.")

@@ -320,6 +320,7 @@ qiyaa_add_module(ui
     src/ui/now_playing_window.cpp src/ui/now_playing_window.h
     src/ui/player_notices.cpp   src/ui/player_notices.h
     src/ui/playlist_window.cpp  src/ui/playlist_window.h
+    src/ui/search_window.cpp    src/ui/search_window.h
     src/ui/skinned_window.cpp   src/ui/skinned_window.h
     src/ui/source_notices.cpp   src/ui/source_notices.h
     src/ui/snap.cpp             src/ui/snap.h
