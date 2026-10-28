@@ -43,6 +43,7 @@ public:
         std::optional<int> seedsVersion
     );
     bool remove(QList<int> indices);
+    void add(const QList<Track>& tracks, AddPlacement placement);
     void setItems(const QList<LayerItem>& items, std::optional<SeedHint> hint);
     const std::optional<SeedHint>& seeds() const { return seedHint; }
     void endLayer();
@@ -90,6 +91,7 @@ private:
     int playingIndex = -1;
     bool inHead = false;
     int headMark = -1;
+    std::optional<int> headStart;
     int continuationMark = -1;
     std::optional<SeedHint> seedHint;
     std::unique_ptr<TrackNavigator> navigator = MakeTrackNavigator(std::nullopt);

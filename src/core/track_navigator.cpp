@@ -14,6 +14,8 @@ public:
         trackCount = size;
         select(current);
     }
+    void resetBefore(int size, int first) override { reset(size, first - 1); }
+    void append(int count) override { trackCount += count; }
     void select(int index) override { currentIndex = index; }
     int next(bool repeat) const override {
         if (trackCount == 0) {
@@ -47,6 +49,17 @@ protected:
 
 class RandomNavigator final : public SequentialNavigator {
 public:
+    void resetBefore(int size, int first) override {
+        reset(size, -1);
+        nextIndex = trackCount < 2 ? -1 : first;
+    }
+    void append(int count) override {
+        const bool hadChoice = trackCount >= 2;
+        SequentialNavigator::append(count);
+        if (!hadChoice) {
+            select(currentIndex);
+        }
+    }
     void select(int index) override {
         SequentialNavigator::select(index);
         nextIndex = -1;
@@ -90,6 +103,16 @@ public:
             }
         }
         std::shuffle(order.begin() + position + 1, order.end(), *QRandomGenerator::global());
+    }
+    void resetBefore(int size, int first) override {
+        reset(size, first);
+        position = -1;
+    }
+    void append(int count) override {
+        for (int added = 0; added < count; ++added) {
+            const int last = static_cast<int>(order.size());
+            order.insert(QRandomGenerator::global()->bounded(position + 1, last + 1), last);
+        }
     }
     void select(int index) override { position = static_cast<int>(order.indexOf(index)); }
     int next(bool repeat) const override {

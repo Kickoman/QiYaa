@@ -33,6 +33,16 @@ bool IsPending(const QueueEntry& entry) {
 bool IsWaitingItem(const QueueEntry& entry) {
     return IsPending(entry) && !entry.itemId.isEmpty();
 }
+
+int StartOf(const QueueSource& source) {
+    if (!source.start || *source.start < 0 || *source.start >= source.head.size()
+        || !source.head[*source.start].available) {
+        return 0;
+    }
+    return static_cast<int>(std::count_if(
+        source.head.cbegin(), source.head.cbegin() + *source.start, [](const Track& track) { return track.available; }
+    ));
+}
 }  // namespace
 
 const QueueEntry* Queue::currentEntry() const {
@@ -45,7 +55,7 @@ void Queue::replace(QueueSource source) {
     queued = EntriesOf(source.head, EntryPart::Head, nullptr);
     queued << EntriesOf(source.given, EntryPart::Continuation, ownContinuation);
     titleText = source.title;
-    playingIndex = queued.isEmpty() ? -1 : 0;
+    playingIndex = queued.isEmpty() ? -1 : StartOf(source);
     newBase();
     historyContinuation = std::move(source.historyWave);
     markCurrent();
@@ -63,6 +73,7 @@ void Queue::replaceBase(QueueSource source) {
     }
     std::copy_if(queued.cbegin(), queued.cend(), std::back_inserter(kept), IsWaitingItem);  // HOST-21, HOST-36
     playingIndex = currentEntry() ? 0 : -1;
+    const std::optional<int> start = source.start ? std::optional(StartOf(source)) : std::nullopt;
     ownContinuation = std::move(source.continuation);
     historyAllowed = source.waveFromHistory;
     kept << EntriesOf(source.head, EntryPart::Head, nullptr);
@@ -70,6 +81,7 @@ void Queue::replaceBase(QueueSource source) {
     queued = std::move(kept);
     titleText = source.title;
     newBase();
+    headStart = start;  // HOST-38
     historyContinuation = std::move(source.historyWave);
     resetNavigator();
     ++changes;
@@ -108,6 +120,11 @@ bool Queue::remove(QList<int> indices) {
         if (queued[index].part == EntryPart::Head) {
             headChanged = true;
             headMark -= ordinal <= headMark ? 1 : 0;
+            if (headStart && ordinal == *headStart) {
+                headStart.reset();
+            } else if (headStart && ordinal < *headStart) {
+                --*headStart;
+            }
         } else if (queued[index].part == EntryPart::Continuation) {
             continuationMark -= ordinal <= continuationMark ? 1 : 0;
         }
@@ -133,6 +150,46 @@ bool Queue::remove(QList<int> indices) {
         resetNavigator();
     }
     return removedCurrent;
+}
+
+void Queue::add(const QList<Track>& tracks, AddPlacement placement) {
+    if (placement == AddPlacement::End && inHead) {  // ADD-03
+        const QList<QueueEntry> added = EntriesOf(tracks, EntryPart::Head, nullptr);
+        if (added.isEmpty()) {
+            return;
+        }
+        int at = indexOf(EntryPart::Head, countOf(EntryPart::Head) - 1) + 1;
+        while (at < queued.size() && IsPending(queued[at])) {
+            ++at;
+        }
+        for (qsizetype i = 0; i < added.size(); ++i) {
+            queued.insert(at + i, added[i]);
+        }
+        playingIndex += at <= playingIndex ? static_cast<int>(added.size()) : 0;
+        navigator->append(static_cast<int>(added.size()));
+        ++changes;
+        return;
+    }
+    QList<QueueEntry> waiting = EntriesOf(tracks, EntryPart::Item, nullptr);
+    if (waiting.isEmpty()) {
+        return;
+    }
+    for (QueueEntry& entry : waiting) {
+        entry.pending = true;
+    }
+    const auto firstPending = std::find_if(queued.cbegin(), queued.cend(), IsPending);
+    const auto lastPending = std::find_if(queued.crbegin(), queued.crend(), IsPending);
+    int at = playingIndex + 1;
+    if (firstPending != queued.cend() && placement == AddPlacement::Next) {
+        at = static_cast<int>(firstPending - queued.cbegin());  // ADD-01
+    } else if (firstPending != queued.cend()) {
+        at = static_cast<int>(queued.crend() - lastPending);  // ADD-04
+    }
+    for (qsizetype i = 0; i < waiting.size(); ++i) {
+        queued.insert(at + i, waiting[i]);
+    }
+    playingIndex += at <= playingIndex ? static_cast<int>(waiting.size()) : 0;
+    ++changes;
 }
 
 void Queue::setItems(const QList<LayerItem>& items, std::optional<SeedHint> hint) {
@@ -328,6 +385,7 @@ void Queue::markCurrent() {
         case EntryPart::Head:
             inHead = true;
             headMark = ordinalOf(playingIndex);
+            headStart.reset();
             navigator->select(headMark);
             break;
         case EntryPart::Continuation:
@@ -385,6 +443,7 @@ void Queue::dropStaleWave() {
 void Queue::newBase() {
     inHead = countOf(EntryPart::Head) > 0;
     headMark = -1;
+    headStart.reset();
     continuationMark = -1;
     historyContinuation.reset();
     historyGave = false;
@@ -395,7 +454,11 @@ void Queue::newBase() {
 
 void Queue::resetNavigator() {
     navigator = MakeTrackNavigator(shuffleActive() ? std::optional(preferredAlgorithm) : std::nullopt);
-    navigator->reset(countOf(EntryPart::Head), headMark);
+    if (headMark < 0 && headStart) {
+        navigator->resetBefore(countOf(EntryPart::Head), *headStart);
+    } else {
+        navigator->reset(countOf(EntryPart::Head), headMark);
+    }
 }
 
 }  // namespace Core
