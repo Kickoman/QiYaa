@@ -553,6 +553,9 @@ private Q_SLOTS:
             };
         });
         QTRY_VERIFY(!stack.session.country().isEmpty());
+        QVERIFY(!stack.catalog.canSearch());
+        stack.catalog.setLoggedIn(true);
+        QVERIFY(stack.catalog.canSearch());
         std::optional<Core::SearchResults> results;
         stack.catalog.find(QStringLiteral("found"), [&](const Core::SearchResults& found, const QString& error) {
             QVERIFY(error.isEmpty());

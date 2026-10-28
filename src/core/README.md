@@ -897,13 +897,15 @@ class SearchCatalog {
 
 `YandexSource::Catalog` and `SpotifySource::Catalog` implement `SearchCatalog`; the search window
 holds them as such. `find` and `open` change nothing in the queue and send no notice: their reply,
-or the error's English text, goes to `done`, which a catalogue that is gone never calls. A newer
+or the error's English text, goes to `done`, which a catalogue that is gone never calls. `open`
+gives the available tracks only, so `playTracks`' `start` indexes what the window shows. A newer
 request does not drop an older one here: the caller keeps the last. `playTracks` is a source request
 with no request of its own: a new ticket, then `Player::setSource` with `start` and autoplay, and
 the notice `Loaded`; `from` is the opened artist or album (Spotify's autoplay context, SPOT-20).
-`add` is `Player::add` and the notice of `AddedNotice`, or `Empty` when no track is available;
-`addAlbum` loads the album first, takes no ticket, adds what arrives to the queue as it is then, and
-says `Failed` when the load fails.
+`add` is `Player::add` and the notice of `AddedNotice`, and does nothing when no track is
+available (ADD-05); `addAlbum` loads the album first, takes no ticket, adds what arrives to the queue
+as it is then, and says `Failed` when the load fails and `Empty` when the album has no available
+track (SRC-17).
 
 ## `continuation.h`: `Continuation`
 

@@ -29,6 +29,7 @@ public:
     void search(const QString& text);
     void playRadio(const Core::Track& track);
 
+    void setLoggedIn(bool on) { loggedIn = on; }
     bool canSearch() const override;
     void find(const QString& text, TFound done) override;
     void open(const Core::SearchPick& pick, TTracks done) override;
@@ -50,6 +51,7 @@ private:
 
     Core::Player* corePlayer;
     Library* spotifyLibrary;
+    bool loggedIn = false;
 };
 
 }  // namespace SpotifySource

@@ -374,6 +374,20 @@ private Q_SLOTS:
         QCOMPARE(stack.player.queueTitle(), QStringLiteral("Kept"));
     }
 
+    void anEmptyQueueTakesTheAddedTracksAndAnUnavailableOneChangesNothing() {  // ADD-05
+        Stack stack(&library);
+        Core::Track unavailable = HeadTrack(QStringLiteral("8"));
+        unavailable.available = false;
+        stack.sources.add(QStringLiteral("Search: кино"), {unavailable}, Core::AddPlacement::Next);
+        QVERIFY(stack.player.entries().isEmpty());
+        QVERIFY(stack.notices.isEmpty());
+        stack.sources.add(QStringLiteral("Search: кино"), {HeadTrack(QStringLiteral("7"))}, Core::AddPlacement::End);
+        QCOMPARE(stack.player.queueTitle(), QStringLiteral("Search: кино"));
+        QCOMPARE(stack.player.currentIndex(), 0);
+        QCOMPARE(stack.player.state(), Core::Player::State::Stopped);
+        QVERIFY(stack.saw(Core::SourceNoticeCode::AddedToEnd, QStringLiteral("T7"), 1));
+    }
+
     void anAlbumThatFailsToLoadAddsNothing() {  // SRC-17
         Stack stack(&library);
         stack.player.setSource(Core::QueueSource{.title = QStringLiteral("Kept"), .head = {KeptTrack()}}, false);

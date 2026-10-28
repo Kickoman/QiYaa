@@ -92,7 +92,8 @@ void nextPage(const QString& pageUrl, TDone<ContextPage>);              // hm://
 - As `Core::SearchCatalog` (SRC-13 to SRC-19): `find` is `search` and then the metadata of the found tracks, the
   best track first, into `Core::SearchResults` (`Core::Shown`); a pick's id is its URI. `playTracks` queues the tracks
   with `Autoplay::Of` the opened artist's or album's URI, or for found tracks the first one's (SPOT-20); `add` gives
-  a queue it starts in an empty one the first added track's URI (ADD-05). `canSearch` is a session with a username.
+  a queue it starts in an empty one the first available added track's URI (ADD-05). `canSearch` is what the app last
+  passed to `setLoggedIn`: the account's state, false after a refused login.
 - `playRadio(track)` (SPOT-12) queues the track's station as the continuation of an empty head, titled
   "<title>: radio"; the flag changes nothing for it.
 
