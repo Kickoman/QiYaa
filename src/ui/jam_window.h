@@ -1,7 +1,9 @@
 #pragma once
 
 #include "core/track.h"
+#include "ui/form_canvas.h"
 #include "ui/gen_window.h"
+#include "ui/line_edit.h"
 
 #include <QFont>
 #include <QImage>
@@ -58,12 +60,7 @@ public:
     void showPage(Page page);
     void search(const QString& text);
 
-    struct Control {
-        QRect rect;
-        QString label;
-        bool enabled = true;
-        std::function<void()> action;
-    };
+    using Control = FormControl;
     // What the current page shows that can be clicked, in skin pixels; for the tests.
     QList<Control> controls();
 
@@ -82,23 +79,22 @@ protected:
 private:
     enum class Field { None, Name, Search };
     enum class Results { None, Loading, Found, Failed };
-    class Canvas;
 
     // Draws the page when `painter` is set, and returns its controls either way: one pass for
     // both, so what is drawn and what a click finds never differ.
     QList<Control> render(QPainter* painter);
-    void renderStart(Canvas& canvas);
-    void renderCreating(Canvas& canvas);
-    void renderTabs(Canvas& canvas);
-    void renderJam(Canvas& canvas);
-    void renderSearch(Canvas& canvas);
-    void field(Canvas& canvas, const QRect& rect, Field which, const QString& hint);
+    void renderStart(FormCanvas& canvas);
+    void renderCreating(FormCanvas& canvas);
+    void renderTabs(FormCanvas& canvas);
+    void renderJam(FormCanvas& canvas);
+    void renderSearch(FormCanvas& canvas);
+    void field(FormCanvas& canvas, const QRect& rect, Field which, const QString& hint);
     const QImage& qrCode();
     void start();
     void copyLink();
     void end();
     void send(bool sent, const QString& done = {});
-    QString& fieldText(Field field);
+    LineEdit& fieldEdit(Field field);
     QFont textFont() const;
 
     Jam::HostSession* jamHost;
@@ -106,10 +102,10 @@ private:
     Page currentPage = Page::Jam;
     std::optional<QFont> fontOverride;
     Field focus = Field::None;
-    QString nameText;
+    LineEdit nameField;
     bool nameEdited = false;
     QString serverName;
-    QString searchText;
+    LineEdit searchField;
     QString startProblem;
     Results results = Results::None;
     QList<Core::Track> foundTracks;

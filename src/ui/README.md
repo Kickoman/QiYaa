@@ -27,6 +27,8 @@ to Yandex ([src/yandex](../yandex/README.md)), or create, lay out, connect and s
 | `login_dialog.h/.cpp` | `LoginDialog` — Yandex login by device code or by a pasted token |
 | `spotify_login_dialog.h/.cpp` | `SpotifyLoginDialog` — Spotify login by a pairing code or in the browser |
 | `input_dialogs.h/.cpp` | `AskText`, `AskItem`: `QInputDialog` questions with the app's own OK and Cancel |
+| `form_canvas.h/.cpp` | `FormCanvas`, `FormControl`: one pass that draws a GEN window's page of text, buttons and lights in the PLEDIT.TXT colours and lists what can be clicked |
+| `line_edit.h/.cpp` | `LineEdit`: a one-line field drawn on a `FormCanvas`, with a caret, a selection, words and the clipboard |
 | `jam_window.h/.cpp` | `JamWindow` — the host's jam in a GEN frame: start, QR code and link, settings, guests, end, search that adds tracks. Built only with the jam |
 | `jam_server_dialog.h/.cpp` | `JamServerDialog` — the jam server's address, "Teach the jam vibe" and "Guests may listen". Built only with the jam |
 
@@ -669,6 +671,57 @@ Title `LYRICS`. It shows `Core::LyricsFinder::view()` ([src/core](../core/README
   Yandex Music.
 - The finder and the player are not owned.
 
+## FormCanvas — `form_canvas.h/.cpp`
+
+```cpp
+struct FormControl { QRect rect; QString label; bool enabled; std::function<void()> action;
+                     std::function<void(QPoint)> pressAt; };   // pressAt, when set, takes the click instead
+class FormCanvas {
+    FormCanvas(QPainter* target, const QRect& area, const QFont& font, const Skins::Skin& skin);
+    // a cursor `y` down `area` inside kPadding (4); kGap (3) between rows
+    void text(…); void line(…); void paragraph(…);      // ElideRight; wrapped, at most maxLines
+    QRect button(int x, int top, const QString& label, bool enabled, std::function<void()> action, bool on = false);
+    void light(int x, int centerY, bool on);
+    QPainter* painter;                                  // null: only `controls` are collected
+    QColor normal, current, background, selected, dim;  // PLEDIT.TXT; dim is normal mixed with the background
+    QList<FormControl> controls;
+};
+```
+
+A GEN window's page as its windows draw it (the jam's, the search's): a window renders the page in
+one pass that both paints (with a painter) and collects `controls` (without one), so a click finds
+exactly what is drawn. A button is a box of 1 px in `normal` (`dim` when disabled) with its label
+centred, on `selected` when `on`. The font is the window's: the skin's PLEDIT.TXT font at 9 px, or
+the tests' Tiny5.
+
+## LineEdit — `line_edit.h/.cpp`
+
+```cpp
+class LineEdit {
+    enum class KeyResult { Edited, Moved, Enter, Escape, Ignored };
+    explicit LineEdit(int maxLength);
+    const QString& text() const; void setText(const QString& text);   // caret at the end
+    int cursor() const; bool hasSelection() const; QString selectedText() const;
+    KeyResult press(const QKeyEvent* event);
+    static bool takes(const QKeyEvent* event);          // a focused field keeps this key from the shortcuts
+    void paint(FormCanvas& canvas, const QRect& rect, bool focused, const QString& hint);
+    void pressAt(const QRect& rect, QPoint pos, const QFontMetrics& metrics);   // the caret to the click
+};
+```
+
+- Keys, by the platform's `QKeySequence` standard keys: text at the caret (replacing a selection),
+  Backspace and Delete, the same by a word (Ctrl), Left/Right by a letter or a word, Home/End, each
+  with Shift to select, Select all, Copy, Cut and Paste (the clipboard's text on one line,
+  `simplified()`). Text beyond `maxLength` is cut. Enter and Esc are the caller's (`Enter`,
+  `Escape`); anything else is `Ignored`.
+- `takes` is what the window answers to `ShortcutOverride` while a field has the focus: every key
+  without Ctrl, Alt or Meta, and the editing keys above. So typing "x" or pressing Left edits the
+  field instead of starting playback or seeking.
+- Drawing: a box (`current` while focused, `normal` otherwise), the hint in `dim` while empty and not
+  focused, else the text in `current`. A text that fits starts at the left; a longer one scrolls so
+  the caret stays in sight. The selection is drawn on `selected` and the caret as a line while
+  focused. A field whose caret is at the end of a text that fits draws as the jam window's did.
+
 ## JamWindow — `jam_window.h/.cpp`
 
 ```cpp
@@ -726,11 +779,10 @@ in the PLEDIT.TXT colours and font like the "Now playing" window. What it shows 
   and the end work. An action the session refuses says `No connection to the jam server`.
 
 **How it is drawn.** One pass, `render(QPainter*)`, both paints the page (with a painter) and
-lists its controls (without one), so a click always finds what is drawn. Controls are boxes in the
-`normal` colour (dim when disabled; a selected tab on `selectedBackground`). Fields show the end of
-their text and a caret while focused; a click on a field focuses it, a click elsewhere drops the
-focus. Keys while a field is focused: text, Backspace, Ctrl+V (one line), Enter (start or search),
-Esc (drop the focus); the name is cut to 24 and the search to 100 characters.
+lists its controls (without one), on a [`FormCanvas`](#formcanvas--form_canvashcpp), so a click
+always finds what is drawn. The fields are [`LineEdit`s](#lineedit--line_edithcpp): a click on one
+focuses it and puts the caret there, a click elsewhere drops the focus, Enter starts or searches and
+Esc drops the focus; the name is cut to 24 and the search to 100 characters.
 
 **Traps:**
 - The app's shortcuts are actions on every window (Z, X, C, V, B, arrows…). While a field has the

@@ -308,9 +308,11 @@ endif()
 
 qiyaa_add_module(ui
     src/ui/equalizer_window.cpp src/ui/equalizer_window.h
+    src/ui/form_canvas.cpp      src/ui/form_canvas.h
     src/ui/gen_window.cpp       src/ui/gen_window.h
     src/ui/input_dialogs.cpp    src/ui/input_dialogs.h
     src/ui/library_menu.cpp     src/ui/library_menu.h
+    src/ui/line_edit.cpp        src/ui/line_edit.h
     src/ui/lyrics_window.cpp    src/ui/lyrics_window.h
     src/ui/login_dialog.cpp     src/ui/login_dialog.h
     src/ui/main_window.cpp      src/ui/main_window.h

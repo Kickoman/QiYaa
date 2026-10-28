@@ -48,6 +48,7 @@ function(qiyaa_add_test name)
 endfunction()
 
 qiyaa_add_test(snap_test ui)
+qiyaa_add_test(line_edit_test ui)
 qiyaa_add_test(gen_window_test skins ui)
 qiyaa_add_test(lyrics_window_test audio core skins ui)
 target_link_libraries(lyrics_window_test PRIVATE qiyaa_test_core)
