@@ -28,6 +28,8 @@ struct FormControl {
 
 class FormCanvas {
 public:
+    enum class Glyph { Play, Add };
+
     static constexpr int kPadding = 4;
     static constexpr int kGap = 3;
 
@@ -55,6 +57,7 @@ public:
         int to = -1
     );
     QRect button(int x, int top, const QString& label, bool enabled, std::function<void()> action, bool on = false);
+    QRect glyphButton(int x, int top, Glyph glyph, const QString& label, bool enabled, std::function<void()> action);
     void light(int x, int centerY, bool on);
 
     QPainter* painter;

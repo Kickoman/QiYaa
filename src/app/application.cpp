@@ -24,6 +24,7 @@
 #include "ui/milkdrop_window.h"
 #include "ui/now_playing_window.h"
 #include "ui/playlist_window.h"
+#include "ui/search_window.h"
 #include "ui/source_notices.h"
 #ifdef QIYAA_HAVE_MPRIS
 #include "integrations/mpris.h"
@@ -198,6 +199,36 @@ Application::Application(const Options& options, QObject* parent)
     connect(spotifyAccountControl.get(), &SpotifyAccount::connected, this, [this] {
         if (settings.spotifyDeviceId().isEmpty()) {
             settings.setSpotifyDeviceId(spotifyDeviceId);
+        }
+        spotifyCatalog.setLoggedIn(true);
+    });
+    connect(spotifyAccountControl.get(), &SpotifyAccount::loggedOut, this, [this] {
+        spotifyCatalog.setLoggedIn(false);
+    });
+    connect(spotifyAccountControl.get(), &SpotifyAccount::refused, this, [this] { spotifyCatalog.setLoggedIn(false); });
+    spotifyCatalog.setLoggedIn(spotifyAccountControl->loggedIn());
+    searchWindowInstance = std::make_unique<Ui::SearchWindow>(
+        QList<Ui::SearchWindow::Tab>{
+            {QT_TRANSLATE_NOOP("Ui::SearchWindow", "Yandex Music"), &catalog},
+            {QT_TRANSLATE_NOOP("Ui::SearchWindow", "Spotify"), &spotifyCatalog},
+        },
+        &corePlayer,
+        currentSkin.get()
+    );
+    windowSet->add(
+        searchWindowInstance.get(),
+        {.group = QStringLiteral("search"),
+         .shownAtStart = false,
+         .raisedWhenShown = true,
+         .stepsByDefault = QSize(3, 12),
+         .menuText = QT_TRANSLATE_NOOP("App::MainMenu", "Search"),
+         .key = QKeySequence(Qt::CTRL | Qt::Key_F)}
+    );
+    connect(searchWindowInstance.get(), &Ui::SearchWindow::loginRequested, this, [this](int tab) {
+        if (tab == 0) {
+            QTimer::singleShot(0, accountControl.get(), &Account::login);
+        } else {
+            QTimer::singleShot(0, spotifyAccountControl.get(), &SpotifyAccount::login);
         }
     });
 #if defined(QIYAA_HAVE_MILKDROP)
@@ -425,7 +456,8 @@ Application::Application(const Options& options, QObject* parent)
         telemetryBridge.get(),
         &translations,
         mainWindowInstance.get(),
-        playlistWindowInstance.get()
+        playlistWindowInstance.get(),
+        searchWindowInstance.get()
     });
     connect(mainMenu.get(), &MainMenu::skinChosen, this, &Application::loadSkin);
     connect(mainMenu.get(), &MainMenu::languageChosen, this, &Application::setLanguage);

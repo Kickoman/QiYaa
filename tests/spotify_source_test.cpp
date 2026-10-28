@@ -461,7 +461,7 @@ private Q_SLOTS:
         QCOMPARE(asked.value(QStringLiteral("operationName")).toString(), QStringLiteral("home"));
     }
 
-    void searchPlaysTheBestArtistOrTheFoundTracksAndTriesTheNextHash() {  // SPOT-11
+    void aSearchFindsTheBestArtistAfterTheNextHashAndPlaysIt() {  // SPOT-11, SPOT-09
         Stack stack;
         QVERIFY(stack.loginStored());
         stack.add(Uri("artist", 0x81), Artist(0x81, "Band", {{"BY", 1}}));
@@ -494,16 +494,17 @@ private Q_SLOTS:
             };
         });
         QTRY_VERIFY(!stack.session.country().isEmpty());
-        stack.catalog.search(QStringLiteral("band"));
+        std::optional<Core::SearchResults> results;
+        stack.catalog.find(QStringLiteral("band"), [&](const Core::SearchResults& found, const QString&) {
+            results = found;
+        });
+        QTRY_VERIFY(results.has_value());
+        QCOMPARE(asked, 2);
+        QCOMPARE(results->bestArtist->name, QStringLiteral("Band"));
+        QVERIFY(stack.player.entries().isEmpty());
+        stack.catalog.playPick(*results->bestArtist);
         QTRY_COMPARE(stack.player.queueTitle(), QStringLiteral("Band"));
         QCOMPARE(stack.queueTitles(), QStringList{QStringLiteral("Hit")});
-        QCOMPARE(asked, 2);
-
-        best =
-            QJsonObject{{QStringLiteral("__typename"), QStringLiteral("Track")}, {QStringLiteral("uri"), TrackUri(2)}};
-        stack.catalog.search(QStringLiteral("found"));
-        QTRY_COMPARE(stack.player.queueTitle(), QStringLiteral("Search: found"));
-        QCOMPARE(stack.queueTitles(), QStringList{QStringLiteral("Found")});
     }
 
     void searchShowsTheBestTrackOnceWithArtistsAndAlbums() {  // SPOT-11, SRC-13, ADD-05

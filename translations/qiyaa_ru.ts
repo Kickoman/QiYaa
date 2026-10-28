@@ -296,6 +296,10 @@
         <source>Spotify</source>
         <translation>Spotify</translation>
     </message>
+    <message>
+        <source>Search</source>
+        <translation>Поиск</translation>
+    </message>
 </context>
 <context>
     <name>App::SpotifyAccount</name>
@@ -397,10 +401,6 @@
     <message>
         <source>Liked Songs</source>
         <translation>Любимые треки</translation>
-    </message>
-    <message>
-        <source>Search: %1</source>
-        <translation>Поиск: %1</translation>
     </message>
     <message>
         <source>%1: radio</source>
@@ -848,14 +848,6 @@
         <translation>Поиск…</translation>
     </message>
     <message>
-        <source>Search</source>
-        <translation>Поиск</translation>
-    </message>
-    <message>
-        <source>Artist, album or track:</source>
-        <translation>Исполнитель, альбом или трек:</translation>
-    </message>
-    <message>
         <source>Remove from Liked</source>
         <translation>Убрать из «Мне нравится»</translation>
     </message>
@@ -1157,30 +1149,161 @@ Right click or ADD: pick what to listen to.</source>
     </message>
 </context>
 <context>
+    <name>Ui::SearchWindow</name>
+    <message>
+        <source>Yandex Music</source>
+        <translation>Яндекс Музыка</translation>
+    </message>
+    <message>
+        <source>Spotify</source>
+        <translation>Spotify</translation>
+    </message>
+    <message>
+        <source>Search: %1</source>
+        <translation>Поиск: %1</translation>
+    </message>
+    <message>
+        <source>Log in to %1 to search it.</source>
+        <translation>%1: чтобы искать, войдите в аккаунт.</translation>
+    </message>
+    <message>
+        <source>Log in…</source>
+        <translation>Войти…</translation>
+    </message>
+    <message>
+        <source>Search</source>
+        <translation>Искать</translation>
+    </message>
+    <message>
+        <source>Artist, album or track</source>
+        <translation>Исполнитель, альбом или трек</translation>
+    </message>
+    <message>
+        <source>Find a track, an album or an artist. Play it, or add it to play next; with Shift, to the end of the queue.</source>
+        <translation>Найдите трек, альбом или исполнителя. Его можно сыграть или поставить следом; с Shift — в конец очереди.</translation>
+    </message>
+    <message>
+        <source>Searching…</source>
+        <translation>Ищу…</translation>
+    </message>
+    <message>
+        <source>The search failed: %1</source>
+        <translation>Поиск не удался: %1</translation>
+    </message>
+    <message>
+        <source>Try again</source>
+        <translation>Повторить</translation>
+    </message>
+    <message>
+        <source>No tracks</source>
+        <translation>Треков нет</translation>
+    </message>
+    <message>
+        <source>Nothing found</source>
+        <translation>Ничего не нашлось</translation>
+    </message>
+    <message>
+        <source>Back</source>
+        <translation>Назад</translation>
+    </message>
+    <message>
+        <source>popular tracks</source>
+        <translation>популярные треки</translation>
+    </message>
+    <message numerus="yes">
+        <source>%n track(s)</source>
+        <translation>
+            <numerusform>%n трек</numerusform>
+            <numerusform>%n трека</numerusform>
+            <numerusform>%n треков</numerusform>
+        </translation>
+    </message>
+    <message>
+        <source>Play all</source>
+        <translation>Играть всё</translation>
+    </message>
+    <message>
+        <source>Next</source>
+        <translation>Следом</translation>
+    </message>
+    <message>
+        <source>To the end</source>
+        <translation>В конец</translation>
+    </message>
+    <message>
+        <source>Best</source>
+        <translation>Лучшее</translation>
+    </message>
+    <message>
+        <source>Tracks · %1</source>
+        <translation>Треки · %1</translation>
+    </message>
+    <message>
+        <source>Artists · %1</source>
+        <translation>Исполнители · %1</translation>
+    </message>
+    <message>
+        <source>Albums · %1</source>
+        <translation>Альбомы · %1</translation>
+    </message>
+    <message>
+        <source>Enter: play · Ins: next · Shift+Ins: to the end · Backspace: back</source>
+        <translation>Enter — играть · Ins — следом · Shift+Ins — в конец · Backspace — назад</translation>
+    </message>
+    <message>
+        <source>Enter: play or open · Ins: next · Shift+Ins: to the end</source>
+        <translation>Enter — играть или открыть · Ins — следом · Shift+Ins — в конец</translation>
+    </message>
+    <message>
+        <source>Fewer</source>
+        <translation>Меньше</translation>
+    </message>
+    <message>
+        <source>All</source>
+        <translation>Все</translation>
+    </message>
+    <message>
+        <source>Add</source>
+        <translation>Добавить</translation>
+    </message>
+    <message>
+        <source>Play</source>
+        <translation>Играть</translation>
+    </message>
+    <message>
+        <source>artist</source>
+        <translation>исполнитель</translation>
+    </message>
+    <message>
+        <source>single</source>
+        <translation>сингл</translation>
+    </message>
+    <message>
+        <source>plays next</source>
+        <translation>сыграет следом</translation>
+    </message>
+    <message>
+        <source>at the end of the queue</source>
+        <translation>в конце очереди</translation>
+    </message>
+    <message>
+        <source>QiYaa: search</source>
+        <translation>QiYaa: поиск</translation>
+    </message>
+</context>
+<context>
     <name>Ui::SourceNotices</name>
     <message>
         <source>%1: loading…</source>
         <translation>%1: загрузка…</translation>
     </message>
     <message>
-        <source>Search: %1…</source>
-        <translation>Поиск: %1…</translation>
-    </message>
-    <message>
         <source>Error: %1</source>
         <translation>Ошибка: %1</translation>
     </message>
     <message>
-        <source>Search error: %1</source>
-        <translation>Ошибка поиска: %1</translation>
-    </message>
-    <message>
         <source>%1: empty</source>
         <translation>%1: пусто</translation>
-    </message>
-    <message>
-        <source>Nothing found</source>
-        <translation>Ничего не найдено</translation>
     </message>
     <message numerus="yes">
         <source>%1: %n track(s)</source>
@@ -1320,10 +1443,6 @@ Right click or ADD: pick what to listen to.</source>
     <message>
         <source>My Vibe</source>
         <translation>Моя волна</translation>
-    </message>
-    <message>
-        <source>Search: %1</source>
-        <translation>Поиск: %1</translation>
     </message>
 </context>
 </TS>

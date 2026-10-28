@@ -1,8 +1,9 @@
 # `src/sources/yandex` — Yandex Music as a source
 
-Yandex Music as one of the [music sources](../README.md). `Catalog` turns what the user picks
-(likes, playlists, artists, albums, vibes and stations, search) into the `Core::Player`'s queue,
-builds a vibe's load-more and feedback callbacks, and likes and dislikes tracks; it is the desktop
+Yandex Music as one of the [music sources](../README.md). `Catalog` finds a search's results,
+turns what the user picks (likes, playlists, artists, albums, vibes and stations) into the
+`Core::Player`'s queue, builds a vibe's load-more and feedback callbacks, and likes and dislikes
+tracks; it is the desktop
 counterpart of the Android app's queue manager, and `spec/player` describes both. `Source` is
 Yandex's `Core::TrackSource`: it opens a track's file in the chosen quality and reports a play.
 `Vibe` and `HistoryWave` are the queue's continuations: a vibe or station, and the vibe that goes
@@ -13,7 +14,7 @@ on after a head (the jam vibe during a jam). The module does not speak HTTP or p
 
 | File | Contains |
 |---|---|
-| `catalog.h/.cpp` | `Catalog`: playing a pick (likes, playlist, recommendations, artist, album, vibe or station, search) with a ticket each, like and dislike by track key |
+| `catalog.h/.cpp` | `Catalog`: playing a pick (likes, playlist, recommendations, artist, album, vibe or station), the search window's `Core::SearchCatalog` with a ticket each, like and dislike by track key |
 | `vibe.h/.cpp` | `Vibe`, the `Core::Continuation` of a vibe or station: `radioStarted`, load-more, the feedback on its tracks |
 | `history_wave.h/.cpp` | `HistoryWave`, the vibe that goes on after a queue's head, from the tracks that started; `HistoryWaves`, its factory for `Core::Player`; `HistorySeeds` |
 | `wave_origins.h/.cpp` | `WaveOrigins`: the session, station and batch each wave track came in, and the feedback sent to them |
@@ -50,7 +51,6 @@ public:
     void playAlbum(const QString& albumId, const QString& title);
     void playWave(const QStringList& seeds, const QString& title);        // vibes and stations
     void playMyWave();                                           // {kMyWaveSeed}, "My Vibe"
-    void search(const QString& text);                            // "Search: <text>"
     // Core::SearchCatalog: canSearch, find, open, playPick, playTracks, add, addAlbum
     void searchTracks(const QString& text,                       // tracks only, for the jam window
                       std::function<void(const QList<Core::Track>&, const Yandex::RequestError&)> callback);
@@ -71,22 +71,19 @@ The scenarios are [spec/player/sources.md](../../../spec/player/sources.md),
 [wave.md](../../../spec/player/wave.md) and [tracking.md](../../../spec/player/tracking.md);
 `tests/sources_test.cpp` checks them by ID.
 
-- **One ticket per pick.** Every `play…` and `search` takes `Player::newSourceRequest()` before
-  its request, and its reply is applied only if `isLatestSourceRequest(ticket)` (SRC-01, SRC-02).
-  A search whose best result is an artist or album asks for that one's tracks with the same
-  ticket (SRC-03). Replies are dropped silently; the HTTP request is not aborted. The `Player` is
-  held through `QPointer`.
+- **One ticket per pick.** Every `play…` takes `Player::newSourceRequest()` before its request,
+  and its reply is applied only if `isLatestSourceRequest(ticket)` (SRC-01, SRC-02); an artist's two
+  requests share one ticket (SRC-03). Replies are dropped silently; the HTTP request is not aborted.
+  The `Player` is held through `QPointer`.
 - **Notices**, all through `noticed(Core::SourceNotice)`, worded by `src/ui`: `Loading` with the
-  title (vibes, likes), `Searching` with the text, `Failed`, `VibeFailed` and `SearchFailed` with
-  the request's error, `Empty` with the title, `NothingFound`, `Loaded` with the title and the
-  count of the pick's available tracks (likes), `AddedToLiked`, `RemovedFromLiked`, `Disliked`.
-  The queue titles it makes ("Liked", "My Vibe", "Search: %1", "%1: similar") are its own texts, in
-  the context `YandexSource::Catalog`.
+  title (vibes, likes), `Failed` and `VibeFailed` with the request's error, `Empty` with the title,
+  `Loaded` with the title and the count of the pick's available tracks (likes, found tracks),
+  `AddedNext` and `AddedToEnd`, `AddedToLiked`, `RemovedFromLiked`, `Disliked`. The queue titles it
+  makes ("Liked", "My Vibe", "%1: similar") are its own texts, in the context
+  `YandexSource::Catalog`; a search's "Search: %1" is the search window's.
 - **An empty pick keeps the queue** (SRC-07, SRC-08, WAVE-03): when a reply has no available
-  track (none at all, or all `available: false`), the status is `<title>: empty` (search:
-  `Nothing found`) and nothing else happens: no `setSource`, and for a vibe no `RadioStarted`.
-- **Search** (SRC-09 to SRC-12): a best artist queues its top 100 under its name, a best album its
-  tracks under its title, anything else the found tracks as `Search: <text>`.
+  track (none at all, or all `available: false`), the status is `<title>: empty` and nothing else
+  happens: no `setSource`, and for a vibe no `RadioStarted`.
 - **The search window** (`Core::SearchCatalog`, [src/core](../../core/README.md#searchh-searchcatalog-searchresults),
   SRC-13 to SRC-19): `find` turns `Library::search` into `Core::SearchResults` (a best artist or
   album when its id is not empty, a best track when its id is not empty and without the found

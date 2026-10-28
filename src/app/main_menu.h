@@ -22,6 +22,7 @@ struct Track;
 namespace Ui {
 class MainWindow;
 class PlaylistWindow;
+class SearchWindow;
 }  // namespace Ui
 
 namespace Yandex {
@@ -76,6 +77,7 @@ public:
         const Translations* translations = nullptr;
         Ui::MainWindow* mainWindow = nullptr;
         Ui::PlaylistWindow* playlistWindow = nullptr;
+        Ui::SearchWindow* searchWindow = nullptr;
     };
 
     explicit MainMenu(const Parts& parts, QObject* parent = nullptr);
@@ -93,6 +95,7 @@ private:
     void installShortcuts(QWidget* widget);
     void addLocalActions(QMenu* menu);
     void addSourceMenus(QMenu* menu, const Core::Track* track);
+    void openSearch(int tab);
     void openLocalFiles();
     void openLocalFolder();
     QString localStartFolder() const;
