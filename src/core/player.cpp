@@ -107,7 +107,22 @@ void Player::setSource(QueueSource source, bool autoplay) {
         queue->continuation()->begin(true);  // TRK-03
     }
     if (autoplay && queue->cursor() >= 0) {
-        playIndex(0);
+        playIndex(queue->cursor());
+    }
+}
+
+void Player::add(QueueSource source, AddPlacement placement) {
+    if (queue->entries().isEmpty()) {
+        setSource(std::move(source), false);  // ADD-05
+        return;
+    }
+    const quint64 revision = queue->revision();
+    queue->add(source.head, placement);
+    queueEdited(revision);
+    if (waitingForMore && queue->revision() != revision) {
+        if (const int nextIndex = queue->next(); nextIndex >= 0) {
+            playIndex(nextIndex);
+        }
     }
 }
 

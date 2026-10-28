@@ -496,6 +496,55 @@ private Q_SLOTS:
         QCOMPARE(stack.player.state(), Core::Player::State::WaitingForMore);
     }
 
+    void anEmptyQueueTakesTheAddedTracksAsItsHeadAndPlaysNothing() {  // ADD-05
+        Stack stack;
+        QVERIFY(stack.start(0));
+        QSignalSpy replaced(&stack.player, &Core::Player::queueReplaced);
+        stack.player.add(HeadOf(Tracks(2), QStringLiteral("Search: x")), Core::AddPlacement::Next);
+        QCOMPARE(stack.player.entries().size(), 2);
+        QCOMPARE(stack.player.entries()[0].part, Core::EntryPart::Head);
+        QCOMPARE(stack.player.queueTitle(), QStringLiteral("Search: x"));
+        QCOMPARE(stack.player.currentIndex(), 0);
+        QCOMPARE(stack.player.state(), Core::Player::State::Stopped);
+        QVERIFY(stack.source.asked().isEmpty());
+        QCOMPARE(replaced.count(), 1);
+    }
+
+    void aTrackToPlayNextTakesThePlaceOfThePreload() {  // ADD-01
+        Stack stack;
+        QVERIFY(stack.start(3));
+        stack.player.playIndex(0);
+        const QPointer<Tests::FakeDownload> first = stack.source.complete(0);
+        first->feed(mp3);
+        first->finish();
+        QVERIFY(stack.source.complete(1));
+        QCOMPARE(stack.player.preloadedIndex(), 1);
+        QSignalSpy changed(&stack.player, &Core::Player::playlistChanged);
+        stack.player.add(HeadOf(Tracks(1, 9)), Core::AddPlacement::Next);
+        QCOMPARE(changed.count(), 1);
+        QCOMPARE(stack.source.asked(), (QStringList{"1", "2", "9"}));
+        QVERIFY(stack.source.complete(2));
+        QCOMPARE(stack.player.preloadedIndex(), 1);
+        QCOMPARE(stack.player.nextLink(), Tests::FakeSource::LinkOf("9"));
+        QCOMPARE(stack.player.currentIndex(), 0);
+    }
+
+    void aTrackAddedWhileWaitingForMorePlaysAtOnce() {  // ADD-04, WAVE-08
+        Stack stack;
+        QVERIFY(stack.start(0));
+        const auto vibe = std::make_shared<Tests::FakeContinuation>();
+        stack.player.setSource(
+            Core::QueueSource{.title = QStringLiteral("Vibe"), .continuation = vibe, .given = Tracks(1)}, false
+        );
+        stack.player.playIndex(0);
+        vibe->answer({});
+        stack.player.next();
+        QCOMPARE(stack.player.state(), Core::Player::State::WaitingForMore);
+        stack.player.add(HeadOf(Tracks(1, 7)), Core::AddPlacement::End);
+        QCOMPARE(stack.player.currentTrack()->key.id, QStringLiteral("7"));
+        QVERIFY(stack.player.state() != Core::Player::State::WaitingForMore);
+    }
+
     void eachPhaseShowsItsState() {
         Stack stack;
         QCOMPARE(stack.player.state(), Core::Player::State::Empty);

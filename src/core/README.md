@@ -79,7 +79,8 @@ public:
     quint64 newSourceRequest();                       // new ticket; every older one stops being the latest
     bool isLatestSourceRequest(quint64 ticket) const;
 
-    void setSource(QueueSource source, bool autoplay);   // autoplay: playIndex(0) right away
+    void setSource(QueueSource source, bool autoplay);   // autoplay: the start track plays right away
+    void add(QueueSource source, AddPlacement placement);   // Play next, Add to the end; ADD-01 to ADD-09
     void removeRows(QList<int> rows);                 // rows before removal, any order, duplicates ok; HOST-36
     void clear();
     void setLayer(std::optional<QueueLayer> layer);   // the jam's; nullopt ends it
@@ -172,6 +173,18 @@ Q_SIGNALS:
   waiting, the cursor goes to -1, and the item starts, with its `Started`, only by Play or Next
   (HOST-36).
 - `clear()` takes a new ticket and calls `setSource({}, false)`. This also drops the continuation.
+- `QueueSource::start` names the head track (by its index in `head`, before the filter) that a new
+  queue begins with: the cursor is on it, `autoplay` plays it, and a shuffled pass begins with it
+  (SRC-16, SRC-18). Under a layer nothing is current in the new base, and `next()` gives it first
+  in order and with shuffle alike (HOST-38). An unavailable or out-of-range start is the first track.
+- `add(source, placement)` (spec/player/queue.md) takes the available tracks of `source.head` and
+  takes no ticket. In an empty queue it is `setSource(source, false)` (ADD-05). Otherwise `Next`
+  makes them waiting items in front of those that wait (ADD-01), and `End` appends them to the head
+  while the base is in its head (ADD-03) or makes them waiting items behind those that wait (ADD-04).
+  These waiting items have no item id: they play once, shuffle and repeat leave them out, the
+  layer's items come in front of them, and `replaceBase` drops them (ADD-02, ADD-09). Tracks
+  appended to the head join the navigator's pass without a reset. While `next()` waits for more
+  (`WaitingForMore`), the first added track that now comes next plays at once (ADD-08).
 - The layer is in [The layer](#the-layer).
 
 ### Phases and `State`
@@ -687,6 +700,7 @@ public:
     bool appendContinuation(const QList<Track>& tracks, const std::shared_ptr<Continuation>& giver,
                             std::optional<int> seedsVersion);   // false: none available
     bool remove(QList<int> indices);                  // true: the current entry went
+    void add(const QList<Track>& tracks, AddPlacement placement);   // Player::add in a non-empty queue
     void setItems(const QList<LayerItem>& items, std::optional<SeedHint> hint);
     const std::optional<SeedHint>& seeds() const;
     void endLayer();
@@ -887,6 +901,7 @@ struct QueueSource {
     QList<Track> given;                       // the continuation's tracks so far (a vibe's first batch)
     bool waveFromHistory = true;              // false: never a vibe from history (CONT-12)
     std::shared_ptr<Continuation> historyWave;    // the source's own vibe from history; null: the factory's
+    std::optional<int> start;                 // the head track to begin with; none: the first
 };
 enum class EntryPart { Head, Continuation, Item, Other };
 struct QueueEntry {
@@ -898,6 +913,7 @@ struct QueueEntry {
     QString itemId, addedBy;                  // an Item's while its layer is on
     bool pending;                             // an Item that has not been current yet
 };
+enum class AddPlacement { Next, End };
 struct LayerItem { QString itemId; Track track; QString addedBy; };
 struct QueueRules { bool playReports = true; bool previousRestartsOnly = false;
                     bool ownContinuationFeedback = true; bool historyFeedback = true; };
@@ -916,6 +932,8 @@ enum class ShuffleAlgorithm { Random, WithoutRepeats };
 inline constexpr int kEndlessTracks = std::numeric_limits<int>::max();
 class TrackNavigator {
     virtual void reset(int size, int current) = 0;
+    virtual void resetBefore(int size, int first) = 0;   // nothing current; next() gives first
+    virtual void append(int count) = 0;               // count new entries at the end join the order
     virtual void select(int index) = 0;
     virtual int next(bool repeat) const = 0;
     virtual int previous(bool repeat) const = 0;
@@ -930,7 +948,11 @@ Player knows only the interface. Navigation is independent of audio, networking,
 `next` gives the first one to play. `select` takes an existing queue index. `next` and `previous`
 return queue indices, or -1 when no entry follows. Repeated lookahead returns the same candidate
 and does not advance. Empty queues return -1. `remaining` is endless with repeat, and for Random
-with two or more entries.
+with two or more entries. `resetBefore(size, first)` is a reset with nothing current whose `next`
+is `first`, and a shuffled pass then begins with it (HOST-38). `append(count)` adds entries
+`size … size + count − 1` without a reset (ADD-03): Sequential plays them after the last, Random's
+candidate already drawn stands (one is drawn when the second entry arrives), and Shuffled inserts
+each at a random place among the entries still to come in the pass.
 
 - `SequentialNavigator`: follows source order. Repeat wraps at boundaries; Previous without
   Repeat on the first entry returns that entry. O(1) space and operations.

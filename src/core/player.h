@@ -63,6 +63,7 @@ public:
     bool isLatestSourceRequest(quint64 ticket) const { return ticket == sourceRequest; }
 
     void setSource(QueueSource source, bool autoplay);
+    void add(QueueSource source, AddPlacement placement);
     void removeRows(QList<int> rows);
     void clear();
     void setLayer(std::optional<QueueLayer> layer);
