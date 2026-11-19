@@ -765,7 +765,7 @@ private Q_SLOTS:
         QTRY_VERIFY(!OfType<Jam::ChangeSettings>(stack.sent()).empty());
     }
 
-    void playNextPinsOnlyTheYandexTrackWithTheSameId() {
+    void spotifyTrackWithTheSameIdDoesNotCompleteAYandexAdd() {
         Stack stack(&library);
         QVERIFY(stack.created());
         const QString id = QStringLiteral("0123456789012345678901");
@@ -776,9 +776,16 @@ private Q_SLOTS:
         track[QStringLiteral("source")] = QStringLiteral("spotify");
         spotify[QStringLiteral("track")] = track;
 
-        stack.state(1, {spotify});
-        QVERIFY(stack.host.playNext(BaseTrack(id)));
+        QSignalSpy refused(&stack.host, &Jam::HostSession::addRefused);
+        QVERIFY(stack.host.add(BaseTrack(id)));
         QTRY_COMPARE(OfType<Jam::Add>(stack.sent()).size(), size_t{1});
+        stack.state(1, {spotify});
+        stack.receive(Rejected(OfType<Jam::Add>(stack.sent()).front().id, QStringLiteral("track-unavailable")));
+        QTRY_COMPARE(refused.size(), 1);
+        QCOMPARE(refused.front().front().toString(), id);
+
+        QVERIFY(stack.host.playNext(BaseTrack(id)));
+        QTRY_COMPARE(OfType<Jam::Add>(stack.sent()).size(), size_t{2});
         stack.state(2, {spotify});
         QVERIFY(OfType<Jam::Pin>(stack.sent()).empty());
         stack.state(3, {spotify, Item("i2", id, kHostId)});

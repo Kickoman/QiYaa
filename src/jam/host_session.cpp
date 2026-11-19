@@ -505,7 +505,9 @@ void HostSession::applyState(const State& message) {
     lastVersion = message.version;
     currentRoom = message.room;
     for (const QueueItem& item : currentRoom->queue) {
-        addRequests.removeIf([&item](const auto& request) { return request.value() == item.track.id; });
+        if (item.track.source == TrackSource::Yandex) {
+            addRequests.removeIf([&item](const auto& request) { return request.value() == item.track.id; });
+        }
     }
     QList<Core::JamEntry> entries;
     for (const QueueItem& item : message.room.queue) {
