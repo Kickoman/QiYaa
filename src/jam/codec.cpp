@@ -855,6 +855,9 @@ std::optional<ClientMessage> ReadClient(const QString& type, const QJsonObject& 
             if (item.has(QStringLiteral("track"))) {
                 entry.track = ReadCatalogTrack(item.child(item.object(QStringLiteral("track")), QStringLiteral("track"))
                 );
+                item.require(
+                    entry.track->source == TrackSource::Yandex, QStringLiteral("validation only accepts Yandex tracks")
+                );
             }
             if (item.has(QStringLiteral("reason"))) {
                 entry.reason = item.choice<ValidateReason>(
