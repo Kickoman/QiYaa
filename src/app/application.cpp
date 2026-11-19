@@ -323,15 +323,15 @@ Application::Application(const Options& options, QObject* parent)
         }
         return sources;
     };
-    jamOptions.spotifySearch = [this](const QString& text, auto done) {
+    jamOptions.catalogSearches.emplace(Jam::TrackSource::Spotify, [this](const QString& text, Jam::SearchDone done) {
         spotifyCatalog.find(text, [done](const Core::SearchResults& results, const QString& error) {
             QList<Core::Track> tracks = results.tracks;
             if (results.bestTrack) {
                 tracks.prepend(*results.bestTrack);
             }
-            done(tracks, error);
+            done(tracks, error.isEmpty() ? std::nullopt : std::optional(Jam::SearchError::Failed));
         });
-    };
+    });
     // Next to the settings: a test's or a read-only run's jam stays in its own directory.
     const Jam::SessionStore jamStore(settings.directory() + QStringLiteral("/jam-session.json"));
     jamHostSession = std::make_unique<Jam::HostSession>(&jamMode, &yandexLibrary, jamStore, std::move(jamOptions));
@@ -340,17 +340,6 @@ Application::Application(const Options& options, QObject* parent)
     connect(spotifyAccountControl.get(), &SpotifyAccount::loggedOut, this, refreshJamCatalogs);
     connect(spotifyAccountControl.get(), &SpotifyAccount::refused, this, refreshJamCatalogs);
     connect(accountControl.get(), &Account::connected, this, refreshJamCatalogs);
-    accountControl->setPreservePlayerOnLogout([this] {
-        return spotifyCatalog.canSearch() && jamHostSession->phase() == Jam::HostPhase::Active;
-    });
-    connect(accountControl.get(), &Account::loggingOut, this, [this, refreshJamCatalogs] {
-        if (spotifyCatalog.canSearch()) {
-            QTimer::singleShot(0, this, refreshJamCatalogs);
-        } else {
-            jamHostSession->cancelCreate();
-            jamHostSession->end();
-        }
-    });
     connect(&networkWatch, &NetworkWatch::back, jamHostSession.get(), &Jam::HostSession::networkBack);  // HOST-26
     jamWindowInstance = std::make_unique<Ui::JamWindow>(jamHostSession.get(), currentSkin.get());
     windowSet->add(
@@ -371,7 +360,8 @@ Application::Application(const Options& options, QObject* parent)
         accountControl.get(),
         mainWindowInstance.get(),
         playlistWindowInstance.get(),
-        searchWindowInstance.get()
+        searchWindowInstance.get(),
+        [this] { return spotifyCatalog.canSearch(); }
     });
     connect(jamBridge.get(), &JamBridge::statusText, mainWindowInstance.get(), &Ui::MainWindow::setStatusText);
 

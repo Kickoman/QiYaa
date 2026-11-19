@@ -130,6 +130,18 @@ JamBridge::JamBridge(const Parts& bridgeParts, QObject* parent)
     });
 
     connect(parts.account, &Account::connected, parts.window, &Ui::JamWindow::setHostName);
+    const auto spotifyAvailable = [this] { return parts.spotifyAvailable && parts.spotifyAvailable(); };
+    parts.account->setPreservePlayerOnLogout([this, spotifyAvailable] {
+        return spotifyAvailable() && parts.jamMode->isActive();
+    });
+    connect(parts.account, &Account::loggingOut, this, [this, spotifyAvailable] {
+        if (spotifyAvailable()) {
+            QTimer::singleShot(0, parts.host, &Jam::HostSession::updateSearchSources);
+        } else {
+            parts.host->cancelCreate();
+            parts.host->end();
+        }
+    });
     parts.account->setLikesOnHold([this] { return parts.jamMode->isActive() || storedJamQuestion; });
 }
 

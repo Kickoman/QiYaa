@@ -4,6 +4,8 @@
 #include <QPointer>
 #include <QString>
 
+#include <functional>
+
 class QMenu;
 class QMessageBox;
 
@@ -43,6 +45,7 @@ public:
         Ui::MainWindow* mainWindow = nullptr;
         Ui::PlaylistWindow* playlistWindow = nullptr;
         Ui::SearchWindow* searchWindow = nullptr;
+        std::function<bool()> spotifyAvailable = {};
     };
 
     explicit JamBridge(const Parts& parts, QObject* parent = nullptr);

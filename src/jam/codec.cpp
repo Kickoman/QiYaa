@@ -628,7 +628,11 @@ std::optional<ServerMessage> ReadServer(const QString& type, const QJsonObject& 
         SearchRequest message;
         message.requestId = reader.matching(QStringLiteral("requestId"), kRequestId);
         message.text = SearchTextIn(reader, QStringLiteral("text"));
-        message.spotify = json.value(QStringLiteral("source")) == QLatin1String("spotify");
+        if (reader.has(QStringLiteral("source"))) {
+            message.source = reader.choice<TrackSource>(
+                QStringLiteral("source"), {{"yandex", TrackSource::Yandex}, {"spotify", TrackSource::Spotify}}
+            );
+        }
         return message;
     }
     if (type == QLatin1String("validateRequest")) {

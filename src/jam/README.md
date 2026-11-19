@@ -230,9 +230,10 @@ server rejects it or the session ends. The search window shows the refusal on th
   `offline()` lets the app say so (HOST-25, HOST-36).
 - **Names.** `participantName(publicId)` is the name of a participant of `room()`, for the line
   that says who added an item (HOST-34).
-- **Guests.** `searchRequest` → `Library::searchTracks` (`type=track`), the available tracks that
-  `JamTrackOf` takes, 20 at most; a 401 or 403 is `error: unauthorized`, any other failure `failed`
-  (HOST-28, HOST-29). `validateRequest` → `Library::tracksByIds`: an entry per id in order, a track
+- **Guests.** `searchRequest` routes by catalog, with Yandex as the default for older servers.
+  The host returns up to 20 available tracks that fit the protocol. Yandex searches use
+  `Library::searchTracks` (`type=track`), with 401 and 403 reported as `unauthorized` and other
+  errors as `failed` (HOST-28, HOST-29). Spotify searches use the app’s Spotify catalog. `validateRequest` → `Library::tracksByIds`: an entry per id in order, a track
   or `track-unavailable`; a failed request fails them all (HOST-30). Answers go only while
   connected.
 - **The host's actions** (HOST-20) return false without a connection. `add` and `playNext` take

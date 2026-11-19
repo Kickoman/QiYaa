@@ -191,6 +191,7 @@ private:
         int ids = 0;
         int greeted = 0;
         bool share = false;
+        std::optional<QStringList> searchSources;
         Audio::AudioEngine engine;
         Tests::FakeSource files;
         Tests::FakeSource localFiles;
@@ -201,8 +202,13 @@ private:
         QSignalSpy refused;
         QSignalSpy ended;
 
-        explicit Stack(Yandex::Library* library, const std::optional<Jam::Session>& stored = {})
-            : player(&engine, &registry)
+        explicit Stack(
+            Yandex::Library* library,
+            const std::optional<Jam::Session>& stored = {},
+            std::optional<QStringList> sources = std::nullopt
+        )
+            : searchSources(std::move(sources))
+            , player(&engine, &registry)
             , jam(&player)
             , host(&jam, library, Stored(store, stored), options())
             , refused(&host, &Jam::HostSession::refused)
@@ -228,6 +234,9 @@ private:
             options.client.reconnectDelaysMs = {50, 100, 200};
             options.config = [this] { return Jam::HostConfig{serverUrl, false, share}; };
             options.newId = [this] { return QStringLiteral("r%1").arg(++ids); };
+            if (searchSources) {
+                options.searchSources = [this] { return *searchSources; };
+            }
             options.resumeRetryMs = 500;
             return options;
         }
@@ -541,6 +550,22 @@ private Q_SLOTS:
         QCOMPARE(stack.ended.size(), 0);
     }
 
+    void aCatalogChangeWhileCreatingIsSentAfterCreated() {
+        Stack stack(&library, {}, QStringList{"yandex", "spotify"});
+        QVERIFY(stack.host.create(QStringLiteral("Маша")));
+        QVERIFY(stack.open());
+        QVERIFY(stack.waitSent(1));
+        QCOMPARE(OfType<Jam::Create>(stack.sent()).front().searchSources, stack.searchSources);
+
+        stack.searchSources = QStringList{"spotify"};
+        stack.host.updateSearchSources();
+        QVERIFY(OfType<Jam::ChangeSettings>(stack.sent()).empty());
+
+        stack.server.send(Created(QStringLiteral("r1")));
+        QTRY_COMPARE(OfType<Jam::ChangeSettings>(stack.sent()).size(), size_t{1});
+        QCOMPARE(OfType<Jam::ChangeSettings>(stack.sent()).front().searchSources, stack.searchSources);
+    }
+
     void aGuestsSearchAnswersWithUpTo20AvailableTracksOrTheError() {  // HOST-28, HOST-29
         Stack stack(&library);
         QVERIFY(stack.created());
@@ -738,6 +763,27 @@ private Q_SLOTS:
         QVERIFY(stack.host.rotateLink());
         QVERIFY(stack.host.changeSettings(Jam::SettingsPatch{Jam::Order::Fifo, {}, {}, {}}));
         QTRY_VERIFY(!OfType<Jam::ChangeSettings>(stack.sent()).empty());
+    }
+
+    void playNextPinsOnlyTheYandexTrackWithTheSameId() {
+        Stack stack(&library);
+        QVERIFY(stack.created());
+        const QString id = QStringLiteral("0123456789012345678901");
+        QJsonObject spotify = Item("i1", id, kHostId);
+        QJsonObject track = spotify.value(QStringLiteral("track")).toObject();
+        track.remove(QStringLiteral("albumId"));
+        track.remove(QStringLiteral("coverUri"));
+        track[QStringLiteral("source")] = QStringLiteral("spotify");
+        spotify[QStringLiteral("track")] = track;
+
+        stack.state(1, {spotify});
+        QVERIFY(stack.host.playNext(BaseTrack(id)));
+        QTRY_COMPARE(OfType<Jam::Add>(stack.sent()).size(), size_t{1});
+        stack.state(2, {spotify});
+        QVERIFY(OfType<Jam::Pin>(stack.sent()).empty());
+        stack.state(3, {spotify, Item("i2", id, kHostId)});
+        QTRY_COMPARE(OfType<Jam::Pin>(stack.sent()).size(), size_t{1});
+        QCOMPARE(OfType<Jam::Pin>(stack.sent()).front().itemId, QStringLiteral("i2"));
     }
 
     void listeningAlongSendsTheFilesOnlyWhenTheHostSharesThem() {  // LISTEN-01 to 05, 13

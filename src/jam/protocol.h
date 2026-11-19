@@ -358,7 +358,7 @@ struct LinkRotated {
 struct SearchRequest {
     QString requestId;
     QString text;
-    bool spotify = false;
+    TrackSource source = TrackSource::Yandex;
 
     bool operator==(const SearchRequest&) const = default;
 };
