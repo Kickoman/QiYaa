@@ -199,12 +199,22 @@ jobs:
       - name: Build
         run: cmake --build build --config Release --parallel
 
-      # The jam end to end (tests/jam_e2e_test.cpp) talks to the jam server's own image; elsewhere
-      # it skips.
+      # The desktop Jam end-to-end test requires a server that accepts protocol 2.
+      - name: Check out Jam server
+        if: matrix.jam_server
+        uses: actions/checkout@v4
+        with:
+          repository: Kickoman/QiYaa-jam
+          ref: 84c682ea96bd89dd85809ff3714d34bce3a35a59
+          path: build/jam-server
+          submodules: true
+          persist-credentials: false
+
       - name: Jam server
         if: matrix.jam_server
         run: |
-          docker run -d --name qiyaa-jam -p 8090:8090 -e PUBLIC_URL=http://localhost:8090 ghcr.io/kickoman/qiyaa-jam:0.8.2
+          docker build -f build/jam-server/deploy/Dockerfile -t qiyaa-jam:e2e build/jam-server
+          docker run -d --name qiyaa-jam -p 127.0.0.1:8090:8090 -e PUBLIC_URL=http://localhost:8090 qiyaa-jam:e2e
           for attempt in $(seq 30); do curl -sf http://localhost:8090/healthz && exit 0; sleep 1; done
           docker logs qiyaa-jam
           exit 1
