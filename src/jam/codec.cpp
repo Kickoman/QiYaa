@@ -330,7 +330,8 @@ Track ReadTrack(Reader reader) {
     track.id = reader.matching(QStringLiteral("id"), kCatalogId);
     if (reader.has(QStringLiteral("source"))) {
         track.source = reader.choice<TrackSource>(
-            QStringLiteral("source"), {{"yandex", TrackSource::Yandex}, {"host", TrackSource::Host}}
+            QStringLiteral("source"),
+            {{"yandex", TrackSource::Yandex}, {"host", TrackSource::Host}, {"spotify", TrackSource::Spotify}}
         );
     }
     track.albumId = reader.optionalMatching(QStringLiteral("albumId"), kCatalogId);
@@ -371,7 +372,7 @@ Track ReadTrack(Reader reader) {
 // Items, recent items, search and check results: CatalogTrack in the schemas (ROOM-66).
 Track ReadCatalogTrack(Reader reader) {
     const Track track = ReadTrack(reader);
-    reader.require(track.source == TrackSource::Yandex, QStringLiteral("is a track only the host can play"));
+    reader.require(track.source != TrackSource::Host, QStringLiteral("is a track only the host can play"));
     return track;
 }
 
@@ -627,6 +628,11 @@ std::optional<ServerMessage> ReadServer(const QString& type, const QJsonObject& 
         SearchRequest message;
         message.requestId = reader.matching(QStringLiteral("requestId"), kRequestId);
         message.text = SearchTextIn(reader, QStringLiteral("text"));
+        if (reader.has(QStringLiteral("source"))) {
+            message.source = reader.choice<TrackSource>(
+                QStringLiteral("source"), {{"yandex", TrackSource::Yandex}, {"spotify", TrackSource::Spotify}}
+            );
+        }
         return message;
     }
     if (type == QLatin1String("validateRequest")) {
@@ -678,6 +684,23 @@ std::optional<ServerMessage> ReadServer(const QString& type, const QJsonObject& 
     return std::nullopt;
 }
 
+std::optional<QStringList> ReadSearchSources(Reader& reader) {
+    const QString field = QStringLiteral("searchSources");
+    if (!reader.has(field)) {
+        return std::nullopt;
+    }
+    QStringList sources;
+    for (const QJsonValue value : reader.array(field, 0, 2)) {
+        const QString source = value.toString();
+        reader.require(
+            (source == QLatin1String("yandex") || source == QLatin1String("spotify")) && !sources.contains(source),
+            QStringLiteral("invalid search source")
+        );
+        sources.append(source);
+    }
+    return sources;
+}
+
 std::optional<ClientMessage> ReadClient(const QString& type, const QJsonObject& json, QString* problem) {
     Reader reader(json, type, problem);
     const auto requestAndItem = [&reader]() {
@@ -702,6 +725,7 @@ std::optional<ClientMessage> ReadClient(const QString& type, const QJsonObject& 
             message.settings =
                 ReadSettingsPatch(reader.child(reader.object(QStringLiteral("settings")), QStringLiteral("settings")));
         }
+        message.searchSources = ReadSearchSources(reader);
         return message;
     }
     if (type == QLatin1String("resume")) {
@@ -725,6 +749,7 @@ std::optional<ClientMessage> ReadClient(const QString& type, const QJsonObject& 
             );
             message.outbox.append(entry.matching(QStringLiteral("itemId"), kItemId));
         }
+        message.searchSources = ReadSearchSources(reader);
         return message;
     }
     if (type == QLatin1String("playing")) {
@@ -786,9 +811,13 @@ std::optional<ClientMessage> ReadClient(const QString& type, const QJsonObject& 
     if (type == QLatin1String("settings")) {
         ChangeSettings message;
         message.id = reader.matching(QStringLiteral("id"), kRequestId);
-        message.settings =
-            ReadSettingsPatch(reader.child(reader.object(QStringLiteral("settings")), QStringLiteral("settings")));
-        reader.require(!message.settings.isEmpty(), QStringLiteral("settings change nothing"));
+        if (reader.has(QStringLiteral("settings"))) {
+            message.settings =
+                ReadSettingsPatch(reader.child(reader.object(QStringLiteral("settings")), QStringLiteral("settings")));
+            reader.require(!message.settings.isEmpty(), QStringLiteral("settings change nothing"));
+        }
+        message.searchSources = ReadSearchSources(reader);
+        reader.require(message.searchSources || !message.settings.isEmpty(), QStringLiteral("settings change nothing"));
         return message;
     }
     if (type == QLatin1String("rotateLink")) {
@@ -825,6 +854,9 @@ std::optional<ClientMessage> ReadClient(const QString& type, const QJsonObject& 
             entry.trackId = item.matching(QStringLiteral("trackId"), kCatalogId);
             if (item.has(QStringLiteral("track"))) {
                 entry.track = ReadCatalogTrack(item.child(item.object(QStringLiteral("track")), QStringLiteral("track"))
+                );
+                item.require(
+                    entry.track->source == TrackSource::Yandex, QStringLiteral("validation only accepts Yandex tracks")
                 );
             }
             if (item.has(QStringLiteral("reason"))) {
@@ -924,6 +956,8 @@ QJsonObject TrackJson(const Track& track) {
     }
     if (track.source == TrackSource::Host) {
         json.insert(QStringLiteral("source"), QStringLiteral("host"));
+    } else if (track.source == TrackSource::Spotify) {
+        json.insert(QStringLiteral("source"), QStringLiteral("spotify"));
     }
     return json;
 }
@@ -974,6 +1008,9 @@ QJsonObject Body(const Create& message) {
     if (message.settings) {
         json.insert(QStringLiteral("settings"), PatchJson(*message.settings));
     }
+    if (message.searchSources) {
+        json.insert(QStringLiteral("searchSources"), QJsonArray::fromStringList(*message.searchSources));
+    }
     return json;
 }
 
@@ -984,13 +1021,17 @@ QJsonObject Body(const Resume& message) {
             QJsonObject{{QStringLiteral("type"), QStringLiteral("started")}, {QStringLiteral("itemId"), itemId}}
         );
     }
-    return {
+    QJsonObject json{
         {QStringLiteral("id"), message.id},
         {QStringLiteral("roomId"), message.roomId},
         {QStringLiteral("hostSecret"), message.hostSecret},
         {QStringLiteral("snapshot"), message.snapshot ? QJsonValue(*message.snapshot) : QJsonValue(QJsonValue::Null)},
         {QStringLiteral("outbox"), outbox},
     };
+    if (message.searchSources) {
+        json.insert(QStringLiteral("searchSources"), QJsonArray::fromStringList(*message.searchSources));
+    }
+    return json;
 }
 
 QJsonObject Body(const Playing& message) {
@@ -1046,7 +1087,14 @@ QJsonObject Body(const Kick& message) {
 }
 
 QJsonObject Body(const ChangeSettings& message) {
-    return {{QStringLiteral("id"), message.id}, {QStringLiteral("settings"), PatchJson(message.settings)}};
+    QJsonObject json{{QStringLiteral("id"), message.id}};
+    if (!message.settings.isEmpty()) {
+        json.insert(QStringLiteral("settings"), PatchJson(message.settings));
+    }
+    if (message.searchSources) {
+        json.insert(QStringLiteral("searchSources"), QJsonArray::fromStringList(*message.searchSources));
+    }
+    return json;
 }
 
 QJsonObject Body(const RotateLink& message) {

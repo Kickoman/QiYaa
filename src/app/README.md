@@ -358,10 +358,10 @@ success it calls `Yandex::SaveToken(own, token)` if `save`, says `Hello, <displa
 queue is empty and the library logged in.
 
 `login()` runs `Ui::LoginDialog` modally (`exec()`, a nested event loop) and, on accept, calls
-`applyToken(dialog.token(), true)`. `logout()` emits `loggingOut` first, so a jam being created or
-on ends while the account still works (the guests search through it, HOST-32), then clears the
-play queue, calls `Library::logout()` (which also clears the API token) and
-`Yandex::ForgetToken(own)` (leaves an empty token file), and says `You have logged out`.
+`applyToken(dialog.token(), true)`. `logout()` emits `loggingOut` before clearing the play queue,
+calling `Library::logout()` and forgetting the saved token. With Spotify connected, the app
+keeps the active Jam and the player queue while it removes Yandex from guest search. Otherwise
+Yandex logout cancels Jam creation or ends the room (HOST-32).
 
 **Traps:**
 - `applyToken` leaves a rejected token set on `ApiClient`; the library just stays logged out. The
@@ -419,7 +419,7 @@ public:
     struct Parts { Jam::HostSession* host; Ui::JamWindow* window; Core::JamMode* jamMode; Core::Player* player;
                    Settings* settings; WindowSet* windows; Account* account;
                    Ui::MainWindow* mainWindow; Ui::PlaylistWindow* playlistWindow;
-                   Ui::SearchWindow* searchWindow; };
+                   Ui::SearchWindow* searchWindow; std::function<bool()> spotifyAvailable; };
     explicit JamBridge(const Parts& parts, QObject* parent = nullptr);   // connects it all
     void offerStored();                                // HOST-23, when a jam is stored
     void addMenu(QMenu* menu);                         // the Jam submenu and a separator
@@ -452,9 +452,10 @@ window; the bridge only connects them. A build without the jam compiles `jam_off
   catalog id. The session's `changed` calls `jamChanged()`, and `addRefused` calls `jamRefused()`
   with the tracks of that catalog id and the refusal's words (below); every refusal is also the
   status.
-- **The account:** `Account::connected` gives the jam window the host's name; `loggingOut` ends a
-  jam being created or on (`cancelCreate()`, `end()`, HOST-32); the likes of a login are on hold
-  while a jam is on or the question below is open.
+- **The account.** `Account::connected` gives the jam window the host's name. On Yandex logout,
+  the bridge refreshes the advertised catalogs if Spotify is available. Otherwise it cancels
+  Jam creation or ends the room (HOST-32). The likes of a login are on hold while a jam is on or
+  the question below is open.
 - **"Continue the jam?"** (HOST-23). With a stored jam, `offerStored()` opens a `QMessageBox` "A
   jam was on" / "Continue it? The guests' link stays the same." with "Continue" and "End it". It is
   not modal (`open()`): playback and the windows work while it waits, and a test on the offscreen
@@ -495,7 +496,7 @@ public:
                    SpotifySource::Source* spotifySource; JamBridge* jam;
                    TelemetryBridge* telemetry; const Translations* translations;
                    Ui::MainWindow* mainWindow; Ui::PlaylistWindow* playlistWindow;
-                   Ui::SearchWindow* searchWindow; };
+                   Ui::SearchWindow* searchWindow; std::function<bool()> spotifyAvailable; };
     explicit MainMenu(const Parts& parts, QObject* parent = nullptr);   // shortcuts, menu requests
     void showMain(QPoint globalPosition, const Core::Track* track);
     void showSources(QPoint globalPosition);

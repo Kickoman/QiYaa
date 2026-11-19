@@ -124,7 +124,9 @@ std::optional<Track> BaseTrackOf(const Core::Track& track, const QString& hostSe
 
 Core::Track CoreTrackOf(const Track& track) {
     Core::Track coreTrack;
-    coreTrack.key = YandexSource::KeyOf(track.id, track.albumId);
+    coreTrack.key = track.source == TrackSource::Spotify
+        ? Core::TrackKey{QStringLiteral("spotify"), track.id}
+        : YandexSource::KeyOf(track.id, track.albumId);
     coreTrack.title = track.title;
     coreTrack.artists = track.artists;
     coreTrack.durationMs = track.durationMs;
@@ -151,6 +153,24 @@ HostSession::HostSession(
     if (!options.config) {
         options.config = [] { return HostConfig{}; };
     }
+    options.catalogSearches.try_emplace(TrackSource::Yandex, [library](const QString& text, SearchDone done) {
+        library->searchTracks(text, [done](const QList<Yandex::Track>& tracks, const Yandex::RequestError& error) {
+            if (error.isError()) {
+                qWarning("jam: a guest's search failed: %s", qPrintable(error.text));
+                const bool unauthorized = error.httpStatus == 401 || error.httpStatus == 403;
+                done({}, unauthorized ? SearchError::Unauthorized : SearchError::Failed);
+                return;
+            }
+            QList<Core::Track> found;
+            found.reserve(tracks.size());
+            for (const auto& track : tracks) {
+                if (CatalogIdPattern().match(track.id).hasMatch()) {
+                    found.push_back(YandexSource::TrackOf(track));
+                }
+            }
+            done(found, std::nullopt);
+        });
+    });
     stored = store.load();
     connect(this, &HostSession::changed, this, &HostSession::announce);
     retryTimer.setSingleShot(true);
@@ -304,7 +324,7 @@ bool HostSession::playNext(const Core::Track& track) {
     const QString catalogId = YandexSource::CatalogId(track.key);
     if (currentRoom) {
         for (const QueueItem& item : currentRoom->queue) {
-            if (item.track.id == catalogId) {
+            if (item.track.source == TrackSource::Yandex && item.track.id == catalogId) {
                 return pin(item.itemId);
             }
         }
@@ -352,6 +372,16 @@ bool HostSession::rotateLink() {
     return request([](const QString& id) { return RotateLink{id}; });
 }
 
+void HostSession::updateSearchSources() {
+    if (connected && options.searchSources) {
+        const QStringList sources = options.searchSources();
+        if (sources != sentSearchSources
+            && request([&](const QString& id) { return ChangeSettings{id, {}, sources}; })) {
+            sentSearchSources = sources;
+        }
+    }
+}
+
 void HostSession::networkBack() {
     client.networkBack();
 }
@@ -365,7 +395,8 @@ void HostSession::welcomed() {
         sendResume(*discarding, discarding->outbox);
     } else if (creating) {
         requestId = nextId();
-        client.send(Create{requestId, creating->hostName, creating->settings});
+        sentSearchSources = options.searchSources ? std::optional(options.searchSources()) : std::nullopt;
+        client.send(Create{requestId, creating->hostName, creating->settings, sentSearchSources});
     }
     Q_EMIT changed();
 }
@@ -419,6 +450,7 @@ void HostSession::created(const Created& message) {
     connected = true;
     save(Session{message.roomId, message.hostSecret, message.joinUrl, std::nullopt, {}});
     jam->start(options.config().waveFeedback);
+    updateSearchSources();
 }
 
 void HostSession::resumed() {
@@ -430,6 +462,7 @@ void HostSession::resumed() {
     }
     connected = true;
     client.clearOutbox();
+    updateSearchSources();
     jam->reportPlayback();  // HOST-26
 }
 
@@ -472,7 +505,9 @@ void HostSession::applyState(const State& message) {
     lastVersion = message.version;
     currentRoom = message.room;
     for (const QueueItem& item : currentRoom->queue) {
-        addRequests.removeIf([&item](const auto& request) { return request.value() == item.track.id; });
+        if (item.track.source == TrackSource::Yandex) {
+            addRequests.removeIf([&item](const auto& request) { return request.value() == item.track.id; });
+        }
     }
     QList<Core::JamEntry> entries;
     for (const QueueItem& item : message.room.queue) {
@@ -483,7 +518,8 @@ void HostSession::applyState(const State& message) {
         return;
     }
     for (const QueueItem& item : message.room.queue) {
-        if (item.track.id == pendingPinTrack && item.addedBy == message.room.you.publicId) {
+        if (item.track.source == TrackSource::Yandex && item.track.id == pendingPinTrack
+            && item.addedBy == message.room.you.publicId) {
             pendingPinTrack.clear();
             pendingPinAdd.clear();
             if (!item.pinned) {
@@ -496,32 +532,48 @@ void HostSession::applyState(const State& message) {
 
 void HostSession::search(const SearchRequest& message) {
     QPointer<HostSession> self(this);
-    const QString id = message.requestId;
-    auto sendResults = [self, id](const QList<Yandex::Track>& tracks, const Yandex::RequestError& error) {
-        if (!self) {
-            return;
-        }
-        SearchResult reply;
-        reply.requestId = id;
-        if (error.isError()) {
-            qWarning("jam: a guest's search failed: %s", qPrintable(error.text));
-            const bool unauthorized = error.httpStatus == 401 || error.httpStatus == 403;
-            reply.error = unauthorized ? SearchError::Unauthorized : SearchError::Failed;
-        } else {
-            std::vector<Track> found;
-            for (const Yandex::Track& track : tracks) {
-                const std::optional<Track> jamTrack = track.available ? JamTrackOf(track) : std::nullopt;
-                if (jamTrack && found.size() < static_cast<size_t>(kMaxSearchResults)) {
-                    found.push_back(*jamTrack);
+    const auto done =
+        [self,
+         id = message.requestId,
+         source = message.source](const QList<Core::Track>& tracks, std::optional<SearchError> error) {
+            if (!self || !self->connected) {
+                return;
+            }
+            SearchResult reply{id, std::nullopt, error};
+            if (!error) {
+                auto& found = reply.tracks.emplace();
+                static const QRegularExpression spotifyId(QStringLiteral("^[0-9A-Za-z]{22}$"));
+                for (const Core::Track& track : tracks) {
+                    if (!track.available) {
+                        continue;
+                    }
+                    std::optional<Track> result;
+                    if (source == TrackSource::Yandex) {
+                        result = JamTrackOf(track);
+                    } else if (track.key.source == QLatin1String("spotify")
+                               && spotifyId.match(track.key.id).hasMatch()) {
+                        result = TrackWithin(track.title, track.artists, track.durationMs);
+                        if (result) {
+                            result->id = track.key.id;
+                            result->source = TrackSource::Spotify;
+                        }
+                    }
+                    if (result) {
+                        found.push_back(std::move(*result));
+                        if (found.size() == kMaxSearchResults) {
+                            break;
+                        }
+                    }
                 }
             }
-            reply.tracks = found;
-        }
-        if (self->connected) {
             self->client.send(reply);  // HOST-28, HOST-29
-        }
-    };
-    yandexLibrary->searchTracks(message.text, sendResults);
+        };
+    const auto catalog = options.catalogSearches.find(message.source);
+    if (catalog != options.catalogSearches.end()) {
+        catalog->second(message.text, done);
+    } else {
+        done({}, SearchError::Unauthorized);
+    }
 }
 
 void HostSession::validate(const ValidateRequest& message) {
@@ -598,7 +650,8 @@ void HostSession::sendPlaying(const Core::JamPlayback& playback) {
     }
     // Listening along (LISTEN-01 to LISTEN-04): only Yandex files, which the server takes, and none
     // while a track only the host can play is current (LISTEN-14).
-    const bool hostTrack = message.track && message.track->source == TrackSource::Host;
+    const bool hostTrack = (playback.track && playback.track->key.source == QLatin1String("spotify"))
+        || (message.track && message.track->source == TrackSource::Host);
     if (message.source != Source::Idle && options.config().shareAudio && !hostTrack) {
         const QString link = playback.link.toString();
         const QString next = playback.nextLink.toString();
@@ -610,12 +663,14 @@ void HostSession::sendPlaying(const Core::JamPlayback& playback) {
 
 void HostSession::sendResume(const Session& resumed, const QStringList& outbox) {
     requestId = nextId();
+    sentSearchSources = options.searchSources ? std::optional(options.searchSources()) : std::nullopt;
     client.send(Resume{
         requestId,
         resumed.roomId,
         resumed.hostSecret,
         resumed.snapshot,
-        outbox.mid(std::max<qsizetype>(0, outbox.size() - kMaxOutboxEvents))
+        outbox.mid(std::max<qsizetype>(0, outbox.size() - kMaxOutboxEvents)),
+        sentSearchSources
     });
 }
 

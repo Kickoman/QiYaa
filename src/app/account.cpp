@@ -46,9 +46,15 @@ void Account::login() {
     applyToken(dialog.token(), true);
 }
 
+void Account::setPreservePlayerOnLogout(std::function<bool()> preserve) {
+    preservePlayerOnLogout = std::move(preserve);
+}
+
 void Account::logout() {
     Q_EMIT loggingOut();  // HOST-32: the guests search through this account
-    parts.player->clear();
+    if (!preservePlayerOnLogout || !preservePlayerOnLogout()) {
+        parts.player->clear();
+    }
     parts.library->logout();
     Yandex::ForgetToken(files.own);
     Q_EMIT statusText(tr("You have logged out"));

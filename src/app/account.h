@@ -44,6 +44,7 @@ public:
 
     Account(const Parts& parts, TokenFiles files, QObject* parent = nullptr);
 
+    void setPreservePlayerOnLogout(std::function<bool()> preserve);
     void setLikesOnHold(std::function<bool()> onHold);
 
     void start();
@@ -62,6 +63,7 @@ private:
     Parts parts;
     TokenFiles files;
     std::function<bool()> likesOnHold;
+    std::function<bool()> preservePlayerOnLogout;
 };
 
 }  // namespace App
