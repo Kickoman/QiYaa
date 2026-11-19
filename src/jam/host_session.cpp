@@ -124,7 +124,9 @@ std::optional<Track> BaseTrackOf(const Core::Track& track, const QString& hostSe
 
 Core::Track CoreTrackOf(const Track& track) {
     Core::Track coreTrack;
-    coreTrack.key = YandexSource::KeyOf(track.id, track.albumId);
+    coreTrack.key = track.source == TrackSource::Spotify
+        ? Core::TrackKey{QStringLiteral("spotify"), track.id}
+        : YandexSource::KeyOf(track.id, track.albumId);
     coreTrack.title = track.title;
     coreTrack.artists = track.artists;
     coreTrack.durationMs = track.durationMs;
@@ -352,6 +354,12 @@ bool HostSession::rotateLink() {
     return request([](const QString& id) { return RotateLink{id}; });
 }
 
+void HostSession::updateSearchSources() {
+    if (options.searchSources) {
+        request([this](const QString& id) { return ChangeSettings{id, {}, options.searchSources()}; });
+    }
+}
+
 void HostSession::networkBack() {
     client.networkBack();
 }
@@ -365,7 +373,12 @@ void HostSession::welcomed() {
         sendResume(*discarding, discarding->outbox);
     } else if (creating) {
         requestId = nextId();
-        client.send(Create{requestId, creating->hostName, creating->settings});
+        client.send(Create{
+            requestId,
+            creating->hostName,
+            creating->settings,
+            options.searchSources ? std::optional(options.searchSources()) : std::nullopt
+        });
     }
     Q_EMIT changed();
 }
@@ -497,6 +510,41 @@ void HostSession::applyState(const State& message) {
 void HostSession::search(const SearchRequest& message) {
     QPointer<HostSession> self(this);
     const QString id = message.requestId;
+    if (message.spotify) {
+        if (!options.spotifySearch) {
+            client.send(SearchResult{id, std::nullopt, SearchError::Unauthorized});
+            return;
+        }
+        options.spotifySearch(message.text, [self, id](const QList<Core::Track>& tracks, const QString& error) {
+            if (!self || !self->connected) {
+                return;
+            }
+            SearchResult reply;
+            reply.requestId = id;
+            if (!error.isEmpty()) {
+                reply.error = SearchError::Failed;
+            } else {
+                std::vector<Track> found;
+                for (const Core::Track& track : tracks) {
+                    if (!track.available || track.key.source != QLatin1String("spotify")
+                        || !QRegularExpression(QStringLiteral("^[0-9A-Za-z]{22}$")).match(track.key.id).hasMatch()) {
+                        continue;
+                    }
+                    if (auto result = TrackWithin(track.title, track.artists, track.durationMs)) {
+                        result->id = track.key.id;
+                        result->source = TrackSource::Spotify;
+                        found.push_back(*result);
+                        if (found.size() == kMaxSearchResults) {
+                            break;
+                        }
+                    }
+                }
+                reply.tracks = std::move(found);
+            }
+            self->client.send(reply);
+        });
+        return;
+    }
     auto sendResults = [self, id](const QList<Yandex::Track>& tracks, const Yandex::RequestError& error) {
         if (!self) {
             return;
@@ -598,7 +646,8 @@ void HostSession::sendPlaying(const Core::JamPlayback& playback) {
     }
     // Listening along (LISTEN-01 to LISTEN-04): only Yandex files, which the server takes, and none
     // while a track only the host can play is current (LISTEN-14).
-    const bool hostTrack = message.track && message.track->source == TrackSource::Host;
+    const bool hostTrack = (playback.track && playback.track->key.source == QLatin1String("spotify"))
+        || (message.track && message.track->source == TrackSource::Host);
     if (message.source != Source::Idle && options.config().shareAudio && !hostTrack) {
         const QString link = playback.link.toString();
         const QString next = playback.nextLink.toString();
@@ -615,7 +664,8 @@ void HostSession::sendResume(const Session& resumed, const QStringList& outbox) 
         resumed.roomId,
         resumed.hostSecret,
         resumed.snapshot,
-        outbox.mid(std::max<qsizetype>(0, outbox.size() - kMaxOutboxEvents))
+        outbox.mid(std::max<qsizetype>(0, outbox.size() - kMaxOutboxEvents)),
+        options.searchSources ? std::optional(options.searchSources()) : std::nullopt
     });
 }
 

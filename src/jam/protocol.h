@@ -10,10 +10,10 @@
 
 namespace Jam {
 
-inline constexpr int kProtocol = 1;
+inline constexpr int kProtocol = 2;
 
-// Yandex: a track of the catalog. Host: one only the host can play, a local file for one (HOST-37).
-enum class TrackSource { Yandex, Host };
+// Yandex and Spotify are catalog tracks. Host is a base track only the host can play (HOST-37).
+enum class TrackSource { Yandex, Host, Spotify };
 
 struct Track {
     QString id;
@@ -138,6 +138,7 @@ struct Create {
     QString id;
     QString hostName;
     std::optional<SettingsPatch> settings;
+    std::optional<QStringList> searchSources = std::nullopt;
 
     bool operator==(const Create&) const = default;
 };
@@ -148,6 +149,7 @@ struct Resume {
     QString hostSecret;
     std::optional<QJsonObject> snapshot;
     QStringList outbox;
+    std::optional<QStringList> searchSources = std::nullopt;
 
     bool operator==(const Resume&) const = default;
 };
@@ -202,6 +204,7 @@ struct Kick {
 struct ChangeSettings {
     QString id;
     SettingsPatch settings;
+    std::optional<QStringList> searchSources = std::nullopt;
 
     bool operator==(const ChangeSettings&) const = default;
 };
@@ -355,6 +358,7 @@ struct LinkRotated {
 struct SearchRequest {
     QString requestId;
     QString text;
+    bool spotify = false;
 
     bool operator==(const SearchRequest&) const = default;
 };

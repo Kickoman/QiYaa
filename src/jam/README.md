@@ -301,3 +301,7 @@ carry the track id alone.
   `Core::JamMode`, [src/core/README.md](../core/README.md).
 - Where the settings and the session file live, the question at start and the texts of refusals:
   [src/app/README.md](../app/README.md).
+
+Protocol 2 hosts advertise their search catalogues. Spotify uses the existing search catalogue
+and reconstructs a Spotify playback key from a Jam queue item. Spotify items do not generate
+listening-along URLs or Yandex wave seeds.

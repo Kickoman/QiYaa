@@ -35,6 +35,8 @@ struct HostOptions {
     ClientOptions client;
     std::function<HostConfig()> config;
     std::function<QString()> newId;
+    std::function<QStringList()> searchSources;
+    std::function<void(const QString&, std::function<void(const QList<Core::Track>&, const QString&)>)> spotifySearch;
     int resumeRetryMs = 30'000;
 };
 
@@ -88,6 +90,7 @@ public:
     bool rotateLink();
 
     void networkBack();
+    void updateSearchSources();
 
 Q_SIGNALS:
     void changed();

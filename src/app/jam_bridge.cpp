@@ -68,7 +68,7 @@ std::optional<QString> WaitingFrom(const Jam::HostSession* host, const Core::Tra
         return std::nullopt;
     }
     for (const Jam::QueueItem& item : host->room()->queue) {
-        if (item.track.id == id) {
+        if (item.track.source == Jam::TrackSource::Yandex && item.track.id == id) {
             return host->participantName(item.addedBy);
         }
     }
@@ -130,10 +130,6 @@ JamBridge::JamBridge(const Parts& bridgeParts, QObject* parent)
     });
 
     connect(parts.account, &Account::connected, parts.window, &Ui::JamWindow::setHostName);
-    connect(parts.account, &Account::loggingOut, this, [this] {
-        parts.host->cancelCreate();
-        parts.host->end();
-    });
     parts.account->setLikesOnHold([this] { return parts.jamMode->isActive() || storedJamQuestion; });
 }
 
