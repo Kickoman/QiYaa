@@ -16,6 +16,7 @@ struct Session {
     QString joinUrl;
     std::optional<QJsonObject> snapshot;
     QStringList outbox;
+    QStringList catalogCleanup = {};
 
     bool operator==(const Session&) const = default;
 };

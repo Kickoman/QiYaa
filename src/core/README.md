@@ -84,6 +84,7 @@ public:
     void add(QueueSource source, AddPlacement placement);   // Play next, Add to the end; ADD-01 to ADD-09
     void removeRows(QList<int> rows);                 // rows before removal, any order, duplicates ok; HOST-36
     void clear();
+    void setSourceEnabled(const QString& source, bool enabled);
     void setLayer(std::optional<QueueLayer> layer);   // the jam's; nullopt ends it
     void setLayerItems(const QList<LayerItem>& items, std::optional<SeedHint> hint);   // the layer's items now
     void setHistoryWaveFactory(THistoryWaveFactory factory);   // the vibe from history of each new queue
@@ -142,7 +143,11 @@ Q_SIGNALS:
 };
 ```
 
-### Threads and lifetime
+#During Jam, account logout disables playback for the corresponding source. The player drops the
+source's queue entries and continuation, preserves playback history and advances if the source
+was actively playing or loading. Signing in allows new tracks from the source (HOST-40).
+
+## Threads and lifetime
 
 - Everything runs on the thread that owns the `Player`, which is the GUI thread in the app. There
   are no locks. Link, download and load-more results arrive as Qt signals or callbacks on that

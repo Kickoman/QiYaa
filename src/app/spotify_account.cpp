@@ -49,6 +49,7 @@ void SpotifyAccount::loginWithToken(const QString& accessToken, Way way) {
 }
 
 void SpotifyAccount::logout() {
+    Q_EMIT loggingOut();
     parts.session->logout();
     parts.web->forgetTokens();
     SpotifyClient::ForgetCredentials(file);

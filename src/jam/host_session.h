@@ -6,6 +6,7 @@
 
 #include <QHash>
 #include <QObject>
+#include <QSet>
 #include <QString>
 #include <QTimer>
 
@@ -95,6 +96,7 @@ public:
 
     void networkBack();
     void updateSearchSources();
+    void removeCatalog(const QString& source);
 
 Q_SIGNALS:
     void changed();
@@ -122,6 +124,7 @@ private:
     void validate(const ValidateRequest& message);
     void serverEnded(EndReason reason);
     void sendPlaying(const Core::JamPlayback& playback);
+    std::optional<QStringList> advertisedSources() const;
     void sendResume(const Session& session, const QStringList& outbox);
     bool request(const std::function<ClientMessage(const QString& id)>& build);
     QString nextId();
@@ -148,6 +151,8 @@ private:
     bool announcedConnected = false;
     QString requestId;
     QString endId;
+    QSet<QString> sentCatalogRemovals;
+    QString catalogSettingsRequest;
     qint64 lastVersion = -1;
     QString pendingPinTrack;
     QString pendingPinAdd;

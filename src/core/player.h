@@ -66,6 +66,7 @@ public:
     void add(QueueSource source, AddPlacement placement);
     void removeRows(QList<int> rows);
     void clear();
+    void setSourceEnabled(const QString& source, bool enabled);
     void setLayer(std::optional<QueueLayer> layer);
     void setLayerItems(const QList<LayerItem>& items, std::optional<SeedHint> hint);
     void setHistoryWaveFactory(THistoryWaveFactory factory);
@@ -183,6 +184,7 @@ private:
     void takeNewBase();
     std::shared_ptr<Continuation> askedContinuation() const;
     void maybeLoadMore();
+    QStringList disabledSources;
     void continuationReplied(const std::shared_ptr<Continuation>& giver, const ContinuationReply& reply);
     void queueEdited(quint64 revision);
     void setWaitingForMore(bool waiting);

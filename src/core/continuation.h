@@ -36,6 +36,7 @@ public:
 
     virtual ~Continuation() = default;
 
+    virtual QString source() const { return {}; }
     virtual void begin(bool) { }
     virtual bool followsJamSeeds() const { return false; }
     virtual bool more(const ContinuationRequest& request, TDone done) = 0;

@@ -48,6 +48,7 @@ Q_SIGNALS:
     void statusText(const QString& text);
     void connected(const QString& username);
     void loggedInWith(App::SpotifyAccount::Way way);
+    void loggingOut();
     void loggedOut();
     void refused(App::SpotifyAccount::Refusal refusal);
 

@@ -566,6 +566,74 @@ private Q_SLOTS:
         QCOMPARE(OfType<Jam::ChangeSettings>(stack.sent()).front().searchSources, stack.searchSources);
     }
 
+    void logoutDisablesCatalogAndRemovesOnlyItsWaitingItems_data() {
+        QTest::addColumn<QString>("source");
+        QTest::addColumn<QString>("remaining");
+        QTest::addColumn<QString>("itemId");
+        QTest::newRow("yandex") << QStringLiteral("yandex") << QStringLiteral("spotify") << QStringLiteral("i1");
+        QTest::newRow("spotify") << QStringLiteral("spotify") << QStringLiteral("yandex") << QStringLiteral("i2");
+    }
+
+    void logoutDisablesCatalogAndRemovesOnlyItsWaitingItems() {  // HOST-39
+        QFETCH(QString, source);
+        QFETCH(QString, remaining);
+        QFETCH(QString, itemId);
+        Stack stack(&library, {}, QStringList{"yandex", "spotify"});
+        QVERIFY(stack.created());
+        stack.host.removeCatalog(source);
+        QTRY_COMPARE(OfType<Jam::ChangeSettings>(stack.sent()).size(), size_t{1});
+        QCOMPARE(
+            OfType<Jam::ChangeSettings>(stack.sent()).front().searchSources, std::optional(QStringList{remaining})
+        );
+        QCOMPARE(stack.store.load()->catalogCleanup, QStringList{source});
+        stack.receive(Ack(OfType<Jam::ChangeSettings>(stack.sent()).front().id));
+
+        QJsonObject spotify = Item("i2", "0123456789012345678901");
+        QJsonObject track = spotify.value(QStringLiteral("track")).toObject();
+        track.remove(QStringLiteral("albumId"));
+        track[QStringLiteral("source")] = QStringLiteral("spotify");
+        spotify[QStringLiteral("track")] = track;
+        stack.state(1, {Item("i1", "0123456789012345678901"), spotify});
+        QTRY_COMPARE(OfType<Jam::Remove>(stack.sent()).size(), size_t{1});
+        QCOMPARE(OfType<Jam::Remove>(stack.sent()).front().itemId, itemId);
+        QCOMPARE(stack.host.phase(), Jam::HostPhase::Active);
+    }
+
+    void catalogCleanupSurvivesStoredResumeUntilSnapshotConfirmsIt() {  // HOST-39
+        auto stored = StoredSession();
+        stored.catalogCleanup = QStringList{"spotify"};
+        Stack stack(&library, stored, QStringList{"yandex", "spotify"});
+        stack.host.continueStored();
+        QVERIFY(stack.open());
+        QVERIFY(stack.waitSent(1));
+        QCOMPARE(OfType<Jam::Resume>(stack.sent()).front().searchSources, std::optional(QStringList{"yandex"}));
+        stack.server.send(Resumed(QStringLiteral("r1"), true));
+        QTRY_VERIFY(stack.host.isConnected());
+
+        auto snapshot = Example(QStringLiteral("snapshot/ok"));
+        auto data = snapshot.value(QStringLiteral("data")).toObject();
+        auto room = data.value(QStringLiteral("room")).toObject();
+        room[QStringLiteral("searchSources")] = QJsonArray{QStringLiteral("yandex")};
+        data[QStringLiteral("room")] = room;
+        snapshot[QStringLiteral("data")] = data;
+        stack.receive(Text(snapshot));
+        QTRY_VERIFY(stack.store.load()->catalogCleanup.isEmpty());
+        QTRY_COMPARE(OfType<Jam::ChangeSettings>(stack.sent()).size(), size_t{1});
+        QCOMPARE(OfType<Jam::ChangeSettings>(stack.sent()).front().searchSources, stack.searchSources);
+    }
+
+    void logoutAdvancesPastUnavailableTracksToLocalPlayback() {  // HOST-40
+        Stack stack(&library);
+        QVERIFY(stack.created());
+        const Core::Track local = LocalTrack();
+        stack.playBase({BaseTrack("11"), BaseTrack("22"), local});
+        QTRY_VERIFY(stack.player.currentTrack());
+        stack.player.setSourceEnabled(QStringLiteral("yandex"), false);
+        QTRY_VERIFY(stack.player.currentTrack());
+        QCOMPARE(stack.player.currentTrack()->key, local.key);
+        QCOMPARE(stack.player.entries().size(), 1);
+    }
+
     void aGuestsSearchAnswersWithUpTo20AvailableTracksOrTheError() {  // HOST-28, HOST-29
         Stack stack(&library);
         QVERIFY(stack.created());

@@ -23,6 +23,8 @@ QStringList HistorySeeds(const QList<Core::Track>& history);
 
 class HistoryWave : public Core::Continuation, public std::enable_shared_from_this<HistoryWave> {
 public:
+    QString source() const override { return QStringLiteral("yandex"); }
+
     explicit HistoryWave(Yandex::Library* library);
 
     void begin(bool feedback) override;

@@ -10,6 +10,7 @@
 #include <QByteArray>
 #include <QCryptographicHash>
 #include <QHash>
+#include <QJsonArray>
 #include <QMessageAuthenticationCode>
 #include <QPointer>
 #include <QRegularExpression>
@@ -372,12 +373,42 @@ bool HostSession::rotateLink() {
     return request([](const QString& id) { return RotateLink{id}; });
 }
 
+std::optional<QStringList> HostSession::advertisedSources() const {
+    if (!options.searchSources) {
+        return std::nullopt;
+    }
+    QStringList sources = options.searchSources();
+    if (session) {
+        for (const QString& source : session->catalogCleanup) {
+            sources.removeAll(source);
+        }
+    }
+    return sources;
+}
+
+void HostSession::removeCatalog(const QString& source) {
+    if (session && !session->catalogCleanup.contains(source)) {
+        Session updated = *session;
+        updated.catalogCleanup.append(source);
+        save(std::move(updated));
+        sentSearchSources.reset();
+        updateSearchSources();
+    } else if (stored && !stored->catalogCleanup.contains(source)) {
+        stored->catalogCleanup.append(source);
+        store.save(*stored);
+    }
+}
+
 void HostSession::updateSearchSources() {
-    if (connected && options.searchSources) {
-        const QStringList sources = options.searchSources();
-        if (sources != sentSearchSources
-            && request([&](const QString& id) { return ChangeSettings{id, {}, sources}; })) {
+    if (!connected) {
+        return;
+    }
+    const auto sources = advertisedSources();
+    if (sources && sources != sentSearchSources) {
+        const QString id = nextId();
+        if (client.send(ChangeSettings{id, {}, sources})) {
             sentSearchSources = sources;
+            catalogSettingsRequest = id;
         }
     }
 }
@@ -388,6 +419,8 @@ void HostSession::networkBack() {
 
 void HostSession::welcomed() {
     connected = false;
+    sentCatalogRemovals.clear();
+    catalogSettingsRequest.clear();
     lastVersion = -1;  // the first state of a new connection is taken as it is
     if (session) {
         sendResume(*session, client.outbox());
@@ -395,7 +428,7 @@ void HostSession::welcomed() {
         sendResume(*discarding, discarding->outbox);
     } else if (creating) {
         requestId = nextId();
-        sentSearchSources = options.searchSources ? std::optional(options.searchSources()) : std::nullopt;
+        sentSearchSources = advertisedSources();
         client.send(Create{requestId, creating->hostName, creating->settings, sentSearchSources});
     }
     Q_EMIT changed();
@@ -416,13 +449,35 @@ void HostSession::received(const ServerMessage& message) {
         if (!endId.isEmpty() && ack->id == endId) {
             finishDiscard();
         }
+        if (ack->id == catalogSettingsRequest) {
+            catalogSettingsRequest.clear();
+        }
     } else if (const auto* state = std::get_if<State>(&message)) {
         applyState(*state);
     } else if (const auto* snapshot = std::get_if<Snapshot>(&message)) {
         if (session) {
             Session updated = *session;
             updated.snapshot = snapshot->data;
-            save(updated);
+            const QJsonObject room = snapshot->data.value(QStringLiteral("room")).toObject();
+            const QJsonValue sources = room.value(QStringLiteral("searchSources"));
+            const QJsonArray queue = room.value(QStringLiteral("queue")).toArray();
+            if (sources.isArray()) {
+                const QJsonArray catalogs = sources.toArray();
+                updated.catalogCleanup.removeIf([&](const QString& source) {
+                    return !catalogs.contains(QJsonValue(source))
+                        && std::none_of(queue.begin(), queue.end(), [&](const QJsonValue& item) {
+                               const QJsonObject track = item.toObject().value(QStringLiteral("track")).toObject();
+                               return track.value(QStringLiteral("source")).toString(QStringLiteral("yandex"))
+                                   == source;
+                           });
+                });
+            }
+            if (updated.catalogCleanup == session->catalogCleanup) {
+                save(std::move(updated));
+            } else if (store.save(updated)) {
+                session = std::move(updated);
+                updateSearchSources();
+            }
         }
     } else if (const auto* rotated = std::get_if<LinkRotated>(&message)) {
         if (session) {
@@ -511,7 +566,15 @@ void HostSession::applyState(const State& message) {
     }
     QList<Core::JamEntry> entries;
     for (const QueueItem& item : message.room.queue) {
-        entries << Core::JamEntry{item.itemId, CoreTrackOf(item.track), item.addedBy};
+        const Core::Track track = CoreTrackOf(item.track);
+        if (session->catalogCleanup.contains(track.key.source)) {
+            if (catalogSettingsRequest.isEmpty() && sentSearchSources && !sentSearchSources->contains(track.key.source)
+                && !sentCatalogRemovals.contains(item.itemId) && remove(item.itemId)) {
+                sentCatalogRemovals.insert(item.itemId);
+            }
+        } else {
+            entries << Core::JamEntry{item.itemId, track, item.addedBy};
+        }
     }
     jam->setQueue(entries, message.room.fallback.seeds, message.room.fallback.seedsVersion);
     if (pendingPinTrack.isEmpty()) {
@@ -663,7 +726,7 @@ void HostSession::sendPlaying(const Core::JamPlayback& playback) {
 
 void HostSession::sendResume(const Session& resumed, const QStringList& outbox) {
     requestId = nextId();
-    sentSearchSources = options.searchSources ? std::optional(options.searchSources()) : std::nullopt;
+    sentSearchSources = advertisedSources();
     client.send(Resume{
         requestId,
         resumed.roomId,

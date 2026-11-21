@@ -66,6 +66,10 @@ public:
 
     quint64 generation() const { return loadGeneration; }
     void renew();
+    void dropContinuation() {
+        ownContinuation.reset();
+        renew();
+    }
     bool isAsking() const { return asking; }
     void setAsking(bool on) { asking = on; }
 

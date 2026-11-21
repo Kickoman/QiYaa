@@ -361,7 +361,7 @@ Application::Application(const Options& options, QObject* parent)
         mainWindowInstance.get(),
         playlistWindowInstance.get(),
         searchWindowInstance.get(),
-        [this] { return spotifyCatalog.canSearch(); }
+        spotifyAccountControl.get()
     });
     connect(jamBridge.get(), &JamBridge::statusText, mainWindowInstance.get(), &Ui::MainWindow::setStatusText);
 

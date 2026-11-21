@@ -236,6 +236,10 @@ server rejects it or the session ends. The search window shows the refusal on th
   errors as `failed` (HOST-28, HOST-29). Spotify searches use the app’s Spotify catalog. `validateRequest` → `Library::tracksByIds`: an entry per id in order, a track
   or `track-unavailable`; a failed request fails them all (HOST-30). Answers go only while
   connected.
+- **Catalog logout.** The host persists pending cleanup with the room session. It disables guest
+  search for that catalog before removing matching waiting items. Playback ignores that catalog's
+  items during cleanup. A saved snapshot confirms completion and allows the catalog to be
+  advertised again after login (HOST-39).
 - **The host's actions** (HOST-20) return false without a connection. `add` and `playNext` take
   only a track of the catalog (`JamTrackOf`) and return false for any other: a track only the host
   can play is not added (HOST-37, ROOM-66), and the codec would let such an `add` through, since

@@ -2,6 +2,7 @@
 
 #include "app/account.h"
 #include "app/settings.h"
+#include "app/spotify_account.h"
 #include "app/window_set.h"
 #include "core/jam_mode.h"
 #include "core/player.h"
@@ -130,18 +131,23 @@ JamBridge::JamBridge(const Parts& bridgeParts, QObject* parent)
     });
 
     connect(parts.account, &Account::connected, parts.window, &Ui::JamWindow::setHostName);
-    const auto spotifyAvailable = [this] { return parts.spotifyAvailable && parts.spotifyAvailable(); };
-    parts.account->setPreservePlayerOnLogout([this, spotifyAvailable] {
-        return spotifyAvailable() && parts.jamMode->isActive();
-    });
-    connect(parts.account, &Account::loggingOut, this, [this, spotifyAvailable] {
-        if (spotifyAvailable()) {
-            QTimer::singleShot(0, parts.host, &Jam::HostSession::updateSearchSources);
-        } else {
-            parts.host->cancelCreate();
-            parts.host->end();
+    parts.account->setPreservePlayerOnLogout([this] { return parts.host->phase() != Jam::HostPhase::None; });
+    const auto logout = [this](const QString& source) {
+        parts.host->removeCatalog(source);
+        if (parts.host->phase() != Jam::HostPhase::None) {
+            parts.player->setSourceEnabled(source, false);
         }
+    };
+    connect(parts.account, &Account::loggingOut, this, [logout] { logout(QStringLiteral("yandex")); });
+    connect(parts.account, &Account::connected, this, [this] {
+        parts.player->setSourceEnabled(QStringLiteral("yandex"), true);
     });
+    if (parts.spotify) {
+        connect(parts.spotify, &SpotifyAccount::loggingOut, this, [logout] { logout(QStringLiteral("spotify")); });
+        connect(parts.spotify, &SpotifyAccount::connected, this, [this] {
+            parts.player->setSourceEnabled(QStringLiteral("spotify"), true);
+        });
+    }
     parts.account->setLikesOnHold([this] { return parts.jamMode->isActive() || storedJamQuestion; });
 }
 

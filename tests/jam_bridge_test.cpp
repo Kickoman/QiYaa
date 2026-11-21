@@ -208,15 +208,15 @@ private Q_SLOTS:
         QCOMPARE(stack.texts.last(), QStringLiteral("The jam was ended"));
     }
 
-    void theLikesWaitWhileTheJamIsOnAndLoggingOutEndsIt() {  // HOST-32
+    void theLikesWaitWhileTheJamIsOnAndLoggingOutKeepsItOpen() {  // HOST-39
         Stack stack(&api, &library, &baseSkin);
         QVERIFY(stack.created());
         stack.account.applyToken(QStringLiteral("test-token"), false);
         QVERIFY(QTest::qWaitFor([&] { return library.isLoggedIn(); }, 5000));
         QCOMPARE(stack.likesAsked, 0);
         stack.account.logout();
-        QCOMPARE(stack.host.phase(), Jam::HostPhase::None);
-        QCOMPARE(stack.texts.last(), QStringLiteral("The jam is over"));
+        QCOMPARE(stack.host.phase(), Jam::HostPhase::Active);
+        QVERIFY(!library.isLoggedIn());
     }
 
     void theSearchWindowAddsToTheJamWhileOneRuns() {  // HOST-38, HOST-20
