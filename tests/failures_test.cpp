@@ -162,7 +162,10 @@ private Q_SLOTS:
             reply->deleteLater();
             return error;
         };
-        QCOMPARE(classify(QStringLiteral("http://127.0.0.1:1/x")).kind, Kind::Network);
+        server.on("GET", "/disconnect", [](const Tests::MockRequest&) {
+            return Tests::MockResponse{.closeWithoutReply = true};
+        });
+        QCOMPARE(classify(server.baseUrl() + "/disconnect").kind, Kind::Network);
         server.json("GET", "/missing", "{}", 404);
         const Yandex::RequestError missing = classify(server.baseUrl() + "/missing");
         QCOMPARE(missing.kind, Kind::Http);
@@ -264,7 +267,11 @@ private Q_SLOTS:
             QSKIP("no audio output");
         }
         const int playReports = requestsTo("/play-audio");
-        stack->api.setBaseUrl(QStringLiteral("http://127.0.0.1:1"));  // refused: no network
+        Tests::MockHttpServer disconnected;
+        disconnected.onPrefix("GET", "/", [](const Tests::MockRequest&) {
+            return Tests::MockResponse{.closeWithoutReply = true};
+        });
+        stack->api.setBaseUrl(disconnected.baseUrl());
         stack->player.setNetworkOnline(false);
         stack->player.playIndex(0);
         QVERIFY(QTest::qWaitFor([&] { return stack->player.state() == Core::Player::State::WaitingForNetwork; }, 5000));
@@ -288,7 +295,11 @@ private Q_SLOTS:
         if (!stack) {
             QSKIP("no audio output");
         }
-        stack->api.setBaseUrl(QStringLiteral("http://127.0.0.1:1"));
+        Tests::MockHttpServer disconnected;
+        disconnected.onPrefix("GET", "/", [](const Tests::MockRequest&) {
+            return Tests::MockResponse{.closeWithoutReply = true};
+        });
+        stack->api.setBaseUrl(disconnected.baseUrl());
         stack->player.playIndex(0);
         QVERIFY(QTest::qWaitFor([&] { return stack->player.state() == Core::Player::State::WaitingForNetwork; }, 5000));
         stack->player.pause();  // the user pauses while waiting

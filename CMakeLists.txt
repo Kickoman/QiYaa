@@ -19,7 +19,22 @@ set(CMAKE_CXX_EXTENSIONS OFF)
 option(QIYAA_BUILD_TESTS "Build unit tests" ON)
 
 # For packaging scripts (CI names the installers after it).
-file(WRITE ${CMAKE_BINARY_DIR}/version.txt "${PROJECT_VERSION}")
+set(QIYAA_PREVIEW_SHA "" CACHE STRING "Seven-character commit SHA for a preview build")
+set(QIYAA_DISPLAY_VERSION "${PROJECT_VERSION}")
+set(QIYAA_BUNDLE_ID io.github.kickoman.qiyaa)
+if(QIYAA_PREVIEW_SHA)
+    string(LENGTH "${QIYAA_PREVIEW_SHA}" preview_sha_length)
+    if(NOT QIYAA_PREVIEW_SHA MATCHES "^[0-9a-f]+$" OR NOT preview_sha_length EQUAL 7)
+        message(FATAL_ERROR "QIYAA_PREVIEW_SHA must be seven lowercase hex characters")
+    endif()
+    set(QIYAA_DISPLAY_VERSION "${PROJECT_VERSION}-preview.${QIYAA_PREVIEW_SHA}")
+    string(LENGTH "${QIYAA_DISPLAY_VERSION}" preview_version_length)
+    if(preview_version_length GREATER 32)
+        message(FATAL_ERROR "Preview version exceeds the Jam protocol limit")
+    endif()
+    set(QIYAA_BUNDLE_ID io.github.kickoman.qiyaa.preview)
+endif()
+file(WRITE ${CMAKE_BINARY_DIR}/version.txt "${QIYAA_DISPLAY_VERSION}")
 
 find_package(Qt6 6.4 REQUIRED COMPONENTS Core Gui Widgets Network LinguistTools)
 qt_standard_project_setup()
@@ -447,7 +462,7 @@ option(QIYAA_WITH_TELEMETRY "Usage statistics and crash reports (spec/telemetry)
 set(QIYAA_TELEMETRY_URL "${QIYAA_JAM_URL}/api/telemetry" CACHE STRING "Where telemetry goes")
 set(QIYAA_PACKAGE "source" CACHE STRING "How this build is shipped: deb, appimage, windows, macos, source")
 set(QIYAA_HAVE_TELEMETRY OFF)
-if(QIYAA_WITH_TELEMETRY)
+if(QIYAA_WITH_TELEMETRY AND NOT QIYAA_PREVIEW_SHA)
     qiyaa_add_module(telemetry
         src/telemetry/crash_handler.cpp src/telemetry/crash_handler.h
         src/telemetry/machine_id.cpp    src/telemetry/machine_id.h
@@ -529,14 +544,18 @@ endif()
 qt_add_executable(qiyaa WIN32 MACOSX_BUNDLE ${QIYAA_APP_SOURCES})
 target_link_libraries(qiyaa PRIVATE qiyaa_app qiyaa_ui)
 qiyaa_target_defaults(qiyaa)
-target_compile_definitions(qiyaa PRIVATE QIYAA_VERSION="${PROJECT_VERSION}")
+target_compile_definitions(qiyaa PRIVATE QIYAA_VERSION="${QIYAA_DISPLAY_VERSION}")
+if(QIYAA_PREVIEW_SHA)
+    target_compile_definitions(qiyaa_app PRIVATE QIYAA_PREVIEW)
+    target_compile_definitions(qiyaa PRIVATE QIYAA_PREVIEW)
+endif()
 if(QIYAA_HAVE_TELEMETRY)
     target_link_libraries(qiyaa PRIVATE qiyaa_telemetry)
     target_compile_definitions(qiyaa PRIVATE QIYAA_TELEMETRY_URL="${QIYAA_TELEMETRY_URL}")
 endif()
 set_target_properties(qiyaa PROPERTIES
     OUTPUT_NAME QiYaa
-    MACOSX_BUNDLE_GUI_IDENTIFIER io.github.kickoman.qiyaa
+    MACOSX_BUNDLE_GUI_IDENTIFIER ${QIYAA_BUNDLE_ID}
     MACOSX_BUNDLE_BUNDLE_VERSION ${PROJECT_VERSION}
     MACOSX_BUNDLE_SHORT_VERSION_STRING ${PROJECT_VERSION}
     MACOSX_BUNDLE_ICON_FILE qiyaa.icns)

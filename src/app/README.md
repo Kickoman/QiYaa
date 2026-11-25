@@ -1102,3 +1102,11 @@ Failures that are data:
 - Milkdrop rendering and the preset list: [src/vis](../vis/README.md).
 - The user-facing command-line reference: [docs/cli.md](../../docs/cli.md).
 - The `.desktop` file, the Windows resource file and the installers: `packaging/`.
+
+### Preview builds
+
+A manual CI run from `master` accepts an open same-repository PR number and packages
+that commit for Desktop. The artifacts identify the PR and SHA. The compile-time
+`QIYAA_PREVIEW_SHA` value adds a preview suffix to the runtime version and selects
+a separate configuration directory. Preview builds omit telemetry and use the
+regular Jam settings screen to set the test server.
