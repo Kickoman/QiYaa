@@ -390,6 +390,7 @@ jobs:
         shell: bash
         env:
           QT_QPA_PLATFORM: offscreen
+          QT_COMMAND_LINE_PARSER_NO_GUI_MESSAGE_BOXES: 1
         run: |
           case "$RUNNER_OS" in
             Windows) BIN=dist/QiYaa/QiYaa.exe ;;
