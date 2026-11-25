@@ -15,6 +15,8 @@ class Library;
 
 class Autoplay : public Core::Continuation, public std::enable_shared_from_this<Autoplay> {
 public:
+    QString source() const override { return QStringLiteral("spotify"); }
+
     static constexpr int kRecentTracks = 50;
 
     static std::shared_ptr<Autoplay> Of(Library* library, const QString& contextUri);

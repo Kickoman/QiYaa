@@ -21,6 +21,9 @@ QByteArray EncodeSession(const Session& session) {
         {QStringLiteral("joinUrl"), session.joinUrl},
         {QStringLiteral("outbox"), QJsonArray::fromStringList(session.outbox)},
     };
+    if (!session.catalogCleanup.isEmpty()) {
+        json.insert(QStringLiteral("catalogCleanup"), QJsonArray::fromStringList(session.catalogCleanup));
+    }
     if (session.snapshot) {
         json.insert(QStringLiteral("snapshot"), *session.snapshot);
     }
@@ -54,6 +57,13 @@ std::optional<Session> DecodeSession(QByteArrayView text) {
     for (const QJsonValue& itemId : json.value(QStringLiteral("outbox")).toArray()) {
         if (itemId.isString()) {
             session.outbox.append(itemId.toString());
+        }
+    }
+    for (const QJsonValue& value : json.value(QStringLiteral("catalogCleanup")).toArray()) {
+        const QString source = value.toString();
+        if ((source == QLatin1String("yandex") || source == QLatin1String("spotify"))
+            && !session.catalogCleanup.contains(source)) {
+            session.catalogCleanup.append(source);
         }
     }
     return session;

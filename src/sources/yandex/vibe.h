@@ -16,6 +16,8 @@ namespace YandexSource {
 
 class Vibe : public Core::Continuation, public std::enable_shared_from_this<Vibe> {
 public:
+    QString source() const override { return QStringLiteral("yandex"); }
+
     Vibe(Yandex::Library* library, const Yandex::WaveBatch& first, QString station);
 
     void begin(bool feedback) override;

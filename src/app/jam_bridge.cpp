@@ -2,6 +2,7 @@
 
 #include "app/account.h"
 #include "app/settings.h"
+#include "app/spotify_account.h"
 #include "app/window_set.h"
 #include "core/jam_mode.h"
 #include "core/player.h"
@@ -68,7 +69,7 @@ std::optional<QString> WaitingFrom(const Jam::HostSession* host, const Core::Tra
         return std::nullopt;
     }
     for (const Jam::QueueItem& item : host->room()->queue) {
-        if (item.track.id == id) {
+        if (item.track.source == Jam::TrackSource::Yandex && item.track.id == id) {
             return host->participantName(item.addedBy);
         }
     }
@@ -130,10 +131,23 @@ JamBridge::JamBridge(const Parts& bridgeParts, QObject* parent)
     });
 
     connect(parts.account, &Account::connected, parts.window, &Ui::JamWindow::setHostName);
-    connect(parts.account, &Account::loggingOut, this, [this] {
-        parts.host->cancelCreate();
-        parts.host->end();
+    parts.account->setPreservePlayerOnLogout([this] { return parts.host->phase() != Jam::HostPhase::None; });
+    const auto logout = [this](const QString& source) {
+        parts.host->removeCatalog(source);
+        if (parts.host->phase() != Jam::HostPhase::None) {
+            parts.player->setSourceEnabled(source, false);
+        }
+    };
+    connect(parts.account, &Account::loggingOut, this, [logout] { logout(QStringLiteral("yandex")); });
+    connect(parts.account, &Account::connected, this, [this] {
+        parts.player->setSourceEnabled(QStringLiteral("yandex"), true);
     });
+    if (parts.spotify) {
+        connect(parts.spotify, &SpotifyAccount::loggingOut, this, [logout] { logout(QStringLiteral("spotify")); });
+        connect(parts.spotify, &SpotifyAccount::connected, this, [this] {
+            parts.player->setSourceEnabled(QStringLiteral("spotify"), true);
+        });
+    }
     parts.account->setLikesOnHold([this] { return parts.jamMode->isActive() || storedJamQuestion; });
 }
 

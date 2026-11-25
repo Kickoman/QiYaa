@@ -75,6 +75,18 @@ Player::Player(Audio::AudioEngine* engine, SourceRegistry* sources, QObject* par
 Player::~Player() = default;
 
 void Player::setSource(QueueSource source, bool autoplay) {
+    const auto disabled = [this](const Track& track) { return disabledSources.contains(track.key.source); };
+    const auto removedHead = source.head.removeIf(disabled);
+    const auto removedContinuation = source.given.removeIf(disabled);
+    const bool disabledContinuation = source.continuation && disabledSources.contains(source.continuation->source());
+    if (disabledContinuation) {
+        source.continuation.reset();
+    }
+    if ((removedHead || removedContinuation || disabledContinuation) && source.head.isEmpty() && source.given.isEmpty()
+        && !source.continuation) {
+        return;
+    }
+
     if (layer) {
         const int cursor = queue->cursor();
         queue->replaceBase(std::move(source));
@@ -112,6 +124,9 @@ void Player::setSource(QueueSource source, bool autoplay) {
 }
 
 void Player::add(QueueSource source, AddPlacement placement) {
+    const auto disabled = [this](const Track& track) { return disabledSources.contains(track.key.source); };
+    source.head.removeIf(disabled);
+
     if (std::none_of(source.head.cbegin(), source.head.cend(), [](const Track& track) { return track.available; })) {
         return;  // ADD-05
     }
@@ -153,6 +168,58 @@ void Player::removeRows(QList<int> rows) {
     noteState();
     Q_EMIT playlistChanged();
     refreshPreload();
+}
+
+void Player::setSourceEnabled(const QString& source, bool enabled) {
+    if (enabled) {
+        disabledSources.removeAll(source);
+        return;
+    }
+    const auto activeContinuation = askedContinuation();
+    if (!disabledSources.contains(source)) {
+        disabledSources.append(source);
+    }
+    const QueueEntry* selected = currentEntry();
+    const bool stopCurrent = selected && selected->track.key.source == source;
+    const bool advanceCurrent =
+        stopCurrent && (state() == State::Playing || state() == State::Loading || state() == State::WaitingForNetwork);
+    QList<int> rows;
+    for (int row = 0; row < queue->entries().size(); ++row) {
+        const auto& entry = queue->entries()[row];
+        if (&entry != selected && entry.track.key.source == source) {
+            rows.append(row);
+        }
+    }
+    if (stopCurrent) {
+        stop();
+    }
+    if (const auto continuation = queue->continuation(); continuation && continuation->source() == source) {
+        queue->dropContinuation();
+        setWaitingForMore(false);
+    } else if (activeContinuation && activeContinuation->source() == source) {
+        queue->renew();
+        setWaitingForMore(false);
+    }
+    const quint64 revision = queue->revision();
+    queue->remove(rows);
+    int nextIndex = -1;
+    if (stopCurrent) {
+        const int cursor = queue->cursor();
+        nextIndex = queue->next();
+        if (nextIndex == cursor) {
+            nextIndex = -1;
+        } else if (nextIndex > cursor) {
+            --nextIndex;
+        }
+        queue->remove({cursor});
+    }
+    queueEdited(revision);
+    if (stopCurrent) {
+        Q_EMIT currentTrackChanged();
+    }
+    if (advanceCurrent && nextIndex >= 0) {
+        playIndex(nextIndex);
+    }
 }
 
 void Player::clear() {
@@ -543,7 +610,8 @@ std::shared_ptr<Continuation> Player::askedContinuation() const {
     if (queue->continuation()) {
         return queue->continuation();
     }
-    return queue->continuesWithVibe() ? queue->historyWave() : nullptr;
+    const auto history = queue->historyWave();
+    return queue->continuesWithVibe() && history && !disabledSources.contains(history->source()) ? history : nullptr;
 }
 
 void Player::maybeLoadMore() {
@@ -608,6 +676,10 @@ void Player::shutDown() {
 }
 
 void Player::playIndex(int index) {
+    if (index >= 0 && index < queue->entries().size()
+        && disabledSources.contains(queue->entries()[index].track.key.source)) {
+        return;
+    }
     if (isShutDown || index < 0 || index >= queue->entries().size()) {
         return;
     }

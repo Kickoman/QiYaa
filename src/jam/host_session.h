@@ -6,10 +6,12 @@
 
 #include <QHash>
 #include <QObject>
+#include <QSet>
 #include <QString>
 #include <QTimer>
 
 #include <functional>
+#include <map>
 #include <optional>
 
 namespace Core {
@@ -31,10 +33,15 @@ struct HostConfig {
     bool shareAudio = false;  // listening along (experimental): guests may play the host's file
 };
 
+using SearchDone = std::function<void(const QList<Core::Track>&, std::optional<SearchError>)>;
+using CatalogSearch = std::function<void(const QString&, SearchDone)>;
+
 struct HostOptions {
     ClientOptions client;
     std::function<HostConfig()> config;
     std::function<QString()> newId;
+    std::function<QStringList()> searchSources;
+    std::map<TrackSource, CatalogSearch> catalogSearches;
     int resumeRetryMs = 30'000;
 };
 
@@ -88,6 +95,8 @@ public:
     bool rotateLink();
 
     void networkBack();
+    void updateSearchSources();
+    void removeCatalog(const QString& source);
 
 Q_SIGNALS:
     void changed();
@@ -115,6 +124,7 @@ private:
     void validate(const ValidateRequest& message);
     void serverEnded(EndReason reason);
     void sendPlaying(const Core::JamPlayback& playback);
+    std::optional<QStringList> advertisedSources() const;
     void sendResume(const Session& session, const QStringList& outbox);
     bool request(const std::function<ClientMessage(const QString& id)>& build);
     QString nextId();
@@ -135,11 +145,14 @@ private:
     std::optional<Session> discarding;
     std::optional<CreateRequest> creating;
     std::optional<Room> currentRoom;
+    std::optional<QStringList> sentSearchSources;
     bool connected = false;
     bool announcedActive = false;
     bool announcedConnected = false;
     QString requestId;
     QString endId;
+    QSet<QString> sentCatalogRemovals;
+    QString catalogSettingsRequest;
     qint64 lastVersion = -1;
     QString pendingPinTrack;
     QString pendingPinAdd;

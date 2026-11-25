@@ -26,6 +26,7 @@ class SearchWindow;
 namespace App {
 
 class Account;
+class SpotifyAccount;
 class Settings;
 class WindowSet;
 
@@ -43,6 +44,7 @@ public:
         Ui::MainWindow* mainWindow = nullptr;
         Ui::PlaylistWindow* playlistWindow = nullptr;
         Ui::SearchWindow* searchWindow = nullptr;
+        SpotifyAccount* spotify = nullptr;
     };
 
     explicit JamBridge(const Parts& parts, QObject* parent = nullptr);

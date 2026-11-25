@@ -230,11 +230,16 @@ server rejects it or the session ends. The search window shows the refusal on th
   `offline()` lets the app say so (HOST-25, HOST-36).
 - **Names.** `participantName(publicId)` is the name of a participant of `room()`, for the line
   that says who added an item (HOST-34).
-- **Guests.** `searchRequest` → `Library::searchTracks` (`type=track`), the available tracks that
-  `JamTrackOf` takes, 20 at most; a 401 or 403 is `error: unauthorized`, any other failure `failed`
-  (HOST-28, HOST-29). `validateRequest` → `Library::tracksByIds`: an entry per id in order, a track
+- **Guests.** `searchRequest` routes by catalog, with Yandex as the default for older servers.
+  The host returns up to 20 available tracks that fit the protocol. Yandex searches use
+  `Library::searchTracks` (`type=track`), with 401 and 403 reported as `unauthorized` and other
+  errors as `failed` (HOST-28, HOST-29). Spotify searches use the app’s Spotify catalog. `validateRequest` → `Library::tracksByIds`: an entry per id in order, a track
   or `track-unavailable`; a failed request fails them all (HOST-30). Answers go only while
   connected.
+- **Catalog logout.** The host persists pending cleanup with the room session. It disables guest
+  search for that catalog before removing matching waiting items. Playback ignores that catalog's
+  items during cleanup. A saved snapshot confirms completion and allows the catalog to be
+  advertised again after login (HOST-39).
 - **The host's actions** (HOST-20) return false without a connection. `add` and `playNext` take
   only a track of the catalog (`JamTrackOf`) and return false for any other: a track only the host
   can play is not added (HOST-37, ROOM-66), and the codec would let such an `add` through, since
@@ -301,3 +306,7 @@ carry the track id alone.
   `Core::JamMode`, [src/core/README.md](../core/README.md).
 - Where the settings and the session file live, the question at start and the texts of refusals:
   [src/app/README.md](../app/README.md).
+
+Protocol 2 hosts advertise their search catalogues. Spotify uses the existing search catalogue
+and reconstructs a Spotify playback key from a Jam queue item. Spotify items do not generate
+listening-along URLs or Yandex wave seeds.

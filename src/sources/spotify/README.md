@@ -123,3 +123,5 @@ void nextPage(const QString& pageUrl, TDone<ContextPage>);              // hm://
   fail until the list in `library.cpp` is updated (librespot-based clients publish the new ones).
 - `Autoplay` keeps its `Library` as a `QPointer`: with the library gone, `more` returns false.
 - Tests: `tests/spotify_source_test.cpp`, and `player_test` for the own history wave.
+
+Continuations identify Spotify as their playback source so the player can cancel them on Jam logout (HOST-40).

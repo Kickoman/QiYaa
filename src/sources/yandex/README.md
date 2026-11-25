@@ -249,3 +249,5 @@ settings and changes it from the menu.
 - Tests: `tests/yandex_source_test.cpp` (keys, the `Source`), `tests/sources_test.cpp` (the
   `Catalog`, the vibe from history), `tests/jam_mode_test.cpp` and `tests/jam_host_test.cpp` (the
   jam vibe through `Core::JamMode`).
+
+Continuations identify Yandex as their playback source so the player can cancel them on Jam logout (HOST-40).
