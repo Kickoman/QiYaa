@@ -164,6 +164,10 @@ void MockHttpServer::handle(QTcpSocket* socket, QByteArray& buffer) {
             }
         }
     }
+    if (response.closeWithoutReply) {
+        socket->disconnectFromHost();
+        return;
+    }
     QByteArray reply = "HTTP/1.1 " + QByteArray::number(response.status) + " X\r\n";
     reply += "Content-Type: application/json\r\nConnection: close\r\n";
     reply += "Content-Length: " + QByteArray::number(response.body.size()) + "\r\n\r\n"
