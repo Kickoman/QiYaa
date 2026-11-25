@@ -1,19 +1,52 @@
 name: CI
+run-name: >-
+  ${{ github.event_name == 'workflow_dispatch' && format('Desktop preview PR #{0}', inputs.pr) || github.event.head_commit.message || github.ref_name }}
 
 on:
   push:
   pull_request:
   workflow_dispatch:
+    inputs:
+      pr:
+        description: Open pull request number
+        required: true
+        type: number
+
+permissions:
+  contents: read
+  pull-requests: read
 
 concurrency:
-  group: ci-${{ github.ref }}
+  group: ci-${{ github.event_name == 'workflow_dispatch' && format('preview-{0}', inputs.pr) || github.ref }}
   cancel-in-progress: true
 
 env:
   VCPKG_COMMIT: 6ade29bbd5a4c7e99439ec52adbc63c073953a57  # pinned: projectm 4.1.7
 
 jobs:
+  source:
+    runs-on: ubuntu-24.04
+    outputs:
+      sha: ${{ steps.source.outputs.sha }}
+    steps:
+      - id: source
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+          PR: ${{ inputs.pr }}
+        run: |
+          sha="$GITHUB_SHA"
+          if [ "$GITHUB_EVENT_NAME" = workflow_dispatch ]; then
+            test "$GITHUB_REF" = refs/heads/master
+            [[ "$PR" =~ ^[1-9][0-9]*$ ]]
+            sha=$(gh api "repos/$GITHUB_REPOSITORY/pulls/$PR" --jq '. as $p | select(.state == "open" and .head.repo.full_name == .base.repo.full_name) | .head.sha')
+            [[ "$sha" =~ ^[0-9a-f]{40}$ ]]
+            printf 'Preview PR #%s at `%s`\n' "$PR" "$sha" >> "$GITHUB_STEP_SUMMARY"
+          fi
+          echo "sha=$sha" >> "$GITHUB_OUTPUT"
+
   format:
+    if: github.event_name != 'workflow_dispatch'
     name: Format (clang-format 18)
     runs-on: ubuntu-24.04
     steps:
@@ -24,6 +57,7 @@ jobs:
   # The invariants the module READMEs write down ("# must print nothing") and the module table of
   # docs/architecture.md.
   readmes:
+    if: github.event_name != 'workflow_dispatch'
     name: README checks
     runs-on: ubuntu-24.04
     steps:
@@ -34,6 +68,7 @@ jobs:
   # Qt itself is not instrumented; tests/tsan.supp may silence Qt's libraries, never our code. Qt 6.8:
   # with Qt 6.4, TSan reported the test library's own watchdog thread at every exit.
   tsan:
+    if: github.event_name != 'workflow_dispatch'
     name: ThreadSanitizer (audio)
     runs-on: ubuntu-24.04
     steps:
@@ -60,6 +95,10 @@ jobs:
           TSAN_OPTIONS: halt_on_error=1 second_deadlock_stack=1 suppressions=${{ github.workspace }}/tests/tsan.supp
 
   build:
+    needs: source
+    env:
+      PREVIEW: ${{ github.event_name == 'workflow_dispatch' }}
+      SOURCE_SHA: ${{ needs.source.outputs.sha }}
     name: ${{ matrix.name }}
     runs-on: ${{ matrix.os }}
     strategy:
@@ -97,7 +136,7 @@ jobs:
             cmake_args: -DQIYAA_REQUIRE_MILKDROP=ON -DQIYAA_REQUIRE_JAM=ON -DQIYAA_WITH_TELEMETRY=ON -DQIYAA_PACKAGE=windows
             artifact: QiYaa-Windows
           - name: macOS (Qt 6.8, arm64)
-            os: macos-14
+            os: macos-15
             qt_arch: clang_64
             cmake_args: -DQIYAA_REQUIRE_MILKDROP=ON -DQIYAA_REQUIRE_JAM=ON -DQIYAA_WITH_TELEMETRY=ON -DQIYAA_PACKAGE=macos
             artifact: QiYaa-macOS
@@ -105,7 +144,9 @@ jobs:
     steps:
       - uses: actions/checkout@v4
         with:
+          ref: ${{ needs.source.outputs.sha }}
           submodules: true
+          persist-credentials: false
 
       - name: Install system Qt
         if: matrix.system_qt
@@ -191,6 +232,9 @@ jobs:
           # A tag vX.Y.Z is the version: the packages are named after it and the app shows it.
           VERSION_ARG=""
           case "$GITHUB_REF" in refs/tags/v*) VERSION_ARG="-DQIYAA_VERSION=${GITHUB_REF_NAME#v}" ;; esac
+          if [ "$PREVIEW" = true ]; then
+            VERSION_ARG="-DQIYAA_PREVIEW_SHA=${SOURCE_SHA::7}"
+          fi
           # Packaged builds must have Milkdrop and the jam; the plain system-Qt build checks building
           # without them.
           cmake -S . -B build $GEN -DCMAKE_BUILD_TYPE=Release ${{ matrix.cmake_args }} $CMAKE_EXTRA $VERSION_ARG
@@ -292,7 +336,7 @@ jobs:
           (cd dist && 7z a -bd "QiYaa-$VERSION-windows-x64.zip" QiYaa > /dev/null)
 
       - name: Package (Windows installer)
-        if: runner.os == 'Windows'
+        if: runner.os == 'Windows' && github.event_name != 'workflow_dispatch'
         shell: pwsh
         run: |
           # Inno Setup >= 6.3 (x64compatible); installs it if the runner image lacks it.
@@ -323,7 +367,9 @@ jobs:
 
           # Disk image: the app and a link to Applications to drag it onto.
           mkdir -p dmgroot dist
-          ditto build/QiYaa.app dmgroot/QiYaa.app
+          BUNDLE=QiYaa.app
+          [ "$PREVIEW" != true ] || BUNDLE="QiYaa Preview.app"
+          ditto build/QiYaa.app "dmgroot/$BUNDLE"
           ln -s /Applications dmgroot/Applications
           DMG="dist/QiYaa-$VERSION-macos-arm64.dmg"
           # hdiutil on the runners now and then fails with "Resource busy": retry.
@@ -335,14 +381,30 @@ jobs:
           # The copy inside the image must still be intact.
           MNT="$RUNNER_TEMP/qiyaa-dmg"
           hdiutil attach -nobrowse -readonly -mountpoint "$MNT" "$DMG"
-          codesign --verify --deep --strict --verbose=2 "$MNT/QiYaa.app"
+          codesign --verify --deep --strict --verbose=2 "$MNT/$BUNDLE"
           ls -l "$MNT"
           hdiutil detach "$MNT"
 
+      - name: Verify preview identity
+        if: inputs.pr && matrix.artifact && !matrix.deb
+        shell: bash
+        env:
+          QT_QPA_PLATFORM: offscreen
+          QT_COMMAND_LINE_PARSER_NO_GUI_MESSAGE_BOXES: 1
+        run: |
+          case "$RUNNER_OS" in
+            Windows) BIN=dist/QiYaa/QiYaa.exe ;;
+            macOS) BIN=build/QiYaa.app/Contents/MacOS/QiYaa ;;
+            *) BIN=build/QiYaa ;;
+          esac
+          "$BIN" --version | grep -F -- "-preview.${SOURCE_SHA::7}"
+          if [ "$RUNNER_OS" = Windows ]; then rm -r dist/QiYaa; fi
+
       - uses: actions/upload-artifact@v4
-        if: matrix.artifact
+        if: matrix.artifact && (!inputs.pr || !matrix.deb)
         with:
-          name: ${{ matrix.artifact }}
+          name: ${{ inputs.pr && format('{0}-preview-pr{1}-{2}', matrix.artifact, inputs.pr, needs.source.outputs.sha) || matrix.artifact }}
+          retention-days: ${{ inputs.pr && 14 || 0 }}
           path: |
             dist/
             screenshot.png
@@ -350,7 +412,7 @@ jobs:
 
   # Pushing a tag like v0.2.0 publishes the packages as a GitHub release.
   release:
-    if: startsWith(github.ref, 'refs/tags/v')
+    if: github.event_name == 'push' && startsWith(github.ref, 'refs/tags/v')
     needs: build
     runs-on: ubuntu-latest
     permissions:

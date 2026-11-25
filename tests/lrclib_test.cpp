@@ -246,7 +246,11 @@ private Q_SLOTS:
     }
 
     void aNetworkFailureIsAFailureAfterItsRetry() {  // LYR-04, LYR-17
-        Lrclib::Service service(&network, QStringLiteral("http://127.0.0.1:1"), QStringLiteral("1.0.0"));
+        Tests::MockHttpServer disconnected;
+        disconnected.onPrefix("GET", "/api/", [](const Tests::MockRequest&) {
+            return Tests::MockResponse{.closeWithoutReply = true};
+        });
+        Lrclib::Service service(&network, disconnected.baseUrl(), QStringLiteral("1.0.0"));
         service.setRetryDelayMs(10);
         const Asked asked = ask(service, Song(QStringLiteral("Paper Boats"), {QStringLiteral("The Example Band")}));
         QVERIFY(asked.answer);

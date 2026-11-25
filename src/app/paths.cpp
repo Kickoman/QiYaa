@@ -8,7 +8,11 @@ namespace App {
 
 QString ConfigDirectory() {
     const QString base = QStandardPaths::writableLocation(QStandardPaths::GenericConfigLocation);
+#ifdef QIYAA_PREVIEW
+    const QString directory = base + QStringLiteral("/QiYaa Preview");
+#else
     const QString directory = base + QStringLiteral("/QiYaa");
+#endif
     QDir().mkpath(directory);
     return directory;
 }
@@ -42,11 +46,15 @@ QString SpotifyCredentialsFile() {
 }
 
 QStringList YaampTokenFiles() {
+#ifdef QIYAA_PREVIEW
+    return {};
+#else
     QStringList out;
     for (const QString& directory : YaampDataDirectories()) {
         out << directory + QStringLiteral("/token.json");
     }
     return out;
+#endif
 }
 
 QString SettingsFile(const QString& chosen, const QTemporaryDir* temporaryDirectory) {

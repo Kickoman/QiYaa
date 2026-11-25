@@ -40,7 +40,11 @@ void ChoosePlatform() {
 int Run(int& argc, char* argv[]) {
     ChoosePlatform();
     QApplication qtApplication(argc, argv);
+#ifdef QIYAA_PREVIEW
+    QApplication::setApplicationName(QStringLiteral("QiYaa Preview"));
+#else
     QApplication::setApplicationName(QStringLiteral("QiYaa"));
+#endif
     QGuiApplication::setDesktopFileName(QStringLiteral("qiyaa"));
     {
         QIcon icon;
