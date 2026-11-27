@@ -10,9 +10,7 @@
 #include "core/lyrics_finder.h"
 #include "core/player.h"
 #include "sources/local/catalog.h"
-#include "sources/spotify/source.h"
 #include "sources/yandex/catalog.h"
-#include "sources/yandex/source.h"
 #include "ui/library_menu.h"
 #include "ui/main_window.h"
 #include "ui/playlist_window.h"
@@ -300,14 +298,11 @@ void MainMenu::addModes(QMenu* menu) {
     const std::pair<Yandex::Quality, QString> qualities[] = {
         {Yandex::Quality::Standard, tr("Standard")}, {Yandex::Quality::Economy, tr("Economy: a third of the data")}
     };
+    const Yandex::Quality selectedQuality = parts.settings->quality();
     for (const auto& [quality, name] : qualities) {
-        QAction* action = qualityMenu->addAction(name, this, [this, quality] {
-            parts.yandex->setQuality(quality);
-            parts.spotifySource->setEconomy(quality == Yandex::Quality::Economy);
-            parts.settings->setQuality(quality);
-        });
+        QAction* action = qualityMenu->addAction(name, this, [this, quality] { Q_EMIT qualityChosen(quality); });
         action->setCheckable(true);
-        action->setChecked(parts.yandex->quality() == quality);
+        action->setChecked(selectedQuality == quality);
         qualityGroup->addAction(action);
     }
 }

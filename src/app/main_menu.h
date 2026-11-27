@@ -1,6 +1,7 @@
 #pragma once
 
 #include "app/translations.h"
+#include "yandex/file_info.h"
 
 #include <QObject>
 #include <QPoint>
@@ -35,12 +36,10 @@ class Catalog;
 
 namespace YandexSource {
 class Catalog;
-class Source;
 }  // namespace YandexSource
 
 namespace SpotifySource {
 class Catalog;
-class Source;
 }  // namespace SpotifySource
 
 namespace App {
@@ -65,13 +64,11 @@ public:
         LocalSource::Catalog* local = nullptr;
         Core::SourceRegistry* sources = nullptr;
         Core::LyricsFinder* lyrics = nullptr;
-        YandexSource::Source* yandex = nullptr;
         Settings* settings = nullptr;
         WindowSet* windows = nullptr;
         Account* account = nullptr;
         SpotifyAccount* spotify = nullptr;
         SpotifySource::Catalog* spotifyCatalog = nullptr;
-        SpotifySource::Source* spotifySource = nullptr;
         JamBridge* jam = nullptr;
         TelemetryBridge* telemetry = nullptr;
         const Translations* translations = nullptr;
@@ -88,6 +85,7 @@ public:
 Q_SIGNALS:
     void skinChosen(const QString& path);
     void languageChosen(App::Language language);
+    void qualityChosen(Yandex::Quality quality);
     void visModeChosen();
     void quitChosen();
 

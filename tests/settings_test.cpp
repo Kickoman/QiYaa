@@ -158,6 +158,24 @@ private Q_SLOTS:
         QVERIFY(written.readAll().contains("firstStart=2026-10-17"));
     }
 
+    void qualityIsStoredByName_data() {
+        QTest::addColumn<Yandex::Quality>("quality");
+        QTest::addColumn<QString>("name");
+        QTest::newRow("standard") << Yandex::Quality::Standard << QStringLiteral("standard");
+        QTest::newRow("economy") << Yandex::Quality::Economy << QStringLiteral("economy");
+    }
+
+    void qualityIsStoredByName() {  // QUAL-06
+        QFETCH(Yandex::Quality, quality);
+        QFETCH(QString, name);
+        {
+            App::Settings settings(file);
+            settings.setQuality(quality);
+        }
+        QCOMPARE(stored(QStringLiteral("playback/quality")).toString(), name);
+        QCOMPARE(App::Settings(file).quality(), quality);
+    }
+
     void unknownValuesFallBack() {
         store(QStringLiteral("shuffle/algorithm"), QStringLiteral("unknown"));
         store(QStringLiteral("playback/quality"), QStringLiteral("lossless"));

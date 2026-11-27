@@ -488,23 +488,24 @@ class MainMenu : public QObject {
 public:
     struct Parts { Core::Player* player; Audio::AudioEngine* engine; Yandex::Library* library;
                    YandexSource::Catalog* catalog; LocalSource::Catalog* local;
-                   Core::SourceRegistry* sources; Core::LyricsFinder* lyrics; YandexSource::Source* yandex;
+                   Core::SourceRegistry* sources; Core::LyricsFinder* lyrics;
                    Settings* settings; WindowSet* windows; Account* account;
                    SpotifyAccount* spotify; SpotifySource::Catalog* spotifyCatalog;
-                   SpotifySource::Source* spotifySource; JamBridge* jam;
+                   JamBridge* jam;
                    TelemetryBridge* telemetry; const Translations* translations;
                    Ui::MainWindow* mainWindow; Ui::PlaylistWindow* playlistWindow;
-                   Ui::SearchWindow* searchWindow; SpotifyAccount* spotify; };
+                   Ui::SearchWindow* searchWindow; };
     explicit MainMenu(const Parts& parts, QObject* parent = nullptr);   // shortcuts, menu requests
     void showMain(QPoint globalPosition, const Core::Track* track);
     void showSources(QPoint globalPosition);
 Q_SIGNALS:
     void skinChosen(const QString& path);  void languageChosen(App::Language language);
+    void qualityChosen(Yandex::Quality quality);
     void visModeChosen();  void quitChosen();
 };
 ```
 
-The menus and the keys. What the `Application` owns (skins, the language, saving, quitting) the
+The menus and the keys. What the `Application` owns (skins, the language, playback quality, saving, quitting) the
 menu asks for with a signal; the rest it does through the parts. Built last, after every window
 joined the `WindowSet`.
 
@@ -567,10 +568,10 @@ The main menu, top to bottom:
   `Player::canSwitchVibe()`: a source with a continuation of its own (My Vibe, a station), or local
   files (CONT-12). It switches the current queue only (spec CONT-02), never the
   `playback/continueWithVibe` setting.
-- Quality (`qualityMenu`): "Standard" or "Economy: a third of the data" (exclusive); calls
-  `YandexSource::Source::setQuality` and `SpotifySource::Source::setEconomy`, and saves
-  `playback/quality` (spec/player/quality.md, SPOT-13). The
-  track that plays goes on; the next one is fetched in the new quality.
+- Quality (`qualityMenu`): "Standard" or "Economy: a third of the data" (exclusive), checked
+  from `Settings::quality()`. A choice emits `qualityChosen`. `Application` applies it to both
+  catalogues as it does at startup and saves `playback/quality` (QUAL-05, QUAL-06, SPOT-13).
+  The playing track keeps its file. The next one is fetched in the new quality.
 - Skins: every `*.wsz` in `:/skins`, sorted by name, shown without the extension; then "Load a
   skin…" (file dialog starting in the home directory, filter `*.wsz *.zip`); a choice emits
   `skinChosen(path)`;
