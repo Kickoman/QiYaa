@@ -35,7 +35,7 @@ is formatting (the clang-format check in `.github/workflows/ci.yml`).
 | `spotify_protocol_test.cpp` | `SpotifyProtocol`'s building blocks: SHA-1, HMAC-SHA1 (RFC 2202), AES-CTR (SP 800-38A, from any offset, the carry past the low counter word), modular power and DH agreement, the RSA check, Shannon against vectors of the C reference, protobuf, base62, hashcash, track metadata and the Ogg Vorbis file a quality picks (SPOT-13), the catalogue (metadata of many entities matched by URI, a track's artists, album, year and covers, an album's discs, an artist's top tracks by country, a collection page, a rootlist without folders and broken playlists, the autoplay request), client-token's platform data, normalisation |
 | `spotify_access_point_test.cpp` | `SpotifyProtocol::AccessPoint` against `Tests::FakeAccessPoint` (support/fake_access_point) and its test RSA key: the handshake, logins with stored credentials and with a token, ProductInfo and the country, an audio key and a refused one, a refused login, a server key not signed by Spotify, packets split into single bytes, the keep-alive (SPOT-03, SPOT-04, SPOT-05, SPOT-13, SPOT-16 to SPOT-18) |
 | `spotify_client_test.cpp` | `SpotifyClient` against `MockHttpServer` and `Tests::FakeAccessPointServer`: the credentials file, the code login and the browser login (PKCE, a redirect of another request), the session's login, a refused login, keys with their refusal and the retry of code 2 (each failed key reported once), the login after a dropped connection, the web tokens fetched once, a request without the account's query and a Pathfinder query, a failed request reported once with its status, a file decrypted without Spotify's header, a broken CDN link handing over at the same byte, a refused key, a track without Ogg Vorbis (SPOT-01 to SPOT-04, SPOT-13 to SPOT-18); with `QIYAA_SPOTIFY_CREDENTIALS` it also plays a real track |
-| `spotify_source_test.cpp` | `SpotifySource` against `MockHttpServer` and `Tests::FakeAccessPointServer`: Liked Songs from every collection page with their availability (a relinked track plays, one without files does not), metadata a hundred at a time matched by URI, covers and web pages, the rootlist's playlists and a playlist played, saved albums and followed artists with their names, an album disc by disc, an artist's top tracks in the country, "For you" from the home's Made For You section, search (a stale hash tried again, the best artist, the found tracks), autoplay after a pick (its URI, the recent tracks oldest first, the next page as it came), a failed autoplay, a radio, a track opened in the quality in effect and only with an account, a refused key as an account failure (SPOT-06 to SPOT-17, SPOT-19 to SPOT-21) |
+| `spotify_source_test.cpp` | `SpotifySource` against `MockHttpServer` and `Tests::FakeAccessPointServer`: Liked Songs from every collection page with their availability (a relinked track plays, one without files does not), metadata a hundred at a time matched by URI, covers and web pages, the rootlist's playlists and a playlist played, saved albums and followed artists with their names, an album disc by disc, an artist's top tracks in the country, "For you" from the home's Made For You section, search (a stale hash tried again, the best artist, the found tracks), autoplay after a pick (its URI, the recent tracks oldest first, the next page as it came), a failed autoplay, a radio, a track opened in the quality in effect and only with an account, a refused key as an account failure (SPOT-06 to SPOT-17, SPOT-19 to SPOT-21). A quality change refetches a downloaded or pending preload, keeps the playing stream, and drops a late reply for the old file (QUAL-05) |
 | `mp4_aac_test.cpp` | `Audio::Mp4AacBackend` through an `ma_decoder` over memory: `IsMp4`, the rate, length, level and 440 Hz of the test m4a, seeking to the same samples as playing through, the end, a file cut short, an MP4 without its index; with `QIYAA_MP4_SAMPLE=<path>` it also decodes that file (a Yandex economy file kept outside the repository) |
 | `ogg_vorbis_test.cpp` | `Audio::OggVorbisBackend` through an `ma_decoder` over memory: `IsOgg`, the rate, the exact length and the level and 440 Hz of the test ogg, the end at the last page's granule position, seeking to the same samples as playing through (also around every page of `chirp_12s.ogg`), the end, a file cut short, an Ogg of another codec; with `QIYAA_OGG_SAMPLE=<path>` it also decodes and seeks in that file (a Spotify file kept outside the repository) |
 | `dsp_test.cpp` | EQ response and processing, the 17 built-in EQ presets, `.eqf` read/write, `EqualizerWindow::GraphCurve`, the FFT analyzer, spectrum and oscilloscope rendering; the reference vectors of `spec/dsp` (checks them, and writes them with `QIYAA_WRITE_DSP_VECTORS=1`) |
@@ -129,7 +129,7 @@ QT_QPA_PLATFORM=offscreen QIYAA_AUDIO_BACKEND=null build/tests/audio_test queued
 | `spotify_protocol_test` | spotify_protocol | plain |
 | `spotify_access_point_test` | spotify_protocol (+ `qiyaa_test_spotify`) | plain |
 | `spotify_client_test` | spotify_client (+ `qiyaa_test_spotify_client`) | plain; `QIYAA_SPOTIFY_CREDENTIALS`, `QIYAA_SPOTIFY_TRACK`, `QIYAA_SPOTIFY_OUTPUT` for the real one |
-| `spotify_source_test` | core sources_spotify (+ `qiyaa_test_spotify_client`) | plain |
+| `spotify_source_test` | core sources_spotify (+ `qiyaa_test_spotify_client`) | plain; `QIYAA_TEST_DATA` |
 | `mp4_aac_test` | audio (+ `qiyaa_miniaudio`) | plain; `QIYAA_TEST_DATA`; `QIYAA_MP4_SAMPLE` adds a file of your own |
 | `ogg_vorbis_test` | audio (+ `qiyaa_miniaudio`) | plain; `QIYAA_TEST_DATA`; `QIYAA_OGG_SAMPLE` adds a file of your own |
 | `audio_test` | audio core | plain; `QIYAA_TEST_DATA` |
@@ -248,8 +248,10 @@ pictures into an existing directory; nothing creates it:
   its own.
 - `sine440_3s.ogg` feeds `ogg_vorbis_test` (44,100 Hz, exactly 132,300 frames, an RMS of 0.05 to 0.07,
   440 ± 3 Hz), `audio_test`'s Ogg cases, `local_tags_test` (tagged like the others) and
-  `local_source_test`. `chirp_12s.ogg` feeds `ogg_vorbis_test`'s seeks to every page, and
-  `sine440_1s_flac.ogg` its refusal and `local_tags_test`'s and `local_source_test`'s Ogg that cannot play.
+  `local_source_test`. `chirp_12s.ogg` feeds `ogg_vorbis_test`'s seeks to every page and
+  `spotify_source_test`'s quality changes. The test wraps it with Spotify's header and encrypts
+  it with the fake access point's key.
+  `sine440_1s_flac.ogg` feeds the refusal test in `ogg_vorbis_test` and `local_tags_test`'s and `local_source_test`'s Ogg that cannot play.
 - `screen-2560x1440.json` is used only by `windows_test`.
 - `golden/` holds the seven PNGs of `screenshots_test` and the eleven `jam-*.png` of
   `jam_window_test` (the jam page on each built-in skin, and the start, search and offline pages
@@ -340,6 +342,8 @@ struct MockResponse {
     QByteArray body;
     int delayMs = 0;
     qsizetype truncateAfter = -1;   // >= 0: send only that much of the body, then close
+    bool closeWithoutReply = false;
+    std::function<void(std::function<void()>)> defer{};
 };
 
 class MockHttpServer : public QObject {
@@ -384,6 +388,8 @@ public:
   `RemoteHostClosedError` with status 200.
 - `delayMs` delays the reply with a timer on the socket. If the client has gone meanwhile,
   nothing is written.
+- `defer`, when set, receives a one-shot send callback in place of the timer. The test calls
+  it on the server's thread to release a response after another request has finished.
 
 **Traps:**
 - `onPrefix` never replaces. A second registration of the same prefix is appended, and the first

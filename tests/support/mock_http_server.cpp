@@ -173,13 +173,18 @@ void MockHttpServer::handle(QTcpSocket* socket, QByteArray& buffer) {
     reply += "Content-Length: " + QByteArray::number(response.body.size()) + "\r\n\r\n"
         + (response.truncateAfter >= 0 ? response.body.left(response.truncateAfter) : response.body);
     QPointer<QTcpSocket> guard(socket);
-    QTimer::singleShot(response.delayMs, socket, [guard, reply] {
+    const auto send = [guard, reply] {
         if (!guard) {
             return;
         }
         guard->write(reply);
         guard->disconnectFromHost();
-    });
+    };
+    if (response.defer) {
+        response.defer(send);
+    } else {
+        QTimer::singleShot(response.delayMs, socket, send);
+    }
 }
 
 }  // namespace Tests
