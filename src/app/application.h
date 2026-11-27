@@ -22,6 +22,7 @@
 #include "spotify/client/session.h"
 #include "spotify/client/web.h"
 #include "yandex/api_client.h"
+#include "yandex/file_info.h"
 #include "yandex/library.h"
 
 #include <QList>
@@ -134,6 +135,8 @@ Q_SIGNALS:
     void skinFailed();
 
 private:
+    void applyQuality(Yandex::Quality quality);
+
     Options startOptions;
     std::unique_ptr<QTemporaryDir> temporaryDirectory;
     Settings settings;

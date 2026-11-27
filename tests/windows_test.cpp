@@ -397,6 +397,7 @@ private Q_SLOTS:
         {
             App::Application configured(options);
             QCOMPARE(configured.yandex()->quality(), Yandex::Quality::Standard);
+            QCOMPARE(configured.spotifyTracks()->preferredKbps(), 320);
             configured.mainWindow()->menuRequested(QPoint(100, 100));
             auto* menu = configured.mainWindow()->findChild<QMenu*>(QStringLiteral("qualityMenu"));
             QVERIFY(menu);
@@ -405,23 +406,35 @@ private Q_SLOTS:
             QVERIFY(menu->actions()[0]->isChecked());
             menu->actions()[1]->trigger();
             QCOMPARE(configured.yandex()->quality(), Yandex::Quality::Economy);
+            QCOMPARE(configured.spotifyTracks()->preferredKbps(), 96);
             QVERIFY(menu->actions()[1]->isChecked());
             QVERIFY(!menu->actions()[0]->isChecked());
         }
+        const QString qualityKey = QStringLiteral("playback/quality");
+        QSettings saved(options.settingsFile, QSettings::IniFormat);
+        QCOMPARE(saved.value(qualityKey).toString(), QStringLiteral("economy"));
         {
             App::Application restored(options);
             QCOMPARE(restored.yandex()->quality(), Yandex::Quality::Economy);
+            QCOMPARE(restored.spotifyTracks()->preferredKbps(), 96);
             restored.mainWindow()->menuRequested(QPoint(100, 100));
             auto* menu = restored.mainWindow()->findChild<QMenu*>(QStringLiteral("qualityMenu"));
             QVERIFY(menu);
             QVERIFY(menu->actions()[1]->isChecked());
+            menu->actions()[0]->trigger();
+            QCOMPARE(restored.yandex()->quality(), Yandex::Quality::Standard);
+            QCOMPARE(restored.spotifyTracks()->preferredKbps(), 320);
+            QVERIFY(menu->actions()[0]->isChecked());
         }
-        QSettings saved(options.settingsFile, QSettings::IniFormat);
-        QCOMPARE(saved.value(QStringLiteral("playback/quality")).toString(), QStringLiteral("economy"));
-        saved.setValue(QStringLiteral("playback/quality"), QStringLiteral("lossless"));
+        QCOMPARE(saved.value(qualityKey).toString(), QStringLiteral("standard"));
+        saved.setValue(qualityKey, QStringLiteral("lossless"));
         saved.sync();
-        App::Application fallback(options);
-        QCOMPARE(fallback.yandex()->quality(), Yandex::Quality::Standard);
+        {
+            App::Application fallback(options);
+            QCOMPARE(fallback.yandex()->quality(), Yandex::Quality::Standard);
+            QCOMPARE(fallback.spotifyTracks()->preferredKbps(), 320);
+        }
+        QCOMPARE(saved.value(qualityKey).toString(), QStringLiteral("lossless"));
     }
 
     void theVibeItemSwitchesOnlyTheCurrentQueue() {  // CONT-01, CONT-02, CONT-12

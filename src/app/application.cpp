@@ -100,8 +100,7 @@ Application::Application(const Options& options, QObject* parent)
     // Before any window: they take their texts from the translation.
     translations.apply(options.language.value_or(settings.language().value_or(kDefaultLanguage)));
     corePlayer.setShuffleAlgorithm(settings.shuffleAlgorithm());
-    yandexSource.setQuality(settings.quality());
-    spotifySource.setEconomy(settings.quality() == Yandex::Quality::Economy);
+    applyQuality(settings.quality());
     corePlayer.setContinueWithVibeByDefault(settings.continueWithVibe());
     corePlayer.setHistoryWaveFactory(YandexSource::HistoryWaves(&yandexLibrary));
     lyricsFinder.setThirdPartyEnabled(settings.lyricsThirdParty());
@@ -486,13 +485,11 @@ Application::Application(const Options& options, QObject* parent)
         &localCatalog,
         &trackSources,
         &lyricsFinder,
-        &yandexSource,
         &settings,
         windowSet.get(),
         accountControl.get(),
         spotifyAccountControl.get(),
         &spotifyCatalog,
-        &spotifySource,
         jamBridge.get(),
         telemetryBridge.get(),
         &translations,
@@ -502,6 +499,10 @@ Application::Application(const Options& options, QObject* parent)
     });
     connect(mainMenu.get(), &MainMenu::skinChosen, this, &Application::loadSkin);
     connect(mainMenu.get(), &MainMenu::languageChosen, this, &Application::setLanguage);
+    connect(mainMenu.get(), &MainMenu::qualityChosen, this, [this](Yandex::Quality quality) {
+        applyQuality(quality);
+        settings.setQuality(quality);
+    });
     connect(mainMenu.get(), &MainMenu::visModeChosen, this, &Application::saveState);
     connect(mainMenu.get(), &MainMenu::quitChosen, this, &Application::quit);
 }
@@ -542,6 +543,11 @@ void Application::setLanguage(Language language) {
     translations.apply(language);
     settings.setLanguage(language);
     Q_EMIT languageChanged(language);
+}
+
+void Application::applyQuality(Yandex::Quality quality) {
+    yandexSource.setQuality(quality);
+    spotifySource.setEconomy(quality == Yandex::Quality::Economy);
 }
 
 void Application::quit() {

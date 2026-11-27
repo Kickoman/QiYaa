@@ -7,16 +7,20 @@
 #include "sources/spotify/library.h"
 #include "sources/spotify/source.h"
 #include "sources/spotify/tracks.h"
+#include "spotify/protocol/audio_file.h"
 #include "spotify/protocol/ids.h"
 #include "spotify/protocol/protobuf.h"
 #include "support/spotify_stack.h"
 
+#include <QFile>
 #include <QHash>
 #include <QJsonArray>
 #include <QJsonDocument>
 #include <QJsonObject>
 #include <QList>
+#include <QNetworkReply>
 #include <QObject>
+#include <QSet>
 #include <QSignalSpy>
 #include <QString>
 #include <QStringList>
@@ -24,6 +28,7 @@
 #include <QUrlQuery>
 
 #include <algorithm>
+#include <functional>
 #include <memory>
 #include <optional>
 #include <string>
@@ -668,6 +673,9 @@ private Q_SLOTS:
 
     void aTrackOpensInTheQualityInEffectAndNeedsTheAccount() {  // SPOT-13, SPOT-06
         Stack stack;
+        QSignalSpy changes(&stack.source, &Core::TrackSource::filesChanged);
+        stack.source.setEconomy(false);
+        QCOMPARE(changes.count(), 0);
         const std::optional<SpotifyProtocol::TrackInfo> info = SpotifyProtocol::ParseTrack(Track(1, "Song", true));
         const Core::Track track = SpotifySource::TrackOf(*info);
         const auto open = [&stack, &track] {
@@ -694,9 +702,124 @@ private Q_SLOTS:
         QVERIFY(std::holds_alternative<Core::OpenedTrack>(*standard));
         QCOMPARE(std::get<Core::OpenedTrack>(*standard).bitrateKbps, 320);
         stack.source.setEconomy(true);
+        QCOMPARE(changes.count(), 1);
+        stack.source.setEconomy(true);
+        QCOMPARE(changes.count(), 1);
         std::optional<Core::TOpenResult> economy = open();
         QVERIFY(economy);
         QCOMPARE(std::get<Core::OpenedTrack>(*economy).bitrateKbps, 96);
+        stack.source.setEconomy(false);
+        QCOMPARE(changes.count(), 2);
+        QCOMPARE(stack.source.preferredKbps(), 320);
+    }
+
+    void aQualityChangeRefetchesOnlyThePreload_data() {
+        QTest::addColumn<bool>("opening");
+        QTest::newRow("downloaded") << false;
+        QTest::newRow("opening") << true;
+    }
+
+    void aQualityChangeRefetchesOnlyThePreload() {  // QUAL-05
+        QFETCH(bool, opening);
+
+        QFile ogg(QStringLiteral(QIYAA_TEST_DATA "/chirp_12s.ogg"));
+        QVERIFY(ogg.open(QIODevice::ReadOnly));
+        QByteArray audio(static_cast<qsizetype>(SpotifyProtocol::kOggHeaderSize), '\0');
+        audio += ogg.readAll();
+
+        std::function<void()> releaseStandard;
+        QSet<QString> completed;
+        Stack stack;
+        QVERIFY(stack.loginStored());
+        QVERIFY(stack.engine.init().ok);
+        stack.engine.setVolume(0);
+        SpotifyProtocol::AudioDecryptor(stack.accessPoint.key)
+            .apply(reinterpret_cast<std::uint8_t*>(audio.data()), static_cast<std::size_t>(audio.size()), 0);
+        connect(&stack.network, &QNetworkAccessManager::finished, this, [&completed](QNetworkReply* reply) {
+            if (reply->error() == QNetworkReply::NoError) {
+                completed.insert(reply->url().path());
+            }
+        });
+
+        Core::QueueSource queue;
+        for (const std::uint8_t mark : {0x10, 0x20}) {
+            const TBytes metadata = Track(mark, "Song", true);
+            stack.add(TrackUri(mark), metadata);
+            Core::Track track = SpotifySource::TrackOf(*SpotifyProtocol::ParseTrack(metadata));
+            track.durationMs = 12'000;
+            queue.head << track;
+        }
+        const auto storagePath = [](char file) {
+            return QStringLiteral("/storage-resolve/files/audio/interactive/")
+                + QString::fromLatin1(QByteArray(20, file).toHex());
+        };
+        const QString currentCdn = QStringLiteral("/cdn/current");
+        const QString standardCdn = QStringLiteral("/cdn/standard");
+        const QString economyCdn = QStringLiteral("/cdn/economy");
+        const QString standardStorage = storagePath(0x22);
+        const QString economyStorage = storagePath(0x20);
+        const auto serveFile = [&](const QString& storage, const QString& cdn, bool defer) {
+            ProtoWriter reply;
+            reply.varint(1, 0).string(2, (stack.http.baseUrl() + cdn).toStdString());
+            const QByteArray body = BytesOf(reply.data());
+            stack.http.on("GET", storage, [body, defer, &releaseStandard](const MockRequest&) {
+                MockResponse response{200, body};
+                if (defer) {
+                    response.defer = [&releaseStandard](std::function<void()> send) {
+                        releaseStandard = std::move(send);
+                    };
+                }
+                return response;
+            });
+            stack.http.on("GET", cdn, [audio](const MockRequest&) { return MockResponse{200, audio}; });
+        };
+        serveFile(storagePath(0x12), currentCdn, false);
+        serveFile(standardStorage, standardCdn, opening);
+        serveFile(economyStorage, economyCdn, false);
+
+        stack.player.setSource(std::move(queue), true);
+        QTRY_COMPARE(stack.player.state(), Core::Player::State::Playing);
+        if (opening) {
+            QTRY_VERIFY(releaseStandard);
+            QCOMPARE(stack.player.preloadedIndex(), -1);
+        } else {
+            QTRY_VERIFY(completed.contains(standardCdn));
+            QCOMPARE(stack.player.preloadedIndex(), 1);
+        }
+        QCOMPARE(stack.player.currentBitrate(), 320);
+        const auto currentStream = stack.engine.currentStream();
+        const auto standardStream = stack.engine.queuedStream();
+        QTRY_VERIFY(stack.player.positionSeconds() > 0);
+        const double position = stack.player.positionSeconds();
+
+        stack.source.setEconomy(false);
+        QCOMPARE(stack.engine.queuedStream(), standardStream);
+        stack.source.setEconomy(true);
+        QTRY_VERIFY(completed.contains(economyCdn));
+        QCOMPARE(stack.player.preloadedIndex(), 1);
+        const auto economyStream = stack.engine.queuedStream();
+        QVERIFY(economyStream != 0 && economyStream != standardStream);
+
+        if (opening) {
+            std::exchange(releaseStandard, {})();
+            QTRY_VERIFY(completed.contains(standardStorage));
+            QVERIFY(!stack.http.last(standardCdn));
+        }
+        stack.source.setEconomy(true);
+        QTRY_VERIFY(stack.player.positionSeconds() > position);
+        QCOMPARE(stack.player.state(), Core::Player::State::Playing);
+        QCOMPARE(stack.player.currentIndex(), 0);
+        QCOMPARE(stack.engine.currentStream(), currentStream);
+        QCOMPARE(stack.player.currentBitrate(), 320);
+        QCOMPARE(stack.engine.queuedStream(), economyStream);
+        QCOMPARE(stack.metadataAsked, (QList<QStringList>{{TrackUri(0x10)}, {TrackUri(0x20)}, {TrackUri(0x20)}}));
+        QVERIFY(stack.http.last(economyStorage));
+
+        stack.player.next();
+        QCOMPARE(stack.player.currentIndex(), 1);
+        QCOMPARE(stack.engine.currentStream(), economyStream);
+        QCOMPARE(stack.player.currentBitrate(), 96);
+        stack.player.stop();
     }
 
     void aRefusedKeyIsAnAccountFailure() {  // SPOT-17

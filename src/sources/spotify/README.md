@@ -112,7 +112,9 @@ void nextPage(const QString& pageUrl, TDone<ContextPage>);              // hm://
   `SpotifyClient::FileDownload` is prepared (metadata, file, key, links) and handed over as the `TrackDownload`,
   with the file's bitrate. Its failures map to `Network`, `Track` and, for a refused key, `Auth` (SPOT-17).
 - `setEconomy(true)` asks for 96 kbps, else 320 (`kEconomyKbps`, `kStandardKbps`); the fallback to 160 and to any
-  Ogg Vorbis is the protocol's `PickOggVorbis`.
+  Ogg Vorbis is the protocol's `PickOggVorbis`. A change of the preferred bitrate emits `filesChanged()` so the
+  player opens its Spotify preload again in the new quality. The playing track keeps its file (QUAL-05).
+  Setting the same preference again leaves the preload in place.
 - `trackEvent` reports nothing and `lyrics` answers `Missing`: Spotify's own lyrics are not asked.
 
 ## Traps

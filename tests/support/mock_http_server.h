@@ -35,6 +35,8 @@ struct MockResponse {
     // connection closes: a download cut short by the network.
     qsizetype truncateAfter = -1;
     bool closeWithoutReply = false;
+    // Takes the send callback so a test can release this response at a known point.
+    std::function<void(std::function<void()>)> defer{};
 };
 
 class MockHttpServer : public QObject {

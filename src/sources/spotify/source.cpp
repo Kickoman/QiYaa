@@ -106,7 +106,12 @@ void Source::lyrics(const Core::Track&, Core::TLyricsDone done) {
 }
 
 void Source::setEconomy(bool economy) {
-    kbps = economy ? kEconomyKbps : kStandardKbps;
+    const int preferred = economy ? kEconomyKbps : kStandardKbps;
+    if (preferred == kbps) {
+        return;
+    }
+    kbps = preferred;
+    Q_EMIT filesChanged();
 }
 
 }  // namespace SpotifySource
